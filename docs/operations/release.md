@@ -160,6 +160,13 @@ device.
       posture, declared local-agent toolchain, a real credential-backed local-agent
       run, persistence, port reconfiguration, backup, and network/secret isolation
       all pass.
+- [ ] Paperclip's enable is verified as a COLD START: no
+      `data/paperclip/instances/default/db` before it, a cluster created by that
+      run after it, and the running container on the digest pinned in
+      `services.compose.yml`. A re-enable, a hand-started container, a deleted
+      data directory, or a locally patched image invalidates the check — that
+      combination reported a pass while cold start was broken for every new
+      install.
 - [ ] Cleanup closes Funnel first, empties the generated Serve policy, removes
       only the isolated project/home and test tailnet node, and leaves no test
       credential or listener behind.

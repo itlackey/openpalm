@@ -18,8 +18,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   BUILTIN_ADDON_IDS,
+  EXPERIMENTAL_ADDON_IDS,
   GUARDIAN_INGRESS_ADDON_IDS,
   hasGuardianIngressAddon,
+  isExperimentalAddon,
   PORTAL_SECRET_ADDON_IDS,
 } from "./addon-ids.js";
 
@@ -79,5 +81,34 @@ describe("portal secret addon ids", () => {
     const secretIds = [...compose.matchAll(/portal_([a-z]+)_secret/g)].map((m) => m[1]);
     const unique = [...new Set(secretIds)];
     expect(sorted(unique)).toEqual(sorted(PORTAL_SECRET_ADDON_IDS));
+  });
+});
+
+describe("experimental addon ids", () => {
+  it("every member is a built-in addon", () => {
+    // A stale or misspelled id here would silently mark nothing, and the
+    // operator would never see the warning the list exists to give.
+    for (const id of EXPERIMENTAL_ADDON_IDS) {
+      expect(BUILTIN_ADDON_IDS).toContain(id);
+    }
+  });
+
+  it("marks the two addons that depend on third parties OpenPalm cannot verify", () => {
+    expect(sorted(EXPERIMENTAL_ADDON_IDS)).toEqual(["paperclip", "remote"]);
+  });
+
+  it("leaves first-party addons unmarked", () => {
+    for (const id of ["voice", "chat", "api", "discord", "slack", "gateway", "ollama"]) {
+      expect(isExperimentalAddon(id)).toBe(false);
+    }
+  });
+
+  it("is advisory only — it does not remove an addon from the available set", () => {
+    // Experimental must never mean hidden or gated: enabling one is a normal
+    // enable, and the flag only changes what the operator is told.
+    for (const id of EXPERIMENTAL_ADDON_IDS) {
+      expect(isExperimentalAddon(id)).toBe(true);
+      expect(BUILTIN_ADDON_IDS).toContain(id);
+    }
   });
 });

@@ -34,7 +34,13 @@ export type VoiceAddonInfo = {
 
 // ── Addon Management ──────────────────────────────────────────────────────────
 
-export type AddonEntry = { name: string; enabled: boolean; available: boolean };
+export type AddonEntry = {
+  name: string;
+  enabled: boolean;
+  available: boolean;
+  /** Ships, but not fully supported — see EXPERIMENTAL_ADDON_IDS in lib. Advisory: it does not gate enabling. */
+  experimental?: boolean;
+};
 
 export type AddonList = {
   addons: AddonEntry[];

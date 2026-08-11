@@ -14,17 +14,25 @@ import {
   jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
+  isExperimentalAddon,
   listAvailableAddonIds,
   listEnabledAddonIds,
 } from "@openpalm/lib";
 import { handleAddonToggleRequest } from "$lib/server/addon-helpers.js";
 import { voiceAddonInfo } from "$lib/server/voice/bring-up.js";
 
-type AddonItem = { name: string; enabled: boolean; available: boolean };
+type AddonItem = { name: string; enabled: boolean; available: boolean; experimental: boolean };
 
 function buildAddonList(availableIds: string[], enabledIds: string[]): AddonItem[] {
   const enabledSet = new Set(enabledIds);
-  return availableIds.map((name) => ({ name, enabled: enabledSet.has(name), available: true }));
+  return availableIds.map((name) => ({
+    name,
+    enabled: enabledSet.has(name),
+    available: true,
+    // Advisory only — an experimental addon enables like any other. The flag
+    // exists so the operator is told before they turn it on, not to gate it.
+    experimental: isExperimentalAddon(name),
+  }));
 }
 
 export const GET: RequestHandler = async (event) => {
