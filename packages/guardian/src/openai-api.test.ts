@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GuardianOpenAiApi } from './openai-api.ts';
@@ -210,6 +210,57 @@ describe('guardian openai api auth', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // A rotated key must take effect on the NEXT request, not on the next
+  // container recreate. Compose grants these as file secrets (a bind mount)
+  // and the Secrets tab rewrites them in place, so the container sees the new
+  // bytes immediately — but the read cache used to be keyed by path alone and
+  // held for the process lifetime, so the REVOKED key kept authenticating
+  // while the UI reported the new one.
+  it('re-reads a rotated API key file instead of serving the revoked value', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openpalm-key-rotation-'));
+    const keyFile = join(dir, 'api-key');
+    writeFileSync(keyFile, 'old-key\n');
+    const savedKeyFile = Bun.env.OPENAI_COMPAT_API_KEY_FILE;
+    const savedSecretFile = Bun.env.PRINCIPAL_SECRET_FILE;
+    Bun.env.OPENAI_COMPAT_API_KEY_FILE = keyFile;
+    delete Bun.env.PRINCIPAL_SECRET_FILE;
+
+    const call = async (api: GuardianOpenAiApi, key: string): Promise<number> => {
+      const handler = api.createFetch(ocFetchStub() as typeof fetch);
+      const resp = await handler(
+        new Request('http://api/v1/chat/completions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${key}` },
+          body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] }),
+        }),
+      );
+      return resp.status;
+    };
+
+    try {
+      const api = new GuardianOpenAiApi();
+      // Prime the cache with the old key, through the real getter.
+      expect(await call(api, 'old-key')).not.toBe(401);
+
+      // Rotate in place, as writeSecretFile does (same inode, new bytes).
+      // Bump mtime explicitly: a same-millisecond rewrite of an equal-length
+      // value is the one case a stat-validated cache could otherwise miss,
+      // and the test must not depend on wall-clock granularity.
+      writeFileSync(keyFile, 'new-key\n');
+      const future = new Date(Date.now() + 2000);
+      utimesSync(keyFile, future, future);
+
+      expect(await call(api, 'new-key')).not.toBe(401);
+      expect(await call(api, 'old-key')).toBe(401);
+    } finally {
+      if (savedKeyFile === undefined) delete Bun.env.OPENAI_COMPAT_API_KEY_FILE;
+      else Bun.env.OPENAI_COMPAT_API_KEY_FILE = savedKeyFile;
+      if (savedSecretFile === undefined) delete Bun.env.PRINCIPAL_SECRET_FILE;
+      else Bun.env.PRINCIPAL_SECRET_FILE = savedSecretFile;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // --- CHARACTERIZATION: non-streaming path is a pure text accumulator ----------
@@ -304,7 +355,7 @@ describe('guardian openai api shared injectable client', () => {
     expect(streamingCalls).toContain('GET /event');
   });
 
-  it('reads the secret file from disk once and caches it by path', () => {
+  it('caches the secret file by path, and revalidates it against the file identity', () => {
     const dir = mkdtempSync(join(tmpdir(), 'op-secret-'));
     const fileA = join(dir, 'a.secret');
     const fileB = join(dir, 'b.secret');
@@ -315,9 +366,28 @@ describe('guardian openai api shared injectable client', () => {
       Bun.env.PRINCIPAL_SECRET_FILE = fileA;
       const api = new GuardianOpenAiApi();
       expect(api.secret).toBe('secret-A');
-      // Mutate on disk; a cached read must NOT observe the change (proves one read).
-      writeFileSync(fileA, 'CHANGED\n');
+
+      // An UNCHANGED file is served from cache — proven by mutating the bytes
+      // while pinning mtime+size to the same values, which is exactly what
+      // the cache validates on. (A cache that re-read unconditionally would
+      // see the new bytes here.) The stamp is set explicitly rather than
+      // restored from a natural stat: utimes takes millisecond Dates while
+      // st_mtim carries nanoseconds, so a restore cannot round-trip.
+      const pinned = new Date(Date.now() - 60_000);
+      utimesSync(fileA, pinned, pinned);
       expect(api.secret).toBe('secret-A');
+      writeFileSync(fileA, 'CHANGED-\n');
+      utimesSync(fileA, pinned, pinned);
+      expect(statSync(fileA).size).toBe('secret-A\n'.length);
+      expect(api.secret).toBe('secret-A');
+
+      // A file that actually changed is re-read: this is the rotation the
+      // Secrets tab performs, and a lifetime cache kept the revoked value.
+      writeFileSync(fileA, 'rotated-A\n');
+      const future = new Date(Date.now() + 2000);
+      utimesSync(fileA, future, future);
+      expect(api.secret).toBe('rotated-A');
+
       // Switching the env path re-reads from disk.
       Bun.env.PRINCIPAL_SECRET_FILE = fileB;
       expect(api.secret).toBe('secret-B');

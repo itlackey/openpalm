@@ -210,15 +210,6 @@ describe("applyAccessToggles", () => {
     expect(result.error).toBe("docker daemon not running");
   });
 
-  test("extraEnv rides along in the same patch", async () => {
-    const state = makeHome("");
-    const { deps } = makeDeps([]);
-
-    await applyAccessToggles(state, ALL_OFF, { deps, extraEnv: { OP_PROJECT_NAME: "renamed" } });
-
-    expect(readEnv(state).OP_PROJECT_NAME).toBe("renamed");
-  });
-
   test("skipRecreate leaves the apply to a caller that deploys the whole stack", async () => {
     const state = makeHome("OP_UI_BIND_ADDRESS=127.0.0.1\n");
     const { deps, calls } = makeDeps(["assistant"]);

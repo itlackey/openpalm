@@ -104,7 +104,12 @@
   <div class="panel-header">
     <div>
       <h2>Secrets</h2>
-      <p class="panel-subtitle">Encrypted key files under knowledge/secrets/</p>
+      <!-- Says what these files ARE. They are not encrypted — they are
+           plaintext, 0600, in two trees: knowledge/secrets/ (provider auth
+           the assistant reads through /stash) and private/secrets/ (delegated
+           UI/guardian/portal credentials, never in /stash). listSecretFiles
+           reads both, so naming only the first was wrong twice over. -->
+      <p class="panel-subtitle">Plaintext credential files (0600) in knowledge/secrets/ and private/secrets/</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={filesRes.loading || busy}>
