@@ -169,3 +169,28 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
     expect(stripRetiredAkmConfigKeys(state)).toBe(false);
   });
 });
+
+describe("stripRetiredAkmConfigKeys covers paperclip's own akm config", () => {
+  it("sweeps config/paperclip/akm/config.json too", () => {
+    // Paperclip runs a second akm against its own config, seeded once from the
+    // skeleton and never rewritten. Sweeping only the assistant's left the
+    // identical INVALID_CONFIG_FILE failure waiting in that container.
+    const pcDir = join(root, "config", "paperclip", "akm");
+    mkdirSync(pcDir, { recursive: true });
+    const pcPath = join(pcDir, "config.json");
+    writeFileSync(pcPath, JSON.stringify({ profiles: { agent: {} }, stashDir: "/stash" }, null, 2));
+    writeFileSync(opConfigPath, `${JSON.stringify({ configVersion: "0.9.0" }, null, 2)}\n`);
+
+    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+
+    const pc = JSON.parse(readFileSync(pcPath, "utf-8")) as Record<string, unknown>;
+    expect(pc.profiles).toBeUndefined();
+    expect(pc.stashDir).toBeUndefined();
+    expect(pc.configVersion).toBe("0.9.0");
+  });
+
+  it("returns false when neither config needs a change", () => {
+    writeFileSync(opConfigPath, `${JSON.stringify({ configVersion: "0.9.0" }, null, 2)}\n`);
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+  });
+});

@@ -30,7 +30,18 @@ export const GET: RequestHandler = async (event) => {
   const parsedInfo = safeParseJsonObject(info.stdout);
 
   if (!parsedHealth && !parsedInfo) {
-    return jsonResponse(200, { available: false, reason: 'assistant AKM unavailable' }, requestId);
+    // Report what akm actually said. Its errors are precise and actionable
+    // ("stashDir is retired in 0.9…"), and flattening them to a generic
+    // string is what left an operator staring at "unavailable" with no route
+    // to the cause. Same shape akm-health-report.ts and reindex already use.
+    const detail = [health.stderr, info.stderr, health.stdout, info.stdout]
+      .map((s) => s?.trim())
+      .find((s) => s);
+    return jsonResponse(
+      200,
+      { available: false, reason: detail || 'assistant AKM unavailable' },
+      requestId,
+    );
   }
 
   // Summarise the hard checks into pass/warn/fail counts.

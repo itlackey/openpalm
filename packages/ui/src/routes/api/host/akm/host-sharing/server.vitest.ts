@@ -18,13 +18,16 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 	return {
 		...original,
 		enableHostAkmSharing: vi.fn(() => undefined),
+		// The toggle APPLIES: OP_HOST_AKM_STASH is a bind-mount source, so only a
+		// recreate can change it. Stubbed so the route can be tested without Docker.
+		activateStack: vi.fn(async () => ({ ok: true })),
 		disableHostAkmSharing: vi.fn(() => undefined),
 		getHostAkmSharingStatus: vi.fn(() => ({ enabled: true, hostStashPath: '/home/u/akm' })),
 	};
 });
 
 import { GET, PUT, DELETE } from './+server.js';
-import { enableHostAkmSharing, disableHostAkmSharing, getHostAkmSharingStatus } from '@openpalm/lib';
+import { activateStack, enableHostAkmSharing, disableHostAkmSharing, getHostAkmSharingStatus } from '@openpalm/lib';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -88,6 +91,13 @@ describe('PUT /api/host/akm/host-sharing', () => {
 		const res = await PUT(makeEvent('PUT', {}));
 		expect(res.status).toBe(200);
 		expect(enableHostAkmSharing).toHaveBeenCalledWith(expect.anything());
+		// Recreates the assistant — `restart` cannot change a mount source.
+		expect(activateStack).toHaveBeenCalledWith(
+			expect.anything(),
+			{ kind: 'services', services: ['assistant'] },
+			{},
+			expect.anything(),
+		);
 		expect(await res.json()).toMatchObject({ enabled: true, hostStashPath: '/home/u/akm' });
 	});
 

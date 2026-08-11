@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker preflight now names the actual problem.** The setup wizard's deploy
+  and retry paths asserted "Docker isn't running. Start Docker Desktop or
+  OrbStack" for every `checkDocker()` failure, discarding the daemon's own
+  stderr — while `mapDockerError`, which distinguishes not-installed from
+  permission-denied from actually-stopped, was imported in the same file and
+  used a few lines away. A Linux user whose account is not in the `docker`
+  group finished the whole wizard, clicked Install, and was told to start
+  Docker that was already running, with no next action. Both paths route
+  through the shared mapper now.
+- **Host AKM sharing applies itself instead of asking for an impossible
+  restart.** `OP_HOST_AKM_STASH` is the SOURCE of a bind mount, so only a
+  container recreate can change it — but the card said "Takes effect after the
+  next stack restart", and every restart affordance is `compose restart`, which
+  reuses existing mounts. The toggle now recreates the assistant, the same "a
+  save is an APPLY" rule access-apply.ts enforces elsewhere, and the
+  instruction is gone.
+- **The AKM health endpoint reports what akm said.** It read only `stdout` and
+  returned "assistant AKM unavailable", discarding the `stderr` that names the
+  exact bad config key — the second copy of a flattening that already cost one
+  debugging session. Two sibling routes already did this correctly.
+- **The retired-key sweep now covers Paperclip's akm config too.** Paperclip
+  runs its own akm against `config/paperclip/akm/config.json`, seeded once and
+  never rewritten, so it drifts exactly like the assistant's did and fails the
+  same total way. Sweeping only one of the two was half a fix.
+
+### Removed
+
+- **The Sharing card no longer advertises a host provider import that does not
+  happen.** It claimed enabling "also imports your host LLM and agent
+  connection profiles"; that import was deleted when OpenPalm stopped reading
+  the host's akm config. Importing host provider credentials is a real, separate
+  feature and remains available from Connections and the setup wizard.
+
 ### Added
 
 - **Addons can be marked experimental**, and `paperclip` and `remote` now are.

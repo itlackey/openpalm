@@ -89,13 +89,15 @@ export const POST: RequestHandler = async (event) => {
       // deploy. Returning ok:true here used to leave the client polling the
       // deploy state forever (it never starts). Surface a structured,
       // actionable error instead (#464).
-      return errorResponse(
-        503,
-        "docker_unavailable",
-        "Docker isn't running. Start Docker Desktop or OrbStack, then try again.",
-        {},
-        requestId,
-      );
+      // Route the daemon's own stderr through the shared mapper instead of
+      // asserting "Docker isn't running". It distinguishes not-installed,
+      // permission-denied and actually-stopped — and the first two are the
+      // cases where telling the operator to start Docker is a dead end,
+      // because Docker IS running and the real remedy (install it, or add
+      // your user to the docker group) never reaches them. mapDockerError is
+      // already imported here and already used on the catch path below.
+      const mapped = mapDockerError(dockerCheck.stderr ?? '');
+      return errorResponse(503, mapped.code, mapped.message, {}, requestId);
     }
   }
 

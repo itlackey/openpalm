@@ -9,9 +9,19 @@
  * secondary akm source. Enable/disable only changes what the compose mount
  * points at (real stash vs empty dir) — the shared stash DIRECTORY is the
  * whole of host sharing; the host's own akm config and CLI are never read.
+ *
+ * Both directions APPLY. `OP_HOST_AKM_STASH` is the SOURCE of a bind mount
+ * (core.compose.yml: `${OP_HOST_AKM_STASH:-…}:/host-stash`), and a mount can
+ * only change when the container is created — `compose restart` reuses the
+ * existing mounts. The UI used to tell the operator to "restart the stack",
+ * which cannot work: they would flip the toggle, see Enabled, restart, and
+ * still get the empty-dir fallback with no error anywhere. Recreating the
+ * assistant here is the same "a save is an APPLY" rule access-apply.ts
+ * enforces for every other setting whose effect is a compose fact.
  */
 import type { RequestHandler } from './$types';
 import {
+  activateStack,
   enableHostAkmSharing,
   disableHostAkmSharing,
   getHostAkmSharingStatus,
@@ -43,8 +53,10 @@ export const PUT: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  return withAdminUpdateLock(state, requestId, () => {
+  return withAdminUpdateLock(state, requestId, async (lock) => {
     enableHostAkmSharing(state);
+    // The mount source changed; only a recreate picks that up.
+    await activateStack(state, { kind: 'services', services: ['assistant'] }, {}, { lock });
     return jsonResponse(200, getHostAkmSharingStatus(state), requestId);
   });
 };
@@ -57,8 +69,10 @@ export const DELETE: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  return withAdminUpdateLock(state, requestId, () => {
+  return withAdminUpdateLock(state, requestId, async (lock) => {
     disableHostAkmSharing(state);
+    // The mount source changed; only a recreate picks that up.
+    await activateStack(state, { kind: 'services', services: ['assistant'] }, {}, { lock });
     return jsonResponse(200, getHostAkmSharingStatus(state), requestId);
   });
 };
