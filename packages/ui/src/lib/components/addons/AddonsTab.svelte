@@ -183,9 +183,17 @@
         enabled,
         name === 'voice' && enabled && voiceProfile ? { profile: voiceProfile } : undefined
       );
-      if (result.status === 202) {
+      if (result.status === 202 && name === 'voice') {
         notifications.push('success', 'Voice image is downloading in the background — this can take several minutes.');
         scheduleVoicePoll();
+      } else if (result.status === 202) {
+        // Enabled; the container is starting behind the response. A first
+        // enable pulls the image, so this can take minutes — Containers is
+        // where it actually shows up.
+        notifications.push(
+          'success',
+          `${name} is enabled and starting in the background — a first-time image download can take several minutes. Watch the Containers tab.`
+        );
       } else if (!result.ok) {
         error = result.voiceAddon?.error ?? `Could not ${enabled ? 'enable' : 'disable'} ${name}.`;
       }

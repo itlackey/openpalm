@@ -32,12 +32,8 @@
         hostSharing = await disableHostAkmSharing();
         notifications.push('success', 'Host stash sharing disabled. Restart the stack to apply.');
       } else {
-        const res = await enableHostAkmSharing();
-        hostSharing = res;
-        const imported = res.profilesImported?.length
-          ? ` Imported host profiles: ${res.profilesImported.join(', ')}.`
-          : '';
-        notifications.push('success', `Host stash sharing enabled.${imported} Restart the stack to apply.`);
+        hostSharing = await enableHostAkmSharing();
+        notifications.push('success', 'Host stash sharing enabled. Restart the stack to apply.');
       }
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to update host stash sharing.');

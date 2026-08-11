@@ -12,10 +12,18 @@ import { getState } from '$lib/server/state.js';
 // inspect, runtime detection), which is absent in some test environments and
 // has blown the 5s test budget on cold CI runners where docker exists but is
 // slow to first-invoke. Everything else in @openpalm/lib stays real.
+// The compose layer is stubbed too: an enable now brings the addon's services
+// up, and a unit test must neither depend on a docker daemon being present nor
+// actually start containers. `composeCalls` is what the enable assertions read.
+const composeCalls = vi.hoisted(() => [] as string[][]);
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   annotateAddonProfileAvailability: async (profiles: AddonProfile[]) =>
     profiles.map((p) => ({ ...p, available: true })),
+  checkDocker: async () => ({ ok: true }),
+  activateComposeCommand: async (_state: unknown, args: string[]) => {
+    composeCalls.push(args);
+  },
 }));
 
 import { GET, POST } from './+server.js';
@@ -77,6 +85,7 @@ beforeEach(() => {
   process.env.OP_ENABLE_ADMIN = '1';
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = makeTempDir();
+  composeCalls.length = 0;
   resetState('admin-token');
 });
 
@@ -151,19 +160,35 @@ describe('POST /api/host/addons', () => {
     }
   });
 
-  test('enables an addon', async () => {
+  test('enables an addon AND brings its services up', async () => {
+    // The regression: enable wrote OP_ENABLED_ADDONS and stopped there, so the
+    // compose profile went active with no container behind it.
     const state = getState();
     seedRegistryAddon(state.homeDir, 'discord');
 
     const res = await POST(makePostEvent({ name: 'discord', enabled: true }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
 
-    const body = await res.json() as { ok: boolean; addon: string; enabled: boolean; changed: boolean };
+    const body = await res.json() as {
+      ok: boolean; addon: string; enabled: boolean; changed: boolean; deploying: boolean;
+    };
     expect(body.ok).toBe(true);
     expect(body.addon).toBe('discord');
     expect(body.enabled).toBe(true);
     expect(body.changed).toBe(true);
+    expect(body.deploying).toBe(true);
     expect(readEnabledAddonsEnv(state.homeDir)).toContain('OP_ENABLED_ADDONS=discord');
+    expect(composeCalls).toContainEqual(['up', '-d', 'discord']);
+  });
+
+  test('a no-op re-enable does not recreate a running container', async () => {
+    const state = getState();
+    seedRegistryAddon(state.homeDir, 'discord');
+    enableAddon(state.homeDir, 'discord');
+
+    const res = await POST(makePostEvent({ name: 'discord', enabled: true }));
+    expect(res.status).toBe(200);
+    expect(composeCalls).toHaveLength(0);
   });
 
   test('disables an enabled addon', async () => {

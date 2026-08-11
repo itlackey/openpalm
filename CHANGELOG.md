@@ -9,6 +9,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Enabling an addon now deploys it.** The toggle was asymmetric: disable
+  stopped the addon's services through compose, enable only wrote
+  `OP_ENABLED_ADDONS` and returned. The compose profile went active with
+  nothing behind it, and the container appeared only at the next unrelated
+  lifecycle action — enabling paperclip left it permanently "enabled" and
+  never running. Voice escaped this solely because it routes to its own
+  bring-up engine. Enable is an apply now: it brings the addon's services up,
+  answers `202` while they start (a first image pull is minutes), and holds
+  the admin lock until the up settles. Gated on an actual change, so a no-op
+  re-enable does not recreate a healthy container; a failed up is logged and
+  leaves the addon enabled to retry from Containers.
+- **Host AKM sharing no longer imports the host's akm config.** Enabling it
+  merged the host's `engines`/`defaults`/`improve.strategies`/`embedding` from
+  `~/.config/akm/config.json` into `config/akm/config.json` — the file
+  bind-mounted at the assistant's `/etc/akm`. The host and the assistant image
+  are independent installs on independent upgrade cycles, so a host running a
+  newer akm wrote keys the container's CLI could not parse: every `akm`
+  invocation in the assistant failed with `INVALID_CONFIG_FILE`, and the UI
+  reported AKM metrics as unavailable with nothing pointing at the cause. The
+  shared stash **directory** is the whole of host sharing; enable is the
+  `OP_HOST_AKM_STASH` flip alone, and the `/host-stash` bundle is still
+  written once at install.
+- **Stale `OP_TOOL_*_VERSION` rows are swept from `stack.env`.** Tool
+  management moved to a per-container `package.json` in June 2026 and nothing
+  has read them since, but they persisted beside the live `OP_*_VERSION` image
+  tags — reading as the knob that pins the assistant's akm, so an operator
+  debugging a version skew would edit one and see nothing happen.
 - **Root installs work instead of silently producing an unwritable stack.**
   `resolveOperatorIds` refused to return root: when neither `OP_HOME`'s owner
   nor the process was a non-root user it returned `null`, so `OP_UID`/`OP_GID`

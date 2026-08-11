@@ -2,12 +2,13 @@
  * Host AKM sharing control surface.
  *
  *   GET    /api/host/akm/host-sharing  — { enabled, hostStashPath }
- *   PUT    /api/host/akm/host-sharing  — enable: set OP_HOST_AKM_STASH + import profiles
+ *   PUT    /api/host/akm/host-sharing  — enable: set OP_HOST_AKM_STASH
  *   DELETE /api/host/akm/host-sharing  — disable: unset OP_HOST_AKM_STASH
  *
  * /host-stash is always mounted (core.compose.yml). /host-stash is always a
  * secondary akm source. Enable/disable only changes what the compose mount
- * points at (real stash vs empty dir). Profile import on enable is best-effort.
+ * points at (real stash vs empty dir) — the shared stash DIRECTORY is the
+ * whole of host sharing; the host's own akm config and CLI are never read.
  */
 import type { RequestHandler } from './$types';
 import {
@@ -43,8 +44,8 @@ export const PUT: RequestHandler = async (event) => {
 
   const state = getState();
   return withAdminUpdateLock(state, requestId, () => {
-    const { profilesImported } = enableHostAkmSharing(state);
-    return jsonResponse(200, { ...getHostAkmSharingStatus(state), profilesImported }, requestId);
+    enableHostAkmSharing(state);
+    return jsonResponse(200, getHostAkmSharingStatus(state), requestId);
   });
 };
 

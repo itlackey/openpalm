@@ -536,11 +536,12 @@ export async function performSetup(
 			// config — written once here, never removed. The compose bind-mount
 			// controls what actually arrives at /host-stash: the real ~/akm when
 			// OP_HOST_AKM_STASH is set (enabled), or the always-present empty dir
-			// when it is unset (disabled). Profile import is best-effort on enable.
+			// when it is unset (disabled). The shared DIRECTORY is all of it — the
+			// host's own akm config and CLI are never read (see host-akm-sharing).
 			addHostStashToOpenpalmConfig(state);
 			if (hostAkm !== false) {
-				const { profilesImported } = enableHostAkmSharing(state);
-				logger.info('host akm sharing enabled during setup', { profilesImported });
+				enableHostAkmSharing(state);
+				logger.info('host akm sharing enabled during setup');
 			} else {
 				disableHostAkmSharing(state);
 			}

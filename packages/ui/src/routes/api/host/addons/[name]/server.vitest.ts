@@ -1,10 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
+
+// An enable now brings the addon's services up; stub the compose layer so this
+// unit test neither needs a docker daemon nor actually starts containers.
+const composeCalls = vi.hoisted(() => [] as string[][]);
+vi.mock('@openpalm/lib', async (orig) => ({
+  ...(await orig<typeof import('@openpalm/lib')>()),
+  checkDocker: async () => ({ ok: true }),
+  activateComposeCommand: async (_state: unknown, args: string[]) => {
+    composeCalls.push(args);
+  },
+}));
+
 import { GET, POST } from './+server.js';
 
 function makeTempDir(): string {
@@ -66,6 +78,7 @@ beforeEach(() => {
   process.env.OP_ENABLE_ADMIN = '1';
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = makeTempDir();
+  composeCalls.length = 0;
   resetState('admin-token');
 });
 
@@ -129,12 +142,14 @@ describe('POST /api/host/addons/:name', () => {
     expect(res.status).toBe(404);
   });
 
-  test('enables an addon by updating stack.env', async () => {
+  test('enables an addon by updating stack.env AND bringing its services up', async () => {
     const state = getState();
     seedFixedAddon(state.homeDir, 'discord');
 
     const res = await POST(makePostEvent('discord', { enabled: true }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    // Guardian rides along: it is the shared ingress every portal addon needs.
+    expect(composeCalls).toContainEqual(['up', '-d', 'discord', 'guardian']);
 
     const body = await res.json() as { ok: boolean; addon: string; enabled: boolean; changed: boolean };
     expect(body.ok).toBe(true);
