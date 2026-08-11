@@ -63,9 +63,16 @@ services:
       - |
         set -e
         target=/paperclip/.locale/en_US.UTF-8
-        if [ ! -d "$$target" ]; then
-          mkdir -p /paperclip/.locale
-          cp -r /usr/lib/locale/C.utf8 "$$target"
+        # Test for CONTENT, never for the directory. `ensureComposeVolumeTargets`
+        # pre-creates every bind-mount source in the resolved compose project —
+        # profile-gated ones included — before compose runs, so this path already
+        # exists as an EMPTY dir by the time this executes. A `[ -d ]` guard skips
+        # on that and hands paperclip an empty locale, which fails initdb exactly
+        # as if the fix were not here.
+        if [ ! -s "$$target/LC_CTYPE" ]; then
+          mkdir -p "$$target"
+          # `src/.` copies INTO an existing destination.
+          cp -r /usr/lib/locale/C.utf8/. "$$target/"
           echo "materialized en_US.UTF-8 from the image's C.utf8 at $$target"
         else
           echo "en_US.UTF-8 already present at $$target"

@@ -246,5 +246,14 @@ describe('Paperclip addon Compose contract', () => {
 		expect(locale?.image).toBe(paperclip?.image);
 		// It must copy the image's own locale, never generate or vendor one.
 		expect(String(locale?.command)).toContain('/usr/lib/locale/C.utf8');
+		// It must guard on CONTENT, never on the directory. `ensureComposeVolumeTargets`
+		// pre-creates every bind-mount source — profile-gated ones included — before
+		// compose runs, so the locale path already exists as an EMPTY dir here. A
+		// `[ -d ]` guard skips on that and hands paperclip an empty locale, which
+		// fails initdb exactly as if the fix were absent. That shipped once.
+		// `$$` is compose's escape for a literal `$`, so that is what the raw
+		// document carries.
+		expect(String(locale?.command)).toContain('-s "$$target/LC_CTYPE"');
+		expect(String(locale?.command)).not.toContain('[ ! -d "$$target" ]');
 	});
 });
