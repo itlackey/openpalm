@@ -13,8 +13,7 @@ import {
   buildComposeOptions,
   composeRestart,
   createLogger,
-  hasGuardianIngressAddon,
-  listEnabledAddonIds,
+  guardianRequired,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 
@@ -112,7 +111,7 @@ export const GET: RequestHandler = async (event) => {
  */
 async function propagateToGuardian(requestId: string): Promise<string | undefined> {
   const state = getState();
-  if (!hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) return undefined;
+  if (!guardianRequired(state.homeDir)) return undefined;
   try {
     const result = await composeRestart(['guardian'], buildComposeOptions(state));
     if (result.ok) return undefined;

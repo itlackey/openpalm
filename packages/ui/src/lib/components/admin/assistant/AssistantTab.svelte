@@ -123,14 +123,14 @@
       const recreated = data.recreated?.length
         ? ` Applied to ${data.recreated.join(', ')}.`
         : '';
-      const autoEnabled = data.autoEnabledAddons?.length
-        ? ` Enabled ${data.autoEnabledAddons.join(', ')} so the published port has a service behind it.`
+      const stopped = data.stopped?.length
+        ? ` Stopped ${data.stopped.join(', ')} — nothing needs it anymore.`
         : '';
       notifications.push(
         'success',
         data.projectRenamed
-          ? `Stack settings saved and applied.${recreated}${autoEnabled} Project name changed — run \`openpalm restart\` (or \`openpalm update\`) to move the whole stack to the new project name.`
-          : `Stack settings saved and applied.${recreated}${autoEnabled}`,
+          ? `Stack settings saved and applied.${recreated}${stopped} Project name changed — run \`openpalm restart\` (or \`openpalm update\`) to move the whole stack to the new project name.`
+          : `Stack settings saved and applied.${recreated}${stopped}`,
       );
       // The apply above may have just made the front door reachable (or, on
       // failure, left it exactly as unreachable as before) — refresh the

@@ -74,7 +74,7 @@ export async function fetchHostStackSettings(): Promise<HostStackSettings> {
 /**
  * Saving access settings APPLIES them: the server recreates the affected
  * containers so Compose republishes the ports, then advertises over mDNS.
- * `recreated` and `autoEnabledAddons` report what that took, so the UI can say
+ * `recreated` and `stopped` report what that took, so the UI can say
  * what happened instead of telling the operator to restart something (which
  * would not have worked — `compose restart` cannot republish a port).
  */
@@ -86,7 +86,7 @@ export type SaveHostStackResult = {
   stackEnvPath: string;
   mdns: MdnsSurface;
   recreated?: string[];
-  autoEnabledAddons?: string[];
+  stopped?: string[];
 };
 
 export async function saveHostStackSettings(input: {

@@ -124,10 +124,10 @@ Using the helper from the
 profiles:
 
 ```bash
-op --profile addon.chat config --quiet
-op --profile addon.chat config --services
-op --profile addon.chat ps
-op --profile addon.chat logs assistant guardian
+op --profile guardian config --quiet
+op --profile guardian config --services
+op --profile guardian ps
+op --profile guardian logs assistant guardian
 ```
 
 Check that:

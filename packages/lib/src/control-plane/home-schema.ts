@@ -39,7 +39,7 @@ import {
   migrateLegacyBindAddresses,
   migrateLegacyDefaultPorts,
 } from './config-persistence.js';
-import { migrateProfileOnlyAddonEnablement } from './addons.js';
+import { migrateChatAddonRemoval, migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
 import { migrateLegacyPaperclipEnv } from './paperclip.js';
@@ -202,6 +202,12 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // Files a release deleted from the skeleton but that add-only seeding leaves
   // behind on every upgraded home.
   { since: 6, run: migrateRetiredSkeletonFiles },
+  // The `chat` addon is removed. Drop it from OP_ENABLED_ADDONS and, when it
+  // was the only guardianRequired reason, record guardianNetwork=true so the
+  // install keeps its guardian front door. Must run before any reconcile's
+  // pruneRemovedAddonState strips the now-unknown id without substitution —
+  // ordering guaranteed because applyHome runs migrations first.
+  { since: 7, run: migrateChatAddonRemoval },
 ];
 
 /**

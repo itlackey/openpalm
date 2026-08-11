@@ -67,9 +67,10 @@ A default install runs one always-on service:
 
 - `assistant` (also runs the automation scheduler as a co-process)
 
-`guardian` starts alongside it as soon as you enable any addon that accepts
-outside traffic — chat, the API endpoint, Discord, Slack or the gateway — since
-all of that traffic must pass through it.
+`guardian` starts alongside it as soon as anything needs it to accept outside
+traffic — the API endpoint, Discord, Slack, the gateway, a guardian access
+toggle, or a remote tunnel targeting it — since all of that traffic must pass
+through it.
 
 Bare `openpalm` ensures the stack is running and serves the normal non-admin host
 UI. Use `openpalm admin` (or Electron) for the loopback-only admin-capable host

@@ -139,7 +139,7 @@ function resolveVoiceScopeService(homeDir: string, service: string): string {
  * `voice-cuda`, `voice-rocm`) because all three are declared under different
  * profiles, and recreating all of them targets two services that are not up.
  * The declared set is still consulted, so a name is never invented for an
- * addon that has no container (`chat`, `api` — guardian serves those).
+ * addon that has no container (`api` — the guardian serves that edge).
  */
 function addonOwnServices(homeDir: string, name: string): string[] {
   const resolved = resolveVoiceScopeService(homeDir, name);

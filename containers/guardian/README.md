@@ -4,8 +4,10 @@ Guardian source lives in `packages/guardian/`. This directory contains its
 image build and entrypoint assets.
 
 Guardian is a profile-gated ingress service, not an always-on core container.
-It is deployed for `chat`, `api`, `discord`, `slack`, or `gateway` ingress and
-is the only path from those clients to the assistant.
+It is deployed for `api`, `discord`, `slack`, or `gateway` ingress — or
+directly, via the bare `guardian` profile, when a guardian access toggle or a
+remote tunnel requires it — and is the only path from those clients to the
+assistant.
 
 ## Thin-Host Runtime
 
@@ -64,8 +66,7 @@ Managed moderation instructions come from host `system/guardian/`, mounted at
 | Compatible API `8182` | `127.0.0.1:3821` | OpenAI/Anthropic-compatible edge |
 | Moderator `4097` | Container loopback only | Content-validation OpenCode process |
 
-There is no separate chat port. One compatible API listener is published
-through `OP_API_PORT`.
+One compatible API listener is published through `OP_API_PORT`.
 
 The direct listener returns `404` until `GUARDIAN_DIRECT_INGRESS=true`. TLS
 termination is an operator reverse-proxy concern; Guardian serves plain HTTP.

@@ -126,17 +126,17 @@ export const PUT: RequestHandler = async (event) => {
             mdns: resolveMdnsStatus(freshEnv),
             access: readAccessToggles(freshEnv),
             recreated: [],
-            autoEnabledAddons: [],
+            stopped: [],
           },
           requestId,
         );
       }
 
       // Saving IS applying (lib's applyAccessToggles): write intent + the row it
-      // generates, enable an addon if a guardian port would otherwise have
-      // nothing behind it, recreate exactly the affected containers so Compose
-      // republishes the ports, and advertise over mDNS only once that
-      // succeeded. Compose interpolation is the sole consumer of these values,
+      // generates (a guardian toggle activates the guardian's own compose
+      // profile — no addon is enabled on its behalf), recreate exactly the
+      // affected containers so Compose republishes the ports, and advertise
+      // over mDNS only once that succeeded. Compose interpolation is the sole consumer of these values,
       // so a write alone changed nothing — and every "restart" the product
       // offers runs `compose restart`, which cannot republish a port.
       const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), {
@@ -168,8 +168,8 @@ export const PUT: RequestHandler = async (event) => {
           access: applied.access,
           /** Services recreated so the new binds are actually published. */
           recreated: applied.recreated,
-          /** Addons turned on so a published guardian port has a service behind it. */
-          autoEnabledAddons: applied.autoEnabledAddons,
+          /** Services stopped because this save removed their last reason to run. */
+          stopped: applied.stopped,
         },
         requestId,
       );

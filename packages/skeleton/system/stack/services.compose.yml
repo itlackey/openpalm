@@ -556,7 +556,7 @@ services:
     # changes nothing about the host's published bind addresses.
     #
     # NO depends_on: either. guardian is profile-gated (portals.compose.yml,
-    # profiles: addon.chat/addon.api/addon.discord/addon.slack/addon.gateway)
+    # profiles: addon.api/addon.discord/addon.slack/addon.gateway/guardian)
     # and is routinely excluded from a given `--profile` selection. A
     # depends_on naming a service that the active profile set excludes is a
     # project-level Compose PARSE error — it breaks `docker compose ps` and

@@ -248,22 +248,22 @@ describe("writeRuntimeFiles", () => {
 
   test("keeps portal secrets out of stack.env and writes no guardian.env", () => {
     // Provisioning them is ensureSecrets' job (portals.compose.yml grants all
-    // four as file secrets whether or not their addons are on); writeRuntimeFiles
+    // of them as file secrets whether or not their addons are on); writeRuntimeFiles
     // only has to keep the VALUES out of the plain-config file.
-    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
-    enableAddons(state.homeDir, "chat");
+    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n");
+    enableAddons(state.homeDir, "discord");
 
     writeRuntimeFiles(state);
 
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
     const stackContent = readFileSync(stackEnvFor(state.homeDir), "utf-8");
-    expect(stackContent).not.toContain("PORTAL_CHAT_SECRET=");
+    expect(stackContent).not.toContain("PORTAL_DISCORD_SECRET=");
   });
 
   test("ensureSecrets materializes every portal secret, with no addon enabled", () => {
     ensureSecrets(state);
 
-    for (const portal of ["chat", "api", "discord", "slack"]) {
+    for (const portal of ["api", "discord", "slack"]) {
       expect(readSecret(state.homeDir, `portal_${portal}_secret`)).toBeTruthy();
     }
   });
@@ -293,14 +293,14 @@ describe("writeRuntimeFiles", () => {
   });
 
   test("preserves existing file-based portal secrets (does not regenerate)", () => {
-    writeSecret(state.homeDir, "portal_chat_secret", "pre-existing-secret-value");
+    writeSecret(state.homeDir, "portal_discord_secret", "pre-existing-secret-value");
 
-    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
-    enableAddons(state.homeDir, "chat");
+    writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  discord:\n    environment:\n      PORTAL_NAME: Discord\n");
+    enableAddons(state.homeDir, "discord");
 
     writeRuntimeFiles(state);
 
-    expect(readSecret(state.homeDir, "portal_chat_secret")).toBe("pre-existing-secret-value");
+    expect(readSecret(state.homeDir, "portal_discord_secret")).toBe("pre-existing-secret-value");
   });
 
 });
@@ -312,10 +312,10 @@ describe("portal secret files", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.homeDir, "portal_chat_secret", "abc123");
+    writeSecret(state.homeDir, "portal_discord_secret", "abc123");
     writeSecret(state.homeDir, "portal_api_secret", "def456");
 
-    expect(readSecret(state.homeDir, "portal_chat_secret")).toBe("abc123");
+    expect(readSecret(state.homeDir, "portal_discord_secret")).toBe("abc123");
     expect(readSecret(state.homeDir, "portal_api_secret")).toBe("def456");
   });
 
@@ -324,17 +324,17 @@ describe("portal secret files", () => {
     trackDir(state.homeDir);
     mkdirSync(state.stackDir, { recursive: true });
 
-    expect(readSecret(state.homeDir, "portal_chat_secret")).toBeNull();
+    expect(readSecret(state.homeDir, "portal_discord_secret")).toBeNull();
   });
 
   test("writes secrets to knowledge/secrets", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    writeSecret(state.homeDir, "portal_chat_secret", "abc");
+    writeSecret(state.homeDir, "portal_discord_secret", "abc");
     writeSecret(state.homeDir, "portal_api_secret", "def");
 
-    expect(readFileSync(secretPath(state.homeDir, "portal_chat_secret"), "utf-8")).toBe("abc");
+    expect(readFileSync(secretPath(state.homeDir, "portal_discord_secret"), "utf-8")).toBe("abc");
     expect(readFileSync(secretPath(state.homeDir, "portal_api_secret"), "utf-8")).toBe("def");
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
   });

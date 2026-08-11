@@ -2,8 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from '
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { CORE_SERVICES } from './types.js';
-import { hasGuardianIngressAddon } from './addon-ids.js';
-import { listEnabledAddonIds } from './addons.js';
+import { guardianRequired } from './guardian-required.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall, buildManagedServices } from './lifecycle.js';
@@ -501,7 +500,7 @@ export async function runDeploy(
 
 		const services = await buildManagedServices(state);
 		const requiredServices = new Set<string>(CORE_SERVICES);
-		if (hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) {
+		if (guardianRequired(state.homeDir)) {
 			requiredServices.add('guardian');
 		}
 		progress.deployStatus = services.map((service) => ({

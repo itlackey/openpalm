@@ -46,7 +46,7 @@ import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
-import { hasGuardianIngressAddon } from './addon-ids.js';
+import { guardianRequired } from './guardian-required.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import { stripRetiredAkmConfigKeys } from './akm-sources.js';
 import {
@@ -64,7 +64,7 @@ export function createState(): ControlPlaneState {
 	const dataDir = resolveDataDir();
 	const stackDir = resolveStackDir();
 
-	const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(homeDir));
+	const withGuardian = guardianRequired(homeDir);
 	const services: Record<string, 'running' | 'stopped'> = {};
 	for (const name of MANAGED_SERVICES) {
 		// Guardian is only expected when a guardian-ingress addon is enabled, so
@@ -97,7 +97,7 @@ async function reconcileCore(
 	opts: { activateServices?: boolean; deactivateServices?: boolean }
 ): Promise<string[]> {
 	if (opts.activateServices) {
-		const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir));
+		const withGuardian = guardianRequired(state.homeDir);
 		for (const s of MANAGED_SERVICES) {
 			if (s === 'guardian' && !withGuardian) continue;
 			state.services[s] = 'running';
@@ -449,18 +449,19 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 	return discoverStackOverlays(state.homeDir);
 }
 
-// Guardian is shared ingress for these addons, not an addon service of its own
-// (getAddonServiceNames deliberately excludes it). The id set lives in
-// addon-ids.ts (hasGuardianIngressAddon) and mirrors the profile gate on the
-// guardian service in portals.compose.yml.
+// Guardian is shared ingress, not an addon service of its own
+// (getAddonServiceNames deliberately excludes it). Whether it deploys is
+// guardianRequired (guardian-required.ts): a guardian-ingress addon, a
+// guardian access toggle, or a remote tunnel targeting it — mirroring the
+// profile gate on the guardian service in portals.compose.yml.
 //
 // Deploy dependency contract (one place to read it):
 //   • assistant — ALWAYS deployed; depends on nothing.
-//   • guardian  — shared ingress; deployed ONLY when ≥1 guardian-ingress addon
-//                 is enabled; depends on assistant.
+//   • guardian  — shared ingress; deployed ONLY when guardianRequired;
+//                 depends on assistant.
 //   • portals  — each depends on guardian (compose `depends_on`), so they are
 //                 never deployed without it.
-// An install without guardian ingress therefore deploys assistant alone and
+// An install with no guardian reason therefore deploys assistant alone and
 // must NOT include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
 
@@ -468,16 +469,16 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
 	const composeOpts = buildComposeOptions(state);
 
 	// The assistant is the only ALWAYS-on core service. Guardian is profile-gated
-	// to guardian-ingress addons in portals.compose.yml, so without one it is
+	// in portals.compose.yml, so without a guardianRequired reason it is
 	// never deployed. Seeding it unconditionally
 	// made the installer health-wait on a guardian that never starts (a ~5-minute
-	// hang when no ingress is selected). Add it back ONLY when ingress is
-	// enabled; that also preserves the #450 need to force-recreate guardian on
-	// upgrade when ingress profiles ARE active (it is excluded from
+	// hang when no ingress is selected). Add it back ONLY when required;
+	// that also preserves the #450 need to force-recreate guardian on
+	// upgrade when its profiles ARE active (it is excluded from
 	// getAddonServiceNames, so the fallback below would otherwise drop it).
 	const enabledAddons = listEnabledAddonIds(state.homeDir);
 	const services = new Set<string>(['assistant']);
-	if (hasGuardianIngressAddon(enabledAddons)) services.add('guardian');
+	if (guardianRequired(state.homeDir)) services.add('guardian');
 
 	// Prefer compose-derived service list when Docker is available. Resolved with
 	// the active profiles, this already includes guardian iff an ingress profile

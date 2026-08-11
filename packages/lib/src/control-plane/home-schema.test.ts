@@ -221,3 +221,69 @@ describe("retired skeleton files are removed from an upgraded home", () => {
     }
   });
 });
+
+describe('v7 → v8: the removed chat addon', () => {
+  /** A stamped v7 home whose stack.env is exactly `content`. */
+  function seedV7Home(content: string): void {
+    mkdirSync(dirname(stackEnvFile(homeDir)), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), content);
+    writeHomeSchemaVersion(homeDir, 7);
+  }
+  const env = () => readFileSync(stackEnvFile(homeDir), 'utf-8');
+
+  test('chat as the only guardian reason: dropped, and guardianNetwork records the front door', () => {
+    seedV7Home('OP_ENABLED_ADDONS=chat\nOP_SETUP_COMPLETE=true\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+    // The install had a guardian front door; the new-model expression of that
+    // is the guardianNetwork toggle, with the row it generates.
+    expect(env()).toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
+    expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(env()).toMatch(/^GUARDIAN_DIRECT_INGRESS=true$/m);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('chat beside another ingress addon: dropped with NO exposure change', () => {
+    seedV7Home('OP_ENABLED_ADDONS=chat,discord\nOP_GUARDIAN_BIND_ADDRESS=127.0.0.1\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).toMatch(/^OP_ENABLED_ADDONS=discord$/m);
+    // discord keeps the guardian deployed; nothing may widen a bind the
+    // operator kept private.
+    expect(env()).not.toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
+    expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=127\.0\.0\.1$/m);
+  });
+
+  test('chat with guardianNetwork already on: dropped, toggles already express the front door', () => {
+    seedV7Home(
+      'OP_ENABLED_ADDONS=chat\nOP_ACCESS_GUARDIAN=true\nOP_GUARDIAN_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n',
+    );
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).not.toMatch(/\bchat\b/);
+    expect(env()).toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
+  });
+
+  test('chat with a remote tunnel targeting the guardian: dropped, remote is reason enough', () => {
+    seedV7Home('OP_ENABLED_ADDONS=chat,remote\nOP_REMOTE_TARGET=guardian\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).toMatch(/^OP_ENABLED_ADDONS=remote$/m);
+    expect(env()).not.toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
+  });
+
+  test('a v7 home without chat is a no-op that still stamps v8', () => {
+    seedV7Home('OP_ENABLED_ADDONS=discord\n');
+    const before = env();
+
+    expect(runHomeMigrations(homeDir)).toBe(false);
+
+    expect(env()).toBe(before);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+});

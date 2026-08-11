@@ -150,7 +150,7 @@ describe("computeGuardianIngressRequired", () => {
     for (const target of ["assistant", "guardian", "both"] as const) {
       for (const enabled of [true, false]) {
         const env = {
-          OP_ENABLED_ADDONS: enabled ? "chat,remote" : "chat",
+          OP_ENABLED_ADDONS: enabled ? "gateway,remote" : "gateway",
           OP_REMOTE_TARGET: target,
         };
         expect(computeGuardianIngressRequired(env)).toBe(
@@ -236,7 +236,7 @@ describe("resolveActiveProfiles — remote provider fallback", () => {
 describe("remoteAddonEnabled", () => {
   test("reads OP_ENABLED_ADDONS membership", () => {
     expect(remoteAddonEnabled({})).toBe(false);
-    expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "chat,voice" })).toBe(false);
-    expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "chat, remote" })).toBe(true);
+    expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "gateway,voice" })).toBe(false);
+    expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "gateway, remote" })).toBe(true);
   });
 });

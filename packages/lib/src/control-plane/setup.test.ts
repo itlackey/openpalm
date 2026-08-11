@@ -24,6 +24,7 @@ import type { ControlPlaneState } from './types.js';
 import { readSecret, secretPath } from './secrets-files.js';
 import { patchStateEnvFile } from './secrets.js';
 import { setAddonEnabled } from './addons.js';
+import { guardianRequired } from './guardian-required.js';
 import { PLATFORM_VERSION } from './versioning.js';
 
 /** Escape regex metacharacters (PLATFORM_VERSION contains `.` and `-`). */
@@ -1199,40 +1200,42 @@ describe('performSetup', () => {
 		}
 	});
 
-	it('publishing the guardian auto-enables the chat portal, so the front door actually exists', async () => {
-		// The guardian is profile-gated behind ingress addons; a bind alone
-		// deploys nothing for the published port to reach.
+	it('publishing the guardian enables NO addon — the toggle is itself a deploy reason', async () => {
+		// The guardian's bare `guardian` compose profile activates whenever
+		// guardianRequired (guardian-required.ts) — the toggle never reaches
+		// backwards into the integrations list to make its port publish real.
 		const result = await performSetup(makeValidSpec({ access: { guardianNetwork: true } }));
 		expect(result.ok).toBe(true);
 
 		const stateEnv = readFileSync(stateEnvPath(), 'utf-8');
-		expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+		expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\b(api|gateway)\b/m);
+		expect(guardianRequired(homeDir)).toBe(true);
 	});
 
-	it('does NOT add chat when another guardian-ingress addon is already requested', async () => {
+	it('requesting an ingress addon alongside the toggle records exactly that addon', async () => {
 		const result = await performSetup(
 			makeValidSpec({ access: { guardianNetwork: true }, addons: { discord: true } })
 		);
 		expect(result.ok).toBe(true);
 
 		const stateEnv = readFileSync(stateEnvPath(), 'utf-8');
-		expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+		expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bdiscord\b/m);
+		expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
 	});
 
-	it('publishing the OpenAI edge enables the api portal that serves it', async () => {
-		// `guardianOpenaiApi` publishes :8182 specifically, which only exists when
-		// the `api` addon is on. The api portal used to be pinned enabled, so this
-		// could never be wrong; it is an ordinary capability toggle now.
+	it('publishing the OpenAI edge enables NO addon — the toggle is itself a deploy reason', async () => {
+		// `guardianOpenaiApi` publishes the edge the guardian image always
+		// serves; deployment comes from the `guardian` profile, not the legacy
+		// `api` exposure alias.
 		const result = await performSetup(makeValidSpec({ access: { guardianOpenaiApi: true } }));
 		expect(result.ok).toBe(true);
 
 		const stateEnv = readFileSync(stateEnvPath(), 'utf-8');
-		expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
-		// The generic guardian fallback must not ALSO fire — `api` is ingress.
-		expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+		expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\b(api|gateway)\b/m);
+		expect(guardianRequired(homeDir)).toBe(true);
 	});
 
-	it('does not resurrect an api portal the same run explicitly turned off', async () => {
+	it('an explicitly requested api addon is still recorded', async () => {
 		const result = await performSetup(
 			makeValidSpec({ access: { guardianOpenaiApi: true }, addons: { api: true } })
 		);

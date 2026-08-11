@@ -19,7 +19,7 @@
  */
 import { writeFileAtomic } from "./fs-atomic.js";
 import { remoteServeConfigDir } from "./home.js";
-import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
+import { BUILTIN_ADDON_IDS } from "./addon-ids.js";
 import { parseEnabledAddons } from "./env.js";
 import {
   readAccessToggles,
@@ -262,16 +262,6 @@ export type RemoteAccessApplyResult = RemoteAccessReconcileResult & {
   services: string[];
   /** True when this call changed `GUARDIAN_DIRECT_INGRESS`. */
   ingressChanged: boolean;
-  /**
-   * Set when the apply succeeded but the result cannot work as configured and
-   * only the operator can finish it — today: `remote` targets the guardian,
-   * so ingress is now on, but no guardian-ingress addon is enabled, which
-   * means no `guardian` service is deployed for the tunnel to proxy TO.
-   * Deliberately NOT auto-fixed: enabling a portal addon deploys a new
-   * network-listening service, which is the operator's call to make, not a
-   * side effect of saving a target. Callers surface this; they do not fail on it.
-   */
-  warning?: string;
 };
 
 /**
@@ -331,22 +321,13 @@ export function applyRemoteAccess(homeDir: string): RemoteAccessApplyResult {
         ? ["guardian"]
         : [];
 
-    // The guardian answering is necessary but not sufficient: it also has to
-    // EXIST. guardian is profile-gated behind the ingress addons, so a target
-    // of guardian/both with none of them enabled leaves the tunnel proxying
-    // to a service Compose never deploys.
-    let warning: string | undefined;
-    if (guardianIngressRequired) {
-      const enabledAddons = enabledAddonIds(homeDir);
-      const hasIngressAddon = GUARDIAN_INGRESS_ADDON_IDS.some((id) => enabledAddons.includes(id));
-      if (!hasIngressAddon) {
-        warning =
-          `Remote access targets the guardian, but no guardian service is deployed — ` +
-          `enable one of: ${GUARDIAN_INGRESS_ADDON_IDS.join(", ")}.`;
-      }
-    }
-
-    return { ...reconcile, services, ingressChanged, warning };
+    // No "guardian is not deployed" warning here anymore: a remote tunnel
+    // targeting the guardian is itself a guardianRequired reason
+    // (guardian-required.ts), so the bare `guardian` compose profile is
+    // active whenever this apply's env condition holds and the guardian
+    // deploys with the services above — there is nothing left for the
+    // operator to finish by hand.
+    return { ...reconcile, services, ingressChanged };
   } catch (err) {
     return {
       ...reconcile,

@@ -44,7 +44,6 @@ smoke_seed_secrets() {
   printf '%s\n' '{}' > "$home/knowledge/secrets/auth.json"
   openssl rand -hex 16 > "$home/private/secrets/op_guardian_admin_token"
   openssl rand -hex 16 > "$home/private/secrets/op_guardian_mcp_token"
-  openssl rand -hex 16 > "$home/private/secrets/portal_chat_secret"
   openssl rand -hex 16 > "$home/private/secrets/portal_api_secret"
   # op_api_key: the OpenAI-compat edge key (S.1b). Seeded on real installs by
   # ensureSecrets(); the guardian container bind-mounts it, so the fixture must
@@ -68,7 +67,7 @@ smoke_seed_secrets() {
 # OP_HOST_UI_PORT, OP_ENABLED_ADDONS) after this returns.
 # Usage: smoke_write_stack_env <home> <platform_version> \
 #          <assistant_port> <ui_port> <guardian_port> <guardian_admin_port> \
-#          <chat_port> <api_port>
+#          <api_port>
 smoke_write_stack_env() {
   local home="$1"
   local platform_version="$2"
@@ -76,8 +75,7 @@ smoke_write_stack_env() {
   local ui_port="$4"
   local guardian_port="$5"
   local guardian_admin_port="$6"
-  local chat_port="$7"
-  local api_port="$8"
+  local api_port="$7"
 
   mkdir -p "$home/state"
   cat >"$home/state/stack.env" <<EOF
@@ -92,7 +90,6 @@ OP_ASSISTANT_PORT=${assistant_port}
 OP_UI_PORT=${ui_port}
 OP_GUARDIAN_PORT=${guardian_port}
 OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
-OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
 EOF
   printf 'OP_SETUP_COMPLETE=true\n' >> "$home/state/stack.env"
@@ -155,13 +152,14 @@ smoke_build_images() {
     fi
   done
   echo "Building images: ${targets[*]} (PLATFORM_VERSION=${PLATFORM_VERSION}, GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
-  # --profile addon.chat makes the profiled guardian visible; addon.discord makes
-  # the portal build target visible. compose.dev.yml supplies the build contexts.
+  # --profile addon.gateway makes the profiled guardian visible; addon.discord
+  # makes the portal build target visible. compose.dev.yml supplies the build
+  # contexts.
   docker compose --project-directory . \
     -f packages/skeleton/system/stack/core.compose.yml \
     -f packages/skeleton/system/stack/portals.compose.yml \
     -f compose.dev.yml \
-    --profile addon.chat --profile addon.discord \
+    --profile addon.gateway --profile addon.discord \
     build "${targets[@]}" >/dev/null
 
 }

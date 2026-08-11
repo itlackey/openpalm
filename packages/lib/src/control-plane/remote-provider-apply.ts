@@ -77,7 +77,6 @@ export function applyRemoteProviderConfig(homeDir: string): RemoteProviderApplyR
         const applied = applyRemoteAccess(homeDir);
         return {
           services: applied.services,
-          ...(applied.warning ? { warning: applied.warning } : {}),
           ...(applied.error ? { error: applied.error } : {}),
         };
       }

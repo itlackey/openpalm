@@ -11,10 +11,11 @@
    * install; everything else is behind Advanced.
    *
    * The guardian toggles are NOT gated on "a guardian integration is enabled".
-   * Publishing a front door is the statement of intent; `performSetup` enables
-   * the addon that makes it true (the `api` portal for the OpenAI-compatible
-   * edge, the credential-less `chat` portal otherwise). Gating them would make
-   * the operator guess which Extras row to tick first.
+   * Publishing a front door is the statement of intent, and the toggle itself
+   * makes it true: either guardian toggle activates the guardian's own compose
+   * profile (guardian-required.ts) — no integration is enabled on the
+   * operator's behalf. Gating them would make the operator guess which Extras
+   * row to tick first.
    *
    * Self-contained (ReviewStep pattern): takes NO props, reads and writes the
    * setup-state store directly.

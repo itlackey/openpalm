@@ -12,11 +12,17 @@ import { parseComposeServices, type ComposeService } from './compose-services.js
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
-import { patchStateEnvFile, readStackEnv } from './secrets.js';
+import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection } from './profile-ids.js';
 import { getAddonProfileAvailability } from './addon-availability.js';
 import { parseEnabledAddons, removeEnvKey } from './env.js';
+import {
+  readAccessToggles,
+  resolveAccessEnv,
+  resolveAccessIntentEnv,
+} from './access-toggles.js';
+import { guardianRequiredForEnv } from './guardian-required.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
@@ -411,6 +417,51 @@ export function pruneRemovedAddonState(
     removedAddons,
     removedEnvKeys,
   };
+}
+
+/**
+ * One-time upgrade for the removed `chat` addon (schema v7 → v8).
+ *
+ * `chat` was an exposure concept squatting in the integrations list: it
+ * deployed no service of its own — its ONLY effect was activating the
+ * guardian's profile. The access toggles auto-enabled it so a published
+ * guardian port had something behind it. Both roles are gone: a guardian
+ * toggle now activates the bare `guardian` compose profile directly
+ * (guardian-required.ts).
+ *
+ * `pruneRemovedAddonState` would strip the unknown id on the next reconcile,
+ * but prune has no substitution logic — an install whose ONLY reason to
+ * deploy the guardian was `chat` would silently lose its front door. So:
+ * drop `chat`, and if no other guardianRequired reason remains (another
+ * ingress addon, a guardian toggle already on, a remote tunnel targeting the
+ * guardian), record `guardianNetwork=true` — the new-model expression of
+ * "this install has a guardian front door", which keeps the guardian
+ * deploying. When another reason exists, the toggles are left exactly as
+ * they are: no exposure is widened on an install that never asked for it.
+ *
+ * The seeded `private/secrets/portal_chat_secret` file is deliberately NOT
+ * deleted: nothing mounts it anymore, and lifecycle code does not remove
+ * secret files it did not just write.
+ */
+export function migrateChatAddonRemoval(homeDir: string): boolean {
+  const env = readStackEnv(homeDir);
+  const enabled = parseEnabledAddons(env.OP_ENABLED_ADDONS);
+  if (!enabled.includes('chat')) return false;
+
+  const remaining = enabled.filter((id) => id !== 'chat');
+  patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...remaining].sort().join(',') });
+
+  const withoutChat = { ...env, OP_ENABLED_ADDONS: remaining.join(',') };
+  if (!guardianRequiredForEnv(withoutChat)) {
+    const toggles = { ...readAccessToggles(withoutChat), guardianNetwork: true };
+    patchSecretsEnvFile(homeDir, {
+      ...resolveAccessIntentEnv(toggles),
+      ...resolveAccessEnv(toggles),
+    });
+    logger.warn('The removed chat addon was this install\'s only guardian ingress; '
+      + 'recorded guardianNetwork=true so the guardian keeps deploying.', { homeDir });
+  }
+  return true;
 }
 
 /**

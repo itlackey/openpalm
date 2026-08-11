@@ -17,7 +17,7 @@ meet them:
 | **Stack** | The Docker Compose services the harness runs: the always-on assistant, the profile-gated Guardian, and addons. |
 | **Principal** | An authenticated identity Guardian issues credentials to — a portal, a bot, or a direct client — not an end user behind a portal. |
 | **Guardian** | The profile-gated proxy in front of portals and direct/API clients. Authenticates principals, enforces ownership and rate limits, and screens content before forwarding to the assistant. |
-| **Portal** | A protocol adapter (Discord, Slack, web chat) that turns its native protocol into authenticated Guardian requests. |
+| **Portal** | A protocol adapter (Discord, Slack) that turns its native protocol into authenticated Guardian requests. |
 | **Addon** | An optional, profile-gated Compose service (Voice, Discord, Slack, Ollama, etc.), enabled through `OP_ENABLED_ADDONS`. |
 | **AKM** | The assistant's persistent memory and knowledge-stash layer (skills, lessons, embeddings) — a separate open-source project ([itlackey/akm](https://github.com/itlackey/akm)) the assistant container uses through the `akm` CLI. |
 | `OP_HOME` | The single host directory (default `~/.openpalm/`) holding all OpenPalm state. |

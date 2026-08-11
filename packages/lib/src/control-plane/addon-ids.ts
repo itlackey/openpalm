@@ -8,24 +8,27 @@
  * imported from anywhere without risk of circular dependencies.
  */
 export const BUILTIN_ADDON_IDS: ReadonlyArray<string> = [
-  'api', 'chat', 'discord', 'gateway', 'ollama', 'paperclip', 'remote', 'slack', 'voice',
+  'api', 'discord', 'gateway', 'ollama', 'paperclip', 'remote', 'slack', 'voice',
 ] as const;
 
 /**
  * Addons whose ingress is served by the guardian container.
  *
- * Single source of truth for guardian deploy gating. Must mirror the Compose
- * profile gate on the guardian service in
+ * One reason (of several) the guardian deploys. Must mirror the `addon.*`
+ * entries in the Compose profile gate on the guardian service in
  * `packages/skeleton/system/stack/portals.compose.yml`
- * (`profiles: [addon.chat, addon.api, addon.discord, addon.slack, addon.gateway]`):
- * enabling any of these requires the guardian, so the deploy set, the
- * expected-service seed, and the activation loop all deploy/health-wait on it.
+ * (`profiles: [addon.api, addon.discord, addon.slack, addon.gateway, guardian]`):
+ * enabling any of these requires the guardian. The full "does the guardian
+ * deploy?" answer — these addons OR the guardian access toggles OR the
+ * remote-tunnels-to-guardian reason — is `guardianRequired` in
+ * `guardian-required.ts`, which the deploy set, the expected-service seed,
+ * and the activation loop all consult.
  *
  * NOTE: broader than PORTAL_SECRET_ADDON_IDS — `gateway` uses the guardian but
  * has no portal secret of its own (see below). Keep the two lists distinct.
  */
 export const GUARDIAN_INGRESS_ADDON_IDS: ReadonlyArray<string> = [
-  'api', 'chat', 'discord', 'gateway', 'slack',
+  'api', 'discord', 'gateway', 'slack',
 ] as const;
 
 export function hasGuardianIngressAddon(enabledAddons: Iterable<string>): boolean {
@@ -40,11 +43,15 @@ export function hasGuardianIngressAddon(enabledAddons: Iterable<string>): boolea
  *
  * Single source of truth for portal-secret provisioning (`ensurePortalSecret`).
  * Must mirror the `portal_*_secret` set the guardian mounts in
- * `portals.compose.yml` (chat, api, discord, slack). Excludes `gateway`, which
- * is guardian ingress but has no portal secret of its own.
+ * `portals.compose.yml` (api, discord, slack). Excludes `gateway`, which is
+ * guardian ingress but has no portal secret of its own. `api` stays here even
+ * though its addon is an exposure alias: `portal_api_secret` is the
+ * OpenAI-compatible edge's own principal credential
+ * (`PRINCIPAL_SECRET_FILE` in portals.compose.yml), mounted on every guardian
+ * deploy, so it must be seeded regardless of which addon is enabled.
  */
 export const PORTAL_SECRET_ADDON_IDS: ReadonlyArray<string> = [
-  'api', 'chat', 'discord', 'slack',
+  'api', 'discord', 'slack',
 ] as const;
 
 /**
