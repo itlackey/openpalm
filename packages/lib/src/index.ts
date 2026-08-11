@@ -63,6 +63,7 @@ export {
   BUILTIN_ADDON_IDS,
   EXPERIMENTAL_ADDON_IDS,
   GUARDIAN_INGRESS_ADDON_IDS,
+  hasGuardianIngressAddon,
   isExperimentalAddon,
 } from "./control-plane/addon-ids.js";
 export {
