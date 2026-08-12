@@ -56,23 +56,43 @@ describe('entrypoints do not install packages at boot', () => {
   }
 });
 
-describe('the assistant crontab shim does not need root', () => {
-  // busybox's `crontab` applet checks that it is root (or suid) BEFORE it
-  // honours `-c <spooldir>`, and the assistant runs as an unprivileged uid. A
-  // shim that shelled out to it therefore failed on every invocation with
-  // "crontab: must be suid to work properly" — and because both call sites
-  // wrote `2>/dev/null || true`, boot looked clean while the spool dir stayed
-  // empty and NOTHING was ever scheduled. It surfaced only as akm's task-sync
-  // loop failing every 60s, forever.
-  it('writes the spool file directly instead of invoking the root-only applet', () => {
-    // NOT codeLines(): it strips from the first `#`, and the offending line
+describe('assistant task scheduling works unprivileged', () => {
+  // Everything here is one bug with three layers, all of which shipped silent.
+  // busybox cannot schedule anything in this image: `crontab` checks for root
+  // BEFORE honouring -c, and `crond` both refuses crontabs not owned by uid 0
+  // (skipping them with no log line) and calls setgroups/setgid/setuid in the
+  // job child, which fail for an unprivileged user. The assistant runs as uid
+  // 1000, so tasks were written and never ran. supercronic replaces it.
+  const entrypointCode = () =>
+    // NOT codeLines(): it strips from the first `#`, and the original offender
     // built the shim with `printf '#!/usr/bin/env sh\nexec busybox crontab …'`
     // — the shebang inside the string hid the rest of the line from it. Drop
     // whole-line shell comments only, so prose stays exempt but code does not.
-    const offenders = read('containers/assistant/entrypoint.sh')
+    read('containers/assistant/entrypoint.sh')
       .split('\n')
-      .filter((l) => !/^\s*#/.test(l) && /busybox\s+crontab/.test(l));
+      .filter((l) => !/^\s*#/.test(l));
+
+  it('never invokes busybox for cron', () => {
+    expect(entrypointCode().filter((l) => /busybox\s+cron(tab|d)/.test(l))).toEqual([]);
+  });
+
+  // supercronic exits fatal on `export NAME="value"` — that is shell syntax,
+  // not crontab env-assignment syntax. busybox crond silently ignored those
+  // lines, so jobs never received this env under either scheduler.
+  it('writes crontab env assignments, not shell exports', () => {
+    const offenders = entrypointCode().filter((l) => /^\s*echo\s+"export /.test(l));
     expect(offenders).toEqual([]);
+  });
+
+  // Pinned by sha256 for every arch the release workflow builds, because
+  // upstream publishes no checksum file alongside the release binaries.
+  it('pins supercronic by version and per-arch sha256', () => {
+    const dockerfile = read('containers/assistant/Dockerfile');
+    expect(dockerfile).toMatch(/ARG SUPERCRONIC_VERSION=v\d+\.\d+\.\d+/);
+    expect(dockerfile).toMatch(/sha256sum -c -/);
+    for (const arch of ['amd64', 'arm64']) {
+      expect(dockerfile).toMatch(new RegExp(`${arch}\\) supercronic_sha=[0-9a-f]{64}`));
+    }
   });
 
   it('does not silence the crontab install', () => {

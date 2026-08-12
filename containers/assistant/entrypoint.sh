@@ -598,11 +598,14 @@ CRONTAB_SHIM
   echo "SHELL=/bin/bash" >> "$crontab_file"
   echo "PATH=$cron_path" >> "$crontab_file"
 
-  # Forward selected env vars into cron jobs
+  # Forward selected env vars into cron jobs. Plain `NAME=value` — the crontab
+  # env-assignment syntax. These were written as `export NAME="value"`, which
+  # is shell, not crontab: supercronic rejects the file outright and busybox
+  # crond never applied them, so jobs ran without this env either way.
   for var in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
              AKM_STATE_DIR OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
     if [ -n "${!var:-}" ]; then
-      echo "export $var=\"${!var}\"" >> "$crontab_file"
+      echo "$var=${!var}" >> "$crontab_file"
     fi
   done
   echo "# openpalm:cron-preamble END" >> "$crontab_file"
@@ -628,11 +631,15 @@ CRONTAB_SHIM
     fi
   fi
 
-  if [ -f "$crontab_file" ]; then
-    rm -f "$crontab_file"
-    if ! busybox crond -c "$spool_dir" -L /dev/stderr; then
-      echo "warning: busybox crond failed to start; scheduled automations will not run" >&2
-    fi
+  rm -f "$crontab_file"
+
+  # supercronic runs in the foreground and reloads on write, so it is
+  # backgrounded here and needs no signal plumbing: the re-sync loop below
+  # rewrites the same file in place and -inotify picks it up.
+  if command -v supercronic >/dev/null 2>&1; then
+    supercronic -inotify "$spool_dir/$(id -un)" &
+  else
+    echo "warning: supercronic not found; scheduled automations will not run" >&2
   fi
 
   # Background re-sync loop: picks up task file changes without restart
