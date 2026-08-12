@@ -623,7 +623,7 @@ CRONTAB_SHIM
   # Sync automation tasks from the akm bundle into cron, then start cron.
   local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm task sync >&2; then
+    if ! run_akm_command akm task sync --rebind >&2; then
       echo "warning: initial akm task sync failed; continuing startup" >&2
     fi
   fi
@@ -640,7 +640,7 @@ CRONTAB_SHIM
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm task sync >&2; then
+        if ! run_akm_command akm task sync --rebind >&2; then
           echo "warning: background akm task sync failed; retrying in 60s" >&2
         fi
       fi

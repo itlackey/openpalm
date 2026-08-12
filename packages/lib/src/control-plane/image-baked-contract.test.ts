@@ -81,6 +81,22 @@ describe('the assistant crontab shim does not need root', () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  // akm refuses to write scheduler entries from a "package-local" invocation
+  // unless --rebind is passed: it only trusts an npm-global or standalone
+  // install, because a package-local one is normally mutable. Ours is baked
+  // into the image (E2/S2 above — no runtime installs, nothing mounted over
+  // the artifact paths), so that concern does not apply and --rebind is the
+  // correct binding. The migration path already passed it; the two sync call
+  // sites did not, so every task silently failed to install. Keep them aligned.
+  it('every akm task sync passes --rebind', () => {
+    // Anchor on the invocation helper, not the bare phrase: the warning
+    // strings next to these calls also contain "akm task sync".
+    const offenders = codeLines(read('containers/assistant/entrypoint.sh')).filter(
+      (l) => /run_akm_command\s+akm task sync\b/.test(l) && !/--rebind\b/.test(l),
+    );
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('official images assemble platform code locally', () => {
