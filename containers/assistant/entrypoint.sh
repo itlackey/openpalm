@@ -556,10 +556,28 @@ start_cron_and_sync_tasks() {
   local preserved_crontab=""
   mkdir -p "$spool_dir" "$wrapper_dir"
   install -m 755 /dev/null "$crontab_wrapper"
-  # NOTE: the format string is single-quoted, so `$@` must NOT be escaped —
-  # bash printf passes `\$` through literally, which would bake the literal
-  # string `$@` into the wrapper and break every crontab invocation.
-  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
+  # This shim used to `exec busybox crontab -c "$spool_dir" "$@"`, which could
+  # never work here: busybox's crontab applet checks that it is root (or suid)
+  # BEFORE it honours -c, and this container runs as an unprivileged uid. Every
+  # invocation died with "crontab: must be suid to work properly" — including
+  # the two below, whose `2>/dev/null || true` hid it at boot. The visible
+  # symptom was the akm re-sync loop failing every 60s forever while the spool
+  # dir stayed empty, so no scheduled automation ran at all.
+  #
+  # `crond -c` reads plain crontab FILES out of the spool dir, so the shim
+  # writes that file directly and skips the applet (and its root check).
+  {
+    printf '#!/usr/bin/env sh\nf=%s/$(id -un)\n' "$spool_dir"
+    cat <<'CRONTAB_SHIM'
+case "${1:--}" in
+  -l) cat "$f" 2>/dev/null; exit 0 ;;
+  -r) rm -f "$f" ;;
+  -)  cat > "$f" ;;
+  -*) echo "crontab: unsupported option: $1" >&2; exit 1 ;;
+  *)  cat "$1" > "$f" ;;
+esac
+CRONTAB_SHIM
+  } > "$crontab_wrapper"
   export PATH="$wrapper_dir:$PATH"
   # Derive the cron PATH from the boot-time PATH (wrapper dir already first,
   # exported above) so scheduled tasks see the same tools as interactive
@@ -597,8 +615,10 @@ start_cron_and_sync_tasks() {
   fi
 
   # Install the managed preamble before syncing so akm preserves it when it
-  # writes task blocks into the same per-user crontab.
-  crontab "$crontab_file" 2>/dev/null || true
+  # writes task blocks into the same per-user crontab. No `2>/dev/null || true`:
+  # silencing this is what let a shim that could never work ship unnoticed —
+  # boot looked clean while nothing was ever scheduled.
+  crontab "$crontab_file" || echo "warning: could not install the managed crontab preamble" >&2
 
   # Sync automation tasks from the akm bundle into cron, then start cron.
   local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"

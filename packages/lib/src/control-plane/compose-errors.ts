@@ -42,16 +42,36 @@ const MANIFEST_UNKNOWN_RE = /manifest\s+(?:unknown|for\s+([^\s]+)\s+not found)/i
 const NETWORK_ERROR_RE = /(?:dial tcp|connection reset by peer|EOF|i\/o timeout|TLS handshake timeout|no route to host)/i;
 
 /**
+ * Compose writes its PROGRESS to stderr, not stdout — `voice Pulling`,
+ * per-layer `Downloading [===>   ]`, `Container x Started`. So "the first
+ * stderr line" is almost never the failure. A real update was reported to the
+ * operator, and recorded in the log envelope, as `voice Pulling`: a message
+ * that names no problem and reads like the operation is still running.
+ *
+ * Case-SENSITIVE and anchored to end-of-line, because compose emits Title-Case
+ * verbs with nothing after them but a progress bar. Both constraints matter —
+ * `error pulling image: dial tcp: ... i/o timeout` is a genuine failure whose
+ * second word is "pulling", and a loose match swallowed it. `Error`/`Warning`
+ * are absent by design: `voice Error manifest unknown` is what we want.
+ */
+const COMPOSE_PROGRESS_RE =
+  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreated)(?:\s+\[[^\]]*\].*)?\s*$/;
+
+/**
  * Summarise compose stderr in a single short line, suitable for log
  * envelopes / API error messages when no per-service parse succeeded.
- * Returns the first non-empty stderr line, capped.
+ *
+ * Returns the first non-empty line that is not compose progress noise, capped.
+ * When stderr is nothing but progress, returns "" so the caller's own fallback
+ * (or {@link mapDockerError}'s generic message) wins — an empty summary is far
+ * more honest than a confident-sounding progress line.
  */
 export function summarizeComposeStderr(stderr: string, maxLen = 500): string {
   if (!stderr) return "";
   const first = stderr
     .split(/\r?\n/)
     .map((l) => l.trim())
-    .find((l) => l.length > 0) ?? "";
+    .find((l) => l.length > 0 && !COMPOSE_PROGRESS_RE.test(l)) ?? "";
   return first.length > maxLen ? `${first.slice(0, maxLen - 1)}…` : first;
 }
 

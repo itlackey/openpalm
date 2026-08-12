@@ -56,6 +56,33 @@ describe('entrypoints do not install packages at boot', () => {
   }
 });
 
+describe('the assistant crontab shim does not need root', () => {
+  // busybox's `crontab` applet checks that it is root (or suid) BEFORE it
+  // honours `-c <spooldir>`, and the assistant runs as an unprivileged uid. A
+  // shim that shelled out to it therefore failed on every invocation with
+  // "crontab: must be suid to work properly" — and because both call sites
+  // wrote `2>/dev/null || true`, boot looked clean while the spool dir stayed
+  // empty and NOTHING was ever scheduled. It surfaced only as akm's task-sync
+  // loop failing every 60s, forever.
+  it('writes the spool file directly instead of invoking the root-only applet', () => {
+    // NOT codeLines(): it strips from the first `#`, and the offending line
+    // built the shim with `printf '#!/usr/bin/env sh\nexec busybox crontab …'`
+    // — the shebang inside the string hid the rest of the line from it. Drop
+    // whole-line shell comments only, so prose stays exempt but code does not.
+    const offenders = read('containers/assistant/entrypoint.sh')
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l) && /busybox\s+crontab/.test(l));
+    expect(offenders).toEqual([]);
+  });
+
+  it('does not silence the crontab install', () => {
+    const offenders = codeLines(read('containers/assistant/entrypoint.sh')).filter((l) =>
+      /^\s*crontab\b.*2>\/dev\/null\s*\|\|\s*true/.test(l),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('official images assemble platform code locally', () => {
   it('does not resolve public OpenPalm packages in the Assistant image', () => {
     const dockerfile = read('containers/assistant/Dockerfile');

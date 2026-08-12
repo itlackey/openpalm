@@ -144,6 +144,48 @@ For a host model server, a container cannot use the host's `localhost`. Use
 http://host.docker.internal:11434/v1
 ```
 
+## Model List Is Empty / "Unexpected server error" on Reload
+
+`knowledge/secrets/auth.json` holds one entry per connected provider. If it
+holds an entry for a provider OpenCode cannot resolve — one that is absent from
+models.dev and undeclared in any `opencode.json`/`opencode.jsonc` — then
+`Provider.list` throws and **every** provider request fails, not just that one.
+The model picker goes empty and reloads report an unexpected server error.
+
+This happens when a provider you connected is later renamed or dropped from
+OpenCode's catalog: the credential outlives the provider.
+
+Find the orphans:
+
+```bash
+docker exec openpalm-assistant-1 node -e 'const f=require("fs"),h=process.env.HOME,d=JSON.parse(f.readFileSync(h+"/.cache/opencode/models.json","utf8")),a=JSON.parse(f.readFileSync(h+"/.local/share/opencode/auth.json","utf8"));console.log(Object.keys(a).filter(p=>!d[p]))'
+```
+
+Any provider printed that you have not declared yourself under `provider` in
+`config/assistant/opencode.jsonc` is orphaned. Remove it from
+`knowledge/secrets/auth.json` and recreate the assistant.
+
+## Connecting Another OpenCode Client
+
+Point external clients at the **assistant** port, not the UI:
+
+```text
+http://127.0.0.1:3810
+```
+
+Username `opencode`; password is the contents of
+`private/secrets/op_opencode_password`. This is **not** the UI login password —
+that one only signs in to the OpenPalm UI and Opencode will reject it.
+
+Two things that look right but are not:
+
+- `.../oc` is the UI's own same-origin proxy. It authenticates with the browser
+  session cookie only, strips `Authorization`, and answers `405` to `OPTIONS`,
+  so no external client can use it.
+- `localhost` resolves to `::1` first on many systems, while the UI listens on
+  IPv4 `127.0.0.1` only. Clients that do not fall back to IPv4 report "could
+  not connect". Always use the literal `127.0.0.1`.
+
 ## Portal Authentication Fails
 
 For `401` or `403` responses:
