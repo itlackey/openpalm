@@ -49,7 +49,7 @@ FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 # `FROM oven/bun:<tag>` — the assistant was the only one still curling.
 #
 # Tags are literal, not ARGs: the BUN_VERSION sync check in ci.yml greps them.
-FROM oven/bun:1.3.10 AS bunsrc
+FROM oven/bun:1.3.14 AS bunsrc
 FROM ghcr.io/astral-sh/uv:0.12.3 AS uvsrc
 
 # ── Tool builder stage ────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --omit=dev --no-fund --no-audit \
 
 FROM node:22-trixie-slim
 
-ARG BUN_VERSION=bun-v1.3.10
+ARG BUN_VERSION=bun-v1.3.14
 
 # Re-export for runtime introspection.
 ENV BUN_VERSION=${BUN_VERSION}
