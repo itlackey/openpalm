@@ -101,7 +101,7 @@ jobs:
           NODE
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.14
       - name: Stamp product candidate
         env:
           UNIT: platform
@@ -166,7 +166,7 @@ jobs:
           fi
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.14
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -204,7 +204,7 @@ jobs:
         run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.14
       - name: Build candidate UI
         run: |
           bun install --frozen-lockfile
@@ -423,7 +423,7 @@ jobs:
         run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.14
       - name: Install candidate source dependencies
         run: bun install --frozen-lockfile
       - name: Restore prebuilt UI for embedding
@@ -477,7 +477,7 @@ jobs:
           node-version: '22'
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.10
+          bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@v8
         with:
