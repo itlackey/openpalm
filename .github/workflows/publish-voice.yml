@@ -143,6 +143,8 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.0.6
 
       - name: Sign image (cosign keyless)
         # This job always pushes (no dry-run mode here), so sign unconditionally.
