@@ -121,6 +121,30 @@ describe('version configuration', () => {
 		expect(versions.OP_VOICE_VERSION).toBe('latest');
 	});
 
+	// The compose services append `-cpu` / `-cu121` / `-rocm6` themselves, so
+	// this key holds the base tag. Pasting the tag you can see on a running
+	// container ("latest-cpu") produced voice:latest-cpu-cpu — an image that
+	// cannot exist — and every later update failed on the unresolvable
+	// reference with nothing pointing back at this field.
+	it('rejects a voice version that already carries an accelerator suffix', () => {
+		for (const bad of ['latest-cpu', '0.13.0-cu121', '1.2.3-rocm6', 'latest-CPU']) {
+			expect(() => writeVersions(home.state, { OP_VOICE_VERSION: bad })).toThrow(
+				/base image tag/i
+			);
+		}
+	});
+
+	it('names the corrected value in the rejection', () => {
+		expect(() => writeVersions(home.state, { OP_VOICE_VERSION: 'latest-cpu' })).toThrow(
+			/Use "latest" instead of "latest-cpu"/
+		);
+	});
+
+	it('still accepts a bare voice tag', () => {
+		writeVersions(home.state, { OP_VOICE_VERSION: 'latest' });
+		expect(readVersions(home.state).OP_VOICE_VERSION).toBe('latest');
+	});
+
 	it('preserves an operator-selected exact pin', () => {
 		ensureVersionDefaults(home.state);
 		writeVersions(home.state, { OP_ASSISTANT_VERSION: '0.12.0' });

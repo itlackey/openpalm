@@ -48,14 +48,22 @@ const NETWORK_ERROR_RE = /(?:dial tcp|connection reset by peer|EOF|i\/o timeout|
  * operator, and recorded in the log envelope, as `voice Pulling`: a message
  * that names no problem and reads like the operation is still running.
  *
- * Case-SENSITIVE and anchored to end-of-line, because compose emits Title-Case
- * verbs with nothing after them but a progress bar. Both constraints matter —
- * `error pulling image: dial tcp: ... i/o timeout` is a genuine failure whose
- * second word is "pulling", and a loose match swallowed it. `Error`/`Warning`
- * are absent by design: `voice Error manifest unknown` is what we want.
+ * Case-SENSITIVITY is what makes this safe, not anchoring: compose emits
+ * Title-Case status verbs, while `error pulling image: dial tcp: ... i/o
+ * timeout` is a genuine failure whose second word is lowercase "pulling".
+ * `Error`/`Warning` are absent from the list by design, so
+ * `voice Error manifest unknown` still surfaces.
+ *
+ * An earlier version of this anchored to end-of-line, which looked tighter and
+ * was wrong: compose appends detail after the verb. A real update failed with
+ * `paperclip-locale Skipped - Image is already being pulled by paperclip` —
+ * two services sharing one image, which is ordinary — and the anchor let that
+ * line through as the operator-facing error. Worse, because the summary is the
+ * FIRST unmatched line, a status line surviving the filter can mask the real
+ * error further down the same stderr.
  */
 const COMPOSE_PROGRESS_RE =
-  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreated)(?:\s+\[[^\]]*\].*)?\s*$/;
+  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreated|Skipped)\b/;
 
 /**
  * Summarise compose stderr in a single short line, suitable for log
