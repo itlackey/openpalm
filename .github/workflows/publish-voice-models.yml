@@ -98,6 +98,8 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.0.6
 
       - name: Sign image (cosign keyless)
         run: cosign sign --yes openpalm/voice-models@${{ steps.build.outputs.digest }}
