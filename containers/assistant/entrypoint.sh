@@ -647,8 +647,15 @@ CRONTAB_SHIM
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm task sync --rebind >&2; then
+        # Capture rather than stream: this runs every 60s and akm prints its
+        # full JSON report plus a --rebind advisory on EVERY sync, changes or
+        # not — ~1440 blobs a day drowning `openpalm logs assistant`. On
+        # failure the captured output is emitted in full, so the detail that
+        # made the original breakage diagnosable is not lost.
+        local sync_out
+        if ! sync_out="$(run_akm_command akm task sync --rebind 2>&1)"; then
           echo "warning: background akm task sync failed; retrying in 60s" >&2
+          printf '%s\n' "$sync_out" >&2
         fi
       fi
     done
