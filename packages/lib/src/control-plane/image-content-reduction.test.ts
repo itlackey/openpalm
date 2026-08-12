@@ -152,7 +152,18 @@ describe('IMG-5 — speculative CLI tooling trimmed', () => {
   });
 
   test('uv is still installed', () => {
-    expect(dockerfile).toContain('astral.sh/uv/install.sh');
+    // COPY'd from Astral's official image rather than fetched by the install
+    // script: that script pulled from GitHub's release CDN, whose 503s failed
+    // a release build. Assert the binaries land, not how they got here.
+    expect(dockerfile).toMatch(/COPY --from=uvsrc \/uv \/uvx \/usr\/local\/bin\//);
+  });
+
+  test('no tool is fetched by a piped install script at build time', () => {
+    const piped = dockerfile
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .filter((l) => /curl[^|]*\|\s*(bash|sh)\b/.test(l));
+    expect(piped).toEqual([]);
   });
 });
 

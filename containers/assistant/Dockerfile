@@ -37,6 +37,21 @@
 ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
+# ── Prebuilt tool binaries ────────────────────────────────────────────────────
+# bun and uv are COPY'd out of their publishers' official images instead of
+# being fetched by an install script at build time. Both scripts pulled from
+# GitHub's release CDN, which is exactly the dependency that broke a release:
+# a 503 there failed the image build, and the same outage independently failed
+# setup-bun and electron-builder in other jobs. Docker Hub / GHCR is a
+# different path, buildx caches these layers, and a COPY cannot half-succeed.
+#
+# This also makes the assistant match guardian and portal, which already build
+# `FROM oven/bun:<tag>` — the assistant was the only one still curling.
+#
+# Tags are literal, not ARGs: the BUN_VERSION sync check in ci.yml greps them.
+FROM oven/bun:1.3.10 AS bunsrc
+FROM ghcr.io/astral-sh/uv:0.12.3 AS uvsrc
+
 # ── Tool builder stage ────────────────────────────────────────────────────────
 # Install the tool packages from the single exact-pinned manifest (edit +
 # rebuild the image to change a version — no runtime override, E2/S2), prune
@@ -140,12 +155,11 @@ RUN set -eux; \
     chmod 0755 /usr/local/bin/supercronic; \
     supercronic -version
 
-# Install Bun into /usr/local. Later we override BUN_INSTALL +
-# BUN_INSTALL_CACHE_DIR to per-user paths so unprivileged users can install
-# additional packages at runtime.
-ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
-ENV BUN_INSTALL=
+# Bun at /usr/local/bin. BUN_INSTALL + BUN_INSTALL_CACHE_DIR are set to
+# per-user paths further down so unprivileged users can install packages at
+# runtime; they are not needed here now that the binary is copied in place
+# rather than placed by an installer that reads them.
+COPY --from=bunsrc /usr/local/bin/bun /usr/local/bin/bun
 
 # Bake default tool packages at /opt/openpalm/tools, assembled from the toolbuild
 # stage as THREE COPY layers (g1, g2, and the remainder) so no single blob is the
@@ -189,10 +203,9 @@ RUN cd /opt/openpalm/tools/node_modules \
 RUN mkdir -p /home/opencode \
     && chown node:node /home/opencode
 
-# uv (Python package manager for apprise venv).
-RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
-    && mv /root/.local/bin/uv /usr/local/bin/ \
-    && mv /root/.local/bin/uvx /usr/local/bin/
+# uv (Python package manager for the apprise venv). Static musl binaries from
+# Astral's official image — no installer, no PATH mutation to undo.
+COPY --from=uvsrc /uv /uvx /usr/local/bin/
 
 # apprise — isolated venv via uv (avoids pip --break-system-packages).
 # Used by the `notify` akm skill (apprise-backed).
