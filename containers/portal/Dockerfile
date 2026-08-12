@@ -3,7 +3,7 @@
 # copied and packed locally; only their external dependencies are resolved.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1.3-slim
+FROM oven/bun:1.3.14-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

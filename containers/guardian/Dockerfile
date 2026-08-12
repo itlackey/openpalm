@@ -1,4 +1,4 @@
-FROM oven/bun:1.3-slim
+FROM oven/bun:1.3.14-slim
 
 # nodejs provides npm, required for opencode-ai's postinstall (binary download).
 RUN apt-get update && apt-get install -y --no-install-recommends \
