@@ -181,6 +181,19 @@ export function writeManagedVersions(state: ControlPlaneState, updates: Record<s
 	writeVersionEntries(state, updates, (value) => value);
 }
 
+/**
+ * The voice services append the accelerator variant themselves —
+ * `voice:${OP_VOICE_VERSION}-cpu`, `-cu121`, `-rocm6` — so OP_VOICE_VERSION
+ * holds the BASE tag only.
+ *
+ * Nothing used to enforce that. An operator who read `openpalm/voice:latest-cpu`
+ * off their running container and pasted it into the Updates tab's "Voice
+ * image" field got `voice:latest-cpu-cpu`, an image that cannot exist. Every
+ * later update then failed on an unresolvable reference, and nothing connected
+ * that failure back to the field that caused it.
+ */
+const VOICE_VARIANT_SUFFIX_RE = /-(?:cpu|cu\d+|rocm\d+)$/i;
+
 function writeVersionEntries(
 	state: ControlPlaneState,
 	updates: Record<string, string>,
@@ -192,6 +205,11 @@ function writeVersionEntries(
 			throw new Error(`Refusing to write unknown version key: ${key}`);
 		}
 		const trimmed = (value ?? '').trim();
+		if (key === 'OP_VOICE_VERSION' && VOICE_VARIANT_SUFFIX_RE.test(trimmed)) {
+			throw new Error(
+				`OP_VOICE_VERSION is the base image tag; Compose appends the accelerator suffix itself. Use "${trimmed.replace(VOICE_VARIANT_SUFFIX_RE, '')}" instead of "${trimmed}", or the image resolves to a tag that does not exist.`
+			);
+		}
 		accepted[key] = trimmed;
 		accepted[MANAGED_VERSION_MARKERS[key]] = markerValue(trimmed);
 	}

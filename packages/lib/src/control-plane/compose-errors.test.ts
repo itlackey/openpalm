@@ -62,6 +62,33 @@ describe("summarizeComposeStderr", () => {
     );
   });
 
+  // Real failure from a 0.13.0-beta.27 update: paperclip and paperclip-locale
+  // share one image, so compose skips the duplicate pull and says so. The
+  // operator was shown that sentence as the reason their update failed.
+  it("skips a Skipped line that carries trailing detail", () => {
+    const stderr = [
+      'paperclip-locale Skipped - Image is already being pulled by paperclip',
+      ' paperclip Pulling',
+      ' paperclip Pulled',
+    ].join('\n');
+    expect(summarizeComposeStderr(stderr)).toBe("");
+  });
+
+  // The summary is the FIRST unmatched line, so a status line that slips
+  // through does not merely read badly — it hides the real error behind it.
+  it("does not let a status line mask the real error below it", () => {
+    const stderr = [
+      'paperclip-locale Skipped - Image is already being pulled by paperclip',
+      'Error response from daemon: manifest unknown',
+    ].join('\n');
+    expect(summarizeComposeStderr(stderr)).toBe("Error response from daemon: manifest unknown");
+  });
+
+  // Compose appends detail after lifecycle verbs too.
+  it("skips lifecycle lines with trailing detail", () => {
+    expect(summarizeComposeStderr('Container splinter-voice-1  Started  0.4s')).toBe("");
+  });
+
   it("returns empty when stderr is nothing but progress", () => {
     // Honest emptiness: the caller's own fallback (the exit code) then wins,
     // instead of a progress line masquerading as a diagnosis.
