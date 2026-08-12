@@ -22,6 +22,51 @@ describe("summarizeComposeStderr", () => {
   it("returns empty string for empty input", () => {
     expect(summarizeComposeStderr("")).toBe("");
   });
+
+  // Regression: a real update failed and reported itself as "voice Pulling" —
+  // compose streams progress to stderr, so the first line is a status update,
+  // not the failure. The operator saw a message that named no problem, and an
+  // automatic rollback they could not explain.
+  it("skips compose progress lines and reports the real error", () => {
+    const stderr = [
+      "voice Pulling",
+      " 8a1e25ce7c4f Pulling fs layer",
+      " 8a1e25ce7c4f Downloading [==>                ]  1.2MB/24MB",
+      " 8a1e25ce7c4f Download complete",
+      "Error response from daemon: manifest for openpalm/voice:0.13.0 not found",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: manifest for openpalm/voice:0.13.0 not found",
+    );
+  });
+
+  it("skips container/network/volume lifecycle progress too", () => {
+    const stderr = [
+      "Network splinter_default  Creating",
+      "Network splinter_default  Created",
+      "Container splinter-voice-1  Creating",
+      "Container splinter-voice-1  Created",
+      "Container splinter-voice-1  Starting",
+      "Error response from daemon: driver failed programming external connectivity",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: driver failed programming external connectivity",
+    );
+  });
+
+  // `Error` and `Warning` must NOT be treated as progress — a per-service
+  // error line is exactly what we want to surface.
+  it("keeps a per-service Error line", () => {
+    expect(summarizeComposeStderr("voice Pulling\nvoice Error manifest unknown")).toBe(
+      "voice Error manifest unknown",
+    );
+  });
+
+  it("returns empty when stderr is nothing but progress", () => {
+    // Honest emptiness: the caller's own fallback (the exit code) then wins,
+    // instead of a progress line masquerading as a diagnosis.
+    expect(summarizeComposeStderr("voice Pulling\nvoice Pulled\n")).toBe("");
+  });
 });
 
 describe("mapDockerError", () => {

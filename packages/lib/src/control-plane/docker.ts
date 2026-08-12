@@ -1042,7 +1042,13 @@ export async function applyStack(
       env: envOverrides,
     });
     if (!pullResult.ok) {
-      const mapped = mapDockerError(pullResult.stderr || `docker compose pull exited with code ${pullResult.code}`);
+      // Append the exit code rather than using it only when stderr is empty:
+      // compose pull stderr is never empty (it streams progress there), so the
+      // old `||` fallback could not fire, and summarizeComposeStderr now
+      // discards progress-only stderr. This keeps one real line either way.
+      const mapped = mapDockerError(
+        `${pullResult.stderr ?? ""}\ndocker compose pull exited with code ${pullResult.code}`,
+      );
       return {
         ok: false,
         started: [],
@@ -1089,7 +1095,9 @@ export async function applyStack(
     const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
     if (rows.length === 0) {
       // ps itself gave us nothing to work with — map the full stderr (§6).
-      const mapped = mapDockerError(upResult.stderr || `docker compose exited with code ${upResult.code}`);
+      const mapped = mapDockerError(
+        `${upResult.stderr ?? ""}\ndocker compose exited with code ${upResult.code}`,
+      );
       return {
         ok: false,
         started: [],

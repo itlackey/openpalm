@@ -91,17 +91,23 @@ ARG BUN_VERSION=bun-v1.3.10
 # Re-export for runtime introspection.
 ENV BUN_VERSION=${BUN_VERSION}
 
-# Combined OS packages: base tools (tini) + assistant-specific (busybox
-# crond/crontab tooling, python3, jq, gh) + sqlite3 so agents can query
-# SQLite directly. The Postgres client package and the unused GLib runtime
-# library were dropped (IMG-5, 0.13.0): nothing links the latter, and
-# nothing in this image talks to Postgres — its client is one
-# `apt-get install` away on-session for anyone who needs it.
+# Combined OS packages: base tools (tini) + assistant-specific (python3, jq,
+# gh) + sqlite3 so agents can query SQLite directly. The Postgres client
+# package and the unused GLib runtime library were dropped (IMG-5, 0.13.0):
+# nothing links the latter, and nothing in this image talks to Postgres — its
+# client is one `apt-get install` away on-session for anyone who needs it.
+#
+# busybox went with them. It was here only for crond/crontab, and neither can
+# work in this image: busybox crond loads a crontab only when the file is owned
+# by uid 0 (DAEMON_UID in miscutils/crond.c — other files are skipped with no
+# log line at all), and its job children call setgroups/setgid/setuid before
+# exec, which fail as "Operation not permitted" for an unprivileged user. This
+# image runs as uid 1000, so scheduled tasks silently never ran. See the
+# supercronic install below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini curl git ca-certificates bash unzip \
         libnss-wrapper \
-        busybox \
         python3 jq \
         sqlite3 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -111,6 +117,28 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# supercronic — cron that runs correctly as an unprivileged user. It executes
+# jobs as the invoking user (no setuid, no root-owned-crontab requirement), and
+# `-inotify` reloads the crontab in place when `akm task sync` rewrites it, so
+# the entrypoint needs no restart/signal plumbing. Logs go to stderr, which is
+# how scheduled runs finally become visible in `openpalm logs assistant`.
+#
+# Pinned by version AND per-arch sha256 (upstream publishes no checksum file),
+# verified before the binary is made executable.
+ARG SUPERCRONIC_VERSION=v0.2.48
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) supercronic_sha=88c1b66b94c486f972fdd1a4d1f901e3e75ff04f749cddd60c5db573e3a33c6c ;; \
+      arm64) supercronic_sha=50ae8755e04fa72812d0a1bc47a112a856811cc91cce7b6c875c378a850788bc ;; \
+      *) echo "unsupported TARGETARCH for supercronic: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/supercronic \
+      "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}"; \
+    echo "${supercronic_sha}  /usr/local/bin/supercronic" | sha256sum -c -; \
+    chmod 0755 /usr/local/bin/supercronic; \
+    supercronic -version
 
 # Install Bun into /usr/local. Later we override BUN_INSTALL +
 # BUN_INSTALL_CACHE_DIR to per-user paths so unprivileged users can install

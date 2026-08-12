@@ -556,10 +556,28 @@ start_cron_and_sync_tasks() {
   local preserved_crontab=""
   mkdir -p "$spool_dir" "$wrapper_dir"
   install -m 755 /dev/null "$crontab_wrapper"
-  # NOTE: the format string is single-quoted, so `$@` must NOT be escaped —
-  # bash printf passes `\$` through literally, which would bake the literal
-  # string `$@` into the wrapper and break every crontab invocation.
-  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
+  # This shim used to `exec busybox crontab -c "$spool_dir" "$@"`, which could
+  # never work here: busybox's crontab applet checks that it is root (or suid)
+  # BEFORE it honours -c, and this container runs as an unprivileged uid. Every
+  # invocation died with "crontab: must be suid to work properly" — including
+  # the two below, whose `2>/dev/null || true` hid it at boot. The visible
+  # symptom was the akm re-sync loop failing every 60s forever while the spool
+  # dir stayed empty, so no scheduled automation ran at all.
+  #
+  # `crond -c` reads plain crontab FILES out of the spool dir, so the shim
+  # writes that file directly and skips the applet (and its root check).
+  {
+    printf '#!/usr/bin/env sh\nf=%s/$(id -un)\n' "$spool_dir"
+    cat <<'CRONTAB_SHIM'
+case "${1:--}" in
+  -l) cat "$f" 2>/dev/null; exit 0 ;;
+  -r) rm -f "$f" ;;
+  -)  cat > "$f" ;;
+  -*) echo "crontab: unsupported option: $1" >&2; exit 1 ;;
+  *)  cat "$1" > "$f" ;;
+esac
+CRONTAB_SHIM
+  } > "$crontab_wrapper"
   export PATH="$wrapper_dir:$PATH"
   # Derive the cron PATH from the boot-time PATH (wrapper dir already first,
   # exported above) so scheduled tasks see the same tools as interactive
@@ -580,11 +598,14 @@ start_cron_and_sync_tasks() {
   echo "SHELL=/bin/bash" >> "$crontab_file"
   echo "PATH=$cron_path" >> "$crontab_file"
 
-  # Forward selected env vars into cron jobs
+  # Forward selected env vars into cron jobs. Plain `NAME=value` — the crontab
+  # env-assignment syntax. These were written as `export NAME="value"`, which
+  # is shell, not crontab: supercronic rejects the file outright and busybox
+  # crond never applied them, so jobs ran without this env either way.
   for var in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
              AKM_STATE_DIR OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
     if [ -n "${!var:-}" ]; then
-      echo "export $var=\"${!var}\"" >> "$crontab_file"
+      echo "$var=${!var}" >> "$crontab_file"
     fi
   done
   echo "# openpalm:cron-preamble END" >> "$crontab_file"
@@ -597,22 +618,28 @@ start_cron_and_sync_tasks() {
   fi
 
   # Install the managed preamble before syncing so akm preserves it when it
-  # writes task blocks into the same per-user crontab.
-  crontab "$crontab_file" 2>/dev/null || true
+  # writes task blocks into the same per-user crontab. No `2>/dev/null || true`:
+  # silencing this is what let a shim that could never work ship unnoticed —
+  # boot looked clean while nothing was ever scheduled.
+  crontab "$crontab_file" || echo "warning: could not install the managed crontab preamble" >&2
 
   # Sync automation tasks from the akm bundle into cron, then start cron.
   local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm task sync >&2; then
+    if ! run_akm_command akm task sync --rebind >&2; then
       echo "warning: initial akm task sync failed; continuing startup" >&2
     fi
   fi
 
-  if [ -f "$crontab_file" ]; then
-    rm -f "$crontab_file"
-    if ! busybox crond -c "$spool_dir" -L /dev/stderr; then
-      echo "warning: busybox crond failed to start; scheduled automations will not run" >&2
-    fi
+  rm -f "$crontab_file"
+
+  # supercronic runs in the foreground and reloads on write, so it is
+  # backgrounded here and needs no signal plumbing: the re-sync loop below
+  # rewrites the same file in place and -inotify picks it up.
+  if command -v supercronic >/dev/null 2>&1; then
+    supercronic -inotify "$spool_dir/$(id -un)" &
+  else
+    echo "warning: supercronic not found; scheduled automations will not run" >&2
   fi
 
   # Background re-sync loop: picks up task file changes without restart
@@ -620,8 +647,15 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm task sync >&2; then
+        # Capture rather than stream: this runs every 60s and akm prints its
+        # full JSON report plus a --rebind advisory on EVERY sync, changes or
+        # not — ~1440 blobs a day drowning `openpalm logs assistant`. On
+        # failure the captured output is emitted in full, so the detail that
+        # made the original breakage diagnosable is not lost.
+        local sync_out
+        if ! sync_out="$(run_akm_command akm task sync --rebind 2>&1)"; then
           echo "warning: background akm task sync failed; retrying in 60s" >&2
+          printf '%s\n' "$sync_out" >&2
         fi
       fi
     done

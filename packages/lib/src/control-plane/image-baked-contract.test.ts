@@ -56,6 +56,69 @@ describe('entrypoints do not install packages at boot', () => {
   }
 });
 
+describe('assistant task scheduling works unprivileged', () => {
+  // Everything here is one bug with three layers, all of which shipped silent.
+  // busybox cannot schedule anything in this image: `crontab` checks for root
+  // BEFORE honouring -c, and `crond` both refuses crontabs not owned by uid 0
+  // (skipping them with no log line) and calls setgroups/setgid/setuid in the
+  // job child, which fail for an unprivileged user. The assistant runs as uid
+  // 1000, so tasks were written and never ran. supercronic replaces it.
+  const entrypointCode = () =>
+    // NOT codeLines(): it strips from the first `#`, and the original offender
+    // built the shim with `printf '#!/usr/bin/env sh\nexec busybox crontab …'`
+    // — the shebang inside the string hid the rest of the line from it. Drop
+    // whole-line shell comments only, so prose stays exempt but code does not.
+    read('containers/assistant/entrypoint.sh')
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l));
+
+  it('never invokes busybox for cron', () => {
+    expect(entrypointCode().filter((l) => /busybox\s+cron(tab|d)/.test(l))).toEqual([]);
+  });
+
+  // supercronic exits fatal on `export NAME="value"` — that is shell syntax,
+  // not crontab env-assignment syntax. busybox crond silently ignored those
+  // lines, so jobs never received this env under either scheduler.
+  it('writes crontab env assignments, not shell exports', () => {
+    const offenders = entrypointCode().filter((l) => /^\s*echo\s+"export /.test(l));
+    expect(offenders).toEqual([]);
+  });
+
+  // Pinned by sha256 for every arch the release workflow builds, because
+  // upstream publishes no checksum file alongside the release binaries.
+  it('pins supercronic by version and per-arch sha256', () => {
+    const dockerfile = read('containers/assistant/Dockerfile');
+    expect(dockerfile).toMatch(/ARG SUPERCRONIC_VERSION=v\d+\.\d+\.\d+/);
+    expect(dockerfile).toMatch(/sha256sum -c -/);
+    for (const arch of ['amd64', 'arm64']) {
+      expect(dockerfile).toMatch(new RegExp(`${arch}\\) supercronic_sha=[0-9a-f]{64}`));
+    }
+  });
+
+  it('does not silence the crontab install', () => {
+    const offenders = codeLines(read('containers/assistant/entrypoint.sh')).filter((l) =>
+      /^\s*crontab\b.*2>\/dev\/null\s*\|\|\s*true/.test(l),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  // akm refuses to write scheduler entries from a "package-local" invocation
+  // unless --rebind is passed: it only trusts an npm-global or standalone
+  // install, because a package-local one is normally mutable. Ours is baked
+  // into the image (E2/S2 above — no runtime installs, nothing mounted over
+  // the artifact paths), so that concern does not apply and --rebind is the
+  // correct binding. The migration path already passed it; the two sync call
+  // sites did not, so every task silently failed to install. Keep them aligned.
+  it('every akm task sync passes --rebind', () => {
+    // Anchor on the invocation helper, not the bare phrase: the warning
+    // strings next to these calls also contain "akm task sync".
+    const offenders = codeLines(read('containers/assistant/entrypoint.sh')).filter(
+      (l) => /run_akm_command\s+akm task sync\b/.test(l) && !/--rebind\b/.test(l),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('official images assemble platform code locally', () => {
   it('does not resolve public OpenPalm packages in the Assistant image', () => {
     const dockerfile = read('containers/assistant/Dockerfile');
