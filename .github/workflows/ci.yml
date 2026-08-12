@@ -253,14 +253,17 @@ jobs:
             exit 1
           fi
           errors=0
-          for df in containers/guardian/Dockerfile containers/portal/Dockerfile; do
+          # The assistant is in this loop too: it now COPYs bun out of
+          # `FROM oven/bun:<tag>` rather than running the install script, so its
+          # own image tag can drift from the BUN_VERSION ARG right above it.
+          for df in containers/assistant/Dockerfile containers/guardian/Dockerfile containers/portal/Dockerfile; do
             TAG=$(grep -oP '^FROM oven/bun:\K[^ ]+' "$df" || true)
             if [ -z "$TAG" ]; then
               echo "::error file=$df::Could not extract oven/bun image tag"
               errors=$((errors + 1))
               continue
             fi
-            TAG_MM=$(echo "$TAG" | sed -E 's/-.*//')
+            TAG_MM=$(echo "$TAG" | sed -E 's/-.*//; s/^([0-9]+\.[0-9]+).*/\1/')
             if [ "$TAG_MM" != "$ASSISTANT_MM" ]; then
               echo "::error file=$df::Bun version mismatch: image tag $TAG (major.minor=$TAG_MM) vs assistant BUN_VERSION major.minor=$ASSISTANT_MM — bump together"
               errors=$((errors + 1))
