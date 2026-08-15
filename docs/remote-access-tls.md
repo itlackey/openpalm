@@ -116,6 +116,7 @@ HTTPS ports:
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:3880
 tailscale serve --bg --https=8443 http://127.0.0.1:3830
+tailscale serve --bg --https=3820 http://127.0.0.1:3820
 ```
 
 Use these values:
@@ -126,9 +127,21 @@ GUARDIAN_CORS_ALLOWED_ORIGINS=https://machine.example.ts.net
 
 - OpenPalm UI: `https://machine.example.ts.net`
 - Guardian connection: `https://machine.example.ts.net:8443/oc`
+- OpenCode workspace: `https://machine.example.ts.net:3820`
 
 Replace the example hostname with the one Tailscale reports. Reapply Guardian
 after changing the CORS value.
+
+The `remote` addon writes that third entry for you when its target includes the
+assistant — this section is for a hand-rolled `tailscale serve`. The workspace
+port is served but never funneled: it stays private to your own tailnet devices
+even when public access is on. It needs no CORS entry and no separate password;
+it takes the same `op_session` cookie the UI issued, which the browser sends
+there because cookies are scoped by host and not by port. Keep the tailnet port
+number equal to `OP_WORKSPACE_PORT`, because the browser composes the workspace
+address from the page it is on plus that one number — if they differ,
+`/advanced` probes a port nothing answers and falls back to its native chat
+surface.
 
 ## Caddy
 
@@ -137,6 +150,14 @@ Run Caddy on the host so it can reach both local listeners:
 ```caddyfile
 ui.example.com {
   reverse_proxy 127.0.0.1:3880
+}
+
+# OpenCode's own web UI, framed by /advanced. It must keep the SAME hostname as
+# the UI (the session cookie is what authenticates it, and cookies are scoped by
+# host) and the SAME port number as OP_WORKSPACE_PORT (the browser composes this
+# address from the page it is on plus that number).
+ui.example.com:3820 {
+  reverse_proxy 127.0.0.1:3820
 }
 
 guardian.example.com {
@@ -152,6 +173,10 @@ GUARDIAN_CORS_ALLOWED_ORIGINS=https://ui.example.com
 
 Open `https://ui.example.com` and use
 `https://guardian.example.com/oc` as the Guardian connection URL.
+
+Skipping the `:3820` block is a supported choice, not a broken config:
+`/advanced` probes that address before framing it and falls back to OpenPalm's
+own chat surface when nothing answers.
 
 The UI never needs firewalling: with `OP_TRUSTED_PROXY=1` it stays bound to
 `127.0.0.1:3880` the whole time, so port `3880` is not reachable from anything

@@ -14,7 +14,11 @@ import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken, requireAdmin, requireCapability } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
-import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
+import {
+  sessionCookieHeader,
+  sessionTokenFromCookieHeader,
+  SESSION_COOKIE_NAME,
+} from "$lib/server/session-cookie.js";
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
@@ -31,6 +35,7 @@ import {
   reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { startWorkspaceListener } from "$lib/server/workspace-listener.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
@@ -128,6 +133,10 @@ function loadProcessEnv(): void {
 // anything reads the home, so the request path can simply trust the disk.
 migrateHome();
 loadProcessEnv();
+// OpenCode's web UI, at an origin root, behind this app's login. Started here
+// because every launch mode loads this module — see workspace-listener.ts for
+// why it needs an origin of its own rather than a path on this one.
+startWorkspaceListener();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
 
@@ -361,9 +370,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   // to the response after resolve() so it isn't clobbered by the handler.
   let renewedCookie: string | null = null;
   if (event.locals.role === "admin") {
-    const cookieHeader = event.request.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
-    const renewed = match ? touchSession(match[1]) : false;
+    const token = sessionTokenFromCookieHeader(event.request.headers.get("cookie"));
+    const renewed = token ? touchSession(token) : false;
     if (renewed) {
       renewedCookie = sessionCookieHeader(renewed, event.request);
     }

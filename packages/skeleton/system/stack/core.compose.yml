@@ -158,6 +158,17 @@ services:
       # The UI's Host-header allowlist reads this to decide whether it is
       # allowed to be reached by a name other than localhost.
       OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-127.0.0.1}
+      # OpenCode's web UI needs an origin whose ROOT is OpenCode — its SPA
+      # resolves /assets and /api against location.origin and has no base-path
+      # option — so the UI process binds a second listener that proxies
+      # OpenCode 1:1 behind the SAME op_session login (cookies are host-scoped,
+      # not port-scoped) with OpenCode's own credential attached server-side.
+      # See packages/ui/src/lib/server/workspace-listener.ts. Unlike OP_UI_PORT
+      # this IS passed in: the listener binds this number in-container, and the
+      # mapping below targets the same number so the two cannot drift. There is
+      # no bind variable to match it — the listener follows the UI child's own
+      # HOST=0.0.0.0, and OP_UI_BIND_ADDRESS above is what it advertises.
+      OP_WORKSPACE_PORT: ${OP_WORKSPACE_PORT:-3820}
       # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
       # in-container, so it cannot read state/stack.env itself — this
       # interpolation is the only way the resolved value reaches it, the same
@@ -185,6 +196,11 @@ services:
       # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
       # into the container env (the UI always serves on 3000 in-container).
       - "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000"
+      # OpenCode's web UI (the /advanced frame), served by the UI process's
+      # workspace listener. Published on the UI's interface because it is only
+      # useful where the UI is. Host and container port are the SAME value so
+      # the browser-facing address the UI advertises is the one that is bound.
+      - "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_WORKSPACE_PORT:-3820}:${OP_WORKSPACE_PORT:-3820}"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).

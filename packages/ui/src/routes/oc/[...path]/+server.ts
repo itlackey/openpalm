@@ -40,6 +40,10 @@
 import type { RequestHandler } from './$types';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
 import { assistantAuthHeaders } from '$lib/server/basic-auth.js';
+import {
+  STRIPPED_REQUEST_HEADERS,
+  STRIPPED_RESPONSE_HEADERS,
+} from '$lib/server/opencode-proxy-headers.js';
 import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
 
 /**
@@ -61,41 +65,8 @@ import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
  * upstream subscription OpenCode keeps alive for a browser that is gone.
  */
 
-/** Hop-by-hop and length headers that must not be forwarded in either direction. */
-const STRIPPED_REQUEST_HEADERS = new Set([
-  'host',
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'proxy-authorization',
-  'proxy-authenticate',
-  'te',
-  'trailer',
-  // Never forward the browser's cookie to OpenCode: it is this app's session,
-  // not an upstream credential, and OpenCode has no use for it.
-  'cookie',
-  // Replaced with the resolved upstream credential below, if any.
-  'authorization',
-  // Recomputed by fetch from the buffered body.
-  'content-length',
-]);
-
-const STRIPPED_RESPONSE_HEADERS = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'trailer',
-  // Deliberately dropped: node's fetch transparently decompresses a gzip/br
-  // upstream while still exposing the ORIGINAL compressed content-length, so
-  // forwarding it truncates the stream the browser actually receives. Letting
-  // the adapter chunk the body is correct for both buffered JSON and SSE.
-  'content-length',
-  'content-encoding',
-  // This process owns its own cookie scope; OpenCode must not set cookies on it.
-  'set-cookie',
-]);
+// Which headers may cross is shared with the workspace listener — same
+// upstream, same credential, same cookie scope. See opencode-proxy-headers.ts.
 
 const handle: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

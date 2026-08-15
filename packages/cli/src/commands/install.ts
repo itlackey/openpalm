@@ -569,7 +569,7 @@ async function runFileInstall(
 	// a later `openpalm start` reuses the same isolated project/port shape instead
 	// of falling back to the live-stack defaults.
 	const runtimeOverrides = Object.fromEntries(
-		['OP_PROJECT_NAME', 'OP_ASSISTANT_PORT', 'OP_UI_PORT', 'OP_HOST_UI_PORT'].flatMap((key) => {
+		['OP_PROJECT_NAME', 'OP_ASSISTANT_PORT', 'OP_UI_PORT', 'OP_HOST_UI_PORT', 'OP_WORKSPACE_PORT'].flatMap((key) => {
 			const value = process.env[key]?.trim();
 			return value ? [[key, value]] : [];
 		})

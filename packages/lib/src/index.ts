@@ -445,7 +445,7 @@ export {
 
 // ── Install-port probing (C2) ──────────────────────────────────────────────
 export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
-export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
 
 // ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
 export type {
@@ -825,6 +825,7 @@ export { STACK_DEFAULTS } from "./control-plane/defaults.js";
 export {
   DEFAULT_HOST_UI_PORT,
   DEFAULT_PUBLISHED_UI_PORT,
+  DEFAULT_WORKSPACE_PORT,
   UI_LOOPBACK_HOST,
   resolveEnvPort,
   resolveHostUiPort,

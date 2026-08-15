@@ -14,6 +14,7 @@
  */
 import { createServer } from "node:net";
 import { STACK_DEFAULTS } from "./defaults.js";
+import { DEFAULT_WORKSPACE_PORT, resolveEnvPort } from "./network-contract.js";
 import type { DockerClient } from "./docker.js";
 import { realDockerClient } from "./docker.js";
 
@@ -126,7 +127,30 @@ export function resolveInstallPortTargets(): InstallPortTarget[] {
     { port: pickPort("OP_HOST_UI_PORT") ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
     { port: pickPort("OP_UI_PORT") ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
     { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
+    workspacePortTarget(process.env),
   ];
+}
+
+/**
+ * The workspace probe target.
+ *
+ * Non-blocking: a taken workspace port costs `/advanced` its embedded OpenCode
+ * UI, which falls back to the native chat surface. Nothing else in the stack
+ * depends on it, so it is not worth refusing an install over.
+ *
+ * Exported so the CLI's doctor and the setup wizard's port screen ask the same
+ * question this does — the three lists are hand-maintained copies, and this is
+ * the entry all three need to agree on.
+ */
+export function workspacePortTarget(
+  env: Record<string, string | undefined>,
+  persistedEnv: Record<string, string | undefined> = {},
+): InstallPortTarget {
+  return {
+    port: resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env, persistedEnv),
+    service: "workspace",
+    blocking: false,
+  };
 }
 
 export interface ProbeInstallPortsOptions {

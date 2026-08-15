@@ -28,6 +28,7 @@ import {
 import { computeGuardianIngressRequired } from "./remote-providers.js";
 import { guardianRequiredForEnv } from "./guardian-required.js";
 import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from "./secrets.js";
+import { DEFAULT_WORKSPACE_PORT, resolveEnvPort } from "./network-contract.js";
 import {
   deriveRemoteHostname,
   readRemoteAccessConfig,
@@ -110,7 +111,17 @@ function writeServeConfigDoc(homeDir: string, doc: ServeConfigDoc): void {
  * containerboot at read time.
  */
 export function writeServeConfig(homeDir: string, cfg: RemoteAccessConfig): void {
-  writeServeConfigDoc(homeDir, resolveServeConfig(cfg));
+  // Read from stack.env rather than assumed: an operator who moved
+  // `OP_WORKSPACE_PORT` moved the listener with it, and a serve entry pointed at
+  // the old number would proxy a closed port. Same resolver the listener binds
+  // on, so the two cannot disagree.
+  const workspacePort = resolveEnvPort(
+    "OP_WORKSPACE_PORT",
+    DEFAULT_WORKSPACE_PORT,
+    {},
+    readStackEnv(homeDir),
+  );
+  writeServeConfigDoc(homeDir, resolveServeConfig(cfg, workspacePort));
 }
 
 /**

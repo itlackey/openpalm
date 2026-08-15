@@ -173,9 +173,19 @@ describe("describeSelectedRemoteExposure", () => {
       OP_ENABLED_ADDONS: "remote",
       OP_REMOTE_TARGET: "assistant",
     });
-    expect(lines.length).toBe(1);
+    // Two doors: exposing the assistant also publishes OpenCode's workspace.
+    expect(lines.length).toBe(2);
     expect(lines[0]).toContain("port 443");
-    expect(lines[0]).not.toContain("https://");
+    for (const line of lines) expect(line).not.toContain("https://");
+  });
+
+  test("a relocated workspace port is disclosed at the number actually published", () => {
+    const lines = describeSelectedRemoteExposure({
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "assistant",
+      OP_WORKSPACE_PORT: "4820",
+    });
+    expect(lines.some((line) => line.includes("port 4820"))).toBe(true);
   });
 });
 

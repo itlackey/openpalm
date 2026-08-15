@@ -24,10 +24,8 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  displayMode: 'browser' as 'browser' | 'electron',
-  opencodeWorkspace: undefined as
-    | { port: number; loopbackOnly: boolean; requiresAuth: boolean }
-    | undefined,
+  opencodeWorkspace: undefined as { port: number } | undefined,
+  workspaceReachable: true,
   active: null as Record<string, unknown> | null,
   probeHealth: vi.fn(),
   request: vi.fn(),
@@ -50,7 +48,6 @@ vi.mock('$lib/runtime-context.svelte.js', () => ({
     routes: {},
     effectiveCapabilities: [],
     uiVersion: 'test',
-    clientContext: { displayMode: mocks.displayMode },
     opencodeWorkspace: mocks.opencodeWorkspace,
   }),
   hasCapability: () => false,
@@ -109,6 +106,13 @@ vi.mock('$lib/connections/boot.js', () => ({
   setActiveConnection: vi.fn(),
 }));
 vi.mock('$lib/connection-events.js', () => ({ onConnectionActivated: () => () => {} }));
+// The workspace probe is a real network call against a port that does not exist
+// under vitest; its VERDICT is what this page's branching turns on, and
+// embeddable.vitest.ts covers how that verdict is reached.
+vi.mock('./embeddable.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./embeddable.js')>()),
+  isWorkspaceReachable: () => Promise.resolve(mocks.workspaceReachable),
+}));
 
 import AdvancedPage from './+page.svelte';
 
@@ -120,8 +124,8 @@ const workspaceFrame = () => browserPage.getByTitle('OpenCode — Advanced Chat'
 const nativeSurface = () => browserPage.getByText(NATIVE_NOTICE, { exact: false });
 
 beforeEach(() => {
-  mocks.displayMode = 'browser';
   mocks.opencodeWorkspace = undefined;
+  mocks.workspaceReachable = true;
   mocks.active = { ...LOCKED_CONNECTION };
   mocks.probeHealth.mockResolvedValue({ status: 'accessible' });
   mocks.onEndpointChanged.mockClear();
@@ -129,34 +133,29 @@ beforeEach(() => {
 
 describe('/advanced — the locked /oc connection frames OpenCode’s own origin', () => {
   test('frames the advertised workspace instead of falling back to chat', async () => {
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT, loopbackOnly: true, requiresAuth: false };
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
     render(AdvancedPage);
 
     await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
   });
 
-  test('keeps the native surface when there is no workspace to reach', async () => {
+  test('keeps the native surface when there is no workspace advertised', async () => {
     render(AdvancedPage);
 
     await expect.element(nativeSurface()).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
   });
 
-  test('a credentialed workspace is not framed in an ordinary browser', async () => {
-    // No credential exists client-side, so the frame would render OpenCode's
-    // 401 rather than the workspace.
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT, loopbackOnly: true, requiresAuth: true };
+  test('keeps the native surface when the advertised port does not answer', async () => {
+    // The address composes fine — it is this page's own host and the server's
+    // port — but nothing forwarded that port to this browser. A blank frame is
+    // the failure this replaces.
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
+    mocks.workspaceReachable = false;
     render(AdvancedPage);
 
     await expect.element(nativeSurface()).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
   });
 
-  test('the desktop shell frames it — it answers the Basic challenge in its main process', async () => {
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT, loopbackOnly: true, requiresAuth: true };
-    mocks.displayMode = 'electron';
-    render(AdvancedPage);
-
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
-  });
 });

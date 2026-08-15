@@ -19,6 +19,22 @@ export const DEFAULT_HOST_UI_PORT = STACK_DEFAULTS.ports.hostUi;
 export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
 
 /**
+ * The ONE OpenCode workspace port default.
+ *
+ * `OP_WORKSPACE_PORT` is resolved by {@link resolveEnvPort} like every other
+ * port in the tree — deliberately, after an attempt to give it a third
+ * "unusable value means the listener is OFF" state. That could not hold: the
+ * container publishes this port through compose's
+ * `${OP_WORKSPACE_PORT:-3820}`, which substitutes the default for an EMPTY
+ * value (so "off" silently stayed on) and interpolates `0`/junk straight into
+ * a published-port spec (so "off" failed the whole stack instead). Compose
+ * cannot gate a single port line behind a profile, so a working off-switch
+ * would have needed a second variable. There is no off-switch for the UI port
+ * or the assistant port either; this one behaves the same.
+ */
+export const DEFAULT_WORKSPACE_PORT = STACK_DEFAULTS.ports.workspace;
+
+/**
  * Resolve one port env var: an explicit argument wins, then live process env,
  * then the home's persisted stack.env, then the default.
  *
@@ -29,12 +45,10 @@ export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
  * expressing it once means a change to the merge semantics (how an empty string
  * behaves, say) cannot land on some of the ports and miss the rest.
  *
- * Rejects anything that is not a positive finite number, which is the strictest
- * of the parses this replaced: `Number(x) || fallback` let a negative through,
- * and no listener can bind one, so the default is the more useful answer.
- * The explicit argument is held to the same bar — an invalid explicit port
- * (zero, negative, fractional, out of range) falls through to env/default
- * rather than being returned verbatim or throwing.
+ * Rejects anything a listener could not bind — zero, negative, fractional, out
+ * of range — from BOTH the explicit argument and the env, falling through to
+ * the default rather than returning it verbatim or throwing. `Number(x) ||
+ * fallback` let a negative through, and the default is the more useful answer.
  */
 export function resolveEnvPort(
   key: string,
@@ -43,18 +57,20 @@ export function resolveEnvPort(
   persistedEnv: Record<string, string | undefined> = {},
   explicit?: number,
 ): number {
-  if (
-    explicit !== undefined &&
-    Number.isInteger(explicit) &&
-    explicit > 0 &&
-    explicit <= 65535
-  ) {
-    return explicit;
-  }
+  if (explicit !== undefined && isUsablePort(explicit)) return explicit;
   const merged = { ...persistedEnv, ...env };
   const raw = merged[key]?.trim();
   const parsed = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // Held to the SAME bar as the explicit branch above. It used to accept any
+  // positive finite number, so `70000` and `3820.5` came back verbatim from env
+  // while being rejected as an explicit argument — one resolver with two
+  // standards, in the module whose whole purpose is having one.
+  return isUsablePort(parsed) ? parsed : fallback;
+}
+
+/** A number a listener can actually bind. */
+function isUsablePort(value: number): boolean {
+  return Number.isInteger(value) && value > 0 && value <= 65535;
 }
 
 /** Resolve the host UI's listen port (`OP_HOST_UI_PORT`). */

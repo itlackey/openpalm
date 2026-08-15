@@ -20,6 +20,7 @@
  * (addon-ids, env, profile-ids, remote-access, access-toggles).
  */
 import { parseEnabledAddons } from "./env.js";
+import { DEFAULT_WORKSPACE_PORT, resolveEnvPort } from "./network-contract.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 import { readRemoteAccessConfig, describeRemoteExposure } from "./remote-access.js";
 import { remoteRequiresGuardianIngress } from "./access-toggles.js";
@@ -111,7 +112,14 @@ export const REMOTE_PROVIDERS: Record<string, RemoteProviderInfo> = {
     secrets: ["ts_authkey"],
     guardianIngressRequired: (env) =>
       remoteRequiresGuardianIngress(true, readRemoteAccessConfig(env).target),
-    describeExposure: (env) => describeRemoteExposure(readRemoteAccessConfig(env), true),
+    // The workspace port comes from the SAME env this reads, so a relocated
+    // port is disclosed at the number actually published.
+    describeExposure: (env) =>
+      describeRemoteExposure(
+        readRemoteAccessConfig(env),
+        true,
+        resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env),
+      ),
   },
 };
 

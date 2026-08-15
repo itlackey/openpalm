@@ -312,11 +312,7 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
 describe('computeOpencodeWorkspace — where OpenCode’s own web UI is published', () => {
   let homeDir = '';
   let savedHome: string | undefined;
-  const WORKSPACE_ENV_KEYS = [
-    'OP_ASSISTANT_PORT',
-    'OP_ASSISTANT_BIND_ADDRESS',
-    'OPENCODE_AUTH',
-  ] as const;
+  const WORKSPACE_ENV_KEYS = ['OP_WORKSPACE_PORT'] as const;
   let savedWorkspaceEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -358,66 +354,41 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toBeUndefined();
   });
 
-  test('reads the published port and loopback-only default from the stack env', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: true,
-      requiresAuth: false,
-    });
+  test('reads the workspace listener’s port from the stack env', () => {
+    writeStackEnv('OP_WORKSPACE_PORT=3820\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('reports a LAN publish as reachable beyond this machine', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\nOP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
-  });
-
-  test('process env wins over the stack file — the container gets its values injected', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
-    process.env.OP_ASSISTANT_PORT = '4810';
-    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 4810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
+  test('process env wins over the stack file — the container gets its value injected', () => {
+    writeStackEnv('OP_WORKSPACE_PORT=3820\n');
+    process.env.OP_WORKSPACE_PORT = '4820';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 4820 });
   });
 
   test('resolves from injected env alone — the container lane never reads the stack file', () => {
-    // Every key compose injects is present, so the file below must not be
-    // consulted: it contradicts all three, and the injected values win. This
-    // pins the lazy read (computeOpencodeWorkspace runs on every layout load).
-    writeStackEnv('OP_ASSISTANT_PORT=1111\nOP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOPENCODE_AUTH=true\n');
-    process.env.OPENCODE_AUTH = 'false';
-    process.env.OP_ASSISTANT_PORT = '3810';
-    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
+    // The key compose injects is present, so the file below must not be
+    // consulted: it contradicts it, and the injected value wins. This pins the
+    // lazy read (computeOpencodeWorkspace runs on every layout load).
+    writeStackEnv('OP_WORKSPACE_PORT=1111\n');
+    process.env.OP_WORKSPACE_PORT = '3820';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('reports Basic auth rather than withholding the address — only the client knows if it can answer', () => {
-    // Withholding it here used to cost the DESKTOP app its workspace whenever
-    // `assistantDirect` was on, even though the Electron shell answers that
-    // challenge from its main process. The gate belongs at the consumer.
-    writeStackEnv('OP_ASSISTANT_PORT=3810\nOPENCODE_AUTH=true\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: true,
-      requiresAuth: true,
-    });
+  test('an unbindable value falls back to the default, like every other port', () => {
+    // Not an off-switch: compose publishes this port through
+    // `${OP_WORKSPACE_PORT:-3820}`, so an "off" spelling either silently stayed
+    // on (empty) or failed the whole stack (0/junk in a published-port spec).
+    writeStackEnv('OP_WORKSPACE_PORT=0\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('absent for a port that is not a usable TCP port', () => {
-    for (const port of ['0', '70000', 'not-a-port']) {
-      writeStackEnv(`OP_ASSISTANT_PORT=${port}\n`);
-      expect(computeOpencodeWorkspace(), port).toBeUndefined();
-    }
+  test('an installed home with no OP_WORKSPACE_PORT gets the default', () => {
+    // Installs predating the workspace listener carry no such key, and the
+    // desktop and CLI launch paths do not inject one. Defaulting is what lets
+    // them have a workspace with no migration; /advanced probes the address
+    // before framing it, so a default that turns out to be wrong costs a round
+    // trip rather than a blank frame.
+    writeStackEnv('OP_UI_BIND_ADDRESS=0.0.0.0\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 });

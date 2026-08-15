@@ -53,6 +53,7 @@ import {
   STACK_DEFAULTS,
   resolveOpenCodeDbPath,
   runOpenCodeDbMaintenance,
+  workspacePortTarget,
   type ControlPlaneState,
   type DockerResult,
   type GpuInfo,
@@ -265,6 +266,9 @@ function resolveDoctorPortTargets(persistedEnv: Record<string, string>): Install
     { port: resolveEnvPort('OP_HOST_UI_PORT', DEFAULT_HOST_UI_PORT, process.env, persistedEnv), service: 'admin', blocking: true },
     { port: resolveEnvPort('OP_UI_PORT', DEFAULT_PUBLISHED_UI_PORT, process.env, persistedEnv), service: 'ui', blocking: true },
     { port: resolveEnvPort('OP_ASSISTANT_PORT', STACK_DEFAULTS.ports.assistant, process.env, persistedEnv), service: 'assistant', blocking: true },
+    // Doctor is the tool an operator runs when the workspace frame is blank, so
+    // it of all places must probe that port — persisted-over-live like its peers.
+    workspacePortTarget(process.env, persistedEnv),
   ];
 }
 

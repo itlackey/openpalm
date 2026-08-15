@@ -1,7 +1,7 @@
 import { json } from "@sveltejs/kit";
 import {
   checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime,
-  resolveHostUiPort, STACK_DEFAULTS, resolveOpenPalmHome,
+  resolveHostUiPort, STACK_DEFAULTS, resolveOpenPalmHome, workspacePortTarget,
   checkLifecycleDiskHeadroom, describeLifecycleDiskHeadroom, shouldBlockOnDiskHeadroom,
 } from "@openpalm/lib";
 import { createServer } from "node:net";
@@ -90,6 +90,9 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
     { port: pickPort("OP_HOST_UI_PORT")  ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
     { port: pickPort("OP_UI_PORT")       ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
     { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
+    // The wizard's port screen must show every port the install will publish;
+    // omitting this one let a conflict surface later as a blank /advanced frame.
+    workspacePortTarget(process.env),
   ];
 }
 

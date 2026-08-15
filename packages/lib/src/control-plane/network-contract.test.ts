@@ -9,7 +9,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_HOST_UI_PORT,
+  DEFAULT_WORKSPACE_PORT,
   UI_LOOPBACK_HOST,
+  resolveEnvPort,
   resolveHostUiPort,
   resolveUiListenEnv,
 } from "./network-contract.ts";
@@ -130,5 +132,44 @@ describe("resolveUiListenEnv — trusted proxy", () => {
     expect(
       resolveUiListenEnv({ port: 3880, admin: false, allowRemote: true, trustProxy: true }).HOST,
     ).toBe("0.0.0.0");
+  });
+});
+
+describe("OP_WORKSPACE_PORT — resolved like every other port", () => {
+  const resolve = (env: Record<string, string | undefined>) =>
+    resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env);
+
+  test("the default is the canonical port table, not a second literal", () => {
+    expect(DEFAULT_WORKSPACE_PORT).toBe(STACK_DEFAULTS.ports.workspace);
+    expect(resolve({})).toBe(DEFAULT_WORKSPACE_PORT);
+  });
+
+  test("a usable port is taken as given", () => {
+    expect(resolve({ OP_WORKSPACE_PORT: "4820" })).toBe(4820);
+    expect(resolve({ OP_WORKSPACE_PORT: " 4820 " })).toBe(4820);
+  });
+
+  test("anything unbindable falls back, rather than meaning 'no listener'", () => {
+    // This deliberately does NOT disable the workspace. Compose publishes the
+    // port via `${OP_WORKSPACE_PORT:-3820}`, which substitutes the default for
+    // an EMPTY value and interpolates `0`/junk straight into a published-port
+    // spec — so an "off" spelling either silently stayed on or failed the whole
+    // stack. There is no off-switch for the UI or assistant port either.
+    for (const raw of ["", "0", "70000", "-1", "3820.5", "nope"]) {
+      expect(resolve({ OP_WORKSPACE_PORT: raw }), raw).toBe(DEFAULT_WORKSPACE_PORT);
+    }
+  });
+});
+
+describe("resolveEnvPort — env values are held to the explicit branch's bar", () => {
+  test("out-of-range and fractional env values fall back like explicit ones do", () => {
+    // These used to come back verbatim from env while being rejected as an
+    // explicit argument — one resolver with two standards.
+    for (const raw of ["70000", "3880.5"]) {
+      expect(resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, { OP_HOST_UI_PORT: raw }), raw)
+        .toBe(DEFAULT_HOST_UI_PORT);
+    }
+    expect(resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, { OP_HOST_UI_PORT: "65535" }))
+      .toBe(65535);
   });
 });

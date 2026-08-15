@@ -1,5 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { isEnabledFlag, listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
+import {
+  DEFAULT_WORKSPACE_PORT,
+  listEnabledAddonIds,
+  readStackEnv,
+  resolveEnvPort,
+} from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -133,74 +138,55 @@ export function computeVoiceRuntime(): { url: string } | undefined {
  * cannot frame the connection itself and points at THIS advertisement instead,
  * which is the same OpenCode reached at its own root.
  *
- * It is a PORT and a reachability fact, never a URL: only the browser knows
- * which host it typed, and that is the whole reason the connection seed became
- * origin-relative in the first place. `loopbackOnly` mirrors the compose
- * publish (`${OP_ASSISTANT_BIND_ADDRESS}:${OP_ASSISTANT_PORT}:4096`), so a
- * client on the LAN can tell that a loopback-published port is its own machine
- * and not offer a dead address.
+ * A PORT and nothing else — never a URL, and deliberately no reachability
+ * verdict either. Only the browser knows which host it typed, which is the
+ * whole reason the connection seed became origin-relative in the first place;
+ * and only the browser can find out whether that port is forwarded to it,
+ * which is why `/advanced` probes the composed address instead of being told.
+ * This function used to also report the compose publish as `loopbackOnly`, and
+ * that inference was wrong for every deployment behind a reverse proxy: a
+ * loopback-published stack fronted by Caddy or Tailscale Serve is perfectly
+ * reachable at the host the browser typed, and was refused a workspace for it.
  *
- * `requiresAuth` reports OpenCode's Basic auth rather than withholding the
- * address, because the two clients differ: an ordinary browser holds no
- * credential (the whole point of routing chat through `/oc`) and would
- * dead-end at a password prompt nobody can answer, while the desktop shell
- * answers the challenge from the main process, where the credential already
- * lives. Withholding the address here decided that for both, and cost the
- * desktop app its workspace whenever `assistantDirect` was on.
+ * No credential appears here. The listener behind this port checks the same
+ * `op_session` cookie every route does and attaches OpenCode's own password
+ * upstream (server/workspace-listener.ts), so every browser is equally able to
+ * use it and there is nothing to gate on.
  *
- * Absent when no port is known; a guessed default would advertise a listener
- * that may not exist.
+ * Absent only for a host that has deployed nothing: the listener may well be
+ * bound, but there is no OpenCode behind it yet.
  *
  * Deliberately NOT part of computeServerRuntimeContext() — same reason as
  * computeVoiceRuntime above: that function runs on requireCapability's
  * per-request hot path and this one may read the stack env from disk.
  */
-export function computeOpencodeWorkspace():
-  | { port: number; loopbackOnly: boolean; requiresAuth: boolean }
-  | undefined {
-  // Lazily, and at most once per call: this runs on every layout load and
-  // every GET /api/runtime, and readStackEnv is a synchronous readFileSync.
-  // The container co-process has all three keys injected by compose
-  // (core.compose.yml: OPENCODE_AUTH, OP_ASSISTANT_PORT,
-  // OP_ASSISTANT_BIND_ADDRESS), so that lane never touches the disk at all;
-  // a host process pays one read the first time a key is missing.
-  let stackEnv: Record<string, string> | undefined;
-  const stackEnvValue = (key: string): string | undefined => {
-    stackEnv ??= (() => {
-      try {
-        const { homeDir, stackDir } = getState();
-        // getState() materializes a stack.env carrying the DEFAULT ports
-        // whether or not anything is deployed, so reading it unconditionally
-        // would advertise a port with no listener behind it on a fresh host
-        // process. Same guard buildServedUiRuntimeConfig uses before seeding a
-        // connection.
-        if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return {};
-        return readStackEnv(homeDir);
-      } catch {
-        // No readable OP_HOME — the injected env above is the only source.
-        return {};
-      }
-    })();
-    return stackEnv[key]?.trim() || undefined;
-  };
-  const read = (key: string): string | undefined =>
-    process.env[key]?.trim() || stackEnvValue(key);
+export function computeOpencodeWorkspace(): { port: number } | undefined {
+  // Read at most once per call, and only when the injected env did not answer:
+  // this runs on every layout load and every GET /api/runtime, and readStackEnv
+  // is a synchronous readFileSync. The container co-process has the key
+  // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
+  // never touches the disk at all.
+  const workspacePort = (persisted: Record<string, string> = {}): { port: number } => ({
+    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, process.env, persisted),
+  });
+  if (process.env.OP_WORKSPACE_PORT?.trim()) return workspacePort();
 
-  const port = Number(read('OP_ASSISTANT_PORT'));
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
-  const bindAddress = read('OP_ASSISTANT_BIND_ADDRESS') ?? '127.0.0.1';
-  return {
-    port,
-    loopbackOnly: LOOPBACK_BIND.has(bindAddress),
-    // The SAME parser resolveOpenCodeCredential gates the password on
-    // (control-plane/opencode-auth.ts). A second spelling here would let
-    // `OPENCODE_AUTH=on` advertise a credentialed workspace that the desktop
-    // shell then finds no credential for — a frame that can only 401.
-    requiresAuth: isEnabledFlag(read('OPENCODE_AUTH')),
-  };
+  try {
+    const { homeDir, stackDir } = getState();
+    // getState() materializes a stack.env carrying the DEFAULT ports whether or
+    // not anything is deployed, so a fresh host that has installed nothing must
+    // not advertise a workspace: the listener may well be bound, but there is
+    // no assistant behind it for it to proxy. This is the one case that differs
+    // from "installed, key absent", where the default is exactly right — so it
+    // returns before the default can apply. Same guard
+    // buildServedUiRuntimeConfig uses before seeding a connection.
+    if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return undefined;
+    return workspacePort(readStackEnv(homeDir));
+  } catch {
+    // No readable OP_HOME and nothing injected: nothing to advertise.
+    return undefined;
+  }
 }
-/** Bind addresses that publish the assistant port to this machine only. */
-const LOOPBACK_BIND = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();

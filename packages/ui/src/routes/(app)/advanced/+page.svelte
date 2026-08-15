@@ -13,7 +13,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+  import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
   import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
@@ -29,29 +29,23 @@
   const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
   /**
-   * OpenCode's own origin for the iframe. The locked default connection is
-   * this app's `/oc` API proxy, which cannot be framed (embeddable.ts), so the
-   * frame goes to the same OpenCode at the port the server advertises. The
-   * desktop shell answers its Basic challenge in the main process
-   * (packages/electron/src/assistant-auth.ts), so a credentialed workspace is
-   * framable there and only there.
-   */
-  const framableWorkspaceUrl = $derived(
-    resolveWorkspaceUrl(
-      runtimeContext.opencodeWorkspace,
-      { hostname: page.url.hostname },
-      active,
-      runtimeContext.clientContext.displayMode === 'electron',
-    ),
-  );
-  /**
-   * The same workspace as a top-level tab — the escape hatch where the frame
-   * is unavailable. It cannot authenticate even in the desktop shell: a new tab
-   * LEAVES the shell (`setWindowOpenHandler` → `shell.openExternal`), so it
-   * never carries the credential the main process would supply to a frame.
+   * The workspace listener's origin — OpenCode's own web UI at an origin root,
+   * behind this app's session, with OpenCode's credential attached server-side
+   * (server/workspace-listener.ts). The locked default connection is this app's
+   * `/oc` API proxy, which cannot be framed (embeddable.ts), so this is what
+   * the frame points at instead.
+   *
+   * One address serves both uses on this page — the iframe and the new-tab
+   * escape hatch below it — because nothing about it is client-dependent: the
+   * browser holds no OpenCode credential either way, only the OpenPalm session
+   * cookie it already has.
    */
   const workspaceUrl = $derived(
-    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }, active),
+    resolveWorkspaceUrl(
+      runtimeContext.opencodeWorkspace,
+      { hostname: page.url.hostname, protocol: page.url.protocol },
+      active,
+    ),
   );
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
@@ -106,8 +100,18 @@
     // Where OpenCode's own web UI lives for this connection: the connection
     // itself when it names an OpenCode origin, otherwise this install's
     // advertised workspace. Null when there is neither.
-    const base = isEmbeddable(conn) ? conn.baseUrl : framableWorkspaceUrl;
-    if (!base) {
+    //
+    // The workspace address is composed from the page, so it is a well-formed
+    // guess rather than a promise — whether the port is actually forwarded
+    // through whatever fronts this app is a fact only the browser can measure.
+    // Measuring it here costs one round trip and is what keeps a deployment
+    // that has not opened that port on the native chat surface instead of
+    // staring at a blank frame.
+    const workspaceOnly = !isEmbeddable(conn);
+    const base = workspaceOnly ? workspaceUrl : conn.baseUrl;
+    const usable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
+    if (!isCurrentProbe(token, conn.id)) return;
+    if (!usable) {
       mode = 'native';
       // The chat store now talks to the active connection via the direct
       // transport; make sure this connection's sessions are loaded.
@@ -280,13 +284,12 @@
         {/if}
       </div>
     {:else if mode === 'native'}
-      <!-- No OpenCode web UI this browser can frame: the connection is
+      <!-- No OpenCode web UI this browser can reach: the connection is
            credentialed (OpenPalm keeps Basic auth out of iframe URLs, so the
-           embedded UI could not authenticate) or it is this app's own /oc API
-           pass-through with no reachable workspace advertisement behind it.
-           No new-tab link here: this branch means framableWorkspaceUrl was
-           null, and workspaceUrl asks the same question with a weaker client,
-           so it is null too. -->
+           embedded UI could not authenticate), or it is this app's own /oc API
+           pass-through and the workspace port is either unadvertised or not
+           forwarded to this browser. No new-tab link here: the same address
+           the frame would use is the one that just failed. -->
       <div class="native-shell">
         <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
           <div class="native-scroll">

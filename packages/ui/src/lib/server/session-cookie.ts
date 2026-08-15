@@ -70,6 +70,29 @@ export function resolveSessionCookieName(env: NodeJS.ProcessEnv = process.env): 
 
 export const SESSION_COOKIE_NAME = resolveSessionCookieName();
 
+/**
+ * This surface's session token out of a raw `Cookie` header, or `''`.
+ *
+ * Lives here because this module owns the cookie NAME, and the name is
+ * per-surface (see above). Three callers had grown their own reader — the
+ * SvelteKit auth helper, the sliding-renewal path, and the workspace listener
+ * — which is the drift this file's own header warns about at length: a reader
+ * that disagrees with the writer authenticates nothing.
+ *
+ * Takes the header string rather than a `Request` or a `RequestEvent` because
+ * the workspace listener is a bare `http.Server` with neither.
+ */
+export function sessionTokenFromCookieHeader(header: string | undefined | null): string {
+  if (!header) return "";
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() !== SESSION_COOKIE_NAME) continue;
+    return part.slice(eq + 1).trim();
+  }
+  return "";
+}
+
 /** True when the request reached us over HTTPS (direct or via TLS-terminating proxy). */
 export function isSecureRequest(request: Request): boolean {
   const forwarded = request.headers.get("x-forwarded-proto");

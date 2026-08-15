@@ -165,17 +165,26 @@ describe("coerceRemoteAccessConfig", () => {
 describe("resolveServeConfig", () => {
   test("target assistant, private", () => {
     expect(resolveServeConfig({ hostname: "h", public: false, target: "assistant" })).toEqual({
-      TCP: { "443": { HTTPS: true } },
-      Web: { "${TS_CERT_DOMAIN}:443": { Handlers: { "/": { Proxy: "http://assistant:3000" } } } },
-      AllowFunnel: { "${TS_CERT_DOMAIN}:443": false },
+      TCP: { "443": { HTTPS: true }, "3820": { HTTPS: true } },
+      Web: {
+        "${TS_CERT_DOMAIN}:443": { Handlers: { "/": { Proxy: "http://assistant:3000" } } },
+        "${TS_CERT_DOMAIN}:3820": { Handlers: { "/": { Proxy: "http://assistant:3820" } } },
+      },
+      AllowFunnel: { "${TS_CERT_DOMAIN}:443": false, "${TS_CERT_DOMAIN}:3820": false },
     });
   });
 
   test("target assistant, public", () => {
     expect(resolveServeConfig({ hostname: "h", public: true, target: "assistant" })).toEqual({
-      TCP: { "443": { HTTPS: true } },
-      Web: { "${TS_CERT_DOMAIN}:443": { Handlers: { "/": { Proxy: "http://assistant:3000" } } } },
-      AllowFunnel: { "${TS_CERT_DOMAIN}:443": true },
+      TCP: { "443": { HTTPS: true }, "3820": { HTTPS: true } },
+      Web: {
+        "${TS_CERT_DOMAIN}:443": { Handlers: { "/": { Proxy: "http://assistant:3000" } } },
+        "${TS_CERT_DOMAIN}:3820": { Handlers: { "/": { Proxy: "http://assistant:3820" } } },
+      },
+      // Funnel is 443/8443/10000 only, so the workspace could not be public
+      // even if the operator asked — and a shell on the public internet is not
+      // what "share my assistant" should mean.
+      AllowFunnel: { "${TS_CERT_DOMAIN}:443": true, "${TS_CERT_DOMAIN}:3820": false },
     });
   });
 
@@ -197,20 +206,43 @@ describe("resolveServeConfig", () => {
 
   test("target both, private — both ports, both AllowFunnel entries false", () => {
     expect(resolveServeConfig({ hostname: "h", public: false, target: "both" })).toEqual({
-      TCP: { "443": { HTTPS: true }, "8443": { HTTPS: true } },
+      TCP: { "443": { HTTPS: true }, "3820": { HTTPS: true }, "8443": { HTTPS: true } },
       Web: {
         "${TS_CERT_DOMAIN}:443": { Handlers: { "/": { Proxy: "http://assistant:3000" } } },
+        "${TS_CERT_DOMAIN}:3820": { Handlers: { "/": { Proxy: "http://assistant:3820" } } },
         "${TS_CERT_DOMAIN}:8443": { Handlers: { "/": { Proxy: "http://guardian:3830" } } },
       },
-      AllowFunnel: { "${TS_CERT_DOMAIN}:443": false, "${TS_CERT_DOMAIN}:8443": false },
+      AllowFunnel: {
+        "${TS_CERT_DOMAIN}:443": false,
+        "${TS_CERT_DOMAIN}:3820": false,
+        "${TS_CERT_DOMAIN}:8443": false,
+      },
     });
   });
 
-  test("target both, public — both AllowFunnel entries true", () => {
+  test("target both, public — the two service ports funnel, the workspace never does", () => {
     const doc = resolveServeConfig({ hostname: "h", public: true, target: "both" });
     expect(doc.AllowFunnel).toEqual({
       "${TS_CERT_DOMAIN}:443": true,
+      "${TS_CERT_DOMAIN}:3820": false,
       "${TS_CERT_DOMAIN}:8443": true,
+    });
+  });
+
+  test("the workspace rides with the assistant, never with the guardian alone", () => {
+    // Guardian-only exposure publishes an API, not this app's UI — there is no
+    // page there to frame a workspace from, so opening the port would be pure
+    // attack surface.
+    expect(
+      Object.keys(resolveServeConfig({ hostname: "h", public: false, target: "guardian" }).TCP),
+    ).toEqual(["8443"]);
+  });
+
+  test("follows a relocated workspace port so the entry cannot proxy a closed one", () => {
+    const doc = resolveServeConfig({ hostname: "h", public: false, target: "assistant" }, 3999);
+    expect(Object.keys(doc.TCP)).toEqual(["443", "3999"]);
+    expect(doc.Web["${TS_CERT_DOMAIN}:3999"]).toEqual({
+      Handlers: { "/": { Proxy: "http://assistant:3999" } },
     });
   });
 
@@ -230,7 +262,7 @@ describe("resolveServeConfig", () => {
 
   test("keys are emitted in ascending port order for a stable, non-churning file", () => {
     const doc = resolveServeConfig({ hostname: "h", public: false, target: "both" });
-    expect(Object.keys(doc.TCP)).toEqual(["443", "8443"]);
+    expect(Object.keys(doc.TCP)).toEqual(["443", "3820", "8443"]);
   });
 
   test("the ${TS_CERT_DOMAIN} placeholder is emitted literally, not interpolated", () => {
@@ -248,11 +280,22 @@ describe("describeRemoteExposure", () => {
     expect(describeRemoteExposure({ ...cfg, public: true, target: "both" }, false)).toEqual([]);
   });
 
-  test("private assistant: one line naming only-your-own-devices reach", () => {
+  test("private assistant: a line per door, naming only-your-own-devices reach", () => {
+    // Two doors, because exposing the assistant also publishes OpenCode's
+    // workspace — an operator reading "the assistant is reachable" would not
+    // otherwise learn that a second port carrying a terminal went up with it.
     const lines = describeRemoteExposure(cfg, true);
-    expect(lines).toHaveLength(1);
+    expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("assistant");
-    expect(lines[0]).toContain("your own signed-in devices");
+    expect(lines.some((line) => line.includes("assistant workspace"))).toBe(true);
+    for (const line of lines) expect(line).toContain("your own signed-in devices");
+  });
+
+  test("the workspace door is disclosed as tailnet-only even when the rest is public", () => {
+    const lines = describeRemoteExposure({ ...cfg, public: true }, true);
+    const workspace = lines.find((line) => line.includes("workspace"));
+    expect(workspace).toContain("your own signed-in devices");
+    expect(workspace).not.toContain("public internet");
   });
 
   test("public target distinguishes 'anyone who has the address'", () => {
@@ -261,11 +304,12 @@ describe("describeRemoteExposure", () => {
     expect(lines[0]).toContain("anyone who has the address");
   });
 
-  test("target both reports one line per service", () => {
+  test("target both reports every door of every service", () => {
     const lines = describeRemoteExposure({ ...cfg, target: "both" }, true);
-    expect(lines).toHaveLength(2);
-    expect(lines.some((line) => line.includes("assistant"))).toBe(true);
-    expect(lines.some((line) => line.includes("guardian"))).toBe(true);
+    expect(lines).toHaveLength(3);
+    expect(lines.some((line) => line.includes("port 443"))).toBe(true);
+    expect(lines.some((line) => line.includes("port 3820"))).toBe(true);
+    expect(lines.some((line) => line.includes("port 8443"))).toBe(true);
   });
 
   test("names each service's port", () => {
