@@ -1,17 +1,12 @@
 /**
- * What /advanced actually puts on screen for the locked default connection.
+ * What /advanced actually puts on screen.
  *
- * The regression this pins: on every desktop install the locked connection is
- * this app's own `/oc` pass-through, and the page fell straight through to the
- * native chat surface. /advanced became a second copy of /chat, which is
- * exactly what the route exists NOT to be.
- *
- * It now frames the same-origin `/_opencode` workspace proxy. That is a
- * stronger claim than the `opencodeWorkspace` advertisement it replaced: the
- * advertisement is a PORT, so it only ever existed for a browser on the
- * machine that published it, and never for a credentialed OpenCode. The proxy
- * rides the origin the browser already loaded, so the frame survives a reverse
- * proxy, a phone on the LAN, a tailnet, and `OPENCODE_AUTH=true` alike.
+ * The regression this pins: on every install the locked connection is this
+ * app's own `/oc` pass-through, and the page used to fall through to a
+ * degraded duplicate chat surface. It now frames the static OpenCode web-UI
+ * bundle at /opencode-ui/ — same origin, so the frame survives loopback, LAN,
+ * and reverse-proxied deployments identically — and a connection that cannot
+ * be framed gets an honest notice pointing at /chat instead of a worse chat.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { page as browserPage } from 'vitest/browser';
@@ -29,10 +24,6 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  displayMode: 'browser' as 'browser' | 'electron',
-  opencodeWorkspace: undefined as
-    | { port: number; loopbackOnly: boolean; requiresAuth: boolean }
-    | undefined,
   active: null as Record<string, unknown> | null,
   probeHealth: vi.fn(),
   request: vi.fn(),
@@ -50,13 +41,14 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('$app/state', () => ({ page: mocks.appPage }));
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+// The page itself no longer reads runtime context, but the chrome it mounts
+// (ConversationFrame → ChatNavbar) does.
 vi.mock('$lib/runtime-context.svelte.js', () => ({
   getRuntimeContext: () => ({
     routes: {},
     effectiveCapabilities: [],
     uiVersion: 'test',
-    clientContext: { displayMode: mocks.displayMode },
-    opencodeWorkspace: mocks.opencodeWorkspace,
+    clientContext: { displayMode: 'browser' },
   }),
   hasCapability: () => false,
 }));
@@ -117,73 +109,60 @@ vi.mock('$lib/connection-events.js', () => ({ onConnectionActivated: () => () =>
 
 import AdvancedPage from './+page.svelte';
 
-const WORKSPACE_PORT = 39810;
-const WORKSPACE_PROXY_PATH = '/_opencode';
-const NATIVE_NOTICE = 'runs on OpenPalm’s own surface';
+const SHELL_URL = '/opencode-ui/';
+const NOTICE = 'can’t be embedded here';
 
 const workspaceFrame = () => browserPage.getByTitle('OpenCode — Advanced Chat');
-const nativeSurface = () => browserPage.getByText(NATIVE_NOTICE, { exact: false });
+const notice = () => browserPage.getByText(NOTICE, { exact: false });
 
 beforeEach(() => {
   mocks.appPage.url = new URL('http://127.0.0.1:3800/advanced');
-  mocks.displayMode = 'browser';
-  mocks.opencodeWorkspace = undefined;
   mocks.active = { ...LOCKED_CONNECTION };
   mocks.probeHealth.mockResolvedValue({ status: 'accessible' });
   mocks.onEndpointChanged.mockClear();
+  mocks.openSession.mockClear();
 });
 
-describe('/advanced — the locked /oc connection frames the same-origin workspace proxy', () => {
-  test('frames /_opencode instead of falling back to chat', async () => {
+describe('/advanced — the locked connection frames the static bundle', () => {
+  test('frames /opencode-ui/ instead of falling back to a chat copy', async () => {
     render(AdvancedPage);
 
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_PROXY_PATH);
+    await expect.element(workspaceFrame()).toHaveAttribute('src', SHELL_URL);
   });
 
-  test('needs no published assistant port — the hop is server-side', async () => {
-    // The `opencodeWorkspace` advertisement is absent here. Under the old
-    // direct-port frame that was the "no workspace to reach" case and the page
-    // rendered the native surface; nothing about the proxy depends on it.
-    mocks.opencodeWorkspace = undefined;
-    render(AdvancedPage);
-
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_PROXY_PATH);
-    expect(nativeSurface().elements()).toHaveLength(0);
-  });
-
-  test('frames it with OpenCode auth on — the credential is attached by the proxy', async () => {
-    // The direct-port frame could not: no OpenCode credential exists
-    // client-side, so it rendered OpenCode's 401 instead of the workspace.
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT, loopbackOnly: true, requiresAuth: true };
-    render(AdvancedPage);
-
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_PROXY_PATH);
-  });
-
-  test('frames it from a LAN client, where a loopback-only publish does not exist', async () => {
-    // The store resolves the locked connection against the visited origin
-    // (resolveLockedBaseUrl), so a LAN browser holds the LAN spelling.
+  test('frames it from a LAN client identically — same origin, no port math', async () => {
     mocks.appPage.url = new URL('http://192.168.0.201:3800/advanced');
     mocks.active = { ...LOCKED_CONNECTION, baseUrl: 'http://192.168.0.201:3800/oc' };
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT, loopbackOnly: true, requiresAuth: false };
     render(AdvancedPage);
 
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_PROXY_PATH);
+    await expect.element(workspaceFrame()).toHaveAttribute('src', SHELL_URL);
   });
 
-  test('the desktop shell frames the same proxy', async () => {
-    mocks.displayMode = 'electron';
+  test('a ?session deep link becomes the app’s server-scoped session route', async () => {
+    mocks.appPage.url = new URL('http://127.0.0.1:3800/advanced?session=ses_42');
     render(AdvancedPage);
 
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_PROXY_PATH);
+    const key = btoa('http://127.0.0.1:3800/oc').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    await expect
+      .element(workspaceFrame())
+      .toHaveAttribute('src', `/opencode-ui/server/${key}/session/ses_42`);
+    // The chat store follows, so ChatNavbar's picker names the same thread.
+    expect(mocks.openSession).toHaveBeenCalledWith('ses_42');
+  });
+
+  test('an unreachable assistant renders the dead state, not a dead frame', async () => {
+    mocks.probeHealth.mockResolvedValue({ status: 'unreachable' });
+    render(AdvancedPage);
+
+    await expect.element(browserPage.getByText('Can’t reach', { exact: false })).toBeVisible();
+    expect(workspaceFrame().elements()).toHaveLength(0);
   });
 });
 
-describe('/advanced — connections this app cannot serve from its own origin', () => {
-  test('a credentialed remote connection still falls back to the native surface', async () => {
-    // The proxy forwards to THIS process's assistant, so it is not an answer
-    // for a connection naming someone else's OpenCode; OpenPalm also keeps
-    // Basic credentials out of iframe URLs, so the frame could not authenticate.
+describe('/advanced — connections this page cannot frame', () => {
+  test('a credentialed remote connection gets the notice with a link to /chat', async () => {
+    // OpenPalm keeps Basic credentials out of iframe URLs, so an embedded UI
+    // could not authenticate; /chat is the full-featured surface for these.
     mocks.active = {
       id: 'remote-1',
       label: 'Remote assistant',
@@ -193,11 +172,12 @@ describe('/advanced — connections this app cannot serve from its own origin', 
     };
     render(AdvancedPage);
 
-    await expect.element(nativeSurface()).toBeVisible();
+    await expect.element(notice()).toBeVisible();
+    await expect.element(browserPage.getByText('Continue in Chat')).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
   });
 
-  test('a framable remote OpenCode frames itself, not the local workspace proxy', async () => {
+  test('a framable remote OpenCode frames itself, not the local bundle', async () => {
     mocks.active = {
       id: 'remote-2',
       label: 'Remote assistant',

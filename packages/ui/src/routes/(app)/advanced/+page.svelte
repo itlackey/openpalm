@@ -5,62 +5,32 @@
   import { onMount } from 'svelte';
   import ConversationFrame from '$lib/components/chrome/ConversationFrame.svelte';
   import ChatFooter from '$lib/components/chat/ChatFooter.svelte';
-  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
-  import ChatInput from '$lib/components/chat/ChatInput.svelte';
-  import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
-  import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
-  import { buildAdvancedIframeUrl, buildAdvancedPath } from '$lib/chat/navigation.js';
+  import { buildAdvancedPath, buildChatPath } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { resolveFrameBase, resolveWorkspaceUrl } from './embeddable.js';
-  import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
+  import { opencodeWebSessionUrl, opencodeWebShellUrl } from '$lib/opencode-web.js';
+  import { resolveFrameBase } from './embeddable.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
   import { themeService } from '$lib/theme-state.svelte.js';
 
-  // Phase 3b ("One UI, delete the split"): the browser owns connections and
-  // talks to OpenCode DIRECTLY — there is no host proxy to probe. Which
-  // OpenCode web UI this page frames (or whether it can frame one at all) is
-  // decided by resolveFrameBase in ./embeddable.ts. This install's own
-  // assistant always has one — the same-origin /_opencode workspace proxy — so
-  // the native chat surface below is now reached only by a connection this app
-  // cannot serve from its own origin: a credentialed / Guardian connection, or
-  // a remote OpenCode the browser is not allowed to frame.
+  // /advanced embeds OpenCode's web UI. The locked default connection frames
+  // the static bundle at /opencode-ui/ (built from pinned source with a real
+  // base path — $lib/opencode-web.ts), whose API calls ride the same-origin
+  // session-gated /oc proxy; a user-added connection naming a framable
+  // OpenCode origin frames that origin directly. resolveFrameBase in
+  // ./embeddable.ts owns the whole decision. A connection that is neither
+  // (credentialed, Guardian, mixed-content) gets a notice pointing at /chat —
+  // the full-featured surface for those connections.
 
-  const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
-  /**
-   * OpenCode's own origin for the iframe. The locked default connection is
-   * this app's `/oc` API proxy, which cannot be framed (embeddable.ts), so the
-   * frame goes to the same OpenCode at the port the server advertises. The
-   * desktop shell answers its Basic challenge in the main process
-   * (packages/electron/src/assistant-auth.ts), so a credentialed workspace is
-   * framable there and only there.
-   */
-  const framableWorkspaceUrl = $derived(
-    resolveWorkspaceUrl(
-      runtimeContext.opencodeWorkspace,
-      { hostname: page.url.hostname },
-      active,
-      runtimeContext.clientContext.displayMode === 'electron',
-    ),
-  );
-  /**
-   * The same workspace as a top-level tab — the escape hatch where the frame
-   * is unavailable. It cannot authenticate even in the desktop shell: a new tab
-   * LEAVES the shell (`setWindowOpenHandler` → `shell.openExternal`), so it
-   * never carries the credential the main process would supply to a frame.
-   */
-  const workspaceUrl = $derived(
-    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }, active),
-  );
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
 
-  type Mode = 'checking' | 'iframe' | 'native' | 'dead';
+  type Mode = 'checking' | 'iframe' | 'unembeddable' | 'dead';
   let mode = $state<Mode>('checking');
-  // The resolved OpenCode web-UI URL for the iframe. Empty until resolve().
+  // The resolved frame URL. Empty until resolve().
   let frameUrl = $state('');
   let frameReady = $state(false);
   let frameReadyTimer: number | undefined;
@@ -80,15 +50,6 @@
     activeSession ? resolveSessionTitle(activeSession.title) : 'OpenPalm conversation',
   );
 
-  /** See embeddable.ts for the three cases this decision encodes. */
-  function frameBaseFor(conn: { baseUrl: string; hasPassword: boolean; isDefault: boolean }): string | null {
-    return resolveFrameBase(
-      conn,
-      { origin: page.url.origin, protocol: page.url.protocol },
-      framableWorkspaceUrl,
-    );
-  }
-
   function isCurrentProbe(token: number, connectionId: string): boolean {
     return token === probeToken && endpointsService.active?.id === connectionId;
   }
@@ -106,25 +67,14 @@
       return;
     }
 
-    // Where OpenCode's own web UI lives for this connection: this app's
-    // same-origin workspace proxy for the locked default, the connection
-    // itself when it names a framable OpenCode origin, otherwise this
-    // install's advertised direct-port workspace. Null when there is none.
-    const base = frameBaseFor(conn);
+    const base = resolveFrameBase(conn, { origin: page.url.origin, protocol: page.url.protocol });
     if (!base) {
-      mode = 'native';
-      // The chat store now talks to the active connection via the direct
-      // transport; make sure this connection's sessions are loaded.
-      await chat.onEndpointChanged(conn.id);
-      if (requestedSessionId) {
-        await chat.openSession(requestedSessionId);
-      }
+      mode = 'unembeddable';
       return;
     }
 
-    // Confirm the assistant answers via the direct transport, then embed. The
-    // probe goes to the CONNECTION, not to `base`: both name the same OpenCode,
-    // and the connection is the one path this browser is allowed to call.
+    // Confirm the assistant answers via the direct transport, then embed —
+    // otherwise the frame renders a dead workspace with no way to say why.
     const connectionId = conn.id;
     const sessionId = requestedSessionId;
     const health = await getTransport().probeHealth();
@@ -135,30 +85,18 @@
     }
 
     let url = base;
-    if (sessionId) {
-      // Resolve the requested session on THIS connection for its real directory
-      // (OpenCode scopes its session list by directory). A missing/foreign
-      // session falls back to the base URL rather than a broken deep link.
-      try {
-        const res = await getTransport().request('GET', `/session/${encodeURIComponent(sessionId)}`);
-        if (!isCurrentProbe(token, connectionId)) return;
-        const session: unknown = await res.json().catch(() => null);
-        const directory =
-          session && typeof session === 'object' && 'directory' in session &&
-          typeof session.directory === 'string' && session.directory.length > 0
-            ? session.directory
-            : null;
-        if (directory) {
-          url = buildAdvancedIframeUrl(base, sessionId, directory);
-          await chat.onEndpointChanged(connectionId);
-          if (!isCurrentProbe(token, connectionId)) return;
-          await chat.openSession(sessionId);
-        }
-      } catch {
-        // non-ok / unreachable → leave url = base (no broken deep link)
-      }
+    if (sessionId && base === opencodeWebShellUrl()) {
+      // Session deep link — a client-side route of the bundled app, computed
+      // entirely here (the app's server identity is this origin's /oc). Only
+      // the local bundle can be deep-linked; a remote OpenCode frames its own
+      // default view. Keep the chat store on the same session so ChatNavbar's
+      // picker and the loading title name the right thread.
+      url = opencodeWebSessionUrl(page.url.origin, sessionId);
+      await chat.onEndpointChanged(connectionId);
+      if (!isCurrentProbe(token, connectionId)) return;
+      await chat.openSession(sessionId);
+      if (!isCurrentProbe(token, connectionId)) return;
     }
-    if (!isCurrentProbe(token, connectionId)) return;
     frameUrl = url;
     mode = 'iframe';
     if (reloadFrame) reloadNonce++;
@@ -217,24 +155,6 @@
     }, 600);
   }
 
-  // ── Native chat surface wiring (credentialed fallback) ───────────────────
-  let permissionActionInFlight = $state<'once' | 'always' | 'reject' | null>(null);
-
-  async function handleSend(text: string): Promise<void> {
-    await chat.send(text);
-  }
-
-  async function handlePermissionReply(reply: 'once' | 'always' | 'reject'): Promise<void> {
-    permissionActionInFlight = reply;
-    try {
-      await chat.answerPermission(reply);
-    } finally {
-      permissionActionInFlight = null;
-    }
-  }
-
-  // Lock scroll on mount; restore on destroy. This is a CSS side-effect tied to
-  // component lifetime, not navigation, so onMount is correct here.
   onMount(() => {
     const stopWatchingConnections = onConnectionActivated(followActivatedAssistant);
     return () => {
@@ -283,64 +203,21 @@
           </div>
         {/if}
       </div>
-    {:else if mode === 'native'}
-      <!-- No OpenCode web UI this browser can frame. Never this install's own
-           assistant — that one always frames the same-origin /_opencode
-           workspace proxy — so this branch is a connection pointing elsewhere:
-           credentialed or Guardian (OpenPalm keeps Basic auth out of iframe
-           URLs, so the embedded UI could not authenticate), or a remote
-           OpenCode the browser refuses to frame. No new-tab link here: this
-           branch means resolveFrameBase fell through to a null
-           framableWorkspaceUrl, and workspaceUrl asks the same question with a
-           weaker client, so it is null too. -->
-      <div class="native-shell">
-        <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
-          <div class="native-scroll">
-            <p class="native-notice" role="note">
-              The OpenCode workspace can’t be embedded for this assistant — this conversation
-              runs on OpenPalm’s own surface.
-            </p>
-            {#if chat.entriesLoading}
-              <p class="native-status" role="status">Loading conversation…</p>
-            {:else if chat.entries.length === 0}
-              <p class="native-status" role="status">
-                Start chatting with {active?.label ?? 'your assistant'} below.
-              </p>
-            {/if}
-            {#each chat.entries as entry (entry.id)}
-              <ChatMessage {entry} />
-            {/each}
-            {#if chat.pendingAssistantText}
-              <div class="native-pending">{chat.pendingAssistantText}</div>
-            {/if}
-            {#if chat.pendingPermission}
-              <PermissionCard
-                permission={chat.pendingPermission}
-                actionInFlight={permissionActionInFlight}
-                onReply={handlePermissionReply}
-              />
-            {/if}
-            {#if chat.pendingQuestion}
-              <QuestionCard
-                question={chat.pendingQuestion}
-                onOption={(answer) => void chat.answerQuestion(answer)}
-                onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
-                onDraft={(index, value) => chat.setQuestionAnswer(index, value)}
-                onSubmit={() => void chat.answerQuestion()}
-                onReject={() => void chat.rejectQuestion()}
-              />
-            {/if}
-          </div>
-          {#if chat.error}
-            <div class="alert error" role="alert">{chat.error}</div>
-          {/if}
-          <ChatInput
-            sending={chat.sending}
-            questionPending={chat.pendingQuestion?.status === 'pending'}
-            onSend={handleSend}
-            onStop={() => void chat.stopTurn()}
-          />
-        </section>
+    {:else if mode === 'unembeddable'}
+      <!-- A connection this page cannot frame: credentialed or Guardian
+           (OpenPalm keeps Basic auth out of iframe URLs, so an embedded UI
+           could not authenticate), or a remote OpenCode the browser refuses
+           (mixed content). /chat is the full-featured surface for these. -->
+      <div class="advanced-status" role="status">
+        <h2>This assistant can’t be embedded here</h2>
+        <p>
+          {active?.label ?? 'This connection'} can’t host the OpenCode workspace in a frame.
+          Chat works with every connection.
+        </p>
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- target is built by typed internal navigation helpers -->
+        <a class="btn btn-primary btn-lg" href={buildChatPath(chat.activeSessionId, active?.id)}
+          >Continue in Chat</a
+        >
       </div>
     {:else}
       <div class="advanced-status" role={mode === 'dead' ? 'alert' : 'status'} aria-live="polite">
@@ -353,12 +230,6 @@
             {reconnecting ? 'Reconnecting…' : 'Reconnect'}
           </button>
           <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
-          {#if workspaceUrl}
-            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
-            <a class="workspace-link" href={workspaceUrl} target="_blank" rel="noopener noreferrer"
-              >Open the OpenCode workspace in a new tab</a
-            >
-          {/if}
         {/if}
       </div>
     {/if}
@@ -431,79 +302,6 @@
     to { transform: rotate(360deg); }
   }
 
-  /* min-width: 0 on both: a flex item's default min-width is its MIN-CONTENT
-     width, so one unbreakable run of text in a message would otherwise push
-     this column past the viewport (same rule as ConversationFrame's content). */
-  .native-shell {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-  }
-  .native-chat {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .native-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-sp-3);
-    padding: var(--s-sp-4);
-    max-width: 52rem;
-    width: 100%;
-    margin: 0 auto;
-  }
-  .native-status {
-    color: var(--s-ink-2);
-    text-align: center;
-    margin: var(--s-sp-6) 0;
-  }
-  /* The composer sits directly under the scrolling thread here (the chat page
-     nests it inside ChatFooter, which supplies this separation). Without a
-     rule the last line of a message reads as part of the input. */
-  .native-chat :global(.s-composer) {
-    border-top: var(--s-hair) solid var(--s-line);
-    padding: var(--s-sp-3) var(--s-sp-4);
-  }
-  .native-notice {
-    margin: 0 0 var(--s-sp-2);
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    line-height: 1.5;
-    text-align: center;
-    overflow-wrap: anywhere;
-  }
-  .workspace-link {
-    color: var(--s-ink-2);
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-    overflow-wrap: anywhere;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-  }
-  .native-pending {
-    white-space: pre-wrap;
-    color: var(--s-ink-2);
-  }
-
-  .alert.error {
-    margin: 0 auto var(--s-sp-2);
-    max-width: 52rem;
-    width: 100%;
-    padding: var(--s-sp-3);
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
-    color: var(--s-seal);
-    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
-  }
-
   .advanced-status {
     flex: 1;
     display: flex;
@@ -520,10 +318,6 @@
   .advanced-status p { margin: 0; max-width: 26rem; color: var(--s-ink-2); line-height: 1.55; }
   .advanced-status .status-line { color: var(--s-ink-2); }
   .advanced-status .btn { margin-top: var(--s-sp-3); text-decoration: none; }
-
-  @media (max-width: 900px) {
-    .native-shell { flex-direction: column; }
-  }
 
   @media (prefers-reduced-motion: reduce) {
     .loading-mark { animation: none; }

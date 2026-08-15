@@ -94,6 +94,10 @@ bun run portal:slack:dev   # Runs slack portal dev server
 # Dev environment setup
 ./scripts/dev-setup.sh --seed-env       # Creates .dev/ dirs, seeds configs
 
+# OpenCode web-UI bundle (generated, gitignored — needed for /advanced's frame;
+# builds from source pinned to the runtime's opencode-ai version)
+./scripts/opencode-web/build.sh
+
 # Setup wizard (dev)
 bun run wizard:dev                      # Runs `install --no-start` in a throwaway temp OP_HOME (OP_IMAGE_TAG=dev)
 ```

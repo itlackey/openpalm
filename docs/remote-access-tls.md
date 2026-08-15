@@ -16,7 +16,7 @@ This guide fronts two separate services with operator-managed HTTPS:
 Do not expose the host admin UI or Guardian's principal-admin listener.
 
 OpenCode is **not** a third service to front. The Advanced chat surface reaches
-its web UI through the UI process's own origin (`/_opencode`), authenticated by
+its web UI through the UI process's own origin (`/opencode-ui` + `/oc`), authenticated by
 the same session, so whatever you point at the UI port carries the workspace
 with it — no extra route, no second certificate, and nothing that depends on
 the assistant's own port being published at all. The same is true of Tailscale

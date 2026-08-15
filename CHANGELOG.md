@@ -11,18 +11,32 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **The Advanced chat surface works through a reverse proxy, over a tailnet,
   and on a phone.** It framed OpenCode at its own published origin —
-  `http://<the host you typed>:${OP_ASSISTANT_PORT}` — which is an address that
-  only exists for a browser on the machine that published the port. So the
-  workspace was dead behind an HTTPS proxy (an https page cannot frame plain
-  http), dead for a LAN or tailnet client when that port is loopback-published,
-  and dead in every topology once `OPENCODE_AUTH` was on, because an iframe
-  cannot answer a Basic challenge. Advanced now frames `/_opencode` on the
-  origin the browser already loaded, authenticated by the OpenPalm session it
-  already holds, with OpenCode's own credential attached server-side. One
-  ordinary proxy in front of OpenPalm carries the workspace with it — Caddy,
-  Tailscale Serve, Funnel, or anything else, with no provider-specific route.
-  The direct-port frame stays as the fallback for connections this process
-  cannot serve from its own origin.
+  `http://<the host you typed>:${OP_ASSISTANT_PORT}` — an address that only
+  exists for a browser on the machine that published the port. So the workspace
+  was dead behind an HTTPS proxy (an https page cannot frame plain http), dead
+  for a LAN or tailnet client when that port is loopback-published, and dead in
+  every topology once `OPENCODE_AUTH` was on, because an iframe cannot answer a
+  Basic challenge. `/advanced` now frames OpenCode's web UI built from source —
+  pinned to the exact version of the bundled `opencode` runtime — with a real
+  base path, served as plain static files at `/opencode-ui/` on the origin the
+  browser already loaded (`scripts/opencode-web/build.sh`; the bundle is
+  generated at build time, never committed). Every API call the app makes rides
+  the existing session-gated `/oc` proxy, which attaches OpenCode's credential
+  server-side. One ordinary proxy in front of OpenPalm carries the workspace
+  with it — Caddy, Tailscale Serve, Funnel, or anything else, with no
+  provider-specific route, no second password, and no runtime rewriting of any
+  kind.
+
+### Removed
+
+- **The direct-port workspace machinery.** The `opencodeWorkspace` runtime
+  advertisement, the reachability math that composed a frame URL from the
+  visited host and the published assistant port, and the desktop shell's
+  main-process Basic-auth answerer are gone — the static bundle needs none of
+  them, in any topology. `/advanced`'s embedded duplicate chat surface is also
+  gone: a connection that cannot be framed (credentialed, Guardian,
+  mixed-content) now gets an honest notice and a link to Chat, which is the
+  full-featured surface for those connections and always was.
 
 ### Fixed
 

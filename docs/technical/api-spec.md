@@ -74,7 +74,7 @@ transparent proxy routes may use their native upstream shape instead.
 | `/api/connections/pairing` | Mint a one-time Guardian direct-principal pairing code | Session plus host stack-write capability |
 | `/api/host/*` | Docker, lifecycle, addons, providers, secrets, versions, recovery, and diagnostics | Session plus route-specific host capability |
 | `/oc/*` | Same-origin pass-through to **this process's own** OpenCode API | Session; not to be confused with Guardian's `/oc/*` below |
-| `/_opencode/*`, `/assets/*` | Same-origin pass-through to the same OpenCode's **web UI**, framed by `/advanced` | Session; `/assets/*` is GET-only |
+| `/opencode-ui/*` | OpenCode's web UI as static files (framed by `/advanced`); its API calls ride `/oc` | Public shell; the data behind it is session-gated at `/oc` |
 | `/voice/*` | Same-origin pass-through to local voice | Session; `503` when unavailable |
 | `/guardian/health` | Guardian reachability probe | Public |
 
@@ -127,13 +127,10 @@ They happen to share a path segment because both are transparent 1:1 OpenCode
 proxies; neither forwards to the other, and a client authenticated to one has
 no standing on the other.
 
-A third path, this UI's `/_opencode/*`, reaches the SAME upstream as this UI's
-`/oc/*` under the same session check — the request half is literally the same
-module (`$lib/server/opencode-proxy.ts`). It is separate only because it serves
-OpenCode's **web UI** rather than its API, which means the HTML document has to
-be taught it is not at the origin root, and the `/assets/*` bundle it pulls has
-to be reachable at that root. `$lib/server/opencode-workspace.ts` is the single
-place that mechanism is described.
+The web UI that frames this upstream (`/opencode-ui/*`) is NOT a proxy at all:
+it is a static build of OpenCode's app, produced from pinned source with a real
+base path (`scripts/opencode-web/build.sh`), whose API calls go through this
+UI's `/oc/*`.
 
 ## Guardian HTTP Surfaces
 

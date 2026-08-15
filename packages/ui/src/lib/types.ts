@@ -57,15 +57,6 @@ export type ServerRuntimeContext = {
    * the "OpenPalm Voice" speech provider.
    */
   voice?: { url: string };
-  /**
-   * Where OpenCode's own web UI is published by this install, when a browser
-   * can reach it: the host-side port from the compose publish, whether that
-   * publish is loopback-only, and whether OpenCode requires Basic auth there
-   * (only the desktop shell can answer that challenge). `/advanced` composes
-   * the address from the host the browser actually visited (see
-   * computeOpencodeWorkspace).
-   */
-  opencodeWorkspace?: { port: number; loopbackOnly: boolean; requiresAuth: boolean };
 };
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';

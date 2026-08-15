@@ -8,6 +8,10 @@ CLAUDE.md
 packages/ui/.svelte-kit/
 packages/ui/build/
 packages/ui/dist/
+# Built OpenCode web UI bundle (scripts/opencode-web/build.sh) — generated
+# from pinned source, never committed.
+packages/ui/static/opencode-ui/
+.opencode-web-build/
 packages/client/build/
 packages/ui/undefined/
 packages/ui/.env

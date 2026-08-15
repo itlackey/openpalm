@@ -7,20 +7,14 @@
  * secrets — mode, capability names, versions, and route pointers only.
  */
 import { json } from '@sveltejs/kit';
-import {
-  computeOpencodeWorkspace,
-  computeServerRuntimeContext,
-  computeVoiceRuntime,
-} from '$lib/server/features.js';
+import { computeServerRuntimeContext, computeVoiceRuntime } from '$lib/server/features.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = (event) => {
   const ctx = computeServerRuntimeContext(event);
   const voice = computeVoiceRuntime();
-  const opencodeWorkspace = computeOpencodeWorkspace();
   return json({
     ...ctx,
     ...(voice ? { voice } : {}),
-    ...(opencodeWorkspace ? { opencodeWorkspace } : {}),
   });
 };

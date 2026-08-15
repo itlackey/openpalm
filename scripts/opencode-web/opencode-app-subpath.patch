@@ -1,0 +1,39 @@
+diff --git a/packages/app/src/app.tsx b/packages/app/src/app.tsx
+index f47c432..3d76aab 100644
+--- a/packages/app/src/app.tsx
++++ b/packages/app/src/app.tsx
+@@ -579,7 +579,7 @@ export function AppInterface(props: {
+           <ConnectionGate disableHealthCheck={props.disableHealthCheck} startup={props.startup}>
+             <Show when={useSettings().general.newLayoutDesigns().toString()} keyed>
+               <Dynamic
+-                component={props.router ?? Router}
++                component={props.router ?? ((p: BaseRouterProps) => <Router base={import.meta.env.BASE_URL} {...p} />)}
+                 root={(routerProps) => (
+                   <TabsProvider>
+                     <PermissionProvider>
+diff --git a/packages/app/src/entry.tsx b/packages/app/src/entry.tsx
+index c41c1bb..65d5855 100644
+--- a/packages/app/src/entry.tsx
++++ b/packages/app/src/entry.tsx
+@@ -100,6 +100,8 @@ if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
+ }
+ 
+ const getCurrentUrl = () => {
++  if (import.meta.env.VITE_OPENCODE_SERVER_URL)
++    return new URL(import.meta.env.VITE_OPENCODE_SERVER_URL, location.origin).href.replace(/\/$/, "")
+   if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
+   if (import.meta.env.DEV)
+     return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
+diff --git a/packages/app/src/utils/server-protocol.ts b/packages/app/src/utils/server-protocol.ts
+index 27b8dc2..c2958fc 100644
+--- a/packages/app/src/utils/server-protocol.ts
++++ b/packages/app/src/utils/server-protocol.ts
+@@ -11,7 +11,7 @@ function headers(server: ServerConnection.HttpBase) {
+ }
+ 
+ async function probe(server: ServerConnection.HttpBase, fetch: typeof globalThis.fetch, path: string) {
+-  const response = await fetch(new URL(path, server.url), {
++  const response = await fetch(new URL(`${server.url.replace(/\/$/, "")}${path}`), {
+     headers: headers(server),
+     signal: AbortSignal.timeout(5_000),
+   })

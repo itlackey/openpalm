@@ -328,7 +328,6 @@ import {
   isFatalMainFrameLoadFailure,
   isOwnOriginUrl,
   openLocalApp,
-  resolveAssistantUrl,
   setLaunchOnLogin,
   shouldWarnBeforeQuitDuringDeploy,
   showNotification,
@@ -391,44 +390,6 @@ describe('buildUIServerEnv', () => {
     // lib resolver, on demand.
     const env = buildUIServerEnv('/home/user/.openpalm', 3880);
     expect(env.OP_OPENCODE_URL).toBeUndefined();
-  });
-});
-
-// ── resolveAssistantUrl (E1) ─────────────────────────────────────────────────
-// E1: three divergent env-resolution chains (Electron process-env-only,
-// CLI's persisted-stack merge, the container entrypoint's own inline logic)
-// produced a browser-breaking http://0.0.0.0:3800 seed whenever the admin
-// LAN-exposure toggle set OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 — this exact test
-// file used to PIN that broken 0.0.0.0 output (see git history). Electron now
-// delegates to the ONE shared `resolveAssistantEndpoint(homeDir)` in
-// @openpalm/lib (also used by the CLI/container writers), which always
-// normalizes wildcard bind hosts to 127.0.0.1. The precedence chain itself is
-// exhaustively tested in packages/lib/src/control-plane/assistant-endpoint.test.ts;
-// this suite only pins the DELEGATION — main.ts must not re-derive the chain
-// or re-introduce a raw wildcard host locally.
-describe('resolveAssistantUrl', () => {
-  afterEach(() => {
-    vi.mocked(lib.resolveAssistantEndpoint).mockReset();
-  });
-
-  it('delegates to lib.resolveAssistantEndpoint(homeDir) instead of re-deriving the precedence chain', () => {
-    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://127.0.0.1:3800');
-    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://127.0.0.1:3800');
-    expect(lib.resolveAssistantEndpoint).toHaveBeenCalledWith('/home/user/.openpalm');
-  });
-
-  it('never re-wraps or mutates the resolver result — whatever lib returns is returned as-is (lib owns normalization)', () => {
-    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://example.test:9999');
-    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:9999');
-  });
-
-  it('CANNOT produce the pre-fix http://0.0.0.0:PORT seed (E1) — the resolver is the only source of truth and it always normalizes', () => {
-    // Even if the resolver were somehow asked to return a wildcard host, this
-    // pins that main.ts performs no local bind-address-to-URL derivation that
-    // could bypass lib's normalization (the pre-fix bug lived entirely in
-    // main.ts's own stack.env-parsing logic, since removed).
-    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://127.0.0.1:4800');
-    expect(resolveAssistantUrl('/home/user/.openpalm')).not.toContain('0.0.0.0');
   });
 });
 

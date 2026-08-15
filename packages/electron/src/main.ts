@@ -26,7 +26,6 @@ import {
   checkExistingUiInstance,
   readyOrChildExit,
   resolveUiListenEnv,
-  resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
   applyHomeSeed,
   createState,
@@ -44,7 +43,6 @@ import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
 import { TrayController } from './tray.js';
 import { configureMediaPermissions, requestMicrophoneAccess } from './permissions.js';
-import { configureAssistantWorkspaceAuth } from './assistant-auth.js';
 import {
   getLaunchOnLoginStatus,
   setLaunchOnLogin,
@@ -230,23 +228,6 @@ export function getRecentStderr(maxLines = 40): string {
 }
 
 // ── Pure helpers (exported for testing) ──────────────────────────────────────
-
-/**
- * Resolve the assistant (OpenCode) URL the UI proxy should target.
- *
- * E1 fix: this used to re-derive its own precedence chain (env override,
- * else raw OP_ASSISTANT_BIND_ADDRESS/PORT from stack.env) and could produce
- * `http://0.0.0.0:3800` whenever the admin LAN-exposure toggle set
- * OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 — a URL no browser can fetch. The CLI and
- * container entrypoint each had their own slightly different chain too
- * ("three divergent env/port resolution chains", review finding E1).
- * Delegate to the ONE shared resolver in @openpalm/lib instead, which merges
- * the persisted stack.env under process.env and ALWAYS normalizes a wildcard
- * bind host to 127.0.0.1 before returning.
- */
-export function resolveAssistantUrl(homeDir: string): string {
-  return resolveAssistantEndpoint(homeDir);
-}
 
 /**
  * Build the environment object to pass to the UI Node child process.
@@ -1120,10 +1101,6 @@ if (!gotSingleInstanceLock) {
     if (!uiServerStarted) return;
 
     configureMediaPermissions();
-    // Must be installed before the window loads: /advanced frames OpenCode's
-    // own origin, and with `assistantDirect` on that frame is a 401 nothing
-    // in the renderer can answer.
-    configureAssistantWorkspaceAuth(resolveOpenPalmHome());
     await openWindow();
     createTray();
     startDeployCompletionWatch();

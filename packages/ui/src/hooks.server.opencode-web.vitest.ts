@@ -1,17 +1,17 @@
 /**
- * The same-origin OpenCode workspace proxy has to survive three guards that
- * every other document navigation goes through, and it has to be framable by
- * this very origin. Each of the four expectations below is a way `/advanced`
+ * The framed OpenCode bundle's SPA-fallback paths must survive the document
+ * guards, and be framable by this origin. Each expectation is a way /advanced
  * renders a dead panel instead of a workspace:
  *
  *   - landing redirect → the frame shows OpenPalm inside OpenPalm;
- *   - /login bounce → the login page is framed, and the app's own
- *     X-Frame-Options refuses it ("refused to connect") instead of the route
- *     answering 401 the page can report;
- *   - X-Frame-Options: DENY → refuses even a same-origin frame, which is the
- *     one this feature is built on.
+ *   - /login bounce → a login page inside the frame, which the app's own
+ *     X-Frame-Options then refuses ("refused to connect");
+ *   - X-Frame-Options: DENY → refuses even the same-origin frame this
+ *     feature is built on.
  *
- * Idiom + fixtures: hooks.server.pwa-assets.vitest.ts.
+ * Real files under /opencode-ui/ are served by the static handler before these
+ * hooks run; what this covers is the deep-link paths the SPA-fallback route
+ * answers. Idiom + fixtures: hooks.server.pwa-assets.vitest.ts.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,12 +32,8 @@ import { handle, _resetLaunchCache } from './hooks.server.js';
 /** compose ps --format json output for a single healthy running service. */
 const RUNNING_PS = '{"Service":"assistant","State":"running","Health":"healthy"}\n';
 
-/** The document, a session deep link, and the asset namespace it loads from. */
-const WORKSPACE_PATHS = [
-  '/_opencode',
-  '/_opencode/L3dvcms/session/ses_123',
-  '/assets/index-BtdZscgB.js',
-];
+/** The shell and a session deep link — what the iframe actually navigates. */
+const WEB_PATHS = ['/opencode-ui', '/opencode-ui/server/aHR0cA/session/ses_123'];
 
 function makeEvent(path: string, accept = 'text/html'): RequestEvent {
   const url = new URL(`http://localhost:3880${path}`);
@@ -65,7 +61,7 @@ async function handleOutcome(event: RequestEvent): Promise<unknown> {
   }
 }
 
-describe('hooks.server — the OpenCode workspace proxy is framable and never redirected', () => {
+describe('hooks.server — the OpenCode bundle paths are framable and never redirected', () => {
   let home = '';
   let prevHome: string | undefined;
 
@@ -73,7 +69,7 @@ describe('hooks.server — the OpenCode workspace proxy is framable and never re
     process.env.PORT = '3880';
     process.env.OP_ENABLE_ADMIN = '1';
     prevHome = process.env.OP_HOME;
-    home = mkdtempSync(join(tmpdir(), 'op-hooks-workspace-'));
+    home = mkdtempSync(join(tmpdir(), 'op-hooks-opencode-web-'));
     process.env.OP_HOME = home;
     _resetLaunchCache();
     const state = resetState('test-admin-pw');
@@ -100,18 +96,15 @@ describe('hooks.server — the OpenCode workspace proxy is framable and never re
     expect((outcome as { location: string }).location).toMatch(/^\/login\?/);
   });
 
-  test.each(WORKSPACE_PATHS)(
-    '%s reaches its route with no redirect, even unauthenticated',
-    async (path) => {
-      // The route itself calls requireAdmin and answers 401 — a JSON error the
-      // framing page can act on, unlike a login page it cannot display.
-      const outcome = await handleOutcome(makeEvent(path));
-      expect(outcome, `${path} must reach resolve(), not redirect`).toBeInstanceOf(Response);
-      expect((outcome as Response).status).toBe(200);
-    },
-  );
+  test.each(WEB_PATHS)('%s reaches its route with no redirect, even unauthenticated', async (path) => {
+    // The shell is public like any static asset; everything it can reach
+    // flows through /oc, which enforces the session itself.
+    const outcome = await handleOutcome(makeEvent(path));
+    expect(outcome, `${path} must reach resolve(), not redirect`).toBeInstanceOf(Response);
+    expect((outcome as Response).status).toBe(200);
+  });
 
-  test.each(WORKSPACE_PATHS)('%s is framable by this same origin', async (path) => {
+  test.each(WEB_PATHS)('%s is framable by this same origin', async (path) => {
     const outcome = (await handleOutcome(makeEvent(path))) as Response;
     expect(outcome.headers.get('X-Frame-Options')).toBe('SAMEORIGIN');
   });
@@ -122,11 +115,7 @@ describe('hooks.server — the OpenCode workspace proxy is framable and never re
   });
 
   test('a path that merely starts with the same letters is not exempt', async () => {
-    // `/assetsomething` and `/_opencodex` must not inherit the exemption —
-    // startsWith on a bare prefix is how that kind of hole gets opened.
-    for (const path of ['/_opencodex', '/assetsomething']) {
-      const outcome = (await handleOutcome(makeEvent(path))) as Response;
-      expect(outcome, path).not.toBeInstanceOf(Response);
-    }
+    const outcome = await handleOutcome(makeEvent('/opencode-uister'));
+    expect(outcome).not.toBeInstanceOf(Response);
   });
 });
