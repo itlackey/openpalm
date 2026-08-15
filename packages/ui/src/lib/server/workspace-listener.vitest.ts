@@ -264,11 +264,20 @@ describe('the proxy is transparent in both directions', () => {
 });
 
 describe('protocol upgrades tunnel too — OpenCode’s terminal is a WebSocket', () => {
-  /** Speak the raw handshake, since fetch cannot: returns the status line and any payload. */
+  /**
+   * Speak the raw handshake, since fetch cannot: returns everything received.
+   *
+   * Settles on `until` (or the peer closing), never on a fixed window. A blind
+   * timer made this flaky on a loaded runner — the handshake alone can outlast
+   * a few hundred milliseconds there, and the splice this asserts costs a
+   * further two round trips through the proxy.
+   */
   function upgradeRequest(
     path: string,
     headers: Record<string, string>,
-    send?: string,
+    options: { sendOnUpgrade?: string; until: (received: string) => boolean } = {
+      until: (received) => received.includes('\r\n\r\n'),
+    },
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const { port } = new URL(workspaceOrigin);
@@ -283,23 +292,41 @@ describe('protocol upgrades tunnel too — OpenCode’s terminal is a WebSocket'
           ...Object.entries(headers).map(([key, value]) => `${key}: ${value}`),
         ];
         socket.write(`${lines.join('\r\n')}\r\n\r\n`);
-        if (send) setTimeout(() => socket.write(send), 20);
       });
+
       let received = '';
-      socket.on('data', (chunk: Buffer) => {
-        received += chunk.toString();
-      });
-      socket.on('error', reject);
-      setTimeout(() => {
+      let sent = false;
+      const settle = (): void => {
+        clearTimeout(ceiling);
         socket.destroy();
         resolve(received);
-      }, 250);
+      };
+      // A ceiling only so a genuine hang fails as an assertion on what DID
+      // arrive, rather than as an opaque test timeout.
+      const ceiling = setTimeout(settle, 8000);
+
+      socket.on('data', (chunk: Buffer) => {
+        received += chunk.toString();
+        // Write only once the tunnel is actually up: before the 101 there is
+        // nothing on the far side to echo it back.
+        if (options.sendOnUpgrade && !sent && received.includes('101 Switching Protocols')) {
+          sent = true;
+          socket.write(options.sendOnUpgrade);
+        }
+        if (options.until(received)) settle();
+      });
+      socket.on('close', settle);
+      socket.on('error', reject);
     });
   }
 
   test('a signed-in client is spliced through to the upstream, credential attached', async () => {
     upstream.on('upgrade', onUpgrade);
-    const received = await upgradeRequest('/api/pty', { cookie: `op_session=${VALID_SESSION}` }, 'ping');
+    const received = await upgradeRequest(
+      '/api/pty',
+      { cookie: `op_session=${VALID_SESSION}` },
+      { sendOnUpgrade: 'ping', until: (r) => r.includes('echo:ping') },
+    );
 
     expect(received).toContain('HTTP/1.1 101 Switching Protocols');
     // Bytes cross in BOTH directions after the handshake — a splice, not a
@@ -312,15 +339,15 @@ describe('protocol upgrades tunnel too — OpenCode’s terminal is a WebSocket'
     expect(upgradeHandshakes[0]?.host).toBe(new URL(upstreamUrl).host);
     expect(upgradeHandshakes[0]?.['sec-websocket-key']).toBe('dGhlIHNhbXBsZSBub25jZQ==');
     expect(upgradeHandshakes[0]?.cookie).toBeUndefined();
-  });
+  }, 15000);
 
   test('an unauthenticated upgrade is refused before any socket is opened', async () => {
     upstream.on('upgrade', onUpgrade);
-    const received = await upgradeRequest('/api/pty', {});
+    const received = await upgradeRequest('/api/pty', {}, { until: (r) => r.includes('\r\n\r\n') });
 
     expect(received).toContain('401 Unauthorized');
     expect(upgradeHandshakes).toHaveLength(0);
-  });
+  }, 15000);
 });
 
 describe('a client that hangs up takes nothing down with it', () => {
