@@ -303,3 +303,50 @@ describe('v7 → v8: the removed chat addon', () => {
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 });
+
+describe('v8 → v9: the retired OPENCODE_AUTH row', () => {
+  /** A stamped v8 home whose stack.env is exactly `content`. */
+  function seedV8Home(content: string): void {
+    mkdirSync(dirname(stackEnvFile(homeDir)), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), content);
+    writeHomeSchemaVersion(homeDir, 8);
+  }
+  const env = () => readFileSync(stackEnvFile(homeDir), 'utf-8');
+
+  test('sweeps the row and preserves everything else byte-for-byte', () => {
+    // Auth is always on now; the row is inert (nothing interpolates it) but a
+    // present-but-ignored OPENCODE_AUTH=false reads as the knob that disables
+    // auth, so it must not linger.
+    seedV8Home('# operator comment\nOP_SETUP_COMPLETE=true\nOPENCODE_AUTH=false\nOP_UI_PORT=3800\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).not.toMatch(/OPENCODE_AUTH/);
+    expect(env()).toContain('# operator comment\n');
+    expect(env()).toMatch(/^OP_SETUP_COMPLETE=true$/m);
+    expect(env()).toMatch(/^OP_UI_PORT=3800$/m);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('sweeps a true row the same as a false one', () => {
+    seedV8Home('OPENCODE_AUTH=true\nOP_SETUP_COMPLETE=true\n');
+    expect(runHomeMigrations(homeDir)).toBe(true);
+    expect(env()).not.toMatch(/OPENCODE_AUTH/);
+  });
+
+  test('a home without the row is a no-op that still stamps current', () => {
+    seedV8Home('OP_SETUP_COMPLETE=true\n');
+    // Nothing changed on disk beyond the stamp, so the run reports false.
+    expect(runHomeMigrations(homeDir)).toBe(false);
+    expect(env()).toBe('OP_SETUP_COMPLETE=true\n');
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('a second run is byte-identical (idempotent)', () => {
+    seedV8Home('OPENCODE_AUTH=false\nOP_SETUP_COMPLETE=true\n');
+    expect(runHomeMigrations(homeDir)).toBe(true);
+    const after = env();
+    expect(runHomeMigrations(homeDir)).toBe(false);
+    expect(env()).toBe(after);
+  });
+});

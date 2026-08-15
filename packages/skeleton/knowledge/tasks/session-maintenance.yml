@@ -28,18 +28,13 @@ command:
     set -eu
     CUTOFF=$(( $(date +%s) - 30*24*60*60 ))
 
-    # Match the Assistant healthcheck's auth handling (core.compose.yml): when
-    # direct Assistant auth is enabled, an unauthenticated
-    # request gets a 401 — under `curl -f` that exits non-zero and the task
-    # silently deletes nothing forever.
+    # OpenCode Basic auth is always on (core.compose.yml healthcheck reads the
+    # same secret): an unauthenticated request 401s, and under `curl -f` that
+    # exits non-zero and the task silently deletes nothing forever. Readability
+    # gated so the task still works against a legacy auth-off server.
     AUTH=""
-    case "${OPENCODE_AUTH:-false}" in
-      1|true|TRUE|True)
-        PW_FILE="${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}"
-        [ -r "$PW_FILE" ] || { echo "OPENCODE_AUTH is on but $PW_FILE is unreadable" >&2; exit 1; }
-        AUTH="-u ${OPENCODE_SERVER_USERNAME:-opencode}:$(cat "$PW_FILE")"
-        ;;
-    esac
+    PW_FILE="${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}"
+    [ -r "$PW_FILE" ] && AUTH="-u ${OPENCODE_SERVER_USERNAME:-opencode}:$(cat "$PW_FILE")"
 
     # `time.archived` present == OpenCode considers the session finished. The
     # supported host-side path (computeRetentionPlan) defaults requireArchived

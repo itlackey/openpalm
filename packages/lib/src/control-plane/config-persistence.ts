@@ -122,13 +122,11 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
  *
  * Exposure is preserved exactly, using the cascade's own precedence (an
  * explicit per-service key beats the root — see `readAccessToggles`). Two
- * values are DERIVED rather than copied, because the flat model makes them
- * consequences of a toggle rather than independent settings:
- *   - `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving
- *     a published guardian port answering 404 to everything;
- *   - `OPENCODE_AUTH`, which now tracks "is OpenCode published" exactly. A
- *     legacy row with auth on but OpenCode on loopback is relaxed to no auth
- *     on a listener nothing off-box can reach.
+ * One value is DERIVED rather than copied, because the flat model makes it a
+ * consequence of a toggle rather than an independent setting:
+ * `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving a
+ * published guardian port answering 404 to everything. (OpenCode's own Basic
+ * auth is no longer a row at all — it is always on.)
  */
 export function migrateLegacyBindAddresses(homeDir: string): boolean {
   const path = legacyKnowledgeStackEnvFile(homeDir);
@@ -193,6 +191,32 @@ export function migrateConsolidatedDefaultPorts(homeDir: string): boolean {
     assistant: STACK_DEFAULTS.ports.assistant,
     ui: STACK_DEFAULTS.ports.ui,
   });
+  return true;
+}
+
+/**
+ * Strip the retired `OPENCODE_AUTH` row from the consolidated `state/stack.env`.
+ *
+ * OpenCode's Basic auth is always on now — nothing interpolates or reads the
+ * key anymore, so an inherited row is inert. It is swept anyway because a
+ * present-but-ignored `OPENCODE_AUTH=false` beside the live access rows reads
+ * as the knob that disables auth, and an operator debugging a 401 would edit
+ * it and watch nothing happen. One-shot via the home-schema record (v8 → v9);
+ * the version bump also arms `checkHomeSchemaSupported` against the binaries
+ * that still derive the key.
+ */
+export function migrateRetiredOpencodeAuthKey(homeDir: string): boolean {
+  const path = stackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  if (!Object.hasOwn(parseEnvContent(content), "OPENCODE_AUTH")) return false;
+
+  const next = removeEnvKey(content, "OPENCODE_AUTH");
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn("Removed the retired OPENCODE_AUTH row from state/stack.env (auth is always on)");
   return true;
 }
 

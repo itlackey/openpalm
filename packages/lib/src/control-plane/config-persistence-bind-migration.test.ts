@@ -33,7 +33,6 @@ const FLAT_ALL_CLOSED = [
   'OP_ASSISTANT_BIND_ADDRESS=127.0.0.1',
   'OP_GUARDIAN_BIND_ADDRESS=127.0.0.1',
   'OP_API_BIND_ADDRESS=127.0.0.1',
-  'OPENCODE_AUTH=false',
   'GUARDIAN_DIRECT_INGRESS=false',
   '',
 ].join('\n');
@@ -75,10 +74,12 @@ describe('legacy bind address migration', () => {
     });
   });
 
-  test('a published OpenCode keeps its auth', () => {
+  test('a published OpenCode keeps its bind — auth is no longer a row', () => {
     withStackEnv('OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n', (homeDir, read) => {
       expect(migrateLegacyBindAddresses(homeDir)).toBe(true);
-      expect(read().OPENCODE_AUTH).toBe('true');
+      const migrated = read();
+      expect(migrated.OP_ASSISTANT_BIND_ADDRESS).toBe('0.0.0.0');
+      expect(migrated.OPENCODE_AUTH).toBeUndefined();
     });
   });
 
@@ -121,7 +122,6 @@ describe('legacy bind address migration', () => {
       const migrated = read();
       expect(migrated.OP_UI_BIND_ADDRESS).toBe('0.0.0.0');
       expect(migrated.OP_ASSISTANT_BIND_ADDRESS).toBe('127.0.0.1');
-      expect(migrated.OPENCODE_AUTH).toBe('false');
       expect(migrated.GUARDIAN_DIRECT_INGRESS).toBe('false');
     });
   });

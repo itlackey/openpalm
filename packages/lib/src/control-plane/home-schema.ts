@@ -38,6 +38,7 @@ import {
   migrateConsolidatedDefaultPorts,
   migrateLegacyBindAddresses,
   migrateLegacyDefaultPorts,
+  migrateRetiredOpencodeAuthKey,
 } from './config-persistence.js';
 import { migrateChatAddonRemoval, migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
@@ -208,6 +209,12 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // pruneRemovedAddonState strips the now-unknown id without substitution —
   // ordering guaranteed because applyHome runs migrations first.
   { since: 7, run: migrateChatAddonRemoval },
+  // OpenCode Basic auth is always on; the OPENCODE_AUTH row is retired. The
+  // row is already inert (nothing interpolates or reads it), so this is
+  // hygiene — plus the version bump that makes checkHomeSchemaSupported
+  // refuse older binaries, whose resolvers would stop attaching auth against
+  // always-authenticated containers.
+  { since: 8, run: migrateRetiredOpencodeAuthKey },
 ];
 
 /**

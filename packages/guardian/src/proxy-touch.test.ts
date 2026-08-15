@@ -75,6 +75,8 @@ describe('handleProxy session-scoped requests touch session_owners.last_used_at 
     dbPath = join(tmpDir, 'state.db');
     const secretFile = join(tmpDir, 'api-secret');
     writeFileSync(secretFile, 'topsecret');
+    const opencodePasswordFile = join(tmpDir, 'opencode-password');
+    writeFileSync(opencodePasswordFile, 'upstream-key\n');
     // A second, distinct portal principal — used to pin that the ownsSession
     // gate (proxy.ts) runs BEFORE touchSessionOwner, so a non-owning
     // authenticated principal is denied AND never refreshes last_used_at
@@ -112,6 +114,9 @@ describe('handleProxy session-scoped requests touch session_owners.last_used_at 
         GUARDIAN_STATE_DB_PATH: dbPath,
         GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
         OP_ASSISTANT_URL: `http://127.0.0.1:${stub.port}`,
+        // OpenCode auth is always on: startGuardian asserts the upstream
+        // credential at boot, so the harness must grant the secret file.
+        OPENCODE_SERVER_PASSWORD_FILE: opencodePasswordFile,
         PORTAL_API_SECRET_FILE: secretFile,
         PORTAL_OTHER_SECRET_FILE: otherSecretFile,
         // Disable the periodic sweep — irrelevant to this harness and would

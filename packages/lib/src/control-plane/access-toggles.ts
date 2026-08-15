@@ -43,9 +43,10 @@ export type AccessToggles = {
   networkAccess: boolean;
   /**
    * Advanced: publish OpenCode's API directly, for a second desktop app or a
-   * third-party OpenCode client. Always paired with generated Basic auth — see
-   * {@link resolveAccessEnv}. The built-in client never uses this path, so
-   * enabling it puts no credential or CORS grant on the default route.
+   * third-party OpenCode client. Bind address only — OpenCode's generated
+   * Basic auth is always on regardless (clients use the system key, revealable
+   * from Connections). The built-in client never uses this path, so enabling
+   * it puts no credential or CORS grant on the default route.
    */
   assistantDirect: boolean;
   /** Publish the guardian's `/oc` front door for screened/audited clients. */
@@ -104,7 +105,6 @@ export type AccessEnv = {
   OP_ASSISTANT_BIND_ADDRESS: string;
   OP_GUARDIAN_BIND_ADDRESS: string;
   OP_API_BIND_ADDRESS: string;
-  OPENCODE_AUTH: "true" | "false";
   /**
    * The guardian 404s its entire direct listener unless this is on, so it
    * tracks `guardianNetwork` exactly — publishing a port to a listener that
@@ -156,16 +156,15 @@ export const ACCESS_ENV_KEYS = [
   "OP_ASSISTANT_BIND_ADDRESS",
   "OP_GUARDIAN_BIND_ADDRESS",
   "OP_API_BIND_ADDRESS",
-  "OPENCODE_AUTH",
   "GUARDIAN_DIRECT_INGRESS",
 ] as const satisfies readonly (keyof AccessEnv)[];
 
 /**
  * Resolve toggles into the generated env row.
  *
- * `OPENCODE_AUTH` tracks `assistantDirect` exactly: OpenCode authenticates iff
- * it is published. When it is not published there is no network-reachable
- * surface to authenticate, and the UI's proxy reaches it over loopback.
+ * OpenCode's own Basic auth is NOT derived here: it is always on (the
+ * entrypoint unconditionally exports the generated key), so `assistantDirect`
+ * means exactly one thing — whether the port is published.
  *
  * `opts.guardianIngressRequired` is the ONE place another feature may add a
  * reason for `GUARDIAN_DIRECT_INGRESS` to be "true" without also opening the
@@ -194,7 +193,6 @@ export function resolveAccessEnv(
     OP_ASSISTANT_BIND_ADDRESS: toggles.assistantDirect ? LAN : LOOPBACK,
     OP_GUARDIAN_BIND_ADDRESS: toggles.guardianNetwork ? LAN : LOOPBACK,
     OP_API_BIND_ADDRESS: toggles.guardianOpenaiApi ? LAN : LOOPBACK,
-    OPENCODE_AUTH: toggles.assistantDirect ? "true" : "false",
     GUARDIAN_DIRECT_INGRESS:
       toggles.guardianNetwork || opts.guardianIngressRequired ? "true" : "false",
   };
@@ -215,16 +213,6 @@ export function resolveAccessEnv(
  */
 export function remoteRequiresGuardianIngress(enabled: boolean, target: RemoteTarget): boolean {
   return enabled && (target === "guardian" || target === "both");
-}
-
-/**
- * True when `assistantDirect` requires a generated OpenCode key. Callers mint
- * one rather than asking the operator to invent it — the human-facing
- * credential is the UI login password in every configuration, without
- * exception.
- */
-export function requiresAssistantKey(toggles: AccessToggles): boolean {
-  return toggles.assistantDirect;
 }
 
 // ── Reading current state ────────────────────────────────────────────────

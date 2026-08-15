@@ -20,6 +20,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { configureStateDatabase, recordSessionOwnerRow, listPendingEvictedSessions } from './state-db.ts';
+import { writeFileSync } from 'node:fs';
+
+// OpenCode auth is always on: every upstream call in here builds a real
+// Authorization header via withAssistantUpstreamAuth, which fail-closes
+// without a readable secret. Provision one for the whole file — the stubs
+// never check its value. Module scope, before any test body runs.
+const opencodePasswordFile = join(tmpdir(), `guardian-test-opencode-password-${process.pid}`);
+writeFileSync(opencodePasswordFile, 'upstream-test-key\n');
+Bun.env.OPENCODE_SERVER_PASSWORD_FILE = opencodePasswordFile;
 import {
   reconcileEvictedSessions,
   drainEvictedSessions,

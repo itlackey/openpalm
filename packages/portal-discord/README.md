@@ -36,7 +36,7 @@ Minimal environment:
 ```bash
 OPENCODE_BASE_URL=http://localhost:4096
 PRINCIPAL_ID=opencode              # configured OpenCode Basic username; default is opencode
-OPENCODE_PASSWORD=...              # the OpenCode server password, if OPENCODE_AUTH is set
+OPENCODE_PASSWORD=...              # the OpenCode server password, if the server sets one
 DISCORD_BOT_TOKEN=...
 ```
 
@@ -86,7 +86,7 @@ there's no secret mount).
 | `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
 | `PRINCIPAL_ID` | yes | Basic-auth username: an issued principal ID for Guardian, or the plain OpenCode server's configured username (default `opencode`) |
 | `PRINCIPAL_SECRET` / `PRINCIPAL_SECRET_FILE` | yes (one of these, or `OPENCODE_PASSWORD`) | Basic-auth password |
-| `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_AUTH`) |
+| `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_SERVER_PASSWORD`) |
 | `PORTAL_SESSION_REUSE` | no | `client` (default) or `server`. The client-side cache keys a session by `(userId, sessionKey)` so a stable thread reuses one session — works standalone AND behind the shipped guardian, which has no server-side reuse cache of its own (a plain OpenCode server also ignores the guardian's session-reuse hint header). Set `server` ONLY if your deployment has built its own server-side reuse authority; leaving both sides unset (the old default) meant NEITHER side reused sessions, and every turn silently minted a new one. |
 | `PORTAL_SESSION_TTL_MS` | no | Client-mode session cache TTL in ms, default `900000` (15 min). Only relevant when `PORTAL_SESSION_REUSE=client`. |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |

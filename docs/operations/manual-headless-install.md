@@ -200,6 +200,11 @@ private/secrets/portal_discord_secret
 private/secrets/portal_slack_secret
 ```
 
+`op_opencode_password` must be non-empty: OpenCode Basic auth is always on,
+and the assistant and guardian refuse to boot without a resolvable password
+(`openpalm install` generates it; seed a random value when preparing the home
+by hand — an empty placeholder file is a boot failure, not an auth opt-out).
+
 Enabling Discord additionally requires `private/secrets/discord_bot_token`.
 Enabling Slack requires `private/secrets/slack_bot_token` and
 `private/secrets/slack_app_token`. Secret directories use mode `0700`; files

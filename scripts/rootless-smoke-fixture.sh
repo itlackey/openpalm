@@ -52,9 +52,10 @@ smoke_seed_secrets() {
   openssl rand -hex 16 > "$home/private/secrets/portal_discord_secret"
   openssl rand -hex 16 > "$home/private/secrets/portal_slack_secret"
   # op_opencode_password: always materialized by performSetup since #563 — the
-  # compose files grant it as a file-backed secret to assistant+guardian, so
-  # boot fails if it is absent. Empty file = OPENCODE_AUTH off (smoke posture).
-  : > "$home/private/secrets/op_opencode_password"
+  # compose files grant it as a file-backed secret to assistant+guardian, and
+  # OpenCode Basic auth is always on, so an EMPTY file is a boot failure now
+  # (the entrypoint fails fast without a password). Seed a real value.
+  openssl rand -hex 16 > "$home/private/secrets/op_opencode_password"
   printf '%s\n' 'discord-smoke-token' > "$home/private/secrets/discord_bot_token"
 
   touch "$home/knowledge/env/user.env"

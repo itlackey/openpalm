@@ -112,7 +112,7 @@ See
 |---|---|
 | `OPENCODE_CONFIG_DIR` | Managed config path, `/etc/opencode` |
 | `OPENCODE_PORT` | OpenCode container port, normally `4096` |
-| `OPENCODE_AUTH` | Generated from direct-assistant access; off when the API remains loopback-only |
+| `OPENCODE_SERVER_PASSWORD_FILE` | Compose secret path for the always-on OpenCode Basic auth; the entrypoint refuses to boot without a resolvable password |
 | `OPENCODE_SERVER_PASSWORD_FILE` | Narrow Compose secret path used when OpenCode auth is enabled |
 | `OP_UI_LOGIN_PASSWORD_FILE` | Narrow secret path for UI login |
 | `AKM_BUNDLE_DIR` | `/stash` |

@@ -17,9 +17,7 @@
  * duplicated per consumer is exactly how the 401/rotation regression family
  * kept reappearing. Consumers import it; nobody re-implements it.
  */
-import { isEnabledFlag } from "./bind-warning.js";
 import { readSecret } from "./secrets-files.js";
-import { readStackEnv } from "./secrets.js";
 
 /** OpenCode's server default Basic-auth username (the shipped assistant compose never overrides it). */
 export const DEFAULT_OPENCODE_USERNAME = "opencode";
@@ -63,40 +61,33 @@ export function assistantAuthHeaders(target: OpenCodeCredential): Record<string,
 }
 
 /**
- * Resolve the credential the assistant's OpenCode currently requires, from the
- * home's persisted state.
+ * Resolve the credential for the assistant's OpenCode.
  *
- * Gated on the operator's REQUESTED posture (`OPENCODE_AUTH`), never on the
- * secret file's existence: `ensureSecrets` always materializes the file, so
- * presence says nothing about whether OpenCode authenticates. Read fresh —
- * an operator toggling `assistantDirect` changes this at runtime, and a value
- * frozen at process start 401s (or silently omits auth) until a restart.
+ * OpenCode's Basic auth is ALWAYS on: the entrypoint unconditionally exports
+ * the system-generated `op_opencode_password` (which `ensureSecrets` always
+ * materializes), so this resolver always answers with a credential. The
+ * retired `OPENCODE_AUTH` flag made this conditional — an operator toggle
+ * that meant every consumer (proxy, healthcheck, guardian, desktop shell)
+ * had to agree with the container about whether a password applied. Now the
+ * only question is *which* value, in precedence order: an explicit
+ * `OPENCODE_SERVER_PASSWORD` env (a bare `docker run` supplying it directly),
+ * the secret file, then the `OP_OPENCODE_PASSWORD` env fallback.
  *
- * `persistedEnv` defaults to a fresh `readStackEnv(homeDir)`, so the common
- * caller passes only a homeDir. A caller that already holds that read — the
- * `/oc` proxy resolves the URL and the credential for the same request — passes
- * it in, so "fresh per call" costs one parse rather than one per resolver.
+ * Read fresh per call so a rotated secret applies without a process restart.
+ * `persistedEnv` is accepted (and ignored) for signature compatibility with
+ * callers that batch their `readStackEnv` — the credential no longer reads
+ * the stack env at all.
  *
- * EVERY password source sits behind the gate, including the explicit
- * `OPENCODE_SERVER_PASSWORD` override. That override used to short-circuit it,
- * which produced a credential for a server that requires none: core.compose.yml
- * never passes a raw `OPENCODE_SERVER_PASSWORD` to the assistant (secret-audit
- * forbids the key, and the comment there is explicit that the password is
- * "never a password the operator invents"), so an ambient value in a host shell
- * describes nothing the container knows about. The visible cost was
- * `/api/host/assistant-key` reporting `available: true` and printing that
- * invented key as if it were the assistant's. The username override stays
- * ungated — compose's own healthcheck honours `OPENCODE_SERVER_USERNAME`.
+ * `password` is undefined only when NOTHING resolves — a home with no secret
+ * file, i.e. not an installed OpenPalm. The containers are the fail-closed
+ * layer for that state (the entrypoint refuses to boot without a password).
  */
 export function resolveOpenCodeCredential(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
-  persistedEnv?: Record<string, string | undefined>,
+  _persistedEnv?: Record<string, string | undefined>,
 ): OpenCodeCredential {
-  const persisted = persistedEnv ?? readStackEnv(homeDir);
   const username = env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
-  const authEnabled = isEnabledFlag(persisted.OPENCODE_AUTH ?? env.OPENCODE_AUTH);
-  if (!authEnabled) return { username, password: undefined };
   const raw = readSecret(homeDir, "op_opencode_password");
   const generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || env.OP_OPENCODE_PASSWORD;
   return { username, password: env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined };

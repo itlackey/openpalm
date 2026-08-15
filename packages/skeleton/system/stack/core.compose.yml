@@ -59,14 +59,12 @@ services:
       # posture, and the scheduler runs as a co-process inside this container
       # so it reaches OpenCode via http://localhost:4096.
       #
-      # Generated: auth is on iff the assistant API is PUBLISHED (the
-      # "assistantDirect" access toggle). When it is not published there is no
-      # network-reachable surface to authenticate, and the UI's /oc proxy and
-      # the guardian both reach it over loopback / assistant_net. The key is
-      # system-generated into the op_opencode_password secret, which BOTH this
-      # service (serves Basic auth) and the guardian (attaches it upstream, see
-      # portals.compose.yml) read. Never a password the operator invents.
-      OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
+      # OpenCode Basic auth is ALWAYS on: the entrypoint unconditionally
+      # exports the key from the op_opencode_password secret, which BOTH this
+      # service (serves Basic auth) and the guardian (attaches it upstream,
+      # see portals.compose.yml) read. Never a password the operator invents;
+      # the UI's /oc proxy attaches it server-side, and external clients copy
+      # it from the Connections page.
       # The OpenCode server password, read from the compose secret
       # below. Never a raw OPENCODE_SERVER_PASSWORD env value (secret-audit.ts
       # forbids *_PASSWORD-suffixed compose environment keys).
@@ -237,22 +235,16 @@ services:
     # custom.compose.yml's `environment:` made this probe follow it to a port
     # nothing listens on. A literal cannot drift. The UI's /health route is
     # exempt from the login/setup wall (packages/ui hooks.server.ts).
-    # #564 P1-1: the /health probe authenticates iff the container-side
-    # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
-    # assistant API is published, and an unauthenticated `curl -f` then
-    # 401s forever — guardian's `depends_on: assistant: condition:
-    # service_healthy` blocks on that and the whole stack never deploys. The
-    # gate mirrors the entrypoint's opencode_auth_enabled truthy set exactly
-    # so probe and server can never disagree about the posture. The username
+    # The /health probe ALWAYS authenticates — OpenCode Basic auth is always
+    # on (the entrypoint refuses to boot without a password), and an
+    # unauthenticated `curl -f` would 401 forever, wedging guardian's
+    # `depends_on: assistant: condition: service_healthy`. The username
     # defaults to OpenCode's own default `opencode` (an overlay-injected
     # OPENCODE_SERVER_USERNAME is honored); the password is `cat`ed from the
     # same OPENCODE_SERVER_PASSWORD_FILE the entrypoint reads — a Docker
     # healthcheck process only ever sees the container's created env, never
     # variables the entrypoint exports later, so reading the file directly is
-    # the only correct source here. Gated on the operator's requested posture
-    # rather than on file non-emptiness, so a stale-secret regression (the
-    # secret file is always materialized non-empty by ensureSecrets) fails
-    # this healthcheck loudly instead of being silently masked.
+    # the only correct source here.
     #
     # K6: interval/timeout/retries/start_period below MUST match
     # containers/assistant/Dockerfile's own HEALTHCHECK (its raw-env-password
@@ -264,13 +256,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          case "$${OPENCODE_AUTH:-false}" in
-          true|TRUE|True|1|yes|YES)
           curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"
-          http://localhost:4096/health || exit 1 ;;
-          *)
-          curl -sf http://localhost:4096/health || exit 1 ;;
-          esac;
+          http://localhost:4096/health || exit 1;
           if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:3000/health >/dev/null || exit 1; fi
       interval: 30s
       timeout: 10s

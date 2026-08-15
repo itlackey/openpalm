@@ -20,7 +20,7 @@ import {
 } from './rate-limit.ts';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
-import { DIRECT_PORT, readPositiveIntEnv, resolveCorsAllowedOrigin } from './config';
+import { assertAssistantUpstreamAuth, DIRECT_PORT, readPositiveIntEnv, resolveCorsAllowedOrigin } from './config';
 
 const logger = createLogger('guardian');
 
@@ -244,6 +244,11 @@ export interface StartGuardianOptions {
  */
 export function startGuardian(options: StartGuardianOptions = {}): GuardianServers {
   for (const transport of options.transports ?? []) registerTransport(transport);
+
+  // The assistant's OpenCode always requires Basic auth; resolve the upstream
+  // credential NOW so a mis-provisioned secret is a loud boot failure, never a
+  // silent 401 storm once portals start forwarding.
+  assertAssistantUpstreamAuth();
 
   initializePrincipalStore();
   seedPortalPrincipalsFromEnv();

@@ -16,7 +16,6 @@ import {
   migrateLegacyAccessEnv,
   readAccessToggles,
   remoteRequiresGuardianIngress,
-  requiresAssistantKey,
   resolveAccessEnv,
   resolveAccessIntentEnv,
   RETIRED_BIND_KEYS,
@@ -42,7 +41,6 @@ describe("defaults", () => {
       OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
       OP_GUARDIAN_BIND_ADDRESS: "127.0.0.1",
       OP_API_BIND_ADDRESS: "127.0.0.1",
-      OPENCODE_AUTH: "false",
       GUARDIAN_DIRECT_INGRESS: "false",
     });
   });
@@ -54,14 +52,11 @@ describe("resolveAccessEnv", () => {
     const env = resolveAccessEnv(on({ networkAccess: true }));
     expect(env.OP_UI_BIND_ADDRESS).toBe("0.0.0.0");
     expect(env.OP_ASSISTANT_BIND_ADDRESS).toBe("127.0.0.1");
-    expect(env.OPENCODE_AUTH).toBe("false");
   });
 
-  test("OPENCODE_AUTH tracks assistantDirect exactly — auth iff published", () => {
-    expect(resolveAccessEnv(on({ assistantDirect: true })).OPENCODE_AUTH).toBe("true");
-    expect(resolveAccessEnv(on({ assistantDirect: false })).OPENCODE_AUTH).toBe("false");
-    expect(requiresAssistantKey(on({ assistantDirect: true }))).toBe(true);
-    expect(requiresAssistantKey(ALL_OFF)).toBe(false);
+  test("assistantDirect moves only the bind — auth is always on and not a row", () => {
+    expect(resolveAccessEnv(on({ assistantDirect: true }))).not.toHaveProperty("OPENCODE_AUTH");
+    expect(resolveAccessEnv(on({ assistantDirect: true })).OP_ASSISTANT_BIND_ADDRESS).toBe("0.0.0.0");
   });
 
   test("each toggle moves exactly one bind — no cascade", () => {
@@ -116,7 +111,6 @@ describe("resolveAccessEnv with no second argument", () => {
         OP_ASSISTANT_BIND_ADDRESS: toggles.assistantDirect ? "0.0.0.0" : "127.0.0.1",
         OP_GUARDIAN_BIND_ADDRESS: toggles.guardianNetwork ? "0.0.0.0" : "127.0.0.1",
         OP_API_BIND_ADDRESS: toggles.guardianOpenaiApi ? "0.0.0.0" : "127.0.0.1",
-        OPENCODE_AUTH: toggles.assistantDirect ? "true" : "false",
         GUARDIAN_DIRECT_INGRESS: toggles.guardianNetwork ? "true" : "false",
       });
     }
@@ -286,7 +280,6 @@ describe("migrateLegacyAccessEnv", () => {
       OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
       OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
       OP_API_BIND_ADDRESS: "0.0.0.0",
-      OPENCODE_AUTH: "false",
       GUARDIAN_DIRECT_INGRESS: "true",
     });
   });

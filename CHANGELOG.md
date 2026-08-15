@@ -27,6 +27,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   provider-specific route, no second password, and no runtime rewriting of any
   kind.
 
+### Changed
+
+- **OpenCode Basic auth is always on — the `OPENCODE_AUTH` flag is retired.**
+  The flag was OpenPalm's gate on exporting the system-generated password to
+  the OpenCode server (the binary keys auth on the password env alone), and
+  every consumer — the `/oc` proxy, two healthchecks, the guardian's upstream
+  calls, the desktop shell — had to agree with the container about whether a
+  credential applied. Now there is one posture: OpenCode is never reachable
+  without a password in any topology, the operator's only credential remains
+  the UI login (the proxy bridges session → Basic server-side), and the
+  `assistantDirect` toggle means exactly one thing — whether the port is
+  published. External clients (an OpenCode TUI, scripts) use the system key,
+  now revealable from the Connections page; loopback clients that previously
+  connected without credentials need it too. A one-shot migration (home schema
+  v9) sweeps the retired row from `state/stack.env`, and the schema bump makes
+  older binaries — which would stop attaching auth against always-authenticated
+  containers — refuse on every write path.
+
 ### Removed
 
 - **The direct-port workspace machinery.** The `opencodeWorkspace` runtime

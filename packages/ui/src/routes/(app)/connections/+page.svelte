@@ -15,6 +15,7 @@
     type ConnectionView,
   } from '$lib/endpoints-state.svelte.js';
   import { mintPairingCode } from '$lib/api.js';
+  import { fetchAssistantKey, type AssistantKey } from '$lib/api/akm.js';
   import { getConnectionStorageMode, getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
   import { connectionSecretsEncryptedAtRest } from '$lib/connections/secrets.js';
   import { newConnectionId } from '$lib/connections/store.js';
@@ -73,6 +74,38 @@
   let formUrl = $state('');
   let formUsername = $state('');
   let formPassword = $state('');
+  // The local install's OpenCode key (system-generated; auth is always on).
+  // Loaded lazily on reveal, never on page load; the route answers with
+  // Cache-Control: no-store and the value is never logged.
+  let assistantKey = $state<AssistantKey | null>(null);
+  let assistantKeyLoading = $state(false);
+  let assistantKeyCopied = $state(false);
+  let assistantKeyError = $state('');
+
+  async function revealAssistantKey(): Promise<void> {
+    assistantKeyLoading = true;
+    assistantKeyError = '';
+    try {
+      assistantKey = await fetchAssistantKey();
+    } catch (error) {
+      assistantKeyError = error instanceof Error ? error.message : String(error);
+    } finally {
+      assistantKeyLoading = false;
+    }
+  }
+
+  async function copyAssistantKey(): Promise<void> {
+    if (!assistantKey?.available) return;
+    try {
+      await navigator.clipboard.writeText(assistantKey.password);
+      assistantKeyCopied = true;
+      window.setTimeout(() => {
+        assistantKeyCopied = false;
+      }, 2000);
+    } catch {
+      assistantKeyError = 'Clipboard unavailable — copy the value manually.';
+    }
+  }
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
@@ -491,24 +524,42 @@
             autocomplete="new-password"
           />
           <small>
-            Forwarded as HTTP Basic auth. Only required for a remote assistant with the
-            <strong>Allow direct connections to the assistant API</strong> access toggle on
-            (<code>OPENCODE_AUTH=true</code>).
+            Forwarded as HTTP Basic auth. An OpenPalm assistant always requires its server
+            password for direct API connections — the
+            <strong>Allow direct connections to the assistant API</strong> access toggle only
+            publishes the port.
           </small>
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
               The password lives as the file secret <code>private/secrets/op_opencode_password</code> on the
-              remote host — never in <code>stack.env</code>. It is generated once when the toggle first
-              turns on and is not reissued by turning it off and back on. Rotation is a two-step process:
+              remote host — never in <code>stack.env</code>. Rotation is a two-step process:
               <ol>
                 <li>
                   On the remote host: edit <code>private/secrets/op_opencode_password</code> directly (or
-                  view the current value from Assistant settings, Advanced), then restart the
-                  <code>assistant</code> container so it re-reads the file.
+                  reveal the current value below when this browser is on that host's admin process),
+                  then restart the <code>assistant</code> container so it re-reads the file.
                 </li>
                 <li>Paste the new value here and save.</li>
               </ol>
             </small>
+            {#if hasCapability(runtimeContext, 'host:stack:read')}
+              <small class="assistant-key-reveal">
+                {#if assistantKey === null}
+                  <button type="button" class="btn btn-secondary btn-sm" onclick={() => void revealAssistantKey()} disabled={assistantKeyLoading}>
+                    {assistantKeyLoading ? 'Loading…' : "Reveal this install's assistant key"}
+                  </button>
+                {:else if assistantKey.available}
+                  This install's key: <code>{assistantKey.username}</code> /
+                  <code>{assistantKey.password}</code>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick={() => void copyAssistantKey()}>
+                    {assistantKeyCopied ? 'Copied' : 'Copy password'}
+                  </button>
+                {:else}
+                  No assistant key is resolvable on this host (is OpenPalm installed here?).
+                {/if}
+                {#if assistantKeyError}<span class="error-text">{assistantKeyError}</span>{/if}
+              </small>
+            {/if}
         </label>
 
           <label class="field-inline">

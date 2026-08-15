@@ -249,7 +249,9 @@ EOF
 		chmod 600 "$private_secrets_dir/op_ui_login_password"
 	fi
 	if [[ ! -f "$private_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
-		: >"$private_secrets_dir/op_opencode_password"
+		# Non-empty: OpenCode Basic auth is always on and the assistant
+		# entrypoint refuses to boot without a password.
+		printf '%s\n' 'dev-opencode-password' >"$private_secrets_dir/op_opencode_password"
 		chmod 600 "$private_secrets_dir/op_opencode_password"
 	fi
 fi

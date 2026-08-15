@@ -243,9 +243,11 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
     secrets?: Record<string, { file?: string }>;
   };
 
-  test("T28: assistant OPENCODE_AUTH is compose-interpolated with a false default", () => {
-    const env = coreDoc.services?.assistant?.environment ?? {};
-    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
+  test("T28: the retired OPENCODE_AUTH row is not compose-interpolated anywhere (auth is always on)", () => {
+    const assistantEnv = coreDoc.services?.assistant?.environment ?? {};
+    const guardianEnv = portalsDoc.services?.guardian?.environment ?? {};
+    expect(assistantEnv).not.toHaveProperty("OPENCODE_AUTH");
+    expect(guardianEnv).not.toHaveProperty("OPENCODE_AUTH");
   });
 
   test("T29: assistant receives the OpenCode server password as a *_FILE secret, never raw", () => {
@@ -263,9 +265,8 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
     );
   });
 
-  test("T30: guardian receives the same auth pair", () => {
+  test("T30: guardian receives the upstream password file secret", () => {
     const env = portalsDoc.services?.guardian?.environment ?? {};
-    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
     expect(env.OPENCODE_SERVER_PASSWORD_FILE).toBe("/run/secrets/opencode_server_password");
 
     const secrets = (portalsDoc.services?.guardian?.secrets ?? []) as string[];

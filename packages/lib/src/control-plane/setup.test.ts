@@ -1111,16 +1111,17 @@ describe('performSetup', () => {
 		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=0\.0\.0\.0$/m);
 		expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
-		expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+		// Auth is always on and is no longer a row in the env at all.
+		expect(stackEnv).not.toMatch(/^OPENCODE_AUTH=/m);
 	});
 
-	it('assistantDirect turns auth on and GENERATES the key — never asks for one', async () => {
+	it('assistantDirect publishes the port; the key is system-generated either way', async () => {
 		const result = await performSetup(makeValidSpec({ access: { assistantDirect: true } }));
 		expect(result.ok).toBe(true);
 
 		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
-		expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
+		expect(stackEnv).not.toMatch(/^OPENCODE_AUTH=/m);
 
 		const key = readSecret(homeDir, 'op_opencode_password')?.trim();
 		expect(key).toBeTruthy();

@@ -685,7 +685,6 @@ export {
   resolveAccessEnv,
   readAccessToggles,
   coerceAccessToggles,
-  requiresAssistantKey,
   describeAccessExposure,
   hasStoredAccessIntent,
   resolveAccessIntentEnv,
