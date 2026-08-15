@@ -4,7 +4,13 @@
  * rendered a dead "refused to connect" panel instead of a conversation.
  */
 import { describe, expect, test } from 'vitest';
-import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+import {
+  isEmbeddableOpencodeUi,
+  OPENCODE_WORKSPACE_PATH,
+  resolveFrameBase,
+  resolveWorkspaceUrl,
+} from './embeddable.js';
+import { WORKSPACE_PREFIX } from '$lib/server/opencode-workspace.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
@@ -170,5 +176,83 @@ describe('isEmbeddableOpencodeUi — platform rules', () => {
     for (const baseUrl of ['ws://assistant.lan:4096', 'not a url']) {
       expect(isEmbeddableOpencodeUi({ baseUrl, hasPassword: false }, LAN_PAGE), baseUrl).toBe(false);
     }
+  });
+});
+
+describe('resolveFrameBase — this install’s assistant frames the workspace proxy', () => {
+  const LOCKED = { baseUrl: '/oc', hasPassword: false, isDefault: true };
+
+  test('the client path matches the server route it must hit', () => {
+    // Duplicated as a literal in embeddable.ts so the server-only module (it
+    // hashes the shim with node:crypto) stays out of the client bundle.
+    expect(OPENCODE_WORKSPACE_PATH).toBe(WORKSPACE_PREFIX);
+  });
+
+  test('frames /_opencode for the locked root-relative seed', () => {
+    expect(resolveFrameBase(LOCKED, LAN_PAGE, null)).toBe(OPENCODE_WORKSPACE_PATH);
+  });
+
+  test('frames /_opencode for the resolved same-origin form too', () => {
+    expect(
+      resolveFrameBase({ ...LOCKED, baseUrl: 'http://192.168.0.201:3800/oc' }, LAN_PAGE, null),
+    ).toBe(OPENCODE_WORKSPACE_PATH);
+  });
+
+  test('prefers the proxy over the direct-port workspace — that is the whole point', () => {
+    // The direct port is exactly what fails behind a reverse proxy, on a phone,
+    // and whenever OPENCODE_AUTH is on.
+    expect(resolveFrameBase(LOCKED, LAN_PAGE, 'http://192.168.0.201:3810')).toBe(
+      OPENCODE_WORKSPACE_PATH,
+    );
+  });
+
+  test('works from an https page, where the direct http port is unframable', () => {
+    expect(resolveFrameBase({ ...LOCKED, baseUrl: '/oc' }, HTTPS_PAGE, null)).toBe(
+      OPENCODE_WORKSPACE_PATH,
+    );
+  });
+});
+
+describe('resolveFrameBase — every other connection keeps its own path', () => {
+  test('a framable remote OpenCode frames itself, not this app’s assistant', () => {
+    expect(
+      resolveFrameBase(
+        { baseUrl: 'http://192.168.0.201:3810', hasPassword: false, isDefault: false },
+        LAN_PAGE,
+        null,
+      ),
+    ).toBe('http://192.168.0.201:3810');
+  });
+
+  test('a credentialed connection falls back to the direct-port workspace', () => {
+    expect(
+      resolveFrameBase(
+        { baseUrl: 'http://assistant.lan:4096', hasPassword: true, isDefault: false },
+        LAN_PAGE,
+        'http://192.168.0.201:3810',
+      ),
+    ).toBe('http://192.168.0.201:3810');
+  });
+
+  test('with no fallback it returns null, and the page renders the native surface', () => {
+    expect(
+      resolveFrameBase(
+        { baseUrl: 'http://assistant.lan:4096', hasPassword: true, isDefault: false },
+        HTTPS_PAGE,
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  test('a user-added entry naming this origin is not the locked assistant', () => {
+    // isDefault false: the workspace proxy forwards to THIS process's
+    // assistant, which is not what that connection asked for.
+    expect(
+      resolveFrameBase(
+        { baseUrl: 'http://192.168.0.201:3800/oc', hasPassword: false, isDefault: false },
+        LAN_PAGE,
+        null,
+      ),
+    ).toBeNull();
   });
 });

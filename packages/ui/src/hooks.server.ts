@@ -31,6 +31,7 @@ import {
   reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { WORKSPACE_ASSET_PREFIX, WORKSPACE_PREFIX } from "$lib/server/opencode-workspace.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
@@ -147,6 +148,30 @@ const PWA_ASSET_PATHS = [
   "/maskable-512x512.png",
 ];
 
+/**
+ * True for the same-origin OpenCode workspace proxy — the document `/advanced`
+ * frames and the asset namespace that document loads from
+ * (`$lib/server/opencode-workspace.ts`).
+ *
+ * These two paths need the same three exemptions, so they are decided once:
+ *   - **No landing redirect.** The workspace document is a real
+ *     `Accept: text/html` navigation, so without this it would 302 into
+ *     whatever `resolveLanding()` returns and the frame would render OpenPalm
+ *     inside OpenPalm.
+ *   - **No /login bounce.** Both routes call `requireAdmin` themselves. A
+ *     redirect would put the login page in the frame, where the app's own
+ *     `X-Frame-Options: DENY` refuses it and the user sees "refused to
+ *     connect" instead of a 401 the page can report.
+ *   - **Framable same-origin.** See the X-Frame-Options assignment below.
+ */
+function isOpencodeWorkspacePath(path: string): boolean {
+  return (
+    path === WORKSPACE_PREFIX ||
+    path.startsWith(`${WORKSPACE_PREFIX}/`) ||
+    path.startsWith(WORKSPACE_ASSET_PREFIX)
+  );
+}
+
 // ── SEC-3: Security headers (XSS / clickjacking / MIME-sniffing) ─────────
 // The main CSP is emitted by SvelteKit itself via `kit.csp` in
 // svelte.config.js — `mode: 'hash'` auto-hashes the inline hydration scripts
@@ -217,6 +242,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     redirect(302, '/chat');
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
+  const isWorkspacePath = isOpencodeWorkspacePath(path);
 
   // A process that cannot SERVE /setup must never redirect anyone TO it. This
   // now guards exactly one redirect — the `setup_incomplete` bounce below; the
@@ -300,7 +326,11 @@ export const handle: Handle = async ({ event, resolve }) => {
   // resolveRequestLanding() cost (a docker `compose ps` + target probe on
   // launch-cache miss) for the non-navigation traffic that can't be redirected
   // anyway.
-  if (!isSetupPath && !isPwaAssetPath && wantsHtml) {
+  // `isWorkspacePath` short-circuits BEFORE resolveRequestLanding, not just in
+  // the exempt list below: that call costs a docker `compose ps` plus a target
+  // probe on a cache miss, and the framed workspace is the one HTML navigation
+  // that happens on every visit to /advanced.
+  if (!isSetupPath && !isPwaAssetPath && !isWorkspacePath && wantsHtml) {
     const landing = await resolveRequestLanding(event);
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
@@ -404,7 +434,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     (path === '/host' || path.startsWith('/host/')
       || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
 
-  if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {
+  if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !isWorkspacePath && !clientOnlyPublicUsage) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
@@ -419,9 +449,13 @@ export const handle: Handle = async ({ event, resolve }) => {
       response.headers.append("set-cookie", renewedCookie);
     }
   }
+  // DENY is the default and blocks a SAME-ORIGIN frame too, which is exactly
+  // what the workspace proxy needs to be exempt from — /advanced frames
+  // /_opencode on this very origin. SAMEORIGIN keeps every cross-origin
+  // embedder refused, so the clickjacking posture is unchanged.
   response.headers.set(
     "X-Frame-Options",
-    path === '/api/host/akm/health-report' ? 'SAMEORIGIN' : 'DENY',
+    path === '/api/host/akm/health-report' || isWorkspacePath ? 'SAMEORIGIN' : 'DENY',
   );
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "no-referrer");

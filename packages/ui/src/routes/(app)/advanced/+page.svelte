@@ -13,7 +13,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+  import { resolveFrameBase, resolveWorkspaceUrl } from './embeddable.js';
   import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
@@ -22,9 +22,11 @@
   // Phase 3b ("One UI, delete the split"): the browser owns connections and
   // talks to OpenCode DIRECTLY — there is no host proxy to probe. Which
   // OpenCode web UI this page frames (or whether it can frame one at all) is
-  // decided in ./embeddable.ts; the two cases that reach the native chat
-  // surface instead are a credentialed / Guardian connection, and an app-origin
-  // connection with no reachable workspace advertisement.
+  // decided by resolveFrameBase in ./embeddable.ts. This install's own
+  // assistant always has one — the same-origin /_opencode workspace proxy — so
+  // the native chat surface below is now reached only by a connection this app
+  // cannot serve from its own origin: a credentialed / Guardian connection, or
+  // a remote OpenCode the browser is not allowed to frame.
 
   const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
@@ -78,12 +80,13 @@
     activeSession ? resolveSessionTitle(activeSession.title) : 'OpenPalm conversation',
   );
 
-  /** See embeddable.ts for the three rules this decision encodes. */
-  function isEmbeddable(conn: { baseUrl: string; hasPassword: boolean }): boolean {
-    return isEmbeddableOpencodeUi(conn, {
-      origin: page.url.origin,
-      protocol: page.url.protocol,
-    });
+  /** See embeddable.ts for the three cases this decision encodes. */
+  function frameBaseFor(conn: { baseUrl: string; hasPassword: boolean; isDefault: boolean }): string | null {
+    return resolveFrameBase(
+      conn,
+      { origin: page.url.origin, protocol: page.url.protocol },
+      framableWorkspaceUrl,
+    );
   }
 
   function isCurrentProbe(token: number, connectionId: string): boolean {
@@ -103,10 +106,11 @@
       return;
     }
 
-    // Where OpenCode's own web UI lives for this connection: the connection
-    // itself when it names an OpenCode origin, otherwise this install's
-    // advertised workspace. Null when there is neither.
-    const base = isEmbeddable(conn) ? conn.baseUrl : framableWorkspaceUrl;
+    // Where OpenCode's own web UI lives for this connection: this app's
+    // same-origin workspace proxy for the locked default, the connection
+    // itself when it names a framable OpenCode origin, otherwise this
+    // install's advertised direct-port workspace. Null when there is none.
+    const base = frameBaseFor(conn);
     if (!base) {
       mode = 'native';
       // The chat store now talks to the active connection via the direct
@@ -280,13 +284,15 @@
         {/if}
       </div>
     {:else if mode === 'native'}
-      <!-- No OpenCode web UI this browser can frame: the connection is
-           credentialed (OpenPalm keeps Basic auth out of iframe URLs, so the
-           embedded UI could not authenticate) or it is this app's own /oc API
-           pass-through with no reachable workspace advertisement behind it.
-           No new-tab link here: this branch means framableWorkspaceUrl was
-           null, and workspaceUrl asks the same question with a weaker client,
-           so it is null too. -->
+      <!-- No OpenCode web UI this browser can frame. Never this install's own
+           assistant — that one always frames the same-origin /_opencode
+           workspace proxy — so this branch is a connection pointing elsewhere:
+           credentialed or Guardian (OpenPalm keeps Basic auth out of iframe
+           URLs, so the embedded UI could not authenticate), or a remote
+           OpenCode the browser refuses to frame. No new-tab link here: this
+           branch means resolveFrameBase fell through to a null
+           framableWorkspaceUrl, and workspaceUrl asks the same question with a
+           weaker client, so it is null too. -->
       <div class="native-shell">
         <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
           <div class="native-scroll">

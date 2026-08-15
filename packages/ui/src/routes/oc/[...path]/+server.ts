@@ -1,5 +1,5 @@
 /**
- * /oc/* — transparent same-origin pass-through to this process's OpenCode.
+ * /oc/* — transparent same-origin pass-through to this process's OpenCode API.
  *
  * The last leg of the same-origin migration. `/voice` already works this way
  * (see `routes/voice/[...path]/+server.ts`, whose header comment states the
@@ -19,83 +19,17 @@
  * the origin it already loaded, carrying the session cookie it already has,
  * and this process makes the local hop.
  *
- * Upstream resolution is `getAssistantOpencodeTarget()` — the same resolver
- * every other server route uses — so ONE code path serves both topologies:
- *   - container co-process: `OP_OPENCODE_URL=http://localhost:4096`, set by
- *     the assistant entrypoint;
- *   - host process (`openpalm app` / `admin` / Electron): the env-derived
- *     `127.0.0.1:${OP_ASSISTANT_PORT}`.
- *
- * Basic auth for the upstream is attached HERE, server-side, from the same
- * resolver. That is what closes the third LAN failure: the seeded connection
- * used to carry `auth: { mode: "none" }` regardless of `OPENCODE_AUTH`, so the
- * browser 401'd against an auth-enabled OpenCode and the operator had to paste
- * the password into the connection editor by hand. The browser now never sees
- * an OpenCode credential at all.
+ * `/_opencode/*` is the same hop for OpenCode's WEB UI, which `/advanced`
+ * frames; the request half of both lives in `$lib/server/opencode-proxy.ts`,
+ * including the upstream resolution and the reason there is no timeout on it.
  *
  * Remote/third-party assistants are unaffected: they keep the browser-direct
  * transport and their own credentials. The split is now meaningful rather than
  * incidental — *this* assistant is same-origin, *other* assistants are direct.
  */
 import type { RequestHandler } from './$types';
-import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
-import { assistantAuthHeaders } from '$lib/server/basic-auth.js';
-import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
-
-/**
- * NO upstream timeout, deliberately.
- *
- * This route carried a 30s header-arrival timeout on the theory that headers
- * always arrive quickly and only bodies stream. That is false for the one
- * request that matters most: OpenCode's `POST /session/:id/message` returns
- * its headers when the TURN COMPLETES, so every chat turn longer than 30s —
- * tool use, long reasoning, a slow local model — was aborted and surfaced as
- * `502 assistant_unreachable`, on the locked default connection of every
- * install. The client's own budget is 150s.
- *
- * Nothing is lost by removing it. The upstream is loopback in every topology
- * (host process → published assistant port; container co-process →
- * `localhost:4096`), so an absent server fails immediately with
- * ECONNREFUSED rather than hanging. What must stay is the CLIENT's abort,
- * forwarded below: without it every `/oc/event` reconnect would leak an
- * upstream subscription OpenCode keeps alive for a browser that is gone.
- */
-
-/** Hop-by-hop and length headers that must not be forwarded in either direction. */
-const STRIPPED_REQUEST_HEADERS = new Set([
-  'host',
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'proxy-authorization',
-  'proxy-authenticate',
-  'te',
-  'trailer',
-  // Never forward the browser's cookie to OpenCode: it is this app's session,
-  // not an upstream credential, and OpenCode has no use for it.
-  'cookie',
-  // Replaced with the resolved upstream credential below, if any.
-  'authorization',
-  // Recomputed by fetch from the buffered body.
-  'content-length',
-]);
-
-const STRIPPED_RESPONSE_HEADERS = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'trailer',
-  // Deliberately dropped: node's fetch transparently decompresses a gzip/br
-  // upstream while still exposing the ORIGINAL compressed content-length, so
-  // forwarding it truncates the stream the browser actually receives. Letting
-  // the adapter chunk the body is correct for both buffered JSON and SSE.
-  'content-length',
-  'content-encoding',
-  // This process owns its own cookie scope; OpenCode must not set cookies on it.
-  'set-cookie',
-]);
+import { getRequestId, requireAdmin } from '$lib/server/helpers.js';
+import { proxyToAssistantOpencode } from '$lib/server/opencode-proxy.js';
 
 const handle: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -105,56 +39,12 @@ const handle: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const target = getAssistantOpencodeTarget();
-  const path = event.params.path ?? '';
-  const upstreamUrl = `${target.url.replace(/\/$/, '')}/${path}${event.url.search}`;
-
-  const method = event.request.method;
-  // GET/HEAD carry no body — undici rejects one, and SvelteKit routes HEAD
-  // through the GET handler, so both must be treated as bodyless.
-  const body =
-    method === 'GET' || method === 'HEAD' ? undefined : await event.request.arrayBuffer();
-
-  const headers = new Headers();
-  for (const [key, value] of event.request.headers) {
-    if (!STRIPPED_REQUEST_HEADERS.has(key.toLowerCase())) headers.set(key, value);
-  }
-  for (const [key, value] of Object.entries(assistantAuthHeaders(target))) {
-    headers.set(key, value);
-  }
-
-  // One abort source: the CLIENT's own disconnect (see the header comment).
-  const controller = new AbortController();
-  const onClientAbort = () => controller.abort();
-  event.request.signal?.addEventListener('abort', onClientAbort);
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl, { method, headers, body, signal: controller.signal });
-  } catch {
-    event.request.signal?.removeEventListener('abort', onClientAbort);
-    return errorResponse(
-      502,
-      'assistant_unreachable',
-      'The assistant is not responding — it may still be starting.',
-      {},
-      requestId,
-    );
-  }
-
-  // The abort listener is deliberately NOT removed here. It must stay attached
-  // for the life of the streamed body — that is the whole point of forwarding
-  // it. Detaching once headers arrive would leave `/oc/event` unable to tear
-  // down its upstream when the browser goes away, which is the leak this
-  // guards against. The listener rides on the per-request signal and is
-  // collected with it.
-  const responseHeaders = new Headers();
-  for (const [key, value] of upstream.headers) {
-    if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) responseHeaders.set(key, value);
-  }
-  responseHeaders.set('x-request-id', requestId);
-
-  return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  const result = await proxyToAssistantOpencode(event, event.params.path ?? '', requestId);
+  if (!result.ok) return result.error;
+  return new Response(result.upstream.body, {
+    status: result.upstream.status,
+    headers: result.headers,
+  });
 };
 
 export const GET = handle;

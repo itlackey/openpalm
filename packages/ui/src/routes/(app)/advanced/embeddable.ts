@@ -8,6 +8,17 @@
  */
 import { isAppOriginUrl, isLoopbackHost } from '$lib/connections/url-policy.js';
 
+/**
+ * This app's own OpenCode workspace proxy — the frame target for a connection
+ * that points back at this origin.
+ *
+ * Duplicated as a literal rather than imported from
+ * `$lib/server/opencode-workspace.ts`: that module is server-only (it hashes
+ * the injected shim with `node:crypto`) and importing it here would pull it
+ * into the client bundle. `workspace-path.vitest.ts` pins the two together.
+ */
+export const OPENCODE_WORKSPACE_PATH = '/_opencode';
+
 export type EmbeddableConnection = { baseUrl: string; hasPassword: boolean };
 
 /** The page's own location, narrowed to what this decision reads. */
@@ -84,10 +95,11 @@ export function resolveWorkspaceUrl(
  *    OpenCode's web UI is a root-mounted SPA — it resolves `/assets/*`,
  *    `/api/*`, `/global/*` and its bare API paths against `location.origin`
  *    regardless of the path its document was served under — so framing `/oc`
- *    loads an index.html whose every following request lands on OpenPalm. (The
- *    app's own `X-Frame-Options: DENY` refuses that frame first, which is how
- *    it surfaced: "refused to connect".) These connections frame the same
- *    OpenCode at its OWN origin instead — see {@link resolveWorkspaceUrl}.
+ *    loads an index.html whose every following request lands on OpenPalm.
+ *    Those connections frame {@link OPENCODE_WORKSPACE_PATH} instead, which is
+ *    the same origin with the retargeting the SPA needs; this predicate only
+ *    ever answers for a connection pointing SOMEWHERE ELSE. See
+ *    {@link resolveFrameBase}.
  *  - **It needs no credentials.** OpenPalm keeps Basic auth out of iframe URLs,
  *    so a credentialed (or userinfo-carrying) target could not authenticate.
  *  - **The browser won't block it as mixed content.** A loopback target is
@@ -109,4 +121,48 @@ export function isEmbeddableOpencodeUi(
   if (url.username || url.password) return false;
   if (isLoopbackHost(url.hostname)) return true;
   return !(embeddingPage.protocol === 'https:' && url.protocol === 'http:');
+}
+
+/**
+ * The URL `/advanced` should frame for `connection`, or null for the native
+ * chat surface.
+ *
+ * Three cases, in the order they are decided:
+ *
+ *  1. **This install's own assistant** — the locked default connection, whose
+ *     `baseUrl` is this origin's `/oc`. It frames
+ *     {@link OPENCODE_WORKSPACE_PATH}: the same origin the browser already
+ *     loaded, authenticated by the session it already holds, with OpenCode's
+ *     Basic auth attached server-side. That is what makes the workspace
+ *     survive a reverse proxy, a phone on the LAN, a tailnet, and
+ *     `OPENCODE_AUTH=true` — all four of which the direct-port frame below
+ *     cannot reach.
+ *  2. **Another OpenCode the browser can frame directly** — a user-added
+ *     connection naming its own origin ({@link isEmbeddableOpencodeUi}). The
+ *     workspace proxy is deliberately NOT used: it forwards to THIS process's
+ *     assistant, not to whatever server that connection names.
+ *  3. **`directWorkspaceUrl`** — the pre-existing direct-port frame, kept as
+ *     the fallback for a connection this app cannot serve from its own origin
+ *     (in practice the desktop shell's credentialed workspace, which the
+ *     Electron main process can authenticate). Null when there is none, and
+ *     the caller falls back to the native surface.
+ */
+export function resolveFrameBase(
+  connection: EmbeddableConnection & { isDefault: boolean },
+  embeddingPage: EmbeddingPage,
+  directWorkspaceUrl: string | null,
+): string | null {
+  // `isDefault` and `hasPassword` narrow "points at this origin" to "IS this
+  // install's locked assistant connection". A user-added entry that happens to
+  // name this origin is not something the workspace proxy can serve, so it
+  // falls through rather than framing an assistant it never asked for.
+  if (
+    connection.isDefault &&
+    !connection.hasPassword &&
+    isAppOriginUrl(connection.baseUrl, embeddingPage.origin)
+  ) {
+    return OPENCODE_WORKSPACE_PATH;
+  }
+  if (isEmbeddableOpencodeUi(connection, embeddingPage)) return connection.baseUrl;
+  return directWorkspaceUrl;
 }

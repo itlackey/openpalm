@@ -73,7 +73,8 @@ transparent proxy routes may use their native upstream shape instead.
 | `/api/assistant/*` | Persona, model, and assistant AKM settings | Session plus assistant-settings capability |
 | `/api/connections/pairing` | Mint a one-time Guardian direct-principal pairing code | Session plus host stack-write capability |
 | `/api/host/*` | Docker, lifecycle, addons, providers, secrets, versions, recovery, and diagnostics | Session plus route-specific host capability |
-| `/oc/*` | Same-origin pass-through to **this process's own** OpenCode | Session; not to be confused with Guardian's `/oc/*` below |
+| `/oc/*` | Same-origin pass-through to **this process's own** OpenCode API | Session; not to be confused with Guardian's `/oc/*` below |
+| `/_opencode/*`, `/assets/*` | Same-origin pass-through to the same OpenCode's **web UI**, framed by `/advanced` | Session; `/assets/*` is GET-only |
 | `/voice/*` | Same-origin pass-through to local voice | Session; `503` when unavailable |
 | `/guardian/health` | Guardian reachability probe | Public |
 
@@ -125,6 +126,14 @@ The path `/oc/*` names two unrelated servers:
 They happen to share a path segment because both are transparent 1:1 OpenCode
 proxies; neither forwards to the other, and a client authenticated to one has
 no standing on the other.
+
+A third path, this UI's `/_opencode/*`, reaches the SAME upstream as this UI's
+`/oc/*` under the same session check — the request half is literally the same
+module (`$lib/server/opencode-proxy.ts`). It is separate only because it serves
+OpenCode's **web UI** rather than its API, which means the HTML document has to
+be taught it is not at the origin root, and the `/assets/*` bundle it pulls has
+to be reachable at that root. `$lib/server/opencode-workspace.ts` is the single
+place that mechanism is described.
 
 ## Guardian HTTP Surfaces
 
