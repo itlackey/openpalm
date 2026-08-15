@@ -363,6 +363,7 @@ export {
 
 // ── Validation ───────────────────────────────────────────────────────────
 export {
+  checkPortalAllowlists,
   validateProposedState,
 } from "./control-plane/validate.js";
 
@@ -861,5 +862,9 @@ export {
   isPrerelease,
 } from "./control-plane/versioning.js";
 
-export { runHomeMigrations } from './control-plane/home-schema.js';
+export {
+  assertHomeSchemaSupported,
+  checkHomeSchemaSupported,
+  runHomeMigrations,
+} from './control-plane/home-schema.js';
 export { captureRunningImageIds, restoreRunningImageIds } from './control-plane/image-snapshots.js';

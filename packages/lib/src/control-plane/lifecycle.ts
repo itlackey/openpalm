@@ -12,7 +12,7 @@ import {
 	ensureHomeDirs
 } from './home.js';
 import { ensureSecrets, ensureOpenCodeConfig } from './secrets.js';
-import { runHomeMigrations } from './home-schema.js';
+import { assertHomeSchemaSupported, runHomeMigrations } from './home-schema.js';
 import { reconcileRemoteAccess } from './remote-apply.js';
 import {
 	resolveRuntimeFiles,
@@ -236,6 +236,13 @@ async function applyManagedFiles(
 	state: ControlPlaneState,
 	activateServices = false
 ): Promise<string> {
+	// FIRST, before the backup and before anything is written: an older binary
+	// must not touch a home a newer release migrated. See
+	// checkHomeSchemaSupported — it would skip the migrations in between AND
+	// roll every managed image tag back to its own version, which
+	// advanceManagedImageVersions below then stamps as deliberate.
+	assertHomeSchemaSupported(state.homeDir);
+
 	const overlayCheck = checkCustomComposeChannelLan(state.homeDir);
 	if (overlayCheck.blockError) throw new Error(overlayCheck.blockError);
 	if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);

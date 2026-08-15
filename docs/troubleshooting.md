@@ -188,7 +188,16 @@ Two things that look right but are not:
 
 ## Portal Authentication Fails
 
-For `401` or `403` responses:
+Portals are default-deny. If a portal denies **everyone**, check its allowlist
+first — `openpalm validate` names any enabled portal whose allow-scopes are all
+empty, and `openpalm logs <portal>` carries the same `no_allowlist_configured`
+warning at startup. Set one of `DISCORD_ALLOWED_USERS` /
+`DISCORD_ALLOWED_GUILDS` / `DISCORD_ALLOWED_ROLES` (or `SLACK_ALLOWED_USERS` /
+`SLACK_ALLOWED_CHANNELS`), or the sentinel `"*"` to allow everyone explicitly.
+The container stays healthy in this state — it is running fine, it just has
+nobody it is allowed to serve.
+
+For `401` or `403` responses to specific callers:
 
 - Confirm the portal and Guardian are running under the same active profile set.
 - Confirm the relevant `portal_<id>_secret` exists in `private/secrets/`.
@@ -271,6 +280,17 @@ openpalm rollback
 
 Raw copying is incomplete because install/update also generates state, private
 secrets, caches, and runtime files.
+
+## Update Refuses: "written by a newer OpenPalm"
+
+The binary you ran is older than the release that last wrote this `OP_HOME`.
+Continuing would skip the migrations in between and roll every managed image
+tag back to the older binary's version, so install/update/apply stop before
+writing anything. Install the newer `openpalm` binary and rerun.
+
+Read-only commands still work while you sort it out — `openpalm status`,
+`openpalm logs`, `openpalm doctor`. If you genuinely intend the downgrade, back
+up first and set `OP_ALLOW_HOME_DOWNGRADE=1`.
 
 ## Factory Reset
 

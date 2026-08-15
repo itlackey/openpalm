@@ -216,6 +216,68 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
  * Returns whether anything actually changed on disk. An up-to-date home reads
  * one small file and returns — it never touches stack.env.
  */
+/**
+ * Refuse to let an OLDER release write to a home a NEWER one already migrated.
+ *
+ * The schema record only ever ratchets forward, and every read of it treats
+ * "recorded >= mine" as "nothing to do" — which is right for the same release
+ * and silently wrong for an older one. An older binary run against a newer
+ * `OP_HOME` (a rolled-back install, a second binary left on PATH, a
+ * `self-update` that half-failed) does three things, none of them recoverable
+ * by the operator without knowing what happened:
+ *
+ *   1. skips every migration between the two versions, because the record
+ *      already claims a higher number than it knows about;
+ *   2. rewrites the managed image tags DOWN to its own platform version in
+ *      {@link advanceManagedImageVersions}, and re-stamps the managed markers
+ *      so the downgrade looks deliberate and is never advanced back; and
+ *   3. recreates the whole stack on those older images, against a home laid
+ *      out for the newer ones — including the assistant image, which bakes
+ *      the matching `@openpalm/ui` build.
+ *
+ * So the CLI, the UI it bakes, the home schema, and the image tags all skew
+ * apart at once from a single mismatched invocation. This is the one check
+ * that makes that combination unrepresentable, and it belongs on the WRITE
+ * paths only: reading a newer home is harmless, and `openpalm status` /
+ * `logs` / `doctor` are exactly what an operator needs while diagnosing this.
+ *
+ * `OP_ALLOW_HOME_DOWNGRADE=1` is the escape hatch, mirroring `OP_ALLOW_ROOT`:
+ * supported, not recommended, and it must be asked for.
+ */
+export function checkHomeSchemaSupported(
+  homeDir: string,
+  env: Record<string, string | undefined> = process.env,
+): { ok: true } | { ok: false; recorded: number; supported: number; message: string } {
+  const recorded = readHomeSchemaVersion(homeDir);
+  if (recorded <= HOME_SCHEMA_VERSION) return { ok: true };
+  if (env.OP_ALLOW_HOME_DOWNGRADE === '1') {
+    logger.warn('proceeding against a newer OP_HOME (OP_ALLOW_HOME_DOWNGRADE=1)', {
+      recorded,
+      supported: HOME_SCHEMA_VERSION,
+    });
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    recorded,
+    supported: HOME_SCHEMA_VERSION,
+    message:
+      `This OP_HOME (${homeDir}) was written by a newer OpenPalm: it records home schema ` +
+      `${recorded}, and this binary understands ${HOME_SCHEMA_VERSION}. Continuing would skip ` +
+      'the migrations in between and roll every managed image tag back to this binary\'s ' +
+      'version, leaving the CLI, the served UI, the home layout, and the containers on ' +
+      'different releases.\n' +
+      'Install the newer openpalm binary and rerun this command. To proceed anyway ' +
+      '(supported, not recommended), set OP_ALLOW_HOME_DOWNGRADE=1.',
+  };
+}
+
+/** {@link checkHomeSchemaSupported}, as a guard for the lifecycle write paths. */
+export function assertHomeSchemaSupported(homeDir: string): void {
+  const result = checkHomeSchemaSupported(homeDir);
+  if (!result.ok) throw new Error(result.message);
+}
+
 export function runHomeMigrations(homeDir: string): boolean {
   const recorded = readHomeSchemaVersion(homeDir);
   if (recorded >= HOME_SCHEMA_VERSION) return false;

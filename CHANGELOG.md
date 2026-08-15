@@ -26,6 +26,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An older `openpalm` binary can no longer downgrade a newer OP_HOME.** The
+  home schema record only ratchets forward, and every reader treated
+  "recorded >= mine" as "nothing to do" — right for the same release, silently
+  wrong for an older one. An older binary run against a newer home (a rolled
+  back install, a second binary on PATH, a half-failed `self-update`) skipped
+  every migration in between, rewrote the managed image tags DOWN to its own
+  platform version, and re-stamped the managed markers so the downgrade looked
+  deliberate and was never advanced back — leaving the CLI, the UI baked into
+  the assistant image, the home layout, and the running containers on four
+  different releases from one mistaken invocation. Every lifecycle write path
+  (install, update, apply) now refuses up front, naming both versions and the
+  way out. Read-only commands are deliberately unaffected: `status`, `logs`,
+  and `doctor` are what you need while diagnosing this.
+  `OP_ALLOW_HOME_DOWNGRADE=1` proceeds anyway.
+- **An enabled portal with no allowlist is now reported, not just logged.**
+  Portals are default-deny: with every allow-scope empty, the permission engine
+  answers `no_allowlist_configured` and rejects every caller. The adapter said
+  so once in its own container log, and nothing else did — the container runs,
+  its port is open, its healthcheck is a bare TCP connect, and `openpalm
+  status` shows it up, so the one state in which a portal cannot do its job at
+  all was the state that looked healthiest. Config validation now warns for
+  each enabled portal in that state, which surfaces it on `openpalm install`,
+  `openpalm update`, `openpalm validate`, and the Host console's config check.
 - **The assistant no longer ships OpenPalm's contributor instructions as its
   own.** The image baked the repository's root `AGENTS.md` — "all work must
   comply with core-principles.md", commit conventions, the delivery checklist —
