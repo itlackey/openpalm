@@ -358,7 +358,7 @@ OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 | `OP_ENABLED_ADDONS` | Enabled first-party addon names |
 | `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Container-served UI host publication |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Direct OpenCode host publication |
-| `OP_WORKSPACE_PORT` | OpenCode workspace listener, default `3820`. Absent takes the default; a value that is not a usable TCP port (empty, `0`, junk) turns the listener OFF and `/advanced` falls back to its native chat surface. It has no bind variable — the listener follows the UI's own `HOST` |
+| `OP_WORKSPACE_PORT` | OpenCode workspace listener, default `3820`, resolved like every other port (an unbindable value falls back to the default). It has no bind variable — the listener follows the UI's own `HOST`. There is no off-switch: compose publishes this port through `${OP_WORKSPACE_PORT:-3820}`, so an "off" value either substitutes the default anyway (empty) or renders an invalid published-port spec (`0`/junk) that fails the whole stack |
 | `OP_GUARDIAN_BIND_ADDRESS`, `OP_GUARDIAN_PORT` | Guardian direct host publication |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | Guardian compatible API publication |
 | `OP_VOICE_PORT_HOST` | Voice loopback publication port |

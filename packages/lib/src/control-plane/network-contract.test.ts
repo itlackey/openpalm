@@ -11,9 +11,9 @@ import {
   DEFAULT_HOST_UI_PORT,
   DEFAULT_WORKSPACE_PORT,
   UI_LOOPBACK_HOST,
+  resolveEnvPort,
   resolveHostUiPort,
   resolveUiListenEnv,
-  resolveWorkspacePort,
 } from "./network-contract.ts";
 import { STACK_DEFAULTS } from "./defaults.ts";
 
@@ -135,28 +135,41 @@ describe("resolveUiListenEnv — trusted proxy", () => {
   });
 });
 
-describe("resolveWorkspacePort — the one port with three answers", () => {
-  test("absent takes the stack default, so no install needs a migration", () => {
-    expect(resolveWorkspacePort(undefined)).toBe(DEFAULT_WORKSPACE_PORT);
+describe("OP_WORKSPACE_PORT — resolved like every other port", () => {
+  const resolve = (env: Record<string, string | undefined>) =>
+    resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env);
+
+  test("the default is the canonical port table, not a second literal", () => {
     expect(DEFAULT_WORKSPACE_PORT).toBe(STACK_DEFAULTS.ports.workspace);
+    expect(resolve({})).toBe(DEFAULT_WORKSPACE_PORT);
   });
 
-  test("a usable port is taken as given, whitespace and all", () => {
-    expect(resolveWorkspacePort("4820")).toBe(4820);
-    expect(resolveWorkspacePort(" 4820 ")).toBe(4820);
+  test("a usable port is taken as given", () => {
+    expect(resolve({ OP_WORKSPACE_PORT: "4820" })).toBe(4820);
+    expect(resolve({ OP_WORKSPACE_PORT: " 4820 " })).toBe(4820);
   });
 
-  test("present but unusable is OFF — the only spelling left once absence means default", () => {
+  test("anything unbindable falls back, rather than meaning 'no listener'", () => {
+    // This deliberately does NOT disable the workspace. Compose publishes the
+    // port via `${OP_WORKSPACE_PORT:-3820}`, which substitutes the default for
+    // an EMPTY value and interpolates `0`/junk straight into a published-port
+    // spec — so an "off" spelling either silently stayed on or failed the whole
+    // stack. There is no off-switch for the UI or assistant port either.
     for (const raw of ["", "0", "70000", "-1", "3820.5", "nope"]) {
-      expect(resolveWorkspacePort(raw), raw).toBeUndefined();
+      expect(resolve({ OP_WORKSPACE_PORT: raw }), raw).toBe(DEFAULT_WORKSPACE_PORT);
     }
   });
+});
 
-  test("every reader agrees, so a disabled listener is never published anywhere", () => {
-    // Four callers ask this: the listener that binds the port, the
-    // advertisement /advanced reads, the Tailscale serve entry, and the install
-    // port probe. They used to answer three different ways — the serve entry in
-    // particular published a tailnet port for a listener explicitly turned off.
-    expect(resolveWorkspacePort("0")).toBeUndefined();
+describe("resolveEnvPort — env values are held to the explicit branch's bar", () => {
+  test("out-of-range and fractional env values fall back like explicit ones do", () => {
+    // These used to come back verbatim from env while being rejected as an
+    // explicit argument — one resolver with two standards.
+    for (const raw of ["70000", "3880.5"]) {
+      expect(resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, { OP_HOST_UI_PORT: raw }), raw)
+        .toBe(DEFAULT_HOST_UI_PORT);
+    }
+    expect(resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, { OP_HOST_UI_PORT: "65535" }))
+      .toBe(65535);
   });
 });

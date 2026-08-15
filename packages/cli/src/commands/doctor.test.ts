@@ -339,7 +339,7 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
     expect(seenTargets.find((t) => t.service === 'workspace')?.port).toBe(4820);
   });
 
-  test('a workspace turned off is not probed — there is no listener to conflict with', async () => {
+  test('an unbindable workspace value is probed at the default, not skipped', async () => {
     const originalLog = console.log;
     console.log = silentConsole.log;
     let seenTargets: Array<{ port: number; service: string }> = [];
@@ -355,7 +355,7 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
     } finally {
       console.log = originalLog;
     }
-    expect(seenTargets.some((t) => t.service === 'workspace')).toBe(false);
+    expect(seenTargets.find((t) => t.service === 'workspace')?.port).toBe(3820);
   });
 
   test('passes serverPort for the admin port once an OpenPalm UI instance answers there — the host UI is never a container, so no docker check could otherwise attribute it to "us"', async () => {

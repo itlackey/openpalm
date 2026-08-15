@@ -298,14 +298,6 @@ describe("describeRemoteExposure", () => {
     expect(workspace).not.toContain("public internet");
   });
 
-  test("a workspace turned off opens no door and claims none", () => {
-    // `null`, not `undefined`: a default parameter value fires on an explicit
-    // undefined too, so "off" spelled that way would have republished 3820.
-    const lines = describeRemoteExposure(cfg, true, null);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).not.toContain("workspace");
-  });
-
   test("public target distinguishes 'anyone who has the address'", () => {
     const lines = describeRemoteExposure({ ...cfg, public: true }, true);
     expect(lines[0]).toContain("public internet");
@@ -341,22 +333,5 @@ describe("describeRemoteExposure", () => {
         }
       }
     }
-  });
-});
-
-describe("resolveServeConfig — a disabled workspace publishes no tailnet port", () => {
-  test("null opens the assistant door only", () => {
-    const doc = resolveServeConfig({ hostname: "h", public: false, target: "assistant" }, null);
-    expect(Object.keys(doc.TCP)).toEqual(["443"]);
-    expect(doc.Web["${TS_CERT_DOMAIN}:3820"]).toBeUndefined();
-  });
-
-  test("an explicit undefined is NOT off — that spelling takes the default", () => {
-    // Pinned deliberately: a default parameter value fires on an explicit
-    // undefined, so `null` is the only way to say "off" and this asserts the
-    // two spellings stay distinguishable.
-    expect(
-      Object.keys(resolveServeConfig({ hostname: "h", public: false, target: "assistant" }, undefined).TCP),
-    ).toEqual(["443", "3820"]);
   });
 });

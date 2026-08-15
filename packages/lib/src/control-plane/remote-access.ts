@@ -201,24 +201,19 @@ type ServeEndpoint = { port: number; proxy: string; funnelable: boolean };
  */
 function endpointsFor(
   name: "assistant" | "guardian",
-  workspacePort: number | null,
+  workspacePort: number,
 ): ServeEndpoint[] {
   if (name === "guardian") {
     return [{ port: 8443, proxy: "http://guardian:3830", funnelable: true }];
   }
-  const doors: ServeEndpoint[] = [
+  return [
     { port: 443, proxy: "http://assistant:3000", funnelable: true },
-  ];
-  // `null` means the operator turned the workspace listener off; publishing a
-  // tailnet port for a listener nothing binds is the failure this avoids.
-  if (workspacePort !== null) {
-    doors.push({
+    {
       port: workspacePort,
       proxy: `http://assistant:${workspacePort}`,
       funnelable: false,
-    });
-  }
-  return doors;
+    },
+  ];
 }
 
 function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
@@ -245,15 +240,11 @@ function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
  * Keys are emitted in ascending port order so the generated file does not
  * churn between writes with no configuration change.
  *
- * `workspacePort` is `null` when the operator turned the workspace listener
- * off — distinct from omitting the argument, which takes the default. A plain
- * optional-with-default cannot express that: passing `undefined` explicitly
- * fires the default, so "off" would silently republish the default port.
  * See {@link endpointsFor} for which doors a target opens.
  */
 export function resolveServeConfig(
   cfg: RemoteAccessConfig,
-  workspacePort: number | null = DEFAULT_WORKSPACE_PORT,
+  workspacePort: number = DEFAULT_WORKSPACE_PORT,
 ): ServeConfigDoc {
   const endpoints = targetsFor(cfg.target)
     .flatMap((name) => endpointsFor(name, workspacePort))
@@ -294,7 +285,7 @@ export function resolveServeConfig(
 export function describeRemoteExposure(
   cfg: RemoteAccessConfig,
   enabled: boolean,
-  workspacePort: number | null = DEFAULT_WORKSPACE_PORT,
+  workspacePort: number = DEFAULT_WORKSPACE_PORT,
 ): string[] {
   if (!enabled) return [];
   const lines: string[] = [];

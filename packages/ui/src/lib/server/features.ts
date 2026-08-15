@@ -1,5 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { listEnabledAddonIds, readStackEnv, resolveWorkspacePort } from '@openpalm/lib';
+import {
+  DEFAULT_WORKSPACE_PORT,
+  listEnabledAddonIds,
+  readStackEnv,
+  resolveEnvPort,
+} from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -148,8 +153,8 @@ export function computeVoiceRuntime(): { url: string } | undefined {
  * upstream (server/workspace-listener.ts), so every browser is equally able to
  * use it and there is nothing to gate on.
  *
- * Absent for a host that has deployed nothing — there is no OpenCode behind
- * the listener yet — and for an operator who turned the listener off.
+ * Absent only for a host that has deployed nothing: the listener may well be
+ * bound, but there is no OpenCode behind it yet.
  *
  * Deliberately NOT part of computeServerRuntimeContext() — same reason as
  * computeVoiceRuntime above: that function runs on requireCapability's
@@ -161,8 +166,10 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
   // is a synchronous readFileSync. The container co-process has the key
   // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
   // never touches the disk at all.
-  const injected = process.env.OP_WORKSPACE_PORT?.trim();
-  if (injected !== undefined) return wrapPort(resolveWorkspacePort(injected));
+  const workspacePort = (persisted: Record<string, string> = {}): { port: number } => ({
+    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, process.env, persisted),
+  });
+  if (process.env.OP_WORKSPACE_PORT?.trim()) return workspacePort();
 
   try {
     const { homeDir, stackDir } = getState();
@@ -171,18 +178,15 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
     // not advertise a workspace: the listener may well be bound, but there is
     // no assistant behind it for it to proxy. This is the one case that differs
     // from "installed, key absent", where the default is exactly right — so it
-    // returns before resolveWorkspacePort's absence rule can apply. Same guard
+    // returns before the default can apply. Same guard
     // buildServedUiRuntimeConfig uses before seeding a connection.
     if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return undefined;
-    return wrapPort(resolveWorkspacePort(readStackEnv(homeDir).OP_WORKSPACE_PORT));
+    return workspacePort(readStackEnv(homeDir));
   } catch {
     // No readable OP_HOME and nothing injected: nothing to advertise.
     return undefined;
   }
 }
-
-const wrapPort = (port: number | undefined): { port: number } | undefined =>
-  port === undefined ? undefined : { port };
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();

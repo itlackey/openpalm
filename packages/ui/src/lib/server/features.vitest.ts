@@ -374,13 +374,12 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('an operator who turned the listener off gets no advertisement', () => {
-    // The tri-state itself (absent = default, unusable = off) belongs to
-    // resolveWorkspacePort and is pinned in lib's network-contract tests; what
-    // matters here is only that this lane honours it rather than substituting
-    // a default of its own.
+  test('an unbindable value falls back to the default, like every other port', () => {
+    // Not an off-switch: compose publishes this port through
+    // `${OP_WORKSPACE_PORT:-3820}`, so an "off" spelling either silently stayed
+    // on (empty) or failed the whole stack (0/junk in a published-port spec).
     writeStackEnv('OP_WORKSPACE_PORT=0\n');
-    expect(computeOpencodeWorkspace()).toBeUndefined();
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
   test('an installed home with no OP_WORKSPACE_PORT gets the default', () => {

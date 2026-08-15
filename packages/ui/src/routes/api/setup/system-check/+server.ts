@@ -92,7 +92,7 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
     { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
     // The wizard's port screen must show every port the install will publish;
     // omitting this one let a conflict surface later as a blank /advanced frame.
-    ...workspacePortTarget(process.env.OP_WORKSPACE_PORT),
+    workspacePortTarget(process.env),
   ];
 }
 

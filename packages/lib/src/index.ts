@@ -831,7 +831,6 @@ export {
   resolveHostUiPort,
   resolvePublishedUiPort,
   resolveUiListenEnv,
-  resolveWorkspacePort,
   type UiListenEnv,
 } from "./control-plane/network-contract.js";
 

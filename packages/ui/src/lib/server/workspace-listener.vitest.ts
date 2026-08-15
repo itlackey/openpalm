@@ -186,6 +186,55 @@ describe('OpenCode is not reachable here without one', () => {
     expect(res.status).toBe(401);
     expect(seen).toHaveLength(0);
   });
+
+  test('a valid session is not enough for a write from ANOTHER origin', async () => {
+    // The cookie is SameSite=Lax, and "same site" ignores the port — so every
+    // other origin on this host (the UI itself; any unrelated app on any other
+    // port) has this cookie sent for it. session-cookie.ts records that Lax is
+    // safe *because* state-mutating requests are independently guarded by the
+    // Origin check; this listener runs outside SvelteKit's handle, so it brings
+    // its own half of that pair.
+    const res = await fetch(`${workspaceOrigin}/session`, {
+      method: 'POST',
+      headers: { ...asSession(VALID_SESSION), origin: 'http://127.0.0.1:3800' },
+      body: '{"x":1}',
+    });
+
+    expect(res.status).toBe(401);
+    expect(seen).toHaveLength(0);
+  });
+
+  test('the workspace page’s own writes pass — its Origin is this listener', async () => {
+    const origin = new URL(workspaceOrigin).host;
+    const res = await fetch(`${workspaceOrigin}/session`, {
+      method: 'POST',
+      headers: { ...asSession(VALID_SESSION), origin: `http://${origin}` },
+      body: '{"x":1}',
+    });
+
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(1);
+  });
+
+  test('a write with NO Origin still passes — that is the non-browser contract', async () => {
+    // curl, the TUI, and a script send none, and the main origin's own check
+    // allows that case for exactly the same reason.
+    const res = await fetch(`${workspaceOrigin}/session`, {
+      method: 'POST',
+      headers: asSession(VALID_SESSION),
+      body: '{"x":1}',
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  test('reads are never blocked by Origin — only state-changing methods are', async () => {
+    const res = await fetch(`${workspaceOrigin}/session`, {
+      headers: { ...asSession(VALID_SESSION), origin: 'http://127.0.0.1:3800' },
+    });
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe('an external OpenCode client is not broken by any of this', () => {

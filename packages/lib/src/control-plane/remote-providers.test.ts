@@ -179,14 +179,13 @@ describe("describeSelectedRemoteExposure", () => {
     for (const line of lines) expect(line).not.toContain("https://");
   });
 
-  test("a workspace turned off in the same env is not reported as exposed", () => {
+  test("a relocated workspace port is disclosed at the number actually published", () => {
     const lines = describeSelectedRemoteExposure({
       OP_ENABLED_ADDONS: "remote",
       OP_REMOTE_TARGET: "assistant",
-      OP_WORKSPACE_PORT: "0",
+      OP_WORKSPACE_PORT: "4820",
     });
-    expect(lines.length).toBe(1);
-    expect(lines[0]).not.toContain("workspace");
+    expect(lines.some((line) => line.includes("port 4820"))).toBe(true);
   });
 });
 

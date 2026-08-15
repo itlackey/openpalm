@@ -36,9 +36,9 @@
  *
  * `hooks.server.ts` is loaded once by every launch mode — the assistant
  * container's co-process, `openpalm app`, `openpalm admin`, and Electron — so
- * starting from there needs no change to any of the four spawn paths. Absent
- * or unset port means no listener at all: this is opt-in per deployment, and a
- * bind failure is logged and swallowed rather than taking the UI down with it.
+ * starting from there needs no change to any of the four spawn paths. A bind
+ * failure is logged and swallowed rather than taking the UI down with it — the
+ * workspace is an enhancement, the UI is the product.
  */
 import {
   createServer,
@@ -49,7 +49,7 @@ import {
 import { connect } from 'node:net';
 import { pipeline as pipelineCallback, Readable, type Duplex } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { createLogger, resolveWorkspacePort } from '@openpalm/lib';
+import { createLogger, DEFAULT_WORKSPACE_PORT, resolveEnvPort } from '@openpalm/lib';
 import { assistantAuthHeaders } from './basic-auth.js';
 import {
   STRIPPED_REQUEST_HEADERS,
@@ -78,7 +78,38 @@ const logger = createLogger('workspace');
 function authorize(req: IncomingMessage): { ok: boolean; clientAuthorization?: string } {
   const clientAuthorization = req.headers.authorization;
   if (clientAuthorization) return { ok: true, clientAuthorization };
+  if (crossOriginWrite(req)) return { ok: false };
   return { ok: validateSession(sessionTokenFromCookieHeader(req.headers.cookie)) };
+}
+
+/**
+ * A state-changing request from another origin — refused, the way SEC-2 refuses
+ * it on the main origin (`checkOriginHeader` in helpers.ts).
+ *
+ * The session cookie is `SameSite=Lax`, and session-cookie.ts records why that
+ * is safe: "State-mutating requests are independently CSRF-guarded by the
+ * Origin check (SEC-2) in hooks.server.ts". This listener inherits the cookie
+ * without inheriting SvelteKit's `handle`, so it has to bring its own half of
+ * that pair. Lax alone is not enough here: "same site" ignores the port, so
+ * ANY other origin on this host — the UI itself, or an unrelated app on some
+ * other port — is same-site with this one and would have its cookie sent.
+ *
+ * Absent Origin is allowed, matching the main check: non-browser clients (the
+ * TUI, curl, a script) send none, and a browser omits it on the top-level
+ * navigations that load the workspace in the first place.
+ */
+function crossOriginWrite(req: IncomingMessage): boolean {
+  const method = (req.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return false;
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  try {
+    // The Host header is this listener's own authority as the client reached
+    // it, which is exactly what an in-page request's Origin must equal.
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true; // Unparseable Origin is treated as hostile.
+  }
 }
 
 /**
@@ -274,11 +305,10 @@ let started = false;
 /**
  * Bind the workspace listener, once per process.
  *
- * The port comes from {@link resolveWorkspacePort}, shared with the
- * advertisement `/advanced` reads, so the port that gets bound and the port
- * that gets offered to a browser cannot disagree. An operator who sets
- * `OP_WORKSPACE_PORT` to something unusable gets no listener at all, and
- * `/advanced` falls back to the native chat surface.
+ * `OP_WORKSPACE_PORT` is resolved by the same {@link resolveEnvPort} every
+ * other port in the tree uses, and by the same call the advertisement
+ * `/advanced` reads makes — so the port that gets bound and the port offered to
+ * a browser cannot disagree.
  *
  * The interface is `HOST`: adapter-node's own bind variable, so this listener
  * lands on exactly the interface the UI itself is on, in every launch mode,
@@ -295,8 +325,7 @@ export function startWorkspaceListener(): Server | undefined {
   if (started) return undefined;
   started = true;
 
-  const port = resolveWorkspacePort(process.env.OP_WORKSPACE_PORT);
-  if (port === undefined) return undefined;
+  const port = resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, process.env);
   const host = process.env.HOST?.trim() || '0.0.0.0';
 
   const server = createServer((req, res) => {
