@@ -29,6 +29,7 @@ import { computeGuardianIngressRequired } from "./remote-providers.js";
 import { guardianRequiredForEnv } from "./guardian-required.js";
 import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from "./secrets.js";
 import {
+  DEFAULT_WORKSPACE_PORT,
   deriveRemoteHostname,
   readRemoteAccessConfig,
   resolveServeConfig,
@@ -110,7 +111,20 @@ function writeServeConfigDoc(homeDir: string, doc: ServeConfigDoc): void {
  * containerboot at read time.
  */
 export function writeServeConfig(homeDir: string, cfg: RemoteAccessConfig): void {
-  writeServeConfigDoc(homeDir, resolveServeConfig(cfg));
+  writeServeConfigDoc(homeDir, resolveServeConfig(cfg, resolveWorkspacePort(homeDir)));
+}
+
+/**
+ * The OpenCode workspace port this install runs on, for the serve entry that
+ * rides along with the assistant. Read from stack.env rather than assumed
+ * because an operator who moved `OP_WORKSPACE_PORT` off the default moved the
+ * listener too, and a serve entry pointed at the old number would proxy to a
+ * closed port. Anything unparseable falls back to the default the compose file
+ * itself falls back to.
+ */
+function resolveWorkspacePort(homeDir: string): number {
+  const raw = Number(readStackEnv(homeDir).OP_WORKSPACE_PORT?.trim());
+  return Number.isInteger(raw) && raw > 0 && raw <= 65535 ? raw : DEFAULT_WORKSPACE_PORT;
 }
 
 /**

@@ -71,7 +71,7 @@ describe("writeServeConfig", () => {
     const home = makeHome();
     writeServeConfig(home, { hostname: "openpalm", public: true, target: "assistant" });
     const doc = readServeDoc(home) as { AllowFunnel: Record<string, boolean> };
-    expect(Object.values(doc.AllowFunnel)).toEqual([true]);
+    expect(doc.AllowFunnel["${TS_CERT_DOMAIN}:443"]).toBe(true);
   });
 
   test("a rewrite fully replaces the document atomically — no merge, no leftover temp file", () => {
@@ -90,7 +90,9 @@ describe("writeServeConfig", () => {
 
     const doc = readServeDoc(home) as { TCP: Record<string, unknown> };
     expect(doc).toEqual(resolveServeConfig(next));
-    expect(Object.keys(doc.TCP)).toEqual(["443"]); // guardian's "8443" is gone, not merged in
+    // guardian's "8443" is gone, not merged in; "3820" is the workspace port
+    // that rides along with the assistant.
+    expect(Object.keys(doc.TCP)).toEqual(["443", "3820"]);
 
     // The temp file the atomic writer used must never linger — a leftover
     // `.tmp` is the signature of a write that was never actually renamed in.
@@ -273,8 +275,9 @@ describe("reconcileRemoteAccess", () => {
     });
     expect(reconcileRemoteAccess(home).error).toBeUndefined();
     expect(
-      Object.values((readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel),
-    ).toEqual([true]);
+      (readServeDoc(home) as { AllowFunnel: Record<string, boolean> })
+        .AllowFunnel["${TS_CERT_DOMAIN}:443"],
+    ).toBe(true);
 
     patchStateEnvFile(home, { OP_REMOTE_TARGET: "nonsense" });
     const result = reconcileRemoteAccess(home);

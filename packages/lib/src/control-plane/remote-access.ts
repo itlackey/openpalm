@@ -183,6 +183,13 @@ const TARGET_ENDPOINTS: Record<"assistant" | "guardian", { port: 443 | 8443; pro
   guardian: { port: 8443, proxy: "http://guardian:3830" },
 };
 
+/**
+ * The default OpenCode workspace port — `core.compose.yml`'s
+ * `OP_WORKSPACE_PORT` fallback, repeated here because an install that never
+ * set the key still runs the listener on it.
+ */
+export const DEFAULT_WORKSPACE_PORT = 3820;
+
 function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
   if (target === "both") return ["assistant", "guardian"];
   return [target];
@@ -206,20 +213,41 @@ function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
  *
  * Keys are emitted in ascending port order so the generated file does not
  * churn between writes with no configuration change.
+ *
+ * THE WORKSPACE PORT rides along with the assistant, on the SAME number the
+ * stack publishes locally. OpenCode's web UI is a root-mounted SPA, so
+ * `/advanced` frames it at an origin of its own rather than a path
+ * (packages/ui/src/lib/server/workspace-listener.ts) — and the browser
+ * composes that origin from the page it is on plus this one port number. Using
+ * the same number on the tailnet as on the LAN is what lets one advertised
+ * port be correct for every client, however it arrived. It is served but never
+ * funneled: Tailscale allows Funnel on 443/8443/10000 only, and a workspace
+ * that stays private to the operator's own tailnet devices is the right
+ * default for a port whose whole job is handing out a shell.
  */
-export function resolveServeConfig(cfg: RemoteAccessConfig): ServeConfigDoc {
-  const targets = targetsFor(cfg.target)
-    .map((name) => TARGET_ENDPOINTS[name])
-    .sort((a, b) => a.port - b.port);
+export function resolveServeConfig(
+  cfg: RemoteAccessConfig,
+  workspacePort: number = DEFAULT_WORKSPACE_PORT,
+): ServeConfigDoc {
+  const endpoints: { port: number; proxy: string; funnel: boolean }[] = targetsFor(cfg.target)
+    .map((name) => ({ ...TARGET_ENDPOINTS[name], funnel: cfg.public }));
+  if (endpoints.some((endpoint) => endpoint.port === TARGET_ENDPOINTS.assistant.port)) {
+    endpoints.push({
+      port: workspacePort,
+      proxy: `http://assistant:${workspacePort}`,
+      funnel: false,
+    });
+  }
+  endpoints.sort((a, b) => a.port - b.port);
 
   const TCP: ServeConfigDoc["TCP"] = {};
   const Web: ServeConfigDoc["Web"] = {};
   const AllowFunnel: ServeConfigDoc["AllowFunnel"] = {};
 
-  for (const { port, proxy } of targets) {
+  for (const { port, proxy, funnel } of endpoints) {
     TCP[String(port)] = { HTTPS: true };
     Web[`\${TS_CERT_DOMAIN}:${port}`] = { Handlers: { "/": { Proxy: proxy } } };
-    AllowFunnel[`\${TS_CERT_DOMAIN}:${port}`] = cfg.public;
+    AllowFunnel[`\${TS_CERT_DOMAIN}:${port}`] = funnel;
   }
 
   return { TCP, Web, AllowFunnel };

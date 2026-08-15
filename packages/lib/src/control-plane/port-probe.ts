@@ -126,6 +126,10 @@ export function resolveInstallPortTargets(): InstallPortTarget[] {
     { port: pickPort("OP_HOST_UI_PORT") ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
     { port: pickPort("OP_UI_PORT") ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
     { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
+    // Non-blocking: a taken workspace port costs /advanced its embedded
+    // OpenCode UI, which falls back to the native chat surface. Nothing else
+    // in the stack depends on it, so it is not worth refusing an install over.
+    { port: pickPort("OP_WORKSPACE_PORT") ?? STACK_DEFAULTS.ports.workspace, service: "workspace", blocking: false },
   ];
 }
 

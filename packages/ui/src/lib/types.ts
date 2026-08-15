@@ -58,14 +58,15 @@ export type ServerRuntimeContext = {
    */
   voice?: { url: string };
   /**
-   * Where OpenCode's own web UI is published by this install, when a browser
-   * can reach it: the host-side port from the compose publish, whether that
-   * publish is loopback-only, and whether OpenCode requires Basic auth there
-   * (only the desktop shell can answer that challenge). `/advanced` composes
-   * the address from the host the browser actually visited (see
-   * computeOpencodeWorkspace).
+   * The port this install's OpenCode workspace listener is published on, when
+   * it runs one. That listener serves OpenCode at an origin root behind this
+   * app's session and attaches OpenCode's own credential upstream, so the
+   * frame needs none of its own. A port and no more: `/advanced` composes the
+   * address from the page the browser is already on and probes it, because
+   * neither the host nor the reachability is knowable from the server side
+   * (see computeOpencodeWorkspace).
    */
-  opencodeWorkspace?: { port: number; loopbackOnly: boolean; requiresAuth: boolean };
+  opencodeWorkspace?: { port: number };
 };
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';

@@ -14,11 +14,7 @@ export type EmbeddableConnection = { baseUrl: string; hasPassword: boolean };
 export type EmbeddingPage = { origin: string; protocol: string };
 
 /** The server's `opencodeWorkspace` advertisement (see computeOpencodeWorkspace). */
-export type OpencodeWorkspaceHint = {
-  port: number;
-  loopbackOnly: boolean;
-  requiresAuth: boolean;
-};
+export type OpencodeWorkspaceHint = { port: number };
 export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 
 /**
@@ -36,42 +32,84 @@ function formatHostForUrl(hostname: string): string {
 }
 
 /**
- * The address of OpenCode's own web UI for THIS browser, or null when there
- * isn't one it can reach.
+ * The address of OpenCode's own web UI for THIS browser.
  *
- * Composed from the host the browser actually visited, because that is the
- * only party that knows it — the server publishes a port, not a URL. A
- * loopback-only publish is reachable only from the machine running the stack,
- * so a LAN or tailnet client gets null rather than an address that resolves to
- * its own device. The scheme is always http: OpenCode serves plain HTTP, and
- * any TLS in front of it is a proxy this hint knows nothing about.
+ * Composed from the page the browser is already on — same host, same scheme,
+ * the advertised port — because the browser is the only party that knows how
+ * it reached this app. The server publishes a port, never a URL: it cannot
+ * know whether a request arrived direct, over a tailnet, or through someone's
+ * reverse proxy, and every one of those answers a different hostname.
+ *
+ * The SCHEME follows the page for a hard browser reason, not a stylistic one:
+ * an https page may not embed a plain-http frame at all (mixed content), so
+ * `http://` hardcoded here would silently blank the workspace for every
+ * deployment behind TLS. Taking the page's scheme means the address is the
+ * only one that could work, whatever fronts this app.
+ *
+ * Whether anything actually ANSWERS there is not decided here — the caller
+ * probes it (see +page.svelte). Inferring reachability from the server's bind
+ * address is what this used to do, and it got the two most common remote
+ * deployments wrong in opposite directions: a loopback-published stack behind
+ * Caddy or Tailscale Serve is perfectly reachable at the host the browser
+ * typed, and was refused a workspace for it.
  *
  * This is OpenCode at its own origin root, so it serves both of `/advanced`'s
  * uses: the iframe (which cannot point at the locked `/oc` connection — see
- * {@link isEmbeddableOpencodeUi}) and the new-tab escape hatch for deployments
- * where framing is refused.
+ * {@link isEmbeddableOpencodeUi}) and the new-tab escape hatch.
  *
- * `canAuthenticate` says whether the CLIENT can satisfy OpenCode's Basic auth.
- * Only the desktop shell's FRAME can: the Electron main process answers the
- * challenge, where the credential already lives. Everywhere else — including
- * that same shell's new-tab link, which `shell.openExternal`s into the system
- * browser — a credentialed workspace is a password prompt nobody can answer.
+ * No credential is involved on this side. The listener behind this address
+ * checks the `op_session` cookie the browser already holds (cookies are scoped
+ * by host, not port, so it is sent there too) and attaches OpenCode's own
+ * password upstream, server-side. That is what lets an ordinary browser — LAN,
+ * tailnet, desktop shell alike — reach the workspace with nothing to type.
  */
 export function resolveWorkspaceUrl(
   hint: OpencodeWorkspaceHint | undefined,
-  embeddingPage: { hostname: string },
+  embeddingPage: { hostname: string; protocol: string },
   activeConnection: WorkspaceConnection | null | undefined,
-  canAuthenticate = false,
 ): string | null {
-  // The server hint describes only this install's local OpenCode listener. It
+  // The server hint describes only this install's local workspace listener. It
   // is not a workspace URL for an arbitrary browser-owned connection.
   if (!activeConnection?.isDefault || activeConnection.hasPassword) return null;
   if (!hint) return null;
-  if (hint.requiresAuth && !canAuthenticate) return null;
-  const { hostname } = embeddingPage;
+  const { hostname, protocol } = embeddingPage;
   if (!hostname) return null;
-  if (hint.loopbackOnly && !isLoopbackHost(hostname)) return null;
-  return `http://${formatHostForUrl(hostname)}:${hint.port}`;
+  if (protocol !== 'http:' && protocol !== 'https:') return null;
+  return `${protocol}//${formatHostForUrl(hostname)}:${hint.port}`;
+}
+
+/**
+ * Does anything answer at the workspace address?
+ *
+ * `no-cors` because there is nothing to read: OpenCode sends no CORS headers
+ * for this app's origin, so a normal fetch would be rejected by the browser
+ * even when the server answered perfectly. An opaque response is still the
+ * only fact needed — it resolves for ANY HTTP reply (the listener's own 401
+ * included) and rejects only when the address does not answer at all, which is
+ * exactly the distinction between "frame it" and "show the native surface".
+ *
+ * The timeout is what makes this safe to await before rendering: a refused
+ * connection fails immediately, but a DROPPED one (a firewall between a remote
+ * browser and a port nobody forwarded) hangs until the browser gives up
+ * minutes later, and `/advanced` would sit on its spinner for all of it.
+ */
+export async function isWorkspaceReachable(url: string, timeoutMs = 2500): Promise<boolean> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    await fetch(url, {
+      method: 'GET',
+      mode: 'no-cors',
+      credentials: 'include',
+      cache: 'no-store',
+      signal: abort.signal,
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

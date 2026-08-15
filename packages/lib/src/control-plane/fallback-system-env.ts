@@ -72,6 +72,7 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# http://guardian:8080 over the portal_net Docker network.",
     `OP_UI_PORT=${STACK_DEFAULTS.ports.ui}`,
     `OP_ASSISTANT_PORT=${STACK_DEFAULTS.ports.assistant}`,
+    `OP_WORKSPACE_PORT=${STACK_DEFAULTS.ports.workspace}`,
     `OP_HOST_UI_PORT=${STACK_DEFAULTS.ports.hostUi}`,
     ""
   ].join("\n");

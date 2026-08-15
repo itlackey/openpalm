@@ -31,6 +31,7 @@ import {
   reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { startWorkspaceListener } from "$lib/server/workspace-listener.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
@@ -128,6 +129,10 @@ function loadProcessEnv(): void {
 // anything reads the home, so the request path can simply trust the disk.
 migrateHome();
 loadProcessEnv();
+// OpenCode's web UI, at an origin root, behind this app's login. Started here
+// because every launch mode loads this module — see workspace-listener.ts for
+// why it needs an origin of its own rather than a path on this one.
+startWorkspaceListener();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
 

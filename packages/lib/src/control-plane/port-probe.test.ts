@@ -115,25 +115,30 @@ describe('portHeldByOurContainer', () => {
 });
 
 describe('resolveInstallPortTargets', () => {
-  it('defaults to 3880/3800/3810 when no env overrides are set', () => {
-    const originals = ['OP_HOST_UI_PORT', 'OP_UI_PORT', 'OP_ASSISTANT_PORT'].map((k) => [k, process.env[k]] as const);
+  const PORT_KEYS = ['OP_HOST_UI_PORT', 'OP_UI_PORT', 'OP_ASSISTANT_PORT', 'OP_WORKSPACE_PORT'];
+
+  it('defaults to 3880/3800/3810/3820 when no env overrides are set', () => {
+    const originals = PORT_KEYS.map((k) => [k, process.env[k]] as const);
     for (const [k] of originals) delete process.env[k];
     try {
       const targets = resolveInstallPortTargets();
-      expect(targets.map((t) => t.port)).toEqual([3880, 3800, 3810]);
-      expect(targets.every((t) => t.blocking)).toBe(true);
+      expect(targets.map((t) => t.port)).toEqual([3880, 3800, 3810, 3820]);
+      // Only the workspace is non-blocking: losing it costs /advanced its
+      // embedded OpenCode UI and nothing else, so it must not refuse an install.
+      expect(targets.filter((t) => !t.blocking).map((t) => t.service)).toEqual(['workspace']);
     } finally {
       for (const [k, v] of originals) if (v !== undefined) process.env[k] = v;
     }
   });
 
-  it('honors OP_HOST_UI_PORT/OP_UI_PORT/OP_ASSISTANT_PORT overrides', () => {
-    const originals = ['OP_HOST_UI_PORT', 'OP_UI_PORT', 'OP_ASSISTANT_PORT'].map((k) => [k, process.env[k]] as const);
+  it('honors every port override', () => {
+    const originals = PORT_KEYS.map((k) => [k, process.env[k]] as const);
     try {
       process.env.OP_HOST_UI_PORT = '4880';
       process.env.OP_UI_PORT = '4800';
       process.env.OP_ASSISTANT_PORT = '4810';
-      expect(resolveInstallPortTargets().map((t) => t.port)).toEqual([4880, 4800, 4810]);
+      process.env.OP_WORKSPACE_PORT = '4820';
+      expect(resolveInstallPortTargets().map((t) => t.port)).toEqual([4880, 4800, 4810, 4820]);
     } finally {
       for (const [k, v] of originals) {
         if (v === undefined) delete process.env[k];

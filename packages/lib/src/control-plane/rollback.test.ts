@@ -107,7 +107,7 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     );
     writeServeConfig(home, { hostname: "openpalm", public: true, target: "assistant" });
     expect((readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel)
-      .toEqual({ "${TS_CERT_DOMAIN}:443": true });
+      .toEqual({ "${TS_CERT_DOMAIN}:443": true, "${TS_CERT_DOMAIN}:3820": false });
 
     restoreSnapshot(state);
 
@@ -138,7 +138,7 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
       target: "assistant",
     }));
     const allowFunnel = (readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel;
-    expect(Object.values(allowFunnel)).toEqual([false]);
+    expect(Object.values(allowFunnel).every((value) => value === false)).toBe(true);
   });
 
   test("restoreSnapshot removes a skeleton stamp absent from the snapshot", () => {

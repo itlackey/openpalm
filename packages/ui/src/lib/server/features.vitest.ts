@@ -19,6 +19,7 @@ import {
   computeServerRuntimeContext,
   computeVoiceRuntime,
   isAdminCapable,
+  resolveWorkspacePort,
 } from './features.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { clearLaunchRoutingCache } from '$lib/server/landing.js';
@@ -312,11 +313,7 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
 describe('computeOpencodeWorkspace — where OpenCode’s own web UI is published', () => {
   let homeDir = '';
   let savedHome: string | undefined;
-  const WORKSPACE_ENV_KEYS = [
-    'OP_ASSISTANT_PORT',
-    'OP_ASSISTANT_BIND_ADDRESS',
-    'OPENCODE_AUTH',
-  ] as const;
+  const WORKSPACE_ENV_KEYS = ['OP_WORKSPACE_PORT'] as const;
   let savedWorkspaceEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -358,66 +355,66 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toBeUndefined();
   });
 
-  test('reads the published port and loopback-only default from the stack env', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: true,
-      requiresAuth: false,
-    });
+  test('reads the workspace listener’s port from the stack env', () => {
+    writeStackEnv('OP_WORKSPACE_PORT=3820\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('reports a LAN publish as reachable beyond this machine', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\nOP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
-  });
-
-  test('process env wins over the stack file — the container gets its values injected', () => {
-    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
-    process.env.OP_ASSISTANT_PORT = '4810';
-    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 4810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
+  test('process env wins over the stack file — the container gets its value injected', () => {
+    writeStackEnv('OP_WORKSPACE_PORT=3820\n');
+    process.env.OP_WORKSPACE_PORT = '4820';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 4820 });
   });
 
   test('resolves from injected env alone — the container lane never reads the stack file', () => {
-    // Every key compose injects is present, so the file below must not be
-    // consulted: it contradicts all three, and the injected values win. This
-    // pins the lazy read (computeOpencodeWorkspace runs on every layout load).
-    writeStackEnv('OP_ASSISTANT_PORT=1111\nOP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOPENCODE_AUTH=true\n');
-    process.env.OPENCODE_AUTH = 'false';
-    process.env.OP_ASSISTANT_PORT = '3810';
-    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: false,
-      requiresAuth: false,
-    });
+    // The key compose injects is present, so the file below must not be
+    // consulted: it contradicts it, and the injected value wins. This pins the
+    // lazy read (computeOpencodeWorkspace runs on every layout load).
+    writeStackEnv('OP_WORKSPACE_PORT=1111\n');
+    process.env.OP_WORKSPACE_PORT = '3820';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('reports Basic auth rather than withholding the address — only the client knows if it can answer', () => {
-    // Withholding it here used to cost the DESKTOP app its workspace whenever
-    // `assistantDirect` was on, even though the Electron shell answers that
-    // challenge from its main process. The gate belongs at the consumer.
-    writeStackEnv('OP_ASSISTANT_PORT=3810\nOPENCODE_AUTH=true\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3810,
-      loopbackOnly: true,
-      requiresAuth: true,
-    });
+  test('reports no reachability verdict — only the browser can measure that', () => {
+    // This used to also publish a `loopbackOnly` flag derived from the compose
+    // bind, and /advanced refused to frame anything it marked local-only. That
+    // inference is wrong for every reverse-proxied deployment: Caddy and
+    // Tailscale Serve reach a loopback-published stack perfectly well. The
+    // browser probes the composed address instead (advanced/embeddable.ts).
+    writeStackEnv('OP_WORKSPACE_PORT=3820\nOP_UI_BIND_ADDRESS=127.0.0.1\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('absent for a port that is not a usable TCP port', () => {
-    for (const port of ['0', '70000', 'not-a-port']) {
-      writeStackEnv(`OP_ASSISTANT_PORT=${port}\n`);
+  test('a port that is not a usable TCP port is how an operator turns it OFF', () => {
+    for (const port of ['0', '70000', 'not-a-port', '']) {
+      writeStackEnv(`OP_WORKSPACE_PORT=${port}\n`);
       expect(computeOpencodeWorkspace(), port).toBeUndefined();
+    }
+  });
+
+  test('an installed home with no OP_WORKSPACE_PORT gets the default', () => {
+    // Installs predating the workspace listener carry no such key, and the
+    // desktop and CLI launch paths do not inject one. Defaulting is what lets
+    // them have a workspace with no migration; /advanced probes the address
+    // before framing it, so a default that turns out to be wrong costs a round
+    // trip rather than a blank frame.
+    writeStackEnv('OP_UI_BIND_ADDRESS=0.0.0.0\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
+  });
+});
+
+describe('resolveWorkspacePort — absence means default, unusable means off', () => {
+  test('absent takes the stack default', () => {
+    expect(resolveWorkspacePort(undefined)).toEqual({ port: 3820 });
+  });
+
+  test('a usable port is taken as given', () => {
+    expect(resolveWorkspacePort('4820')).toEqual({ port: 4820 });
+  });
+
+  test('present but unusable is off — the only way to disable the listener', () => {
+    for (const raw of ['', '0', '70000', '-1', 'nope']) {
+      expect(resolveWorkspacePort(raw), raw).toBeUndefined();
     }
   });
 });

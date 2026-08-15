@@ -129,6 +129,21 @@ secrets at `/run/secrets/`; neither appears under `/stash`.
 |---|---:|---|
 | OpenPalm UI | `3000` | `${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}` |
 | OpenCode | `4096` | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}` |
+| OpenCode workspace | `${OP_WORKSPACE_PORT:-3820}` | `${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_WORKSPACE_PORT:-3820}` |
+
+The workspace is a second listener inside the UI process
+(`packages/ui/src/lib/server/workspace-listener.ts`), not a service of its own.
+It proxies the assistant's OpenCode 1:1 at an origin ROOT, which is what
+OpenCode's web UI requires — its SPA resolves `/assets` and `/api` against
+`location.origin` and has no base-path option, so it cannot be served under a
+path on the UI's origin. Access is the SAME login as the UI: it checks the
+`op_session` cookie (host-scoped, so the browser already sends it to this port)
+and attaches OpenCode's own Basic credential upstream, server-side. A request
+that brings its own `Authorization` header is proxied verbatim, so external
+OpenCode clients holding the server password are unaffected. It is published on
+the UI's interface because it is only useful where the UI is, and container-side
+it binds `HOST` — the UI child's own `0.0.0.0` — so Docker's published mapping
+can reach it.
 
 The image bakes the candidate-local `@openpalm/ui` build. The entrypoint
 supervises the baked UI and performs no runtime package install. Skeleton assets
@@ -343,6 +358,7 @@ OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 | `OP_ENABLED_ADDONS` | Enabled first-party addon names |
 | `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Container-served UI host publication |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Direct OpenCode host publication |
+| `OP_WORKSPACE_PORT` | OpenCode workspace listener, default `3820`. Absent takes the default; a value that is not a usable TCP port (empty, `0`, junk) turns the listener OFF and `/advanced` falls back to its native chat surface. It has no bind variable — the listener follows the UI's own `HOST` |
 | `OP_GUARDIAN_BIND_ADDRESS`, `OP_GUARDIAN_PORT` | Guardian direct host publication |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | Guardian compatible API publication |
 | `OP_VOICE_PORT_HOST` | Voice loopback publication port |

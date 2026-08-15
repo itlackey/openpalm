@@ -3,8 +3,8 @@
  * default connection resolves to this app's own origin (`/oc`), and framing it
  * rendered a dead "refused to connect" panel instead of a conversation.
  */
-import { describe, expect, test } from 'vitest';
-import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+import { describe, expect, test, vi } from 'vitest';
+import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
@@ -46,110 +46,143 @@ describe('isEmbeddableOpencodeUi — credentials never ride in an iframe URL', (
   });
 });
 
-describe('resolveWorkspaceUrl — composed from the host the browser visited', () => {
-  test('uses the visited LAN host when the assistant port is published beyond loopback', () => {
+describe('resolveWorkspaceUrl — composed from the page the browser is on', () => {
+  const HINT = { port: 3820 };
+  const HTTP = { protocol: 'http:' };
+
+  test('uses the host the browser actually visited', () => {
     expect(
-      resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false, requiresAuth: false },
-        { hostname: '192.168.0.201' },
-        LOCAL_ACTIVE_CONNECTION,
-      ),
-    ).toBe('http://192.168.0.201:3810');
+      resolveWorkspaceUrl(HINT, { hostname: '192.168.0.201', ...HTTP }, LOCAL_ACTIVE_CONNECTION),
+    ).toBe('http://192.168.0.201:3820');
   });
 
   test('offers the local advertisement only for the active default connection', () => {
     expect(
-      resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false, requiresAuth: false },
-        { hostname: '192.168.0.201' },
-        REMOTE_ACTIVE_CONNECTION,
-      ),
+      resolveWorkspaceUrl(HINT, { hostname: '192.168.0.201', ...HTTP }, REMOTE_ACTIVE_CONNECTION),
     ).toBeNull();
   });
 
   test('does not offer the local advertisement when the default has credentials', () => {
     expect(
       resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false, requiresAuth: false },
-        { hostname: '192.168.0.201' },
+        HINT,
+        { hostname: '192.168.0.201', ...HTTP },
         { isDefault: true, hasPassword: true },
       ),
     ).toBeNull();
   });
 
-  test('offers nothing to a LAN client when the publish is loopback-only', () => {
-    expect(
-      resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: true, requiresAuth: false },
-        { hostname: '192.168.0.201' },
-        LOCAL_ACTIVE_CONNECTION,
-      ),
-    ).toBeNull();
-  });
-
-  test('offers the loopback-only publish to a client on the machine itself', () => {
-    for (const hostname of ['localhost', '127.0.0.1']) {
-      expect(
-        resolveWorkspaceUrl({ port: 3810, loopbackOnly: true, requiresAuth: false }, { hostname }, LOCAL_ACTIVE_CONNECTION),
-        hostname,
-      ).toBe(`http://${hostname}:3810`);
-    }
-  });
-
   test('brackets an IPv6 host so the address is a valid URL', () => {
-    // page.url.hostname arrives bracketed from the WHATWG parser; isLoopbackHost
-    // also accepts the bare spelling, and that one must not produce
-    // "http://::1:3810".
+    // page.url.hostname arrives bracketed from the WHATWG parser, but the bare
+    // spelling must not produce "http://::1:3820" either.
     for (const hostname of ['[::1]', '::1']) {
-      const url = resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: true, requiresAuth: false },
-        { hostname },
-        LOCAL_ACTIVE_CONNECTION,
-      );
-      expect(url, hostname).toBe('http://[::1]:3810');
-      expect(new URL(url ?? '').port, hostname).toBe('3810');
+      const url = resolveWorkspaceUrl(HINT, { hostname, ...HTTP }, LOCAL_ACTIVE_CONNECTION);
+      expect(url, hostname).toBe('http://[::1]:3820');
+      expect(new URL(url ?? '').port, hostname).toBe('3820');
     }
   });
 
   test('offers nothing without an advertisement', () => {
     expect(
-      resolveWorkspaceUrl(undefined, { hostname: 'localhost' }, LOCAL_ACTIVE_CONNECTION),
+      resolveWorkspaceUrl(undefined, { hostname: 'localhost', ...HTTP }, LOCAL_ACTIVE_CONNECTION),
     ).toBeNull();
   });
 });
 
-describe('resolveWorkspaceUrl — a credentialed workspace is only for a client that can authenticate', () => {
-  const AUTHED_HINT = { port: 3810, loopbackOnly: true, requiresAuth: true };
-  const CAN_AUTHENTICATE = true;
+describe('resolveWorkspaceUrl — the scheme follows the page, or the frame is blocked', () => {
+  // This is the regression that made every TLS-fronted deployment — Caddy,
+  // Tailscale Serve — show a blank workspace: an https page may not embed a
+  // plain-http frame at all, so a hardcoded http:// address is not "degraded",
+  // it is silently refused by the browser before a request is made.
+  const HINT = { port: 3820 };
 
-  test('offers nothing to an ordinary browser — it holds no OpenCode credential', () => {
-    expect(
-      resolveWorkspaceUrl(AUTHED_HINT, { hostname: '127.0.0.1' }, LOCAL_ACTIVE_CONNECTION),
-    ).toBeNull();
-  });
-
-  test('offers it to the desktop shell, which answers the Basic challenge in its main process', () => {
-    // The `assistantDirect`-on desktop install: /advanced framed nothing at all
-    // while OpenCode was running and reachable one port over.
+  test('an https page gets an https workspace', () => {
     expect(
       resolveWorkspaceUrl(
-        AUTHED_HINT,
-        { hostname: '127.0.0.1' },
+        HINT,
+        { hostname: 'openpalm.example', protocol: 'https:' },
         LOCAL_ACTIVE_CONNECTION,
-        CAN_AUTHENTICATE,
       ),
-    ).toBe('http://127.0.0.1:3810');
+    ).toBe('https://openpalm.example:3820');
   });
 
-  test('being able to authenticate does not override reachability', () => {
+  test('a plain-http page keeps plain http — LAN and host-only never had TLS', () => {
     expect(
       resolveWorkspaceUrl(
-        AUTHED_HINT,
-        { hostname: '192.168.0.201' },
+        HINT,
+        { hostname: 'openpalm.local', protocol: 'http:' },
         LOCAL_ACTIVE_CONNECTION,
-        CAN_AUTHENTICATE,
       ),
+    ).toBe('http://openpalm.local:3820');
+  });
+
+  test('refuses to compose an address for a non-http(s) page', () => {
+    expect(
+      resolveWorkspaceUrl(HINT, { hostname: 'x', protocol: 'file:' }, LOCAL_ACTIVE_CONNECTION),
     ).toBeNull();
+  });
+});
+
+describe('resolveWorkspaceUrl — every browser gets the workspace, none holds a credential', () => {
+  // The listener behind this address checks the op_session cookie the browser
+  // already has (cookies are host-scoped, not port-scoped) and attaches
+  // OpenCode's own password upstream. So there is no client-capability gate
+  // left: an ordinary LAN browser, a tailnet client, and the desktop shell are
+  // treated alike, and none of them is asked for a second password.
+  test('offers it to an ordinary browser — no OpenCode credential needed client-side', () => {
+    expect(
+      resolveWorkspaceUrl(
+        { port: 3820 },
+        { hostname: '192.168.0.201', protocol: 'http:' },
+        LOCAL_ACTIVE_CONNECTION,
+      ),
+    ).toBe('http://192.168.0.201:3820');
+  });
+
+  test('a loopback-published stack behind a proxy still gets one', () => {
+    // The old `loopbackOnly` hint refused this case: the publish IS
+    // loopback-only, and the browser reaches it anyway because Caddy or
+    // Tailscale is the thing on loopback. Reachability is measured by
+    // isWorkspaceReachable now, not inferred from a bind address.
+    expect(
+      resolveWorkspaceUrl(
+        { port: 3820 },
+        { hostname: 'box.tailnet.ts.net', protocol: 'https:' },
+        LOCAL_ACTIVE_CONNECTION,
+      ),
+    ).toBe('https://box.tailnet.ts.net:3820');
+  });
+});
+
+describe('isWorkspaceReachable — an opaque answer is the whole test', () => {
+  test('any HTTP reply counts, including the listener’s own 401', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(isWorkspaceReachable('http://host:3820')).resolves.toBe(true);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ mode: 'no-cors', credentials: 'include' });
+    vi.unstubAllGlobals();
+  });
+
+  test('a refused connection is not reachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(isWorkspaceReachable('http://host:3820')).resolves.toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  test('a dropped connection gives up instead of hanging the page', async () => {
+    // A port nobody forwarded does not refuse — it swallows the packet, and
+    // without the abort the /advanced spinner would outlast the user's patience.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      ),
+    );
+    await expect(isWorkspaceReachable('http://host:3820', 10)).resolves.toBe(false);
+    vi.unstubAllGlobals();
   });
 });
 
