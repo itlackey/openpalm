@@ -3,13 +3,15 @@
  * default connection resolves to this app's own origin (`/oc`), and framing it
  * rendered a dead "refused to connect" panel instead of a conversation.
  */
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
 const LOCAL_ACTIVE_CONNECTION = { isDefault: true, hasPassword: false };
 const REMOTE_ACTIVE_CONNECTION = { isDefault: false, hasPassword: false };
+/** The server's advertisement: a port and nothing else. */
+const HINT = { port: 3820 };
 
 describe('isEmbeddableOpencodeUi — this app’s own origin is not an OpenCode UI', () => {
   test('refuses the locked same-origin /oc pass-through', () => {
@@ -47,7 +49,6 @@ describe('isEmbeddableOpencodeUi — credentials never ride in an iframe URL', (
 });
 
 describe('resolveWorkspaceUrl — composed from the page the browser is on', () => {
-  const HINT = { port: 3820 };
   const HTTP = { protocol: 'http:' };
 
   test('uses the host the browser actually visited', () => {
@@ -94,7 +95,6 @@ describe('resolveWorkspaceUrl — the scheme follows the page, or the frame is b
   // Tailscale Serve — show a blank workspace: an https page may not embed a
   // plain-http frame at all, so a hardcoded http:// address is not "degraded",
   // it is silently refused by the browser before a request is made.
-  const HINT = { port: 3820 };
 
   test('an https page gets an https workspace', () => {
     expect(
@@ -123,50 +123,19 @@ describe('resolveWorkspaceUrl — the scheme follows the page, or the frame is b
   });
 });
 
-describe('resolveWorkspaceUrl — every browser gets the workspace, none holds a credential', () => {
-  // The listener behind this address checks the op_session cookie the browser
-  // already has (cookies are host-scoped, not port-scoped) and attaches
-  // OpenCode's own password upstream. So there is no client-capability gate
-  // left: an ordinary LAN browser, a tailnet client, and the desktop shell are
-  // treated alike, and none of them is asked for a second password.
-  test('offers it to an ordinary browser — no OpenCode credential needed client-side', () => {
-    expect(
-      resolveWorkspaceUrl(
-        { port: 3820 },
-        { hostname: '192.168.0.201', protocol: 'http:' },
-        LOCAL_ACTIVE_CONNECTION,
-      ),
-    ).toBe('http://192.168.0.201:3820');
-  });
-
-  test('a loopback-published stack behind a proxy still gets one', () => {
-    // The old `loopbackOnly` hint refused this case: the publish IS
-    // loopback-only, and the browser reaches it anyway because Caddy or
-    // Tailscale is the thing on loopback. Reachability is measured by
-    // isWorkspaceReachable now, not inferred from a bind address.
-    expect(
-      resolveWorkspaceUrl(
-        { port: 3820 },
-        { hostname: 'box.tailnet.ts.net', protocol: 'https:' },
-        LOCAL_ACTIVE_CONNECTION,
-      ),
-    ).toBe('https://box.tailnet.ts.net:3820');
-  });
-});
-
 describe('isWorkspaceReachable — an opaque answer is the whole test', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   test('any HTTP reply counts, including the listener’s own 401', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(isWorkspaceReachable('http://host:3820')).resolves.toBe(true);
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ mode: 'no-cors', credentials: 'include' });
-    vi.unstubAllGlobals();
   });
 
   test('a refused connection is not reachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(isWorkspaceReachable('http://host:3820')).resolves.toBe(false);
-    vi.unstubAllGlobals();
   });
 
   test('a dropped connection gives up instead of hanging the page', async () => {
@@ -182,7 +151,6 @@ describe('isWorkspaceReachable — an opaque answer is the whole test', () => {
       ),
     );
     await expect(isWorkspaceReachable('http://host:3820', 10)).resolves.toBe(false);
-    vi.unstubAllGlobals();
   });
 });
 

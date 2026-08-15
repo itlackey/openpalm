@@ -14,6 +14,7 @@
  */
 import { createServer } from "node:net";
 import { STACK_DEFAULTS } from "./defaults.js";
+import { resolveWorkspacePort } from "./network-contract.js";
 import type { DockerClient } from "./docker.js";
 import { realDockerClient } from "./docker.js";
 
@@ -126,11 +127,25 @@ export function resolveInstallPortTargets(): InstallPortTarget[] {
     { port: pickPort("OP_HOST_UI_PORT") ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
     { port: pickPort("OP_UI_PORT") ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
     { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
-    // Non-blocking: a taken workspace port costs /advanced its embedded
-    // OpenCode UI, which falls back to the native chat surface. Nothing else
-    // in the stack depends on it, so it is not worth refusing an install over.
-    { port: pickPort("OP_WORKSPACE_PORT") ?? STACK_DEFAULTS.ports.workspace, service: "workspace", blocking: false },
+    ...workspacePortTarget(process.env.OP_WORKSPACE_PORT),
   ];
+}
+
+/**
+ * The workspace probe target, or nothing when the operator turned the listener
+ * off — probing a port no one will bind reports a conflict that cannot matter.
+ *
+ * Non-blocking: a taken workspace port costs `/advanced` its embedded OpenCode
+ * UI, which falls back to the native chat surface. Nothing else in the stack
+ * depends on it, so it is not worth refusing an install over.
+ *
+ * Exported so the CLI's doctor and the setup wizard's port screen ask the same
+ * question this does — the three lists are hand-maintained copies, and this is
+ * the entry all three need to agree on.
+ */
+export function workspacePortTarget(raw: string | undefined): InstallPortTarget[] {
+  const port = resolveWorkspacePort(raw);
+  return port === undefined ? [] : [{ port, service: "workspace", blocking: false }];
 }
 
 export interface ProbeInstallPortsOptions {

@@ -156,6 +156,11 @@ export function resolveRemoteEnv(cfg: RemoteAccessConfig): Record<string, string
 
 // ── ServeConfig derivation ───────────────────────────────────────────────
 
+// Browser-safe: network-contract.ts imports only the constant table in
+// defaults.ts, so pulling the workspace default in keeps this module free of
+// `node:*` exactly as its header promises.
+import { DEFAULT_WORKSPACE_PORT } from "./network-contract.js";
+
 type ServeHandler = { Proxy: string };
 type ServeWebConfig = { Handlers: Record<string, ServeHandler> };
 
@@ -170,6 +175,9 @@ export type ServeConfigDoc = {
   AllowFunnel: Record<string, boolean>;
 };
 
+/** One published door: a tailnet port, what it proxies, and whether it may funnel. */
+type ServeEndpoint = { port: number; proxy: string; funnelable: boolean };
+
 /**
  * PORT ASSIGNMENT — stable per service, so a target change never moves an
  * existing URL. assistant is always 443, guardian is always 8443 (the pair
@@ -177,18 +185,41 @@ export type ServeConfigDoc = {
  * NOT reassigned based on which targets are active, so bookmarking
  * "https://host.ts.net:8443" for the guardian keeps working even if the
  * operator later also turns on the assistant.
+ *
+ * Exposing the assistant opens TWO doors, which is why a target maps to a LIST.
+ * OpenCode's web UI is a root-mounted SPA, so `/advanced` frames it at an origin
+ * of its own rather than a path (see the UI's workspace-listener.ts), and the
+ * browser composes that origin from the page it is on plus one port number.
+ * Publishing the workspace on the SAME number the stack publishes locally is
+ * what lets a single advertised port be correct for every client, however it
+ * arrived.
+ *
+ * `funnelable` is a property of the door, not of the request to open it: the
+ * workspace is served but never funneled. Tailscale allows Funnel on
+ * 443/8443/10000 only, and a port whose whole job is handing out a shell
+ * belongs on the operator's own tailnet regardless.
  */
-const TARGET_ENDPOINTS: Record<"assistant" | "guardian", { port: 443 | 8443; proxy: string }> = {
-  assistant: { port: 443, proxy: "http://assistant:3000" },
-  guardian: { port: 8443, proxy: "http://guardian:3830" },
-};
-
-/**
- * The default OpenCode workspace port — `core.compose.yml`'s
- * `OP_WORKSPACE_PORT` fallback, repeated here because an install that never
- * set the key still runs the listener on it.
- */
-export const DEFAULT_WORKSPACE_PORT = 3820;
+function endpointsFor(
+  name: "assistant" | "guardian",
+  workspacePort: number | null,
+): ServeEndpoint[] {
+  if (name === "guardian") {
+    return [{ port: 8443, proxy: "http://guardian:3830", funnelable: true }];
+  }
+  const doors: ServeEndpoint[] = [
+    { port: 443, proxy: "http://assistant:3000", funnelable: true },
+  ];
+  // `null` means the operator turned the workspace listener off; publishing a
+  // tailnet port for a listener nothing binds is the failure this avoids.
+  if (workspacePort !== null) {
+    doors.push({
+      port: workspacePort,
+      proxy: `http://assistant:${workspacePort}`,
+      funnelable: false,
+    });
+  }
+  return doors;
+}
 
 function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
   if (target === "both") return ["assistant", "guardian"];
@@ -214,40 +245,28 @@ function targetsFor(target: RemoteTarget): ("assistant" | "guardian")[] {
  * Keys are emitted in ascending port order so the generated file does not
  * churn between writes with no configuration change.
  *
- * THE WORKSPACE PORT rides along with the assistant, on the SAME number the
- * stack publishes locally. OpenCode's web UI is a root-mounted SPA, so
- * `/advanced` frames it at an origin of its own rather than a path
- * (packages/ui/src/lib/server/workspace-listener.ts) — and the browser
- * composes that origin from the page it is on plus this one port number. Using
- * the same number on the tailnet as on the LAN is what lets one advertised
- * port be correct for every client, however it arrived. It is served but never
- * funneled: Tailscale allows Funnel on 443/8443/10000 only, and a workspace
- * that stays private to the operator's own tailnet devices is the right
- * default for a port whose whole job is handing out a shell.
+ * `workspacePort` is `null` when the operator turned the workspace listener
+ * off — distinct from omitting the argument, which takes the default. A plain
+ * optional-with-default cannot express that: passing `undefined` explicitly
+ * fires the default, so "off" would silently republish the default port.
+ * See {@link endpointsFor} for which doors a target opens.
  */
 export function resolveServeConfig(
   cfg: RemoteAccessConfig,
-  workspacePort: number = DEFAULT_WORKSPACE_PORT,
+  workspacePort: number | null = DEFAULT_WORKSPACE_PORT,
 ): ServeConfigDoc {
-  const endpoints: { port: number; proxy: string; funnel: boolean }[] = targetsFor(cfg.target)
-    .map((name) => ({ ...TARGET_ENDPOINTS[name], funnel: cfg.public }));
-  if (endpoints.some((endpoint) => endpoint.port === TARGET_ENDPOINTS.assistant.port)) {
-    endpoints.push({
-      port: workspacePort,
-      proxy: `http://assistant:${workspacePort}`,
-      funnel: false,
-    });
-  }
-  endpoints.sort((a, b) => a.port - b.port);
+  const endpoints = targetsFor(cfg.target)
+    .flatMap((name) => endpointsFor(name, workspacePort))
+    .sort((a, b) => a.port - b.port);
 
   const TCP: ServeConfigDoc["TCP"] = {};
   const Web: ServeConfigDoc["Web"] = {};
   const AllowFunnel: ServeConfigDoc["AllowFunnel"] = {};
 
-  for (const { port, proxy, funnel } of endpoints) {
+  for (const { port, proxy, funnelable } of endpoints) {
     TCP[String(port)] = { HTTPS: true };
     Web[`\${TS_CERT_DOMAIN}:${port}`] = { Handlers: { "/": { Proxy: proxy } } };
-    AllowFunnel[`\${TS_CERT_DOMAIN}:${port}`] = funnel;
+    AllowFunnel[`\${TS_CERT_DOMAIN}:${port}`] = funnelable && cfg.public;
   }
 
   return { TCP, Web, AllowFunnel };
@@ -272,17 +291,28 @@ export function resolveServeConfig(
  * is surfaced only once the tunnel reports up — the same "advertise LAST"
  * invariant applyAccessToggles already enforces for mDNS names.
  */
-export function describeRemoteExposure(cfg: RemoteAccessConfig, enabled: boolean): string[] {
+export function describeRemoteExposure(
+  cfg: RemoteAccessConfig,
+  enabled: boolean,
+  workspacePort: number | null = DEFAULT_WORKSPACE_PORT,
+): string[] {
   if (!enabled) return [];
   const lines: string[] = [];
-  const reach = cfg.public
-    ? "the public internet — anyone who has the address, with no sign-in of their own"
-    : "your own signed-in devices, over your private tailnet";
+  const funneled = "the public internet — anyone who has the address, with no sign-in of their own";
+  const tailnet = "your own signed-in devices, over your private tailnet";
   for (const name of targetsFor(cfg.target)) {
-    lines.push(
-      `The ${name} is reachable from outside this network on port `
-        + `${TARGET_ENDPOINTS[name].port}, from ${reach}.`,
-    );
+    for (const door of endpointsFor(name, workspacePort)) {
+      // One line per DOOR, not per target: exposing the assistant also
+      // publishes OpenCode's workspace, and an operator reading "the assistant
+      // is reachable" would not otherwise learn that a second port carrying a
+      // terminal went up with it.
+      const what = door.port === workspacePort ? `${name} workspace` : name;
+      const reach = door.funnelable && cfg.public ? funneled : tailnet;
+      lines.push(
+        `The ${what} is reachable from outside this network on port `
+          + `${door.port}, from ${reach}.`,
+      );
+    }
   }
   return lines;
 }

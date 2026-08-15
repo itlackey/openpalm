@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { listEnabledAddonIds, readStackEnv, STACK_DEFAULTS } from '@openpalm/lib';
+import { listEnabledAddonIds, readStackEnv, resolveWorkspacePort } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -162,9 +162,8 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
   // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
   // never touches the disk at all.
   const injected = process.env.OP_WORKSPACE_PORT?.trim();
-  if (injected !== undefined) return resolveWorkspacePort(injected);
+  if (injected !== undefined) return wrapPort(resolveWorkspacePort(injected));
 
-  let stackEnv: Record<string, string>;
   try {
     const { homeDir, stackDir } = getState();
     // getState() materializes a stack.env carrying the DEFAULT ports whether or
@@ -175,32 +174,15 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
     // returns before resolveWorkspacePort's absence rule can apply. Same guard
     // buildServedUiRuntimeConfig uses before seeding a connection.
     if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return undefined;
-    stackEnv = readStackEnv(homeDir);
+    return wrapPort(resolveWorkspacePort(readStackEnv(homeDir).OP_WORKSPACE_PORT));
   } catch {
     // No readable OP_HOME and nothing injected: nothing to advertise.
     return undefined;
   }
-  return resolveWorkspacePort(stackEnv.OP_WORKSPACE_PORT?.trim());
 }
 
-/**
- * The workspace listener's port from a raw env value, or undefined for "no
- * listener".
- *
- * ABSENT means the default, so an install that predates the listener — or any
- * launch path that does not inject the key — still gets a workspace without a
- * migration. PRESENT-BUT-UNUSABLE (empty, `0`, junk) means OFF, which is the
- * only way an operator can turn it off once absence has a meaning.
- *
- * Shared with {@link startWorkspaceListener} so what gets bound and what gets
- * advertised cannot disagree.
- */
-export function resolveWorkspacePort(raw: string | undefined): { port: number } | undefined {
-  if (raw === undefined) return { port: STACK_DEFAULTS.ports.workspace };
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
-  return { port };
-}
+const wrapPort = (port: number | undefined): { port: number } | undefined =>
+  port === undefined ? undefined : { port };
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();

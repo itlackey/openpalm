@@ -14,7 +14,11 @@ import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
 import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken, requireAdmin, requireCapability } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
-import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
+import {
+  sessionCookieHeader,
+  sessionTokenFromCookieHeader,
+  SESSION_COOKIE_NAME,
+} from "$lib/server/session-cookie.js";
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
@@ -366,9 +370,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   // to the response after resolve() so it isn't clobbered by the handler.
   let renewedCookie: string | null = null;
   if (event.locals.role === "admin") {
-    const cookieHeader = event.request.headers.get("cookie") ?? "";
-    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
-    const renewed = match ? touchSession(match[1]) : false;
+    const token = sessionTokenFromCookieHeader(event.request.headers.get("cookie"));
+    const renewed = token ? touchSession(token) : false;
     if (renewed) {
       renewedCookie = sessionCookieHeader(renewed, event.request);
     }

@@ -9,9 +9,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_HOST_UI_PORT,
+  DEFAULT_WORKSPACE_PORT,
   UI_LOOPBACK_HOST,
   resolveHostUiPort,
   resolveUiListenEnv,
+  resolveWorkspacePort,
 } from "./network-contract.ts";
 import { STACK_DEFAULTS } from "./defaults.ts";
 
@@ -130,5 +132,31 @@ describe("resolveUiListenEnv — trusted proxy", () => {
     expect(
       resolveUiListenEnv({ port: 3880, admin: false, allowRemote: true, trustProxy: true }).HOST,
     ).toBe("0.0.0.0");
+  });
+});
+
+describe("resolveWorkspacePort — the one port with three answers", () => {
+  test("absent takes the stack default, so no install needs a migration", () => {
+    expect(resolveWorkspacePort(undefined)).toBe(DEFAULT_WORKSPACE_PORT);
+    expect(DEFAULT_WORKSPACE_PORT).toBe(STACK_DEFAULTS.ports.workspace);
+  });
+
+  test("a usable port is taken as given, whitespace and all", () => {
+    expect(resolveWorkspacePort("4820")).toBe(4820);
+    expect(resolveWorkspacePort(" 4820 ")).toBe(4820);
+  });
+
+  test("present but unusable is OFF — the only spelling left once absence means default", () => {
+    for (const raw of ["", "0", "70000", "-1", "3820.5", "nope"]) {
+      expect(resolveWorkspacePort(raw), raw).toBeUndefined();
+    }
+  });
+
+  test("every reader agrees, so a disabled listener is never published anywhere", () => {
+    // Four callers ask this: the listener that binds the port, the
+    // advertisement /advanced reads, the Tailscale serve entry, and the install
+    // port probe. They used to answer three different ways — the serve entry in
+    // particular published a tailnet port for a listener explicitly turned off.
+    expect(resolveWorkspacePort("0")).toBeUndefined();
   });
 });

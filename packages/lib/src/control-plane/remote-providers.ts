@@ -20,6 +20,7 @@
  * (addon-ids, env, profile-ids, remote-access, access-toggles).
  */
 import { parseEnabledAddons } from "./env.js";
+import { resolveWorkspacePort } from "./network-contract.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 import { readRemoteAccessConfig, describeRemoteExposure } from "./remote-access.js";
 import { remoteRequiresGuardianIngress } from "./access-toggles.js";
@@ -111,7 +112,14 @@ export const REMOTE_PROVIDERS: Record<string, RemoteProviderInfo> = {
     secrets: ["ts_authkey"],
     guardianIngressRequired: (env) =>
       remoteRequiresGuardianIngress(true, readRemoteAccessConfig(env).target),
-    describeExposure: (env) => describeRemoteExposure(readRemoteAccessConfig(env), true),
+    // The workspace port comes from the SAME env this reads, so an operator who
+    // turned the listener off is not told about a door that was never opened.
+    describeExposure: (env) =>
+      describeRemoteExposure(
+        readRemoteAccessConfig(env),
+        true,
+        resolveWorkspacePort(env.OP_WORKSPACE_PORT) ?? null,
+      ),
   },
 };
 

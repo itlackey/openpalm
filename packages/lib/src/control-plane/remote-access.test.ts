@@ -280,11 +280,30 @@ describe("describeRemoteExposure", () => {
     expect(describeRemoteExposure({ ...cfg, public: true, target: "both" }, false)).toEqual([]);
   });
 
-  test("private assistant: one line naming only-your-own-devices reach", () => {
+  test("private assistant: a line per door, naming only-your-own-devices reach", () => {
+    // Two doors, because exposing the assistant also publishes OpenCode's
+    // workspace — an operator reading "the assistant is reachable" would not
+    // otherwise learn that a second port carrying a terminal went up with it.
     const lines = describeRemoteExposure(cfg, true);
-    expect(lines).toHaveLength(1);
+    expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("assistant");
-    expect(lines[0]).toContain("your own signed-in devices");
+    expect(lines.some((line) => line.includes("assistant workspace"))).toBe(true);
+    for (const line of lines) expect(line).toContain("your own signed-in devices");
+  });
+
+  test("the workspace door is disclosed as tailnet-only even when the rest is public", () => {
+    const lines = describeRemoteExposure({ ...cfg, public: true }, true);
+    const workspace = lines.find((line) => line.includes("workspace"));
+    expect(workspace).toContain("your own signed-in devices");
+    expect(workspace).not.toContain("public internet");
+  });
+
+  test("a workspace turned off opens no door and claims none", () => {
+    // `null`, not `undefined`: a default parameter value fires on an explicit
+    // undefined too, so "off" spelled that way would have republished 3820.
+    const lines = describeRemoteExposure(cfg, true, null);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain("workspace");
   });
 
   test("public target distinguishes 'anyone who has the address'", () => {
@@ -293,11 +312,12 @@ describe("describeRemoteExposure", () => {
     expect(lines[0]).toContain("anyone who has the address");
   });
 
-  test("target both reports one line per service", () => {
+  test("target both reports every door of every service", () => {
     const lines = describeRemoteExposure({ ...cfg, target: "both" }, true);
-    expect(lines).toHaveLength(2);
-    expect(lines.some((line) => line.includes("assistant"))).toBe(true);
-    expect(lines.some((line) => line.includes("guardian"))).toBe(true);
+    expect(lines).toHaveLength(3);
+    expect(lines.some((line) => line.includes("port 443"))).toBe(true);
+    expect(lines.some((line) => line.includes("port 3820"))).toBe(true);
+    expect(lines.some((line) => line.includes("port 8443"))).toBe(true);
   });
 
   test("names each service's port", () => {
@@ -321,5 +341,22 @@ describe("describeRemoteExposure", () => {
         }
       }
     }
+  });
+});
+
+describe("resolveServeConfig — a disabled workspace publishes no tailnet port", () => {
+  test("null opens the assistant door only", () => {
+    const doc = resolveServeConfig({ hostname: "h", public: false, target: "assistant" }, null);
+    expect(Object.keys(doc.TCP)).toEqual(["443"]);
+    expect(doc.Web["${TS_CERT_DOMAIN}:3820"]).toBeUndefined();
+  });
+
+  test("an explicit undefined is NOT off — that spelling takes the default", () => {
+    // Pinned deliberately: a default parameter value fires on an explicit
+    // undefined, so `null` is the only way to say "off" and this asserts the
+    // two spellings stay distinguishable.
+    expect(
+      Object.keys(resolveServeConfig({ hostname: "h", public: false, target: "assistant" }, undefined).TCP),
+    ).toEqual(["443", "3820"]);
   });
 });

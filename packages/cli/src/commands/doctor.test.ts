@@ -314,7 +314,48 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
       { port: 4300, service: 'admin' },
       { port: 4301, service: 'ui' },
       { port: 4302, service: 'assistant' },
+      // Doctor is what an operator runs when /advanced shows no workspace, so
+      // it probes that port too. Absent from stack.env here, hence the default.
+      { port: 3820, service: 'workspace' },
     ]);
+  });
+
+  test('a relocated workspace port is read from persisted stack.env like its peers', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenTargets: Array<{ port: number; service: string }> = [];
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_WORKSPACE_PORT: '4820' }),
+        probeInstallPorts: async (targets) => {
+          seenTargets = (targets ?? []).map((t) => ({ port: t.port, service: t.service }));
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(seenTargets.find((t) => t.service === 'workspace')?.port).toBe(4820);
+  });
+
+  test('a workspace turned off is not probed — there is no listener to conflict with', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenTargets: Array<{ port: number; service: string }> = [];
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_WORKSPACE_PORT: '0' }),
+        probeInstallPorts: async (targets) => {
+          seenTargets = (targets ?? []).map((t) => ({ port: t.port, service: t.service }));
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(seenTargets.some((t) => t.service === 'workspace')).toBe(false);
   });
 
   test('passes serverPort for the admin port once an OpenPalm UI instance answers there — the host UI is never a container, so no docker check could otherwise attribute it to "us"', async () => {

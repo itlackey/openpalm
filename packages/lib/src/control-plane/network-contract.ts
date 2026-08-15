@@ -18,6 +18,38 @@ export const DEFAULT_HOST_UI_PORT = STACK_DEFAULTS.ports.hostUi;
 /** The ONE published/container UI port default (what compose maps to the LAN). */
 export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
 
+/** The ONE OpenCode workspace port default. */
+export const DEFAULT_WORKSPACE_PORT = STACK_DEFAULTS.ports.workspace;
+
+/**
+ * Resolve `OP_WORKSPACE_PORT`, which is the one port in the tree with THREE
+ * answers rather than two.
+ *
+ * - **Absent** → the default. Installs predating the workspace listener carry
+ *   no such key, and the desktop and CLI launch paths do not inject one;
+ *   defaulting is what gives them a workspace with no migration.
+ * - **A usable port** → that port.
+ * - **Present but unusable** (empty, `0`, junk) → `undefined`, meaning NO
+ *   listener. Once absence means "default", this is the only spelling left for
+ *   an operator who wants the workspace off.
+ *
+ * That third state is why this cannot be {@link resolveEnvPort}, which always
+ * returns a number. It lives here anyway, with the rest of the port contract,
+ * because four readers ask this question — the listener that binds it, the
+ * advertisement `/advanced` reads, the Tailscale serve entry, and the install
+ * port probe — and they were answering it three different ways. The serve entry
+ * in particular used to publish a tailnet port for a listener the operator had
+ * explicitly turned off.
+ */
+export function resolveWorkspacePort(
+  raw: string | undefined,
+): number | undefined {
+  if (raw === undefined) return DEFAULT_WORKSPACE_PORT;
+  const port = Number(raw.trim());
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
+  return port;
+}
+
 /**
  * Resolve one port env var: an explicit argument wins, then live process env,
  * then the home's persisted stack.env, then the default.

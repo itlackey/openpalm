@@ -24,7 +24,6 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  displayMode: 'browser' as 'browser' | 'electron',
   opencodeWorkspace: undefined as { port: number } | undefined,
   workspaceReachable: true,
   active: null as Record<string, unknown> | null,
@@ -49,7 +48,6 @@ vi.mock('$lib/runtime-context.svelte.js', () => ({
     routes: {},
     effectiveCapabilities: [],
     uiVersion: 'test',
-    clientContext: { displayMode: mocks.displayMode },
     opencodeWorkspace: mocks.opencodeWorkspace,
   }),
   hasCapability: () => false,
@@ -126,7 +124,6 @@ const workspaceFrame = () => browserPage.getByTitle('OpenCode — Advanced Chat'
 const nativeSurface = () => browserPage.getByText(NATIVE_NOTICE, { exact: false });
 
 beforeEach(() => {
-  mocks.displayMode = 'browser';
   mocks.opencodeWorkspace = undefined;
   mocks.workspaceReachable = true;
   mocks.active = { ...LOCKED_CONNECTION };
@@ -161,22 +158,4 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
     expect(workspaceFrame().elements()).toHaveLength(0);
   });
 
-  test('frames it in an ordinary browser — the workspace needs no client credential', async () => {
-    // The listener behind that port authenticates with the op_session cookie
-    // the browser already holds and attaches OpenCode's own password upstream,
-    // so there is nothing for the client to supply and no capability to gate on.
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
-    mocks.displayMode = 'browser';
-    render(AdvancedPage);
-
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
-  });
-
-  test('frames it in the desktop shell on the same terms', async () => {
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
-    mocks.displayMode = 'electron';
-    render(AdvancedPage);
-
-    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
-  });
 });

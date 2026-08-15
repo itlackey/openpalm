@@ -6,7 +6,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { getAssistantOpencodeTarget } from "./opencode-target.js";
 import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
-import { SESSION_COOKIE_NAME } from "./session-cookie.js";
+import { sessionTokenFromCookieHeader } from "./session-cookie.js";
 import { computeServerRuntimeContext } from "./features.js";
 import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 
@@ -89,12 +89,7 @@ export { getUiLoginPassword };
  * request through this function.
  */
 function extractToken(event: RequestEvent): string {
-  const cookieHeader = event.request.headers.get("cookie") ?? "";
-  const match = cookieHeader.match(
-    new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`),
-  );
-  if (match) return match[1];
-  return "";
+  return sessionTokenFromCookieHeader(event.request.headers.get("cookie"));
 }
 
 /** Check admin auth — returns error Response or null if OK */

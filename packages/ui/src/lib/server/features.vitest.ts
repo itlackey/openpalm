@@ -19,7 +19,6 @@ import {
   computeServerRuntimeContext,
   computeVoiceRuntime,
   isAdminCapable,
-  resolveWorkspacePort,
 } from './features.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { clearLaunchRoutingCache } from '$lib/server/landing.js';
@@ -375,21 +374,13 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('reports no reachability verdict — only the browser can measure that', () => {
-    // This used to also publish a `loopbackOnly` flag derived from the compose
-    // bind, and /advanced refused to frame anything it marked local-only. That
-    // inference is wrong for every reverse-proxied deployment: Caddy and
-    // Tailscale Serve reach a loopback-published stack perfectly well. The
-    // browser probes the composed address instead (advanced/embeddable.ts).
-    writeStackEnv('OP_WORKSPACE_PORT=3820\nOP_UI_BIND_ADDRESS=127.0.0.1\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
-  });
-
-  test('a port that is not a usable TCP port is how an operator turns it OFF', () => {
-    for (const port of ['0', '70000', 'not-a-port', '']) {
-      writeStackEnv(`OP_WORKSPACE_PORT=${port}\n`);
-      expect(computeOpencodeWorkspace(), port).toBeUndefined();
-    }
+  test('an operator who turned the listener off gets no advertisement', () => {
+    // The tri-state itself (absent = default, unusable = off) belongs to
+    // resolveWorkspacePort and is pinned in lib's network-contract tests; what
+    // matters here is only that this lane honours it rather than substituting
+    // a default of its own.
+    writeStackEnv('OP_WORKSPACE_PORT=0\n');
+    expect(computeOpencodeWorkspace()).toBeUndefined();
   });
 
   test('an installed home with no OP_WORKSPACE_PORT gets the default', () => {
@@ -400,21 +391,5 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     // trip rather than a blank frame.
     writeStackEnv('OP_UI_BIND_ADDRESS=0.0.0.0\n');
     expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
-  });
-});
-
-describe('resolveWorkspacePort — absence means default, unusable means off', () => {
-  test('absent takes the stack default', () => {
-    expect(resolveWorkspacePort(undefined)).toEqual({ port: 3820 });
-  });
-
-  test('a usable port is taken as given', () => {
-    expect(resolveWorkspacePort('4820')).toEqual({ port: 4820 });
-  });
-
-  test('present but unusable is off — the only way to disable the listener', () => {
-    for (const raw of ['', '0', '70000', '-1', 'nope']) {
-      expect(resolveWorkspacePort(raw), raw).toBeUndefined();
-    }
   });
 });

@@ -45,11 +45,12 @@ function onUpgrade(req: IncomingMessage, socket: Duplex): void {
   socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n\r\n');
   socket.on('data', (chunk: Buffer) => socket.write(`echo:${chunk.toString()}`));
 }
-/** Overridable per test; default echoes what the upstream received. */
-let respond: (req: IncomingMessage, res: ServerResponse) => void = (req, res) => {
+/** What the fake upstream answers unless a test overrides `respond`. */
+const DEFAULT_RESPOND = (req: IncomingMessage, res: ServerResponse): void => {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ ok: true, path: req.url }));
 };
+let respond: (req: IncomingMessage, res: ServerResponse) => void = DEFAULT_RESPOND;
 
 function listen(server: Server): Promise<number> {
   return new Promise((resolve) => {
@@ -107,10 +108,7 @@ afterEach(() => {
   seen.length = 0;
   upgradeHandshakes.length = 0;
   upstream.removeAllListeners('upgrade');
-  respond = (req, res) => {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, path: req.url }));
-  };
+  respond = DEFAULT_RESPOND;
 });
 
 const asSession = (token: string) => ({ cookie: `op_session=${token}` });
@@ -139,6 +137,21 @@ describe('the OpenPalm session is the credential', () => {
     });
 
     expect(seen[0]?.headers.cookie).toBeUndefined();
+  });
+
+  test('and the upstream cannot write into this app’s cookie jar', async () => {
+    // Cookies are scoped by HOST, not by port — the very property that lets one
+    // OpenPalm login authenticate this listener. That cuts both ways: a
+    // Set-Cookie forwarded from OpenCode would land in the same jar as
+    // op_session on the UI's own origin.
+    respond = (_req, res) => {
+      res.writeHead(200, { 'set-cookie': 'opencode_session=upstream; Path=/' });
+      res.end('ok');
+    };
+    const res = await fetch(`${workspaceOrigin}/`, { headers: asSession(VALID_SESSION) });
+
+    expect(res.headers.getSetCookie?.() ?? []).toEqual([]);
+    expect(res.headers.get('set-cookie')).toBeNull();
   });
 
   test('the session is read out of a cookie header carrying other cookies too', async () => {

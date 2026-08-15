@@ -220,13 +220,15 @@ OP_IMAGE_TAG=dev
 OP_PROJECT_NAME=openpalm-dev
 
 # Host-side port bindings for the compose stack.
-# These are intentionally offset from the production defaults (3800/3810/3880)
-# so a dev/test stack never conflicts with a production instance running on the
-# same machine. Playwright e2e test defaults match these ports so that
-# global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from stack.env.
+# These are intentionally offset from the production defaults
+# (3800/3810/3820/3880) so a dev/test stack never conflicts with a production
+# instance running on the same machine. Playwright e2e test defaults match these
+# ports so global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from
+# stack.env.
 # Guardian has no host port mapping (network-only service).
 OP_ASSISTANT_PORT=4800
 OP_UI_PORT=4810
+OP_WORKSPACE_PORT=4820
 OP_HOST_UI_PORT=9100
 
 # Skip the first-boot setup wizard — the dev password above is already

@@ -109,9 +109,9 @@
     // staring at a blank frame.
     const workspaceOnly = !isEmbeddable(conn);
     const base = workspaceOnly ? workspaceUrl : conn.baseUrl;
-    const reachable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
+    const usable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
     if (!isCurrentProbe(token, conn.id)) return;
-    if (!base || !reachable) {
+    if (!usable) {
       mode = 'native';
       // The chat store now talks to the active connection via the direct
       // transport; make sure this connection's sessions are loaded.

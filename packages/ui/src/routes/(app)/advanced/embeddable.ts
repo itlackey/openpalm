@@ -20,11 +20,12 @@ export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 /**
  * Format a hostname for use in a URL authority.
  *
- * The WHATWG URL parser already returns an IPv6 host bracketed (`[::1]`), so
- * `page.url.hostname` needs nothing here. The bare spelling still has to be
- * handled, because this module's own reachability check (`isLoopbackHost`)
- * accepts `::1` as well — and interpolating that unbracketed produces
- * `http://::1:3810`, which is not a URL at all (RFC 3986 §3.2.2).
+ * `page.url.hostname` comes from the WHATWG parser, which already returns an
+ * IPv6 host bracketed (`[::1]`), so the sole production caller needs nothing
+ * here. The bare spelling is still handled because interpolating it unbracketed
+ * produces `http://::1:3820`, which is not a URL at all (RFC 3986 §3.2.2) — a
+ * two-line guard against a whole class of malformed address, kept deliberately
+ * rather than relying on every future caller to have been parsed first.
  */
 function formatHostForUrl(hostname: string): string {
   if (!hostname.includes(':')) return hostname;
