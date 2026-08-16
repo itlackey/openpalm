@@ -9,7 +9,14 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
+  import {
+    fetchWorkspaceTicket,
+    isEmbeddableOpencodeUi,
+    isWorkspaceReachable,
+    needsWorkspaceTicket,
+    resolveWorkspaceUrl,
+    withWorkspaceTicket,
+  } from './embeddable.js';
   import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
@@ -149,6 +156,20 @@
       } catch {
         // non-ok / unreachable → leave url = base (no broken deep link)
       }
+    }
+    // A workspace on another HOSTNAME — a reverse proxy publishing it under its
+    // own name — gets none of this browser's cookies, so the opening navigation
+    // carries a one-minute ticket that the listener trades for a cookie of that
+    // host's own (server/workspace-ticket.ts). Without one the frame would show
+    // a 401; refusing to frame it says so instead.
+    if (workspaceOnly && needsWorkspaceTicket(url, page.url.hostname)) {
+      const ticket = await fetchWorkspaceTicket();
+      if (!isCurrentProbe(token, connectionId)) return;
+      if (!ticket) {
+        mode = 'unavailable';
+        return;
+      }
+      url = withWorkspaceTicket(url, ticket);
     }
     if (!isCurrentProbe(token, connectionId)) return;
     frameUrl = url;

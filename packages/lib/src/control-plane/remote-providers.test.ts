@@ -28,7 +28,9 @@ import {
   remoteAddonEnabled,
   computeGuardianIngressRequired,
   describeSelectedRemoteExposure,
+  resolveWorkspaceAdvertisement,
 } from "./remote-providers.js";
+import { parseWorkspaceOrigin } from "./workspace-origin.js";
 import {
   canonicalAddonProfileSelection,
   resolveHardwareProfileVariant,
@@ -248,5 +250,98 @@ describe("remoteAddonEnabled", () => {
     expect(remoteAddonEnabled({})).toBe(false);
     expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "gateway,voice" })).toBe(false);
     expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "gateway, remote" })).toBe(true);
+  });
+});
+
+// ── The workspace address: operator → provider → derivable default ───────
+//
+// OpenCode's web UI is a root-mounted SPA, so it needs an ORIGIN, and only the
+// thing fronting an install knows which origin that is. These pin the
+// precedence and — more importantly — that the fallback is total: every
+// topology gets an answer, so /advanced always has an address to probe.
+
+describe("parseWorkspaceOrigin", () => {
+  test("accepts a bare http(s) origin, with and without a port", () => {
+    expect(parseWorkspaceOrigin("https://code.example.com")).toBe("https://code.example.com");
+    expect(parseWorkspaceOrigin("http://192.168.1.10:3820")).toBe("http://192.168.1.10:3820");
+    expect(parseWorkspaceOrigin("  https://code.example.com/  ")).toBe("https://code.example.com");
+  });
+
+  test("rejects anything an origin cannot carry", () => {
+    // The SPA resolves /assets/*, /api/* and its routes against the ORIGIN, so
+    // a path, query or fragment is silently discarded at the first request —
+    // accepting one would advertise an address that loads the wrong app.
+    expect(parseWorkspaceOrigin("https://code.example.com/workspace")).toBeNull();
+    expect(parseWorkspaceOrigin("https://code.example.com/?a=1")).toBeNull();
+    expect(parseWorkspaceOrigin("https://code.example.com/#frag")).toBeNull();
+    // Credentials in a frame URL are not sent by any modern browser.
+    expect(parseWorkspaceOrigin("https://user:pw@code.example.com")).toBeNull();
+    expect(parseWorkspaceOrigin("ws://code.example.com")).toBeNull();
+    expect(parseWorkspaceOrigin("code.example.com:3820")).toBeNull();
+    expect(parseWorkspaceOrigin("   ")).toBeNull();
+    expect(parseWorkspaceOrigin(undefined)).toBeNull();
+  });
+});
+
+describe("resolveWorkspaceAdvertisement", () => {
+  test("no remote edge: the derivable default, which the browser completes with its own host", () => {
+    expect(resolveWorkspaceAdvertisement({})).toEqual({ kind: "port", port: 3820 });
+    expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_PORT: "4820" })).toEqual({
+      kind: "port",
+      port: 4820,
+    });
+  });
+
+  test("the operator's declared origin outranks everything", () => {
+    expect(
+      resolveWorkspaceAdvertisement({
+        OP_WORKSPACE_ORIGIN: "https://code.example.com",
+        OP_WORKSPACE_PORT: "4820",
+        OP_ENABLED_ADDONS: "remote",
+      }),
+    ).toEqual({ kind: "absolute", origin: "https://code.example.com" });
+  });
+
+  test("an unusable operator value falls through rather than poisoning the answer", () => {
+    // Fail-soft on purpose: a typo'd origin costs the default, not a workspace.
+    expect(
+      resolveWorkspaceAdvertisement({ OP_WORKSPACE_ORIGIN: "not a url", OP_WORKSPACE_PORT: "4820" }),
+    ).toEqual({ kind: "port", port: 4820 });
+  });
+
+  test("Tailscale declares the port it serves — the same one it discloses in the exposure card", () => {
+    // One number, one source: whatever OP_WORKSPACE_PORT says is what the serve
+    // entry publishes, what the card discloses, and what /advanced frames.
+    expect(
+      resolveWorkspaceAdvertisement({ OP_ENABLED_ADDONS: "remote", OP_WORKSPACE_PORT: "4820" }),
+    ).toEqual({ kind: "port", port: 4820 });
+  });
+
+  test("a provider only speaks when its addon is enabled", () => {
+    // A stored provider selection with the addon off deploys nothing, so it
+    // must not move the workspace either.
+    expect(
+      resolveWorkspaceAdvertisement({ OP_REMOTE_PROFILE: "addon.remote.tailscale" }),
+    ).toEqual({ kind: "port", port: 3820 });
+  });
+
+  test("every provider that declares an origin declares a usable one", () => {
+    // A provider is free to return null ("I do not move the workspace"), but a
+    // declaration that cannot be framed is worse than none: /advanced would
+    // point the iframe at it and show a dead pane.
+    for (const provider of Object.values(REMOTE_PROVIDERS)) {
+      const declared = provider.workspaceOrigin?.({
+        OP_ENABLED_ADDONS: "remote",
+        OP_REMOTE_PROFILE: provider.profile,
+      });
+      if (!declared) continue;
+      if (declared.kind === "absolute") {
+        expect(parseWorkspaceOrigin(declared.origin)).toBe(declared.origin);
+      } else {
+        expect(Number.isInteger(declared.port)).toBe(true);
+        expect(declared.port).toBeGreaterThan(0);
+        expect(declared.port).toBeLessThan(65536);
+      }
+    }
   });
 });

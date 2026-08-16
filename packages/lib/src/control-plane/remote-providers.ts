@@ -21,6 +21,7 @@
  */
 import { parseEnabledAddons } from "./env.js";
 import { DEFAULT_WORKSPACE_PORT, resolveEnvPort } from "./network-contract.js";
+import { parseWorkspaceOrigin, WORKSPACE_ORIGIN_ENV, type WorkspaceAdvertisement } from "./workspace-origin.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 import { readRemoteAccessConfig, describeRemoteExposure } from "./remote-access.js";
 import { remoteRequiresGuardianIngress } from "./access-toggles.js";
@@ -100,6 +101,22 @@ export type RemoteProviderInfo = {
    * factored out, as above.
    */
   describeExposure(env: Record<string, string | undefined>): string[];
+  /**
+   * Where OpenCode's web UI surfaces once THIS provider is fronting the
+   * install, or null to leave the default alone.
+   *
+   * OpenCode's UI needs an origin of its own (see workspace-origin.ts), and
+   * only the provider knows how its own edge exposes one — a second tailnet
+   * port here, a second site block there. Declaring it is how `/advanced` keeps
+   * working when a deployment stops being reachable at the address OpenPalm
+   * could derive by itself.
+   *
+   * Optional on purpose: a provider that returns null is saying "I do not move
+   * the workspace", and the derivable default stands. That is the honest answer
+   * for a provider that only forwards the UI, and it keeps this from becoming a
+   * field every future provider must think about to do nothing.
+   */
+  workspaceOrigin?(env: Record<string, string | undefined>): WorkspaceAdvertisement | null;
 };
 
 export const REMOTE_PROVIDERS: Record<string, RemoteProviderInfo> = {
@@ -120,8 +137,43 @@ export const REMOTE_PROVIDERS: Record<string, RemoteProviderInfo> = {
         true,
         resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env),
       ),
+    // Tailscale gives a node ONE name, so a second hostname is not available —
+    // the workspace surfaces on a second PORT of that same name, which is the
+    // serve entry resolveServeConfig already writes. The browser is on the
+    // tailnet name when it asks, so the port form composes correctly; returning
+    // an absolute origin here would mean guessing the tailnet suffix, which is
+    // assigned at registration and is exactly what describeRemoteExposure
+    // refuses to invent.
+    workspaceOrigin: (env) => ({
+      kind: "port",
+      port: resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env),
+    }),
   },
 };
+
+/**
+ * The workspace address for this install: the operator's explicit setting, else
+ * the selected provider's declaration, else the derivable default.
+ *
+ * Operator-over-provider is deliberate and matches every other resolver here.
+ * Someone who fronts their stack in a way OpenPalm has never heard of sets
+ * `OP_WORKSPACE_ORIGIN` and is done — that escape hatch is what stops this from
+ * needing a code change per topology.
+ */
+export function resolveWorkspaceAdvertisement(
+  env: Record<string, string | undefined>,
+): WorkspaceAdvertisement {
+  const explicit = parseWorkspaceOrigin(env[WORKSPACE_ORIGIN_ENV]);
+  if (explicit) return { kind: "absolute", origin: explicit };
+  if (remoteAddonEnabled(env)) {
+    const declared = selectedRemoteProvider(env).workspaceOrigin?.(env);
+    if (declared) return declared;
+  }
+  return {
+    kind: "port",
+    port: resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env),
+  };
+}
 
 /**
  * Tailscale is the default variant: `resolveActiveProfiles` falls back to

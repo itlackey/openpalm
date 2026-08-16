@@ -1,9 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import {
-  DEFAULT_WORKSPACE_PORT,
   listEnabledAddonIds,
   readStackEnv,
-  resolveEnvPort,
+  resolveWorkspaceAdvertisement,
+  type WorkspaceAdvertisement,
 } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
@@ -160,16 +160,20 @@ export function computeVoiceRuntime(): { url: string } | undefined {
  * computeVoiceRuntime above: that function runs on requireCapability's
  * per-request hot path and this one may read the stack env from disk.
  */
-export function computeOpencodeWorkspace(): { port: number } | undefined {
+export function computeOpencodeWorkspace(): WorkspaceAdvertisement | undefined {
   // Read at most once per call, and only when the injected env did not answer:
   // this runs on every layout load and every GET /api/runtime, and readStackEnv
   // is a synchronous readFileSync. The container co-process has the key
   // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
   // never touches the disk at all.
-  const workspacePort = (persisted: Record<string, string> = {}): { port: number } => ({
-    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, process.env, persisted),
-  });
-  if (process.env.OP_WORKSPACE_PORT?.trim()) return workspacePort();
+  // The provider declares it when a remote edge is fronting this install; the
+  // operator's OP_WORKSPACE_ORIGIN outranks both. See lib's
+  // resolveWorkspaceAdvertisement.
+  const advertise = (persisted: Record<string, string> = {}): WorkspaceAdvertisement =>
+    resolveWorkspaceAdvertisement({ ...persisted, ...process.env });
+  if (process.env.OP_WORKSPACE_ORIGIN?.trim() || process.env.OP_WORKSPACE_PORT?.trim()) {
+    return advertise();
+  }
 
   try {
     const { homeDir, stackDir } = getState();
@@ -181,7 +185,7 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
     // returns before the default can apply. Same guard
     // buildServedUiRuntimeConfig uses before seeding a connection.
     if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return undefined;
-    return workspacePort(readStackEnv(homeDir));
+    return advertise(readStackEnv(homeDir));
   } catch {
     // No readable OP_HOME and nothing injected: nothing to advertise.
     return undefined;

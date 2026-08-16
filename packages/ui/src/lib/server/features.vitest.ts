@@ -312,7 +312,12 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
 describe('computeOpencodeWorkspace — where OpenCode’s own web UI is published', () => {
   let homeDir = '';
   let savedHome: string | undefined;
-  const WORKSPACE_ENV_KEYS = ['OP_WORKSPACE_PORT'] as const;
+  const WORKSPACE_ENV_KEYS = [
+    'OP_WORKSPACE_PORT',
+    'OP_WORKSPACE_ORIGIN',
+    'OP_ENABLED_ADDONS',
+    'OP_REMOTE_PROFILE',
+  ] as const;
   let savedWorkspaceEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -356,13 +361,13 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
 
   test('reads the workspace listener’s port from the stack env', () => {
     writeStackEnv('OP_WORKSPACE_PORT=3820\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 3820 });
   });
 
   test('process env wins over the stack file — the container gets its value injected', () => {
     writeStackEnv('OP_WORKSPACE_PORT=3820\n');
     process.env.OP_WORKSPACE_PORT = '4820';
-    expect(computeOpencodeWorkspace()).toEqual({ port: 4820 });
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 4820 });
   });
 
   test('resolves from injected env alone — the container lane never reads the stack file', () => {
@@ -371,7 +376,7 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     // lazy read (computeOpencodeWorkspace runs on every layout load).
     writeStackEnv('OP_WORKSPACE_PORT=1111\n');
     process.env.OP_WORKSPACE_PORT = '3820';
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 3820 });
   });
 
   test('an unbindable value falls back to the default, like every other port', () => {
@@ -379,7 +384,7 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     // `${OP_WORKSPACE_PORT:-3820}`, so an "off" spelling either silently stayed
     // on (empty) or failed the whole stack (0/junk in a published-port spec).
     writeStackEnv('OP_WORKSPACE_PORT=0\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 3820 });
   });
 
   test('an installed home with no OP_WORKSPACE_PORT gets the default', () => {
@@ -389,6 +394,41 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     // before framing it, so a default that turns out to be wrong costs a round
     // trip rather than a blank frame.
     writeStackEnv('OP_UI_BIND_ADDRESS=0.0.0.0\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 3820 });
+  });
+
+  test('an operator-declared origin is advertised verbatim, from the stack env', () => {
+    // The escape hatch for every edge OpenPalm has no provider for: whoever
+    // fronts this install writes the public address they actually serve, and
+    // the browser stops guessing it from the page it happens to be on.
+    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com\n');
+    expect(computeOpencodeWorkspace()).toEqual({
+      kind: 'absolute',
+      origin: 'https://code.example.com',
+    });
+  });
+
+  test('a declared origin outranks the port — it is the more specific fact', () => {
+    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com\nOP_WORKSPACE_PORT=3820\n');
+    expect(computeOpencodeWorkspace()).toEqual({
+      kind: 'absolute',
+      origin: 'https://code.example.com',
+    });
+  });
+
+  test('an unusable declared origin falls back to the port rather than framing garbage', () => {
+    // A path cannot survive the SPA's root-absolute resolution, so honouring it
+    // would frame an address that loads OpenPalm's own routes.
+    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com/workspace\n');
+    expect(computeOpencodeWorkspace()).toEqual({ kind: 'port', port: 3820 });
+  });
+
+  test('the injected origin wins over the stack file, like every other key', () => {
+    writeStackEnv('OP_WORKSPACE_ORIGIN=https://stale.example.com\n');
+    process.env.OP_WORKSPACE_ORIGIN = 'https://code.example.com';
+    expect(computeOpencodeWorkspace()).toEqual({
+      kind: 'absolute',
+      origin: 'https://code.example.com',
+    });
   });
 });

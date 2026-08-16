@@ -138,24 +138,25 @@ port is served but never funneled: it stays private to your own tailnet devices
 even when public access is on. It needs no CORS entry and no separate password;
 it takes the same `op_session` cookie the UI issued, which the browser sends
 there because cookies are scoped by host and not by port. Keep the tailnet port
-number equal to `OP_WORKSPACE_PORT`, because the browser composes the workspace
-address from the page it is on plus that one number — if they differ,
-`/advanced` probes a port nothing answers and falls back to its native chat
-surface.
+number equal to `OP_WORKSPACE_PORT` — Tailscale gives a node one name, so the
+workspace surfaces on a second PORT of that name, and the address `/advanced`
+opens is the page's own host plus that number.
 
 ## Caddy
 
-Run Caddy on the host so it can reach both local listeners:
+Two shapes work. Pick by whether you would rather open a second port or add a
+second name.
+
+### A second port on the same name (no OpenPalm configuration)
 
 ```caddyfile
 ui.example.com {
   reverse_proxy 127.0.0.1:3880
 }
 
-# OpenCode's own web UI, framed by /advanced. It must keep the SAME hostname as
-# the UI (the session cookie is what authenticates it, and cookies are scoped by
-# host) and the SAME port number as OP_WORKSPACE_PORT (the browser composes this
-# address from the page it is on plus that number).
+# OpenCode's own web UI, framed by /advanced. Same hostname as the UI, and the
+# same port number as OP_WORKSPACE_PORT: with no address configured, that is
+# exactly what /advanced opens — the page's own host plus that number.
 ui.example.com:3820 {
   reverse_proxy 127.0.0.1:3820
 }
@@ -165,18 +166,56 @@ guardian.example.com {
 }
 ```
 
-Configure DNS and certificates using Caddy's normal HTTPS workflow, then set:
+### A second name on 443 (one setting)
+
+Nothing needs a port opening, and the workspace gets a certificate through
+Caddy's normal workflow like any other site:
+
+```caddyfile
+ui.example.com {
+  reverse_proxy 127.0.0.1:3880
+}
+
+# OpenCode's own web UI. A SUBDOMAIN OF THE SAME SITE as the UI — browsers
+# refuse cookies to a frame from an unrelated domain, and the OpenPalm session
+# is what authenticates this.
+code.example.com {
+  reverse_proxy 127.0.0.1:3820
+}
+
+guardian.example.com {
+  reverse_proxy 127.0.0.1:3830
+}
+```
+
+Then tell OpenPalm the address, in `state/stack.env`:
+
+```dotenv
+OP_WORKSPACE_ORIGIN=https://code.example.com
+```
+
+A bare origin — scheme, host, optional port, and nothing after it. A value with
+a path, a query, or credentials is ignored (OpenCode's UI resolves its own
+requests against the origin root, so anything past it would be dropped by the
+browser anyway) and `/advanced` falls back to the derived address.
+
+Restart the stack so the setting reaches the UI process. `/advanced` then opens
+`https://code.example.com` with a one-minute, single-use ticket in the URL,
+which that listener trades for a session cookie of its own — you sign in once,
+to OpenPalm, and never see a second password.
+
+### Both shapes
 
 ```dotenv
 GUARDIAN_CORS_ALLOWED_ORIGINS=https://ui.example.com
 ```
 
-Open `https://ui.example.com` and use
-`https://guardian.example.com/oc` as the Guardian connection URL.
+Open `https://ui.example.com` and use `https://guardian.example.com/oc` as the
+Guardian connection URL.
 
-Skipping the `:3820` block is a supported choice, not a broken config:
-`/advanced` probes that address before framing it and falls back to OpenPalm's
-own chat surface when nothing answers.
+Fronting the workspace at all is a supported choice, not a requirement:
+`/advanced` probes the address before framing it and says plainly that the
+workspace is not available here when nothing answers.
 
 The UI never needs firewalling: with `OP_TRUSTED_PROXY=1` it stays bound to
 `127.0.0.1:3880` the whole time, so port `3880` is not reachable from anything

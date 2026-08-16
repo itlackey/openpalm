@@ -24,8 +24,12 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  opencodeWorkspace: undefined as { port: number } | undefined,
+  opencodeWorkspace: undefined as
+    | { kind: 'absolute'; origin: string }
+    | { kind: 'port'; port: number }
+    | undefined,
   workspaceReachable: true,
+  workspaceTicket: 'ticket-1' as string | null,
   active: null as Record<string, unknown> | null,
   probeHealth: vi.fn(),
   request: vi.fn(),
@@ -112,6 +116,10 @@ vi.mock('$lib/connection-events.js', () => ({ onConnectionActivated: () => () =>
 vi.mock('./embeddable.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./embeddable.js')>()),
   isWorkspaceReachable: () => Promise.resolve(mocks.workspaceReachable),
+  // Same treatment as the probe: the real one is a network call against this
+  // app's own origin, and embeddable.vitest.ts covers how it answers. What
+  // this page does with the ANSWER is what these tests are about.
+  fetchWorkspaceTicket: () => Promise.resolve(mocks.workspaceTicket),
 }));
 
 import AdvancedPage from './+page.svelte';
@@ -127,6 +135,7 @@ const continueInChat = () => browserPage.getByRole('link', { name: 'Continue in 
 beforeEach(() => {
   mocks.opencodeWorkspace = undefined;
   mocks.workspaceReachable = true;
+  mocks.workspaceTicket = 'ticket-1';
   mocks.active = { ...LOCKED_CONNECTION };
   mocks.probeHealth.mockResolvedValue({ status: 'accessible' });
   mocks.onEndpointChanged.mockClear();
@@ -134,7 +143,7 @@ beforeEach(() => {
 
 describe('/advanced — the locked /oc connection frames OpenCode’s own origin', () => {
   test('frames the advertised workspace instead of falling back to chat', async () => {
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
     render(AdvancedPage);
 
     await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
@@ -151,7 +160,7 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
   test('says so, and links to Chat, when the advertised port does not answer', async () => {
     // The address composes fine — it is this page's own host and the server's
     // port — but nothing forwarded that port to this browser.
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
     mocks.workspaceReachable = false;
     render(AdvancedPage);
 
@@ -165,7 +174,7 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
     // unreachable it rendered a partial duplicate of /chat — a composer, a
     // message list, permission cards — under a heading promising OpenCode. A
     // deployment problem looked like a broken app.
-    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
     mocks.workspaceReachable = false;
     render(AdvancedPage);
 
@@ -174,4 +183,39 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
     expect(browserPage.getByRole('button', { name: /send/i }).elements()).toHaveLength(0);
   });
 
+});
+
+describe('/advanced — a workspace on another hostname opens with a ticket', () => {
+  // The reverse-proxy deployment: `openpalm.example.com` for the UI,
+  // `code.example.com` for the workspace, both on 443. Cookies are host-scoped,
+  // so nothing this browser holds reaches the workspace; the opening navigation
+  // carries a one-minute ticket the listener trades for a cookie of its own.
+  const DECLARED = { kind: 'absolute', origin: 'https://code.example.com' } as const;
+
+  test('frames the declared origin with a ticket attached', async () => {
+    mocks.opencodeWorkspace = DECLARED;
+    render(AdvancedPage);
+
+    await expect
+      .element(workspaceFrame())
+      .toHaveAttribute('src', 'https://code.example.com/?op_ticket=ticket-1');
+  });
+
+  test('says so rather than framing a 401 when no ticket can be had', async () => {
+    // No session, no route, no network — all the same answer here, because the
+    // frame would show the listener's refusal and look like a broken app.
+    mocks.opencodeWorkspace = DECLARED;
+    mocks.workspaceTicket = null;
+    render(AdvancedPage);
+
+    await expect.element(unavailable()).toBeVisible();
+    expect(workspaceFrame().elements()).toHaveLength(0);
+  });
+
+  test('a same-host workspace never asks for one — the cookie is already there', async () => {
+    mocks.opencodeWorkspace = { kind: 'absolute', origin: `http://127.0.0.1:${WORKSPACE_PORT}` };
+    render(AdvancedPage);
+
+    await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
+  });
 });

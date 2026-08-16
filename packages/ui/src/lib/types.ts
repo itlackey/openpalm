@@ -66,7 +66,7 @@ export type ServerRuntimeContext = {
    * neither the host nor the reachability is knowable from the server side
    * (see computeOpencodeWorkspace).
    */
-  opencodeWorkspace?: { port: number };
+  opencodeWorkspace?: { kind: 'absolute'; origin: string } | { kind: 'port'; port: number };
 };
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';

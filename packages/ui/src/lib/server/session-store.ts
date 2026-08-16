@@ -170,13 +170,19 @@ function signToken(expiresAt: number): string | null {
 }
 
 /**
- * Mint a new signed session token with a 14-day TTL.
+ * Mint a new signed session token, 14 days by default.
  * Place the result in the `op_session` cookie.
  * Throws when no login password is configured — callers must verify a
  * password exists (they all do: login/session/setup-complete check first).
+ *
+ * `ttlMs` exists for the workspace ticket (server/workspace-ticket.ts), which
+ * is the same credential with a one-minute life because it travels in a URL
+ * rather than a cookie. Keeping it as a parameter here — rather than a second
+ * token format — means the ticket is verified by the SAME `validateSession`
+ * everything else uses, so there is no second way to authenticate.
  */
-export function createSession(): string {
-  const expiresAt = Date.now() + SESSION_TTL_MS;
+export function createSession(ttlMs: number = SESSION_TTL_MS): string {
+  const expiresAt = Date.now() + ttlMs;
   const sig = signToken(expiresAt);
   if (sig === null) {
     throw new Error('Cannot mint a session: no UI login password is configured.');
