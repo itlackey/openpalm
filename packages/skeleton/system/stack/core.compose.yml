@@ -179,6 +179,20 @@ services:
       # nothing more — and must keep the UI's HOSTNAME: the session cookie is
       # what authenticates the workspace, and cookies are host-scoped.
       OP_WORKSPACE_ORIGIN: ${OP_WORKSPACE_ORIGIN:-}
+      # Scope the session cookie to a parent domain. Empty by default, and
+      # correct empty wherever the workspace is another PORT of the UI's own
+      # hostname — cookies ignore ports, so desktop, LAN and Tailscale need
+      # nothing here.
+      #
+      # It is required for the idiomatic reverse-proxy layout: UI on
+      # `app.example.com`, workspace on `code.example.com`. Cookies ARE scoped
+      # by host, so without this the framed workspace answers 401. Cloudflare
+      # Tunnel forces that layout — it proxies a fixed port set that the
+      # workspace port is not in, so a second hostname is the only option.
+      #
+      # Setting it sends the session to every subdomain of that domain. Read
+      # the note in packages/ui/src/lib/server/session-cookie.ts before you do.
+      OP_SESSION_COOKIE_DOMAIN: ${OP_SESSION_COOKIE_DOMAIN:-}
       # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
       # in-container, so it cannot read state/stack.env itself — this
       # interpolation is the only way the resolved value reaches it, the same

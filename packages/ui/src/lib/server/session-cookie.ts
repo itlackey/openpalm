@@ -108,33 +108,59 @@ export function isSecureRequest(request: Request): boolean {
 }
 
 /**
+ * The parent domain to scope the session cookie to, or "" for host-only.
+ *
+ * Host-only is the default and the right answer for every install where the UI
+ * and OpenCode's workspace share a hostname — desktop, LAN, Tailscale, and a
+ * reverse proxy that puts the workspace on another PORT of the same name.
+ *
+ * It is the wrong answer for the idiomatic reverse-proxy layout, where the UI
+ * is `app.example.com` and the workspace `code.example.com`: cookies are scoped
+ * by host, so nothing the browser holds for the first reaches the second and the
+ * framed workspace answers 401. Cloudflare Tunnel forces that layout outright —
+ * it proxies a fixed port set that does not include the workspace port, so a
+ * second hostname is the only option.
+ *
+ * Setting this to `example.com` sends the session to every subdomain of it.
+ * That is a real widening and it is deliberately explicit: an operator who
+ * runs unrelated services on sibling subdomains is handing them a cookie they
+ * did not have before. Nothing infers it — no public-suffix guessing, no
+ * "looks like the same site" heuristic — because a wrong guess here is a
+ * credential leak rather than a broken frame.
+ *
+ * A leading dot is accepted and normalized away (RFC 6265 treats `.example.com`
+ * and `example.com` identically; old docs still spell the dot).
+ */
+export function resolveSessionCookieDomain(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.OP_SESSION_COOKIE_DOMAIN ?? "").trim().replace(/^\./, "");
+}
+
+/** Attributes shared by the issue and clear headers, so they cannot drift apart. */
+function cookieScopeParts(request: Request): string[] {
+  const parts = ["HttpOnly", "SameSite=Lax", "Path=/"];
+  const domain = resolveSessionCookieDomain();
+  if (domain) parts.push(`Domain=${domain}`);
+  if (isSecureRequest(request)) parts.push("Secure");
+  return parts;
+}
+
+/**
  * Build the `Set-Cookie` value that issues/renews the session cookie.
  * `secure` is derived from the request so LAN-over-HTTP installs still work.
  */
 export function sessionCookieHeader(token: string, request: Request): string {
-  const parts = [
+  return [
     `${SESSION_COOKIE_NAME}=${token}`,
-    "HttpOnly",
-    "SameSite=Lax",
-    "Path=/",
+    ...cookieScopeParts(request),
     `Max-Age=${SESSION_TTL_SECONDS}`,
-  ];
-  if (isSecureRequest(request)) parts.push("Secure");
-  return parts.join("; ");
+  ].join("; ");
 }
 
 /**
  * Build the `Set-Cookie` value that clears the session cookie (logout).
- * Must mirror name/path/attributes of the issued cookie so the browser deletes it.
+ * Must mirror name/path/attributes of the issued cookie so the browser deletes it
+ * — including `Domain`, or a domain-scoped cookie survives logout.
  */
 export function clearSessionCookieHeader(request: Request): string {
-  const parts = [
-    `${SESSION_COOKIE_NAME}=`,
-    "HttpOnly",
-    "SameSite=Lax",
-    "Path=/",
-    "Max-Age=0",
-  ];
-  if (isSecureRequest(request)) parts.push("Secure");
-  return parts.join("; ");
+  return [`${SESSION_COOKIE_NAME}=`, ...cookieScopeParts(request), "Max-Age=0"].join("; ");
 }

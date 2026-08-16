@@ -144,16 +144,18 @@ opens is the page's own host plus that number.
 
 ## Caddy
 
-Run Caddy on the host so it can reach both local listeners:
+Two layouts. Pick by whether you can open a second port.
+
+### A second port on the same name
 
 ```caddyfile
 ui.example.com {
   reverse_proxy 127.0.0.1:3880
 }
 
-# OpenCode's own web UI, framed by /advanced. It must keep the SAME hostname as
-# the UI — the session cookie is what authenticates it, and cookies are scoped
-# by host (a different PORT is fine; a different hostname is not).
+# OpenCode's own web UI, framed by /advanced. Same hostname as the UI, same
+# port number as OP_WORKSPACE_PORT: that is exactly what /advanced opens when
+# nothing is configured, so this needs no OpenPalm settings at all.
 ui.example.com:3820 {
   reverse_proxy 127.0.0.1:3820
 }
@@ -163,21 +165,69 @@ guardian.example.com {
 }
 ```
 
-With no address configured, `/advanced` opens the page's own host plus
-`OP_WORKSPACE_PORT` — which is exactly what the block above serves, so nothing
-else is needed. If your edge puts the workspace somewhere that address cannot
-reach, set it explicitly in `state/stack.env`:
+### A second name on 443
 
-```dotenv
-OP_WORKSPACE_ORIGIN=https://ui.example.com:3820
+No extra port, and the workspace gets a certificate through Caddy's normal
+workflow like any other site:
+
+```caddyfile
+ui.example.com {
+  reverse_proxy 127.0.0.1:3880
+}
+
+code.example.com {
+  reverse_proxy 127.0.0.1:3820
+}
+
+guardian.example.com {
+  reverse_proxy 127.0.0.1:3830
+}
 ```
 
-A bare origin — scheme, host, optional port, and nothing after it. A value with
-a path, a query, or credentials is ignored (OpenCode's UI resolves its own
-requests against the origin root, so anything past it would be dropped by the
-browser anyway) and `/advanced` falls back to the derived address. Keep the
-HOSTNAME the same as the UI's: the OpenPalm session cookie is what signs you in
-there, and a browser will not send it to a different host.
+This needs **two** settings in `state/stack.env`, because a browser will not
+send a host-scoped cookie to a second hostname:
+
+```dotenv
+OP_WORKSPACE_ORIGIN=https://code.example.com
+OP_SESSION_COOKIE_DOMAIN=example.com
+```
+
+`OP_SESSION_COOKIE_DOMAIN` widens the OpenPalm session cookie to every
+subdomain of that domain. That is the whole mechanism — one credential, no
+second password — and it is also a real widening: if you run unrelated services
+on sibling subdomains, they now receive that cookie. Use the second-port layout
+above if that matters to you.
+
+`OP_WORKSPACE_ORIGIN` is a bare origin — scheme, host, optional port. Anything
+after it is dropped (OpenCode's UI resolves its own requests against the origin
+root, so a path could not survive anyway); an unparseable value falls back to
+the derived address.
+
+Restart the stack after changing either.
+
+## Cloudflare Tunnel
+
+Cloudflare proxies a fixed set of ports, and `OP_WORKSPACE_PORT` is not among
+them — so the second-port layout above cannot work here and a second hostname
+is the only option:
+
+```yaml
+# cloudflared config.yml
+ingress:
+  - hostname: app.example.com
+    service: http://127.0.0.1:3880
+  - hostname: code.example.com
+    service: http://127.0.0.1:3820
+  - service: http_status:404
+```
+
+```dotenv
+OP_WORKSPACE_ORIGIN=https://code.example.com
+OP_SESSION_COOKIE_DOMAIN=example.com
+```
+
+Same trade-off as the Caddy second-name layout — read the note above before
+setting the cookie domain.
 
 Configure DNS and certificates using Caddy's normal HTTPS workflow, then set:
 
