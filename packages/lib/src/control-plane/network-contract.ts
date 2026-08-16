@@ -34,6 +34,42 @@ export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
  */
 export const DEFAULT_WORKSPACE_PORT = STACK_DEFAULTS.ports.workspace;
 
+/** The env key an operator writes to override the workspace address. */
+export const WORKSPACE_ORIGIN_ENV = "OP_WORKSPACE_ORIGIN";
+
+/**
+ * Where OpenCode's web UI is reachable from a browser.
+ *
+ * `port` is always meaningful — the listener genuinely binds it — and is all a
+ * LAN or desktop install needs, because only the browser knows which host it
+ * typed. `origin` overrides it for an edge that publishes the workspace
+ * somewhere that address cannot reach (a reverse proxy re-porting it).
+ */
+export type WorkspaceAdvertisement = { port: number; origin?: string };
+
+/**
+ * The workspace address for this install.
+ *
+ * A malformed `OP_WORKSPACE_ORIGIN` falls through to the port rather than
+ * failing, and anything past the origin (a path, a query) is simply dropped —
+ * the SPA resolves its own requests against the origin root, so there is
+ * nothing else to honour and no reason to reject the whole value over it.
+ */
+export function resolveWorkspaceAdvertisement(
+  env: Record<string, string | undefined>,
+): WorkspaceAdvertisement {
+  const port = resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env);
+  const raw = env[WORKSPACE_ORIGIN_ENV]?.trim();
+  if (!raw) return { port };
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return { port };
+    return { port, origin: url.origin };
+  } catch {
+    return { port };
+  }
+}
+
 /**
  * Resolve one port env var: an explicit argument wins, then live process env,
  * then the home's persisted stack.env, then the default.

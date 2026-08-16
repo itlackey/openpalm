@@ -28,9 +28,7 @@ import {
   remoteAddonEnabled,
   computeGuardianIngressRequired,
   describeSelectedRemoteExposure,
-  resolveWorkspaceAdvertisement,
 } from "./remote-providers.js";
-import { parseWorkspaceOrigin } from "./workspace-origin.js";
 import {
   canonicalAddonProfileSelection,
   resolveHardwareProfileVariant,
@@ -253,77 +251,15 @@ describe("remoteAddonEnabled", () => {
   });
 });
 
-// ── The workspace address: operator → provider → derivable default ───────
-//
-// OpenCode's web UI is a root-mounted SPA, so it needs an ORIGIN, and only the
-// thing fronting an install knows which origin that is. These pin the
-// precedence and — more importantly — that the fallback is total: every
-// topology gets an answer, so /advanced always has an address to probe.
+// ── The workspace address is NOT a provider concern ──────────────────────
 
-describe("parseWorkspaceOrigin", () => {
-  test("accepts a bare http(s) origin, with and without a port", () => {
-    expect(parseWorkspaceOrigin("https://code.example.com")).toBe("https://code.example.com");
-    expect(parseWorkspaceOrigin("http://192.168.1.10:3820")).toBe("http://192.168.1.10:3820");
-    expect(parseWorkspaceOrigin("  https://code.example.com/  ")).toBe("https://code.example.com");
-  });
-
-  test("rejects anything an origin cannot carry", () => {
-    // The SPA resolves /assets/*, /api/* and its routes against the ORIGIN, so
-    // a path, query or fragment is silently discarded at the first request —
-    // accepting one would advertise an address that loads the wrong app.
-    expect(parseWorkspaceOrigin("https://code.example.com/workspace")).toBeNull();
-    expect(parseWorkspaceOrigin("https://code.example.com/?a=1")).toBeNull();
-    expect(parseWorkspaceOrigin("https://code.example.com/#frag")).toBeNull();
-    // Credentials in a frame URL are not sent by any modern browser.
-    expect(parseWorkspaceOrigin("https://user:pw@code.example.com")).toBeNull();
-    expect(parseWorkspaceOrigin("ws://code.example.com")).toBeNull();
-    expect(parseWorkspaceOrigin("code.example.com:3820")).toBeNull();
-    expect(parseWorkspaceOrigin("   ")).toBeNull();
-    expect(parseWorkspaceOrigin(undefined)).toBeNull();
-  });
-});
-
-describe("resolveWorkspaceAdvertisement", () => {
-  test("no remote edge: the derivable default, which the browser completes with its own host", () => {
-    expect(resolveWorkspaceAdvertisement({})).toEqual({ kind: "port", port: 3820 });
-    expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_PORT: "4820" })).toEqual({
-      kind: "port",
-      port: 4820,
-    });
-  });
-
-  test("the operator's declared origin outranks everything", () => {
-    expect(
-      resolveWorkspaceAdvertisement({
-        OP_WORKSPACE_ORIGIN: "https://code.example.com",
-        OP_WORKSPACE_PORT: "4820",
-        OP_ENABLED_ADDONS: "remote",
-      }),
-    ).toEqual({ kind: "absolute", origin: "https://code.example.com" });
-  });
-
-  test("an unusable operator value falls through rather than poisoning the answer", () => {
-    // Fail-soft on purpose: a typo'd origin costs the default, not a workspace.
-    expect(
-      resolveWorkspaceAdvertisement({ OP_WORKSPACE_ORIGIN: "not a url", OP_WORKSPACE_PORT: "4820" }),
-    ).toEqual({ kind: "port", port: 4820 });
-  });
-
-  test("the remote addon does not move the workspace — Tailscale serves the derived port", () => {
-    // Tailscale gives a node ONE name and serves the workspace on a second port
-    // of it, which is exactly what the default composes. There is deliberately
-    // no per-provider hook: the one that existed returned byte-identical output
-    // to this fallback, so it was an extension point with no user.
-    expect(
-      resolveWorkspaceAdvertisement({ OP_ENABLED_ADDONS: "remote", OP_WORKSPACE_PORT: "4820" }),
-    ).toEqual({ kind: "port", port: 4820 });
-    expect(
-      resolveWorkspaceAdvertisement({ OP_REMOTE_PROFILE: "addon.remote.tailscale" }),
-    ).toEqual({ kind: "port", port: 3820 });
-  });
-
-  test("no provider carries a workspace hook to drift out of sync with this", () => {
-    // If one is ever added back, this fails and whoever adds it has to say so.
+describe("the remote addon does not move the workspace", () => {
+  test("no provider carries a workspace hook", () => {
+    // One briefly did, and it returned byte-identical output to the plain
+    // fallback in network-contract.ts — an extension point with no user.
+    // Tailscale gives a node ONE name and serves the workspace on a second
+    // port of it, which is exactly what the default already composes. If a
+    // hook is ever added back, this fails and whoever adds it has to say why.
     for (const provider of Object.values(REMOTE_PROVIDERS)) {
       expect(provider, provider.id).not.toHaveProperty("workspaceOrigin");
     }

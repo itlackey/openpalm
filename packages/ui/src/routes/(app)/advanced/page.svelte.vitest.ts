@@ -24,10 +24,7 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  opencodeWorkspace: undefined as
-    | { kind: 'absolute'; origin: string }
-    | { kind: 'port'; port: number }
-    | undefined,
+  opencodeWorkspace: undefined as { port: number; origin?: string } | undefined,
   workspaceReachable: true,
   active: null as Record<string, unknown> | null,
   probeHealth: vi.fn(),
@@ -137,7 +134,7 @@ beforeEach(() => {
 
 describe('/advanced — the locked /oc connection frames OpenCode’s own origin', () => {
   test('frames the advertised workspace instead of falling back to chat', async () => {
-    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
     render(AdvancedPage);
 
     await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
@@ -154,7 +151,7 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
   test('says so, and links to Chat, when the advertised port does not answer', async () => {
     // The address composes fine — it is this page's own host and the server's
     // port — but nothing forwarded that port to this browser.
-    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
     mocks.workspaceReachable = false;
     render(AdvancedPage);
 
@@ -168,7 +165,7 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
     // unreachable it rendered a partial duplicate of /chat — a composer, a
     // message list, permission cards — under a heading promising OpenCode. A
     // deployment problem looked like a broken app.
-    mocks.opencodeWorkspace = { kind: 'port', port: WORKSPACE_PORT };
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
     mocks.workspaceReachable = false;
     render(AdvancedPage);
 

@@ -14,18 +14,12 @@ export type EmbeddableConnection = { baseUrl: string; hasPassword: boolean };
 export type EmbeddingPage = { origin: string; protocol: string };
 
 /**
- * The server's `opencodeWorkspace` advertisement.
- *
- * Two shapes because there are two genuinely different facts. `absolute` is an
- * origin something authoritative NAMED — the operator via OP_WORKSPACE_ORIGIN,
- * or the remote provider that fronts this install and therefore knows its own
- * public address. `port` is the only thing derivable server-side, and it still
- * needs the browser to supply the host, because a server cannot tell a LAN IP
+ * The server's `opencodeWorkspace` advertisement: the port the listener binds,
+ * plus an `origin` when the operator named one (OP_WORKSPACE_ORIGIN). The port
+ * still needs the browser to supply the host — a server cannot tell a LAN IP
  * from a tailnet name from a reverse-proxied domain.
  */
-export type OpencodeWorkspaceHint =
-  | { kind: 'absolute'; origin: string }
-  | { kind: 'port'; port: number };
+export type OpencodeWorkspaceHint = { port: number; origin?: string };
 export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 
 /**
@@ -84,9 +78,9 @@ export function resolveWorkspaceUrl(
   // is not a workspace URL for an arbitrary browser-owned connection.
   if (!activeConnection?.isDefault || activeConnection.hasPassword) return null;
   if (!hint) return null;
-  // Declared by whoever actually fronts this install — used verbatim, because
+  // Named by whoever actually fronts this install — used verbatim, because
   // guessing at it is what broke every reverse-proxied deployment.
-  if (hint.kind === 'absolute') return hint.origin;
+  if (hint.origin) return hint.origin;
   const { hostname, protocol } = embeddingPage;
   if (!hostname) return null;
   if (protocol !== 'http:' && protocol !== 'https:') return null;

@@ -11,7 +11,7 @@ const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
 const LOCAL_ACTIVE_CONNECTION = { isDefault: true, hasPassword: false };
 const REMOTE_ACTIVE_CONNECTION = { isDefault: false, hasPassword: false };
 /** The server's advertisement: a port and nothing else. */
-const HINT = { kind: 'port', port: 3820 } as const;
+const HINT = { port: 3820 } as const;
 
 describe('isEmbeddableOpencodeUi — this app’s own origin is not an OpenCode UI', () => {
   test('refuses the locked same-origin /oc pass-through', () => {
@@ -180,7 +180,7 @@ describe('resolveWorkspaceUrl — a declared origin is used verbatim', () => {
   // exposes the workspace at an address the server could not have guessed. The
   // operator sets OP_WORKSPACE_ORIGIN, or the provider declares it, and this
   // takes it as given rather than re-deriving a wrong one.
-  const DECLARED = { kind: 'absolute', origin: 'https://workspace.example.com' } as const;
+  const DECLARED = { port: 3820, origin: 'https://workspace.example.com' } as const;
 
   test('a declared origin beats anything composable from the page', () => {
     expect(

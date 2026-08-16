@@ -21,7 +21,6 @@
  */
 import { parseEnabledAddons } from "./env.js";
 import { DEFAULT_WORKSPACE_PORT, resolveEnvPort } from "./network-contract.js";
-import { parseWorkspaceOrigin, WORKSPACE_ORIGIN_ENV, type WorkspaceAdvertisement } from "./workspace-origin.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 import { readRemoteAccessConfig, describeRemoteExposure } from "./remote-access.js";
 import { remoteRequiresGuardianIngress } from "./access-toggles.js";
@@ -123,33 +122,6 @@ export const REMOTE_PROVIDERS: Record<string, RemoteProviderInfo> = {
       ),
   },
 };
-
-/**
- * The workspace address for this install: the operator's explicit setting, else
- * the derivable default.
- *
- * `OP_WORKSPACE_ORIGIN` is the escape hatch for an edge that publishes the
- * workspace somewhere the derived address cannot reach — a reverse proxy
- * re-porting it, say. Everything else composes host-from-the-page plus
- * `OP_WORKSPACE_PORT`, which is what a desktop, a LAN install and Tailscale all
- * want (Tailscale gives a node one name and serves the workspace on a second
- * port of it, which is exactly the derived form).
- *
- * There used to be a per-provider `workspaceOrigin()` hook between these two.
- * The only provider implementing it returned byte-identical output to the
- * fallback below, so it was an extension point with no user — deleted rather
- * than kept warm for a second provider that may never need it.
- */
-export function resolveWorkspaceAdvertisement(
-  env: Record<string, string | undefined>,
-): WorkspaceAdvertisement {
-  const explicit = parseWorkspaceOrigin(env[WORKSPACE_ORIGIN_ENV]);
-  if (explicit) return { kind: "absolute", origin: explicit };
-  return {
-    kind: "port",
-    port: resolveEnvPort("OP_WORKSPACE_PORT", DEFAULT_WORKSPACE_PORT, env),
-  };
-}
 
 /**
  * Tailscale is the default variant: `resolveActiveProfiles` falls back to

@@ -740,7 +740,6 @@ export {
   remoteAddonEnabled,
   computeGuardianIngressRequired,
   describeSelectedRemoteExposure,
-  resolveWorkspaceAdvertisement,
   type RemoteProviderInfo,
   type RemoteAccessStatus,
   type RemoteAccessStatusState,
@@ -823,15 +822,13 @@ export { normalizeLoopbackUrl } from './control-plane/url-normalize.js';
 // stop re-typing 3880/3800/3810 as inline fallbacks.
 export { STACK_DEFAULTS } from "./control-plane/defaults.js";
 export {
-  parseWorkspaceOrigin,
-  WORKSPACE_ORIGIN_ENV,
-  type WorkspaceAdvertisement,
-} from "./control-plane/workspace-origin.js";
-export {
   DEFAULT_HOST_UI_PORT,
   DEFAULT_PUBLISHED_UI_PORT,
   DEFAULT_WORKSPACE_PORT,
   UI_LOOPBACK_HOST,
+  WORKSPACE_ORIGIN_ENV,
+  type WorkspaceAdvertisement,
+  resolveWorkspaceAdvertisement,
   resolveEnvPort,
   resolveHostUiPort,
   resolvePublishedUiPort,
