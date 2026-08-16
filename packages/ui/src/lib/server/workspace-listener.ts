@@ -27,12 +27,6 @@
  * operator types one password — the OpenPalm login — and OpenCode is never
  * reachable through here without it.
  *
- * When a reverse proxy publishes the workspace on a HOSTNAME of its own — the
- * idiomatic Caddy deployment, everything on 443 — that cookie is not sent, and
- * the opening navigation carries a one-minute ticket instead, which this trades
- * for a cookie of this host's own (see workspace-ticket.ts). Same credential,
- * same verification; the only thing that changes is how it first arrives.
- *
  * A request carrying its own `Authorization` header is passed through
  * untouched, so an external OpenCode client (a TUI, a script) that already
  * holds the server password keeps working exactly as it does against OpenCode
@@ -65,13 +59,8 @@ import {
   getAssistantOpencodeTarget,
   type AssistantOpencodeTarget,
 } from './opencode-target.js';
-import {
-  buildSessionCookieHeader,
-  isSecureForwarded,
-  sessionTokenFromCookieHeader,
-} from './session-cookie.js';
-import { createSession, validateSession } from './session-store.js';
-import { redeemWorkspaceTicket, WORKSPACE_TICKET_PARAM } from './workspace-ticket.js';
+import { sessionTokenFromCookieHeader } from './session-cookie.js';
+import { validateSession } from './session-store.js';
 
 const logger = createLogger('workspace');
 
@@ -137,55 +126,6 @@ function upstreamAuthorization(
   return clientAuthorization ?? assistantAuthHeaders(target).authorization;
 }
 
-/**
- * Trade a workspace ticket for a cookie on THIS host, and return true when the
- * request was handled.
- *
- * Only for the navigation that opens the workspace: a ticket arrives as a query
- * parameter on a GET, is spent immediately, and the browser is redirected to
- * the same path without it. Everything after that is an ordinary cookie
- * request, so the SPA's own traffic never carries a credential in a URL.
- *
- * The redirect happens whether or not the ticket was good. A spent or expired
- * one just lands on the 401 the next request produces — which is the honest
- * answer — while leaving a dead ticket in the address bar would make every
- * reload look like a fresh failure. There is no loop: the parameter is gone.
- *
- * See workspace-ticket.ts for why the cross-hostname case needs this at all.
- */
-function redeemTicket(req: IncomingMessage, res: ServerResponse): boolean {
-  const method = (req.method ?? 'GET').toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD') return false;
-  // The listener only ever sees an origin-relative target; the base is a
-  // placeholder so URLSearchParams can do the parsing.
-  let requested: URL;
-  try {
-    requested = new URL(req.url ?? '/', 'http://workspace.invalid');
-  } catch {
-    return false;
-  }
-  const ticket = requested.searchParams.get(WORKSPACE_TICKET_PARAM);
-  if (!ticket) return false;
-  requested.searchParams.delete(WORKSPACE_TICKET_PARAM);
-
-  const headers: Record<string, string> = {
-    location: `${requested.pathname}${requested.search}`,
-    'x-content-type-options': 'nosniff',
-  };
-  if (redeemWorkspaceTicket(ticket)) {
-    // A full session for this host, minted the same way the login route mints
-    // one — the ticket's own one-minute life is about how long it may sit in a
-    // URL, not how long the operator stays signed in.
-    headers['set-cookie'] = buildSessionCookieHeader(
-      createSession(),
-      isSecureForwarded(req.headers['x-forwarded-proto']),
-    );
-  }
-  res.writeHead(302, headers);
-  res.end();
-  return true;
-}
-
 /** The 401 a browser gets here, which has no UI of its own to render one. */
 function refuse(res: ServerResponse): void {
   res.writeHead(401, {
@@ -199,7 +139,6 @@ function refuse(res: ServerResponse): void {
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (redeemTicket(req, res)) return;
   const { ok, clientAuthorization } = authorize(req);
   if (!ok) {
     refuse(res);

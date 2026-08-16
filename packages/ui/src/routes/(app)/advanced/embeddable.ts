@@ -7,7 +7,6 @@
  * and what our own origin actually serves).
  */
 import { isAppOriginUrl, isLoopbackHost } from '$lib/connections/url-policy.js';
-import { WORKSPACE_TICKET_PARAM } from '$lib/workspace-ticket-param.js';
 
 export type EmbeddableConnection = { baseUrl: string; hasPassword: boolean };
 
@@ -92,63 +91,6 @@ export function resolveWorkspaceUrl(
   if (!hostname) return null;
   if (protocol !== 'http:' && protocol !== 'https:') return null;
   return `${protocol}//${formatHostForUrl(hostname)}:${hint.port}`;
-}
-
-/**
- * Does this workspace address need a ticket to carry the session?
- *
- * Cookies ignore PORT but not HOST, so the `op_session` cookie this browser
- * already holds reaches a workspace on another port of the same hostname by
- * itself — every desktop, LAN and Tailscale install. It does NOT reach one a
- * reverse proxy published under a name of its own, which is the idiomatic Caddy
- * shape: `openpalm.example.com` for the UI, `code.example.com` for the
- * workspace, both on 443. That case opens with a ticket instead
- * (server/workspace-ticket.ts).
- *
- * Comparing hostnames — not origins — is the point: an origin comparison would
- * demand a ticket for every port-based workspace, where the cookie was already
- * doing the job.
- */
-export function needsWorkspaceTicket(workspaceUrl: string, pageHostname: string): boolean {
-  try {
-    return new URL(workspaceUrl).hostname !== pageHostname;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Fetch a workspace ticket from this app's own origin, or null.
- *
- * Null covers every failure the same way — no session, no route, no network —
- * because the caller does the same thing with all of them: refuse to frame an
- * address the browser cannot authenticate to, rather than show a 401 pane.
- */
-export async function fetchWorkspaceTicket(): Promise<string | null> {
-  try {
-    const res = await fetch('/api/workspace/ticket', {
-      method: 'POST',
-      credentials: 'same-origin',
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    const body: unknown = await res.json();
-    if (!body || typeof body !== 'object' || !('ticket' in body)) return null;
-    return typeof body.ticket === 'string' && body.ticket ? body.ticket : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Attach a ticket to the address the frame will open. */
-export function withWorkspaceTicket(url: string, ticket: string): string {
-  try {
-    const target = new URL(url);
-    target.searchParams.set(WORKSPACE_TICKET_PARAM, ticket);
-    return target.toString();
-  } catch {
-    return url;
-  }
 }
 
 /**

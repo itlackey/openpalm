@@ -4,14 +4,7 @@
  * rendered a dead "refused to connect" panel instead of a conversation.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import {
-  fetchWorkspaceTicket,
-  isEmbeddableOpencodeUi,
-  isWorkspaceReachable,
-  needsWorkspaceTicket,
-  resolveWorkspaceUrl,
-  withWorkspaceTicket,
-} from './embeddable.js';
+import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
@@ -203,63 +196,5 @@ describe('resolveWorkspaceUrl — a declared origin is used verbatim', () => {
     expect(
       resolveWorkspaceUrl(DECLARED, { hostname: 'x', protocol: 'https:' }, REMOTE_ACTIVE_CONNECTION),
     ).toBeNull();
-  });
-});
-
-describe('needsWorkspaceTicket — cookies ignore the port, not the host', () => {
-  test('another PORT of this host needs nothing — the cookie is already sent there', () => {
-    // This is every desktop, LAN and Tailscale install, and it is why the
-    // common path costs no round trip at all.
-    expect(needsWorkspaceTicket('http://192.168.0.201:3820', '192.168.0.201')).toBe(false);
-    expect(needsWorkspaceTicket('https://openpalm.example:3820', 'openpalm.example')).toBe(false);
-    expect(needsWorkspaceTicket('http://127.0.0.1:3820', '127.0.0.1')).toBe(false);
-  });
-
-  test('another HOST does — the idiomatic reverse-proxy deployment', () => {
-    // `openpalm.example.com` for the UI, `code.example.com` for the workspace,
-    // both on 443. Nothing the browser holds for the first is sent to the
-    // second, so the opening navigation carries a ticket.
-    expect(needsWorkspaceTicket('https://code.example.com', 'openpalm.example.com')).toBe(true);
-  });
-
-  test('an unparsable address asks for nothing — there is no frame to open anyway', () => {
-    expect(needsWorkspaceTicket('not a url', 'openpalm.example.com')).toBe(false);
-  });
-});
-
-describe('the ticket handoff itself', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  test('attaches the ticket without losing the deep link it was going to open', () => {
-    const url = withWorkspaceTicket('https://code.example.com/L3dvcms/session/abc', 't-1');
-    const parsed = new URL(url);
-    expect(parsed.pathname).toBe('/L3dvcms/session/abc');
-    expect(parsed.searchParams.get('op_ticket')).toBe('t-1');
-  });
-
-  test('asks this app’s own origin, with the session cookie, by POST', () => {
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ ticket: 't-1' }));
-    vi.stubGlobal('fetch', fetchMock);
-    return fetchWorkspaceTicket().then((ticket) => {
-      expect(ticket).toBe('t-1');
-      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/workspace/ticket');
-      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-    });
-  });
-
-  test('every failure is the same answer: no ticket, so do not frame a 401', async () => {
-    for (const stub of [
-      vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
-      vi.fn().mockResolvedValue(Response.json({})),
-      vi.fn().mockResolvedValue(Response.json({ ticket: '' })),
-      vi.fn().mockResolvedValue(new Response('not json')),
-      vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
-    ]) {
-      vi.stubGlobal('fetch', stub);
-      await expect(fetchWorkspaceTicket()).resolves.toBeNull();
-    }
   });
 });

@@ -9,14 +9,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import {
-    fetchWorkspaceTicket,
-    isEmbeddableOpencodeUi,
-    isWorkspaceReachable,
-    needsWorkspaceTicket,
-    resolveWorkspaceUrl,
-    withWorkspaceTicket,
-  } from './embeddable.js';
+  import { isEmbeddableOpencodeUi, isWorkspaceReachable, resolveWorkspaceUrl } from './embeddable.js';
   import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
@@ -58,15 +51,6 @@
 
   type Mode = 'checking' | 'iframe' | 'unavailable' | 'dead';
   let mode = $state<Mode>('checking');
-  /**
-   * Why the workspace is unavailable, when `mode === 'unavailable'`.
-   *
-   * `no-session` is the one case the address itself does not explain: the
-   * workspace answered, but this browser could not get a credential to carry
-   * there, so telling the operator to check port forwarding would send them
-   * after the wrong thing.
-   */
-  let unavailableReason = $state<'no-address' | 'no-answer' | 'no-session'>('no-address');
   // The resolved OpenCode web-UI URL for the iframe. Empty until resolve().
   let frameUrl = $state('');
   let frameReady = $state(false);
@@ -123,15 +107,9 @@
     // blank frame.
     const workspaceOnly = !isEmbeddable(conn);
     const base = workspaceOnly ? workspaceUrl : conn.baseUrl;
-    if (base === null) {
-      unavailableReason = 'no-address';
-      mode = 'unavailable';
-      return;
-    }
-    const usable = !workspaceOnly || (await isWorkspaceReachable(base));
+    const usable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
     if (!isCurrentProbe(token, conn.id)) return;
     if (!usable) {
-      unavailableReason = 'no-answer';
       mode = 'unavailable';
       return;
     }
@@ -171,21 +149,6 @@
       } catch {
         // non-ok / unreachable → leave url = base (no broken deep link)
       }
-    }
-    // A workspace on another HOSTNAME — a reverse proxy publishing it under its
-    // own name — gets none of this browser's cookies, so the opening navigation
-    // carries a one-minute ticket that the listener trades for a cookie of that
-    // host's own (server/workspace-ticket.ts). Without one the frame would show
-    // a 401; refusing to frame it says so instead.
-    if (workspaceOnly && needsWorkspaceTicket(url, page.url.hostname)) {
-      const ticket = await fetchWorkspaceTicket();
-      if (!isCurrentProbe(token, connectionId)) return;
-      if (!ticket) {
-        unavailableReason = 'no-session';
-        mode = 'unavailable';
-        return;
-      }
-      url = withWorkspaceTicket(url, ticket);
     }
     if (!isCurrentProbe(token, connectionId)) return;
     frameUrl = url;
@@ -310,11 +273,6 @@
             This install doesn’t advertise a workspace address, so there is nothing for this page to
             open. It arrives with the assistant — if you’ve just updated, the stack may still need
             to be redeployed.
-          </p>
-        {:else if unavailableReason === 'no-session' && workspaceUrl}
-          <p>
-            <code>{workspaceUrl}</code> answered, but this browser couldn’t get a pass to sign in
-            there. Reload the page; if it keeps happening, sign in to OpenPalm again.
           </p>
         {:else if workspaceUrl}
           <p>

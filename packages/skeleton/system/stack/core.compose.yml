@@ -175,14 +175,12 @@ services:
       # browser typed — desktop, LAN, Tailscale — because the browser composes
       # that address from the page it is already on.
       #
-      # It is needed when something in front of this install publishes the
-      # workspace under a name of its OWN: the idiomatic Caddy setup, where the
-      # UI is `openpalm.example.com` and the workspace `code.example.com`, both
-      # on 443 with no extra port to open. Nothing in-container can discover
-      # that, so the operator states it (docs/remote-access-tls.md), and the
-      # /advanced frame stops guessing. Must be a bare origin — scheme, host,
-      # optional port, nothing more — and must be same-site with the UI, or the
-      # browser will not carry the session into the frame.
+      # It is needed when an edge publishes the workspace at an address the
+      # derived one cannot reach. Nothing in-container can discover that, so the
+      # operator states it (docs/remote-access-tls.md) and the /advanced frame
+      # stops guessing. Must be a bare origin — scheme, host, optional port,
+      # nothing more — and must keep the UI's HOSTNAME: the session cookie is
+      # what authenticates the workspace, and cookies are host-scoped.
       OP_WORKSPACE_ORIGIN: ${OP_WORKSPACE_ORIGIN:-}
       # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
       # in-container, so it cannot read state/stack.env itself — this

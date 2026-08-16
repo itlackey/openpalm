@@ -108,30 +108,10 @@ export function isSecureRequest(request: Request): boolean {
 }
 
 /**
- * True when a raw header map says the request reached us over HTTPS.
- *
- * The `Request`-shaped {@link isSecureRequest} covers every SvelteKit caller;
- * the workspace listener is a bare `http.Server` holding `IncomingMessage`
- * headers and no `Request` at all, and it issues this same cookie when it
- * redeems a workspace ticket. Its own socket is always cleartext (the listener
- * never terminates TLS), so the forwarded header is the only signal there — and
- * it is exactly the signal a TLS-terminating proxy sets.
+ * Build the `Set-Cookie` value that issues/renews the session cookie.
+ * `secure` is derived from the request so LAN-over-HTTP installs still work.
  */
-export function isSecureForwarded(forwardedProto: string | string[] | undefined): boolean {
-  const raw = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
-  if (!raw) return false;
-  return raw.split(",")[0].trim().toLowerCase() === "https";
-}
-
-/**
- * Build the `Set-Cookie` value that issues/renews the session cookie, given an
- * already-resolved answer to "did this arrive over HTTPS".
- *
- * Split out so the workspace listener issues a byte-identical cookie without
- * having to fabricate a `Request` — one writer for the attributes, which is
- * this module's whole reason to exist.
- */
-export function buildSessionCookieHeader(token: string, secure: boolean): string {
+export function sessionCookieHeader(token: string, request: Request): string {
   const parts = [
     `${SESSION_COOKIE_NAME}=${token}`,
     "HttpOnly",
@@ -139,16 +119,8 @@ export function buildSessionCookieHeader(token: string, secure: boolean): string
     "Path=/",
     `Max-Age=${SESSION_TTL_SECONDS}`,
   ];
-  if (secure) parts.push("Secure");
+  if (isSecureRequest(request)) parts.push("Secure");
   return parts.join("; ");
-}
-
-/**
- * Build the `Set-Cookie` value that issues/renews the session cookie.
- * `secure` is derived from the request so LAN-over-HTTP installs still work.
- */
-export function sessionCookieHeader(token: string, request: Request): string {
-  return buildSessionCookieHeader(token, isSecureRequest(request));
 }
 
 /**

@@ -13,30 +13,9 @@ import type { Duplex } from 'node:stream';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 const VALID_SESSION = 'good-token';
-/** A ticket that has not been spent yet; `redeemWorkspaceTicket` consumes it. */
-const VALID_TICKET = 'good-ticket';
-/** What the listener mints for a redeemed ticket. */
-const MINTED_SESSION = 'minted-token';
-const spentTickets = new Set<string>();
 
 vi.mock('./session-store.js', () => ({
   validateSession: (token: string) => token === VALID_SESSION,
-  createSession: () => MINTED_SESSION,
-  // session-cookie.ts reads this at import time for the cookie's Max-Age;
-  // mocking the module without it leaves the real value unreachable.
-  SESSION_TTL_SECONDS: 1_209_600,
-}));
-// The ticket module's own logic (single use, one-minute life, signed by the
-// same key as a session) is pinned in workspace-ticket.vitest.ts. Here it is
-// mocked down to its VERDICT so these tests are about what the listener does
-// with the answer: sets a cookie, strips the parameter, redirects.
-vi.mock('./workspace-ticket.js', () => ({
-  WORKSPACE_TICKET_PARAM: 'op_ticket',
-  redeemWorkspaceTicket: (ticket: string) => {
-    if (ticket !== VALID_TICKET || spentTickets.has(ticket)) return false;
-    spentTickets.add(ticket);
-    return true;
-  },
 }));
 vi.mock('./opencode-target.js', () => ({
   getAssistantOpencodeTarget: () => ({
@@ -255,114 +234,6 @@ describe('OpenCode is not reachable here without one', () => {
     });
 
     expect(res.status).toBe(200);
-  });
-});
-
-describe('a workspace on another hostname opens with a ticket', () => {
-  // Cookies ignore port but not host, so a reverse proxy that publishes the
-  // workspace under its own name (`code.example.com` beside
-  // `openpalm.example.com`) gets none of this browser's cookies. The opening
-  // navigation carries a ticket instead, which is traded here for a cookie of
-  // THIS host's own. Everything after that is the cookie lane above.
-  test('redeems it, sets a session cookie, and redirects with the parameter gone', async () => {
-    const res = await fetch(`${workspaceOrigin}/?op_ticket=${VALID_TICKET}`, {
-      redirect: 'manual',
-    });
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/');
-    const cookie = res.headers.get('set-cookie') ?? '';
-    expect(cookie).toContain(`op_session=${MINTED_SESSION}`);
-    expect(cookie).toContain('HttpOnly');
-    expect(cookie).toContain('Path=/');
-    // Nothing is proxied on the exchange itself — it never reaches OpenCode.
-    expect(seen).toHaveLength(0);
-  });
-
-  test('the cookie it hands out then works on its own', async () => {
-    const res = await fetch(`${workspaceOrigin}/api/health`, {
-      headers: { cookie: `op_session=${VALID_SESSION}` },
-    });
-    expect(res.status).toBe(200);
-  });
-
-  test('keeps the rest of the address — a deep link survives the exchange', async () => {
-    const res = await fetch(
-      `${workspaceOrigin}/L3dvcms/session/abc?view=diff&op_ticket=${VALID_TICKET}`,
-      { redirect: 'manual' },
-    );
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/L3dvcms/session/abc?view=diff');
-  });
-
-  test('a spent ticket is not a credential — no cookie, and the redirect still strips it', async () => {
-    // Single use is what keeps a ticket sitting in a reverse proxy's access log
-    // from being replayable. Redirecting anyway is deliberate: it lands on the
-    // ordinary 401 instead of leaving a dead ticket in the address bar to fail
-    // again on every reload.
-    spentTickets.add('already-used');
-    const res = await fetch(`${workspaceOrigin}/?op_ticket=already-used`, { redirect: 'manual' });
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/');
-    expect(res.headers.get('set-cookie')).toBeNull();
-    expect(seen).toHaveLength(0);
-  });
-
-  test('a forged ticket buys nothing', async () => {
-    const res = await fetch(`${workspaceOrigin}/?op_ticket=forged`, { redirect: 'manual' });
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('set-cookie')).toBeNull();
-    // Following the redirect lands on the refusal, not on OpenCode.
-    const followed = await fetch(`${workspaceOrigin}/`);
-    expect(followed.status).toBe(401);
-    expect(seen).toHaveLength(0);
-  });
-
-  test('Secure is set only behind TLS — a LAN install over plain HTTP still works', async () => {
-    const plain = await fetch(`${workspaceOrigin}/?op_ticket=${VALID_TICKET}-http`, {
-      redirect: 'manual',
-    });
-    expect(plain.headers.get('set-cookie')).toBeNull(); // unknown ticket, no cookie
-
-    spentTickets.delete(VALID_TICKET);
-    const secured = await fetch(`${workspaceOrigin}/?op_ticket=${VALID_TICKET}`, {
-      redirect: 'manual',
-      headers: { 'x-forwarded-proto': 'https' },
-    });
-    expect(secured.headers.get('set-cookie')).toContain('Secure');
-
-    spentTickets.delete(VALID_TICKET);
-    const cleartext = await fetch(`${workspaceOrigin}/?op_ticket=${VALID_TICKET}`, {
-      redirect: 'manual',
-    });
-    expect(cleartext.headers.get('set-cookie')).not.toContain('Secure');
-  });
-
-  test('a ticket is only honoured on a navigation, never on a write', async () => {
-    // A ticket travels in a URL, so it is exactly the thing a cross-site form
-    // post could carry. Reads-only keeps the exchange to the one shape that
-    // opens the workspace.
-    const res = await fetch(`${workspaceOrigin}/session?op_ticket=${VALID_TICKET}`, {
-      method: 'POST',
-      body: '{"x":1}',
-      redirect: 'manual',
-    });
-
-    expect(res.status).toBe(401);
-    expect(res.headers.get('set-cookie')).toBeNull();
-    expect(seen).toHaveLength(0);
-  });
-
-  test('an ordinary request without a ticket is untouched by any of this', async () => {
-    const res = await fetch(`${workspaceOrigin}/api/health?view=diff`, {
-      headers: asSession(VALID_SESSION),
-    });
-
-    expect(res.status).toBe(200);
-    expect(seen[0]?.url).toBe('/api/health?view=diff');
   });
 });
 
