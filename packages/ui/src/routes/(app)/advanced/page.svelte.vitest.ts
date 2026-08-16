@@ -210,6 +210,11 @@ describe('/advanced — a workspace on another hostname opens with a ticket', ()
 
     await expect.element(unavailable()).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
+    // And it names the RIGHT problem: the address answered, so telling the
+    // operator to check their port forwarding would send them after nothing.
+    await expect
+      .element(browserPage.getByText('couldn’t get a pass to sign in there', { exact: false }))
+      .toBeVisible();
   });
 
   test('a same-host workspace never asks for one — the cookie is already there', async () => {

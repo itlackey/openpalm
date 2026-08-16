@@ -58,6 +58,15 @@
 
   type Mode = 'checking' | 'iframe' | 'unavailable' | 'dead';
   let mode = $state<Mode>('checking');
+  /**
+   * Why the workspace is unavailable, when `mode === 'unavailable'`.
+   *
+   * `no-session` is the one case the address itself does not explain: the
+   * workspace answered, but this browser could not get a credential to carry
+   * there, so telling the operator to check port forwarding would send them
+   * after the wrong thing.
+   */
+  let unavailableReason = $state<'no-address' | 'no-answer' | 'no-session'>('no-address');
   // The resolved OpenCode web-UI URL for the iframe. Empty until resolve().
   let frameUrl = $state('');
   let frameReady = $state(false);
@@ -114,9 +123,15 @@
     // blank frame.
     const workspaceOnly = !isEmbeddable(conn);
     const base = workspaceOnly ? workspaceUrl : conn.baseUrl;
-    const usable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
+    if (base === null) {
+      unavailableReason = 'no-address';
+      mode = 'unavailable';
+      return;
+    }
+    const usable = !workspaceOnly || (await isWorkspaceReachable(base));
     if (!isCurrentProbe(token, conn.id)) return;
     if (!usable) {
+      unavailableReason = 'no-answer';
       mode = 'unavailable';
       return;
     }
@@ -166,6 +181,7 @@
       const ticket = await fetchWorkspaceTicket();
       if (!isCurrentProbe(token, connectionId)) return;
       if (!ticket) {
+        unavailableReason = 'no-session';
         mode = 'unavailable';
         return;
       }
@@ -291,15 +307,21 @@
         <h2>The OpenCode workspace isn’t available here</h2>
         {#if !runtimeContext.opencodeWorkspace}
           <p>
-            This install doesn’t advertise a workspace port, so there is nothing for this page to
+            This install doesn’t advertise a workspace address, so there is nothing for this page to
             open. It arrives with the assistant — if you’ve just updated, the stack may still need
             to be redeployed.
           </p>
+        {:else if unavailableReason === 'no-session' && workspaceUrl}
+          <p>
+            <code>{workspaceUrl}</code> answered, but this browser couldn’t get a pass to sign in
+            there. Reload the page; if it keeps happening, sign in to OpenPalm again.
+          </p>
         {:else if workspaceUrl}
           <p>
-            Nothing answered at <code>{workspaceUrl}</code>. The workspace runs on its own port; if
-            you reach OpenPalm through a reverse proxy or a tunnel, that port has to be forwarded
-            too.
+            Nothing answered at <code>{workspaceUrl}</code>. The workspace needs an address of its
+            own; if you reach OpenPalm through a reverse proxy or a tunnel, that address has to be
+            fronted too — a second port on this same host, or a name you set as
+            <code>OP_WORKSPACE_ORIGIN</code>.
           </p>
         {:else}
           <p>
