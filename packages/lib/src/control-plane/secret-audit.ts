@@ -150,10 +150,10 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
     // op_api_key backs the guardian's OpenAI/Anthropic-compatible edge
     // (OPENAI_COMPAT_API_KEY_FILE) — a guardian-hosted credential, so it is a
     // legitimate grant to this service (S.1b).
-    // opencode_server_password (#563/D2): the guardian attaches upstream
-    // Basic auth to its assistant calls when OPENCODE_AUTH is enabled, so it
-    // must read the same OpenCode server password the assistant serves —
-    // a legitimate two-service grant (assistant already matches /^opencode_/).
+    // opencode_server_password: the guardian attaches upstream Basic auth to
+    // every assistant call (the assistant always requires one), so it must read
+    // the same OpenCode server password the assistant serves — a legitimate
+    // two-service grant (assistant already matches /^opencode_/).
     return (
       secretId.startsWith('guardian_') ||
       secretId.startsWith('portal_') ||

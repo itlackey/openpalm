@@ -22,10 +22,10 @@ export function isLoopback(value: string): boolean {
  * What counts as "on" for a binary opt-in flag in stack.env or the process env.
  *
  * Every such flag — OP_TRUSTED_PROXY, OP_ALLOW_REMOTE_SETUP,
- * OP_VOICE_LAN_ACCESS, OPENCODE_AUTH — accepted the same three spellings via
- * its own inline copy of this comparison, each written slightly differently
- * (three string chains and a regex). Four copies is how the fifth flag ends up
- * quietly accepting a different set from the other four.
+ * OP_VOICE_LAN_ACCESS — accepted the same three spellings via its own inline
+ * copy of this comparison, each written slightly differently (string chains and
+ * a regex). Copies are how the next flag ends up quietly accepting a different
+ * set from the others.
  *
  * Deliberately NOT shared with `access-toggles.ts`'s intent parser: that one is
  * tri-state (a stored boolean can be absent or unparseable, which is not the

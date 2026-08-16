@@ -122,13 +122,14 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
  *
  * Exposure is preserved exactly, using the cascade's own precedence (an
  * explicit per-service key beats the root — see `readAccessToggles`). Two
- * values are DERIVED rather than copied, because the flat model makes them
- * consequences of a toggle rather than independent settings:
- *   - `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving
- *     a published guardian port answering 404 to everything;
- *   - `OPENCODE_AUTH`, which now tracks "is OpenCode published" exactly. A
- *     legacy row with auth on but OpenCode on loopback is relaxed to no auth
- *     on a listener nothing off-box can reach.
+ * One value is DERIVED rather than copied, because the flat model makes it a
+ * consequence of a toggle rather than an independent setting:
+ * `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving a
+ * published guardian port answering 404 to everything.
+ *
+ * A legacy `OPENCODE_AUTH` row is neither copied nor derived — OpenCode
+ * authenticates in every configuration now, and the schema-9 sweep
+ * ({@link migrateRetiredOpencodeAuth}) removes the stale key.
  */
 export function migrateLegacyBindAddresses(homeDir: string): boolean {
   const path = legacyKnowledgeStackEnvFile(homeDir);
