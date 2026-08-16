@@ -173,28 +173,3 @@ describe('isEmbeddableOpencodeUi — platform rules', () => {
     }
   });
 });
-
-describe('resolveWorkspaceUrl — a declared origin is used verbatim', () => {
-  // The case a derived address can never cover: something in front of this
-  // install — Caddy, a tunnel, a provider OpenPalm has not been written for —
-  // exposes the workspace at an address the server could not have guessed. The
-  // operator sets OP_WORKSPACE_ORIGIN, or the provider declares it, and this
-  // takes it as given rather than re-deriving a wrong one.
-  const DECLARED = { port: 3820, origin: 'https://workspace.example.com' } as const;
-
-  test('a declared origin beats anything composable from the page', () => {
-    expect(
-      resolveWorkspaceUrl(
-        DECLARED,
-        { hostname: '192.168.0.201', protocol: 'http:' },
-        LOCAL_ACTIVE_CONNECTION,
-      ),
-    ).toBe('https://workspace.example.com');
-  });
-
-  test('it is still refused for a connection this install does not own', () => {
-    expect(
-      resolveWorkspaceUrl(DECLARED, { hostname: 'x', protocol: 'https:' }, REMOTE_ACTIVE_CONNECTION),
-    ).toBeNull();
-  });
-});

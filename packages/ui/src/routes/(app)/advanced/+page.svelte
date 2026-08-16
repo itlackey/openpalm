@@ -270,16 +270,15 @@
         <h2>The OpenCode workspace isn’t available here</h2>
         {#if !runtimeContext.opencodeWorkspace}
           <p>
-            This install doesn’t advertise a workspace address, so there is nothing for this page to
+            This install doesn’t advertise a workspace port, so there is nothing for this page to
             open. It arrives with the assistant — if you’ve just updated, the stack may still need
             to be redeployed.
           </p>
         {:else if workspaceUrl}
           <p>
-            Nothing answered at <code>{workspaceUrl}</code>. The workspace needs an address of its
-            own; if you reach OpenPalm through a reverse proxy or a tunnel, that address has to be
-            fronted too — a second port on this same host, or a name you set as
-            <code>OP_WORKSPACE_ORIGIN</code>.
+            Nothing answered at <code>{workspaceUrl}</code>. The workspace runs on its own port on
+            this same host; if you reach OpenPalm through a reverse proxy or a tunnel, that port has
+            to be fronted too.
           </p>
         {:else}
           <p>

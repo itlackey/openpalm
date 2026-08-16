@@ -314,7 +314,6 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
   let savedHome: string | undefined;
   const WORKSPACE_ENV_KEYS = [
     'OP_WORKSPACE_PORT',
-    'OP_WORKSPACE_ORIGIN',
     'OP_ENABLED_ADDONS',
     'OP_REMOTE_PROFILE',
   ] as const;
@@ -397,47 +396,8 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
 
-  test('an operator-declared origin is advertised verbatim, from the stack env', () => {
-    // The escape hatch for every edge OpenPalm has no provider for: whoever
-    // fronts this install writes the public address they actually serve, and
-    // the browser stops guessing it from the page it happens to be on.
-    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3820,
-      origin: 'https://code.example.com',
-    });
-  });
 
-  test('a declared origin outranks the port — it is the more specific fact', () => {
-    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com\nOP_WORKSPACE_PORT=3820\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3820,
-      origin: 'https://code.example.com',
-    });
-  });
 
-  test('a trailing path is dropped, not treated as a reason to ignore the value', () => {
-    // The SPA resolves its own requests against the origin root, so a path
-    // cannot survive anyway. Taking the origin beats discarding a whole setting
-    // over a suffix someone's proxy config happened to include.
-    writeStackEnv('OP_WORKSPACE_ORIGIN=https://code.example.com/workspace\n');
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3820,
-      origin: 'https://code.example.com',
-    });
-  });
 
-  test('a genuinely unusable value costs the override, not the workspace', () => {
-    writeStackEnv('OP_WORKSPACE_ORIGIN=not a url\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
-  });
 
-  test('the injected origin wins over the stack file, like every other key', () => {
-    writeStackEnv('OP_WORKSPACE_ORIGIN=https://stale.example.com\n');
-    process.env.OP_WORKSPACE_ORIGIN = 'https://code.example.com';
-    expect(computeOpencodeWorkspace()).toEqual({
-      port: 3820,
-      origin: 'https://code.example.com',
-    });
-  });
 });

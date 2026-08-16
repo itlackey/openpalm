@@ -1,9 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import {
+  DEFAULT_WORKSPACE_PORT,
   listEnabledAddonIds,
   readStackEnv,
-  resolveWorkspaceAdvertisement,
-  type WorkspaceAdvertisement,
+  resolveEnvPort,
 } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
@@ -160,20 +160,19 @@ export function computeVoiceRuntime(): { url: string } | undefined {
  * computeVoiceRuntime above: that function runs on requireCapability's
  * per-request hot path and this one may read the stack env from disk.
  */
-export function computeOpencodeWorkspace(): WorkspaceAdvertisement | undefined {
+export function computeOpencodeWorkspace(): { port: number } | undefined {
   // Read at most once per call, and only when the injected env did not answer:
   // this runs on every layout load and every GET /api/runtime, and readStackEnv
   // is a synchronous readFileSync. The container co-process has the key
   // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
   // never touches the disk at all.
-  // The provider declares it when a remote edge is fronting this install; the
-  // operator's OP_WORKSPACE_ORIGIN outranks both. See lib's
-  // resolveWorkspaceAdvertisement.
-  const advertise = (persisted: Record<string, string> = {}): WorkspaceAdvertisement =>
-    resolveWorkspaceAdvertisement({ ...persisted, ...process.env });
-  if (process.env.OP_WORKSPACE_ORIGIN?.trim() || process.env.OP_WORKSPACE_PORT?.trim()) {
-    return advertise();
-  }
+  const advertise = (persisted: Record<string, string> = {}): { port: number } => ({
+    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, {
+      ...persisted,
+      ...process.env,
+    }),
+  });
+  if (process.env.OP_WORKSPACE_PORT?.trim()) return advertise();
 
   try {
     const { homeDir, stackDir } = getState();

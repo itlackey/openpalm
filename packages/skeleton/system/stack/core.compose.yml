@@ -166,33 +166,6 @@ services:
       # no bind variable to match it — the listener follows the UI child's own
       # HOST=0.0.0.0, and OP_UI_BIND_ADDRESS above is what it advertises.
       OP_WORKSPACE_PORT: ${OP_WORKSPACE_PORT:-3820}
-      # The PUBLIC address of that listener, when it is not the one a browser
-      # can work out for itself. Empty by default, and empty is the right answer
-      # for every deployment where the workspace is another port of the host the
-      # browser typed — desktop, LAN, Tailscale — because the browser composes
-      # that address from the page it is already on.
-      #
-      # It is needed when an edge publishes the workspace at an address the
-      # derived one cannot reach. Nothing in-container can discover that, so the
-      # operator states it (docs/remote-access-tls.md) and the /advanced frame
-      # stops guessing. Must be a bare origin — scheme, host, optional port,
-      # nothing more — and must keep the UI's HOSTNAME: the session cookie is
-      # what authenticates the workspace, and cookies are host-scoped.
-      OP_WORKSPACE_ORIGIN: ${OP_WORKSPACE_ORIGIN:-}
-      # Scope the session cookie to a parent domain. Empty by default, and
-      # correct empty wherever the workspace is another PORT of the UI's own
-      # hostname — cookies ignore ports, so desktop, LAN and Tailscale need
-      # nothing here.
-      #
-      # It is required for the idiomatic reverse-proxy layout: UI on
-      # `app.example.com`, workspace on `code.example.com`. Cookies ARE scoped
-      # by host, so without this the framed workspace answers 401. Cloudflare
-      # Tunnel forces that layout — it proxies a fixed port set that the
-      # workspace port is not in, so a second hostname is the only option.
-      #
-      # Setting it sends the session to every subdomain of that domain. Read
-      # the note in packages/ui/src/lib/server/session-cookie.ts before you do.
-      OP_SESSION_COOKIE_DOMAIN: ${OP_SESSION_COOKIE_DOMAIN:-}
       # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
       # in-container, so it cannot read state/stack.env itself — this
       # interpolation is the only way the resolved value reaches it, the same

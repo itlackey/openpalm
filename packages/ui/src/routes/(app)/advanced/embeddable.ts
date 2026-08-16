@@ -15,11 +15,12 @@ export type EmbeddingPage = { origin: string; protocol: string };
 
 /**
  * The server's `opencodeWorkspace` advertisement: the port the listener binds,
- * plus an `origin` when the operator named one (OP_WORKSPACE_ORIGIN). The port
- * still needs the browser to supply the host — a server cannot tell a LAN IP
- * from a tailnet name from a reverse-proxied domain.
+ * and nothing else. The browser supplies the host — a server cannot tell a LAN
+ * IP from a tailnet name from a reverse-proxied domain — which is also why the
+ * workspace must be fronted on the SAME hostname as the UI: the session cookie
+ * is what authenticates it, and cookies are scoped by host, not by port.
  */
-export type OpencodeWorkspaceHint = { port: number; origin?: string };
+export type OpencodeWorkspaceHint = { port: number };
 export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 
 /**
@@ -78,9 +79,6 @@ export function resolveWorkspaceUrl(
   // is not a workspace URL for an arbitrary browser-owned connection.
   if (!activeConnection?.isDefault || activeConnection.hasPassword) return null;
   if (!hint) return null;
-  // Named by whoever actually fronts this install — used verbatim, because
-  // guessing at it is what broke every reverse-proxied deployment.
-  if (hint.origin) return hint.origin;
   const { hostname, protocol } = embeddingPage;
   if (!hostname) return null;
   if (protocol !== 'http:' && protocol !== 'https:') return null;

@@ -14,7 +14,6 @@ import {
   resolveEnvPort,
   resolveHostUiPort,
   resolveUiListenEnv,
-  resolveWorkspaceAdvertisement,
 } from "./network-contract.ts";
 import { STACK_DEFAULTS } from "./defaults.ts";
 
@@ -172,59 +171,5 @@ describe("resolveEnvPort — env values are held to the explicit branch's bar", 
     }
     expect(resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, { OP_HOST_UI_PORT: "65535" }))
       .toBe(65535);
-  });
-});
-
-// ── The workspace ADDRESS ────────────────────────────────────────────────
-//
-// OpenCode's web UI is a root-mounted SPA, so it needs an origin. The port is
-// the only half derivable server-side — a server cannot tell a LAN IP from a
-// tailnet name from a reverse-proxied domain — so the browser supplies the
-// host. `origin` overrides that for an edge the derived address cannot reach.
-
-describe("resolveWorkspaceAdvertisement", () => {
-  test("the port alone, which the browser completes with its own host", () => {
-    expect(resolveWorkspaceAdvertisement({})).toEqual({ port: DEFAULT_WORKSPACE_PORT });
-    expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_PORT: "4820" })).toEqual({ port: 4820 });
-  });
-
-  test("an operator-named origin rides ALONGSIDE the port, never instead of it", () => {
-    // The listener really does bind that port whatever the edge advertises, so
-    // dropping it would be a lie — and the two-variant union that used to
-    // express this made every consumer branch on a tag for no gain.
-    expect(
-      resolveWorkspaceAdvertisement({
-        OP_WORKSPACE_ORIGIN: "https://code.example.com",
-        OP_WORKSPACE_PORT: "4820",
-      }),
-    ).toEqual({ port: 4820, origin: "https://code.example.com" });
-  });
-
-  test("keeps the origin and drops whatever follows it", () => {
-    // The SPA resolves its own requests against the origin root, so a path or
-    // query cannot survive anyway. Taking the origin beats rejecting the whole
-    // value over a trailing slash someone's proxy config happened to include.
-    for (const raw of [
-      "https://code.example.com",
-      "https://code.example.com/",
-      "  https://code.example.com/workspace  ",
-      "https://code.example.com/?a=1#frag",
-    ]) {
-      expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_ORIGIN: raw }).origin, raw).toBe(
-        "https://code.example.com",
-      );
-    }
-    expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_ORIGIN: "http://192.168.1.10:3820" }).origin)
-      .toBe("http://192.168.1.10:3820");
-  });
-
-  test("an unusable value costs the override, not the workspace", () => {
-    // Fail-soft: a typo leaves the derived address standing rather than
-    // blanking /advanced.
-    for (const raw of ["not a url", "ws://code.example.com", "code.example.com:3820", "   ", ""]) {
-      expect(resolveWorkspaceAdvertisement({ OP_WORKSPACE_ORIGIN: raw }), raw).toEqual({
-        port: DEFAULT_WORKSPACE_PORT,
-      });
-    }
   });
 });
