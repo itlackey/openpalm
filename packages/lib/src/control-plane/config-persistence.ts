@@ -247,6 +247,39 @@ export function migrateAccessIntent(homeDir: string): boolean {
 }
 
 /**
+ * Strip the retired `OPENCODE_AUTH` row from `state/stack.env`.
+ *
+ * The key used to track `assistantDirect`: OpenCode authenticated only while
+ * its port was published, so the default install ran it with no password and
+ * turning the toggle off silently removed the credential from a running
+ * server. OpenCode authenticates unconditionally now — nothing reads the key,
+ * `resolveAccessEnv` no longer writes it, and compose no longer interpolates
+ * it — so what is left on an upgraded home is a stale row that reads like a
+ * live setting.
+ *
+ * Removal only, and inert by construction: with no reader left, a home that
+ * kept the row would behave identically. It is swept anyway because an
+ * operator reading their own `stack.env` should not find a security-shaped
+ * key that means nothing.
+ */
+export function migrateRetiredOpencodeAuth(homeDir: string): boolean {
+  const path = stackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  if (!Object.hasOwn(parseEnvContent(content), "OPENCODE_AUTH")) return false;
+
+  const next = removeEnvKey(content, "OPENCODE_AUTH");
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn(
+    "Removed the retired OPENCODE_AUTH row — OpenCode now authenticates in every configuration",
+  );
+  return true;
+}
+
+/**
  * Write system-managed values to state/stack.env.
  *
  * Secret-like keys are NOT written here — they belong in knowledge/secrets/.

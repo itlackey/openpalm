@@ -37,7 +37,6 @@ import {
 } from './addons.js';
 import {
 	coerceAccessToggles,
-	requiresAssistantKey,
 	resolveAccessEnv,
 	resolveAccessIntentEnv,
 	type AccessToggles
@@ -439,16 +438,12 @@ export async function performSetup(
 					...resolveAccessIntentEnv(toggles),
 					...resolveAccessEnv(toggles, { guardianIngressRequired }),
 				};
-				// Publishing the assistant API always turns auth on, with a key the
-				// system GENERATES. The operator is never asked to invent one: the
-				// human-facing credential is the UI login password in every
-				// configuration, and this key is copy-pasted into another app.
-				// Preserved across reruns — rotating it would break every client that
-				// already holds it.
-				if (
-					requiresAssistantKey(toggles) &&
-					!readSecret(state.homeDir, 'op_opencode_password')?.trim()
-				) {
+				// OpenCode ALWAYS authenticates, with a key the system GENERATES. The
+				// operator is never asked to invent one: the human-facing credential
+				// is the UI login password in every configuration, and this key is
+				// copy-pasted into another app. Preserved across reruns — rotating it
+				// would break every client that already holds it.
+				if (!readSecret(state.homeDir, 'op_opencode_password')?.trim()) {
 					patches.OP_OPENCODE_PASSWORD = randomHex(24);
 				}
 				patchSecretsEnvFile(state.homeDir, patches);

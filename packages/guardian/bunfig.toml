@@ -1,0 +1,13 @@
+# `bun test --cwd packages/guardian` (the `guardian:test` script) resolves its
+# bunfig from THIS directory, not the repo root — so the root preloads have to
+# be repeated here or they simply do not run. Both are required:
+#   - test-isolate-op-home.ts   the tripwire that stops a test touching a real
+#                               ~/.openpalm. Losing it is a data-loss risk.
+#   - test-guardian-upstream-secret.ts  the upstream assistant credential this
+#                               package now ALWAYS attaches (src/config.ts).
+# Keep this list in sync with the root bunfig.toml.
+[test]
+preload = [
+  "../../scripts/test-isolate-op-home.ts",
+  "../../scripts/test-guardian-upstream-secret.ts",
+]

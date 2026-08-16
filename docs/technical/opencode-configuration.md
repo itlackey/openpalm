@@ -51,7 +51,6 @@ The image also exposes the `assistant-persistent` named volume at
 |---|---|---|
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Managed config root |
 | `OPENCODE_PORT` | `4096` | OpenCode HTTP listener |
-| `OPENCODE_AUTH` | Generated, default `false` | Direct API Basic-auth posture |
 | `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated direct API password |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |

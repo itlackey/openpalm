@@ -17,13 +17,10 @@ import { writeSecret } from '@openpalm/lib';
 
 /**
  * The stack.env row a real `applyAccessToggles` writes when assistantDirect is
- * ON: the stored intent AND the value it generates. `OPENCODE_AUTH` is the half
- * that matters here — it is what compose passes to OpenCode, so it is what
- * decides whether the key means anything, and it is what the route's shared
- * resolver gates on. Seeding the intent alone produced a row no apply can
- * actually produce (see the divergence test at the end of this file).
+ * ON. It is a BIND and nothing more now — the key's availability does not
+ * depend on it, because OpenCode requires a password in every configuration.
  */
-const ASSISTANT_DIRECT_ON = 'OP_ACCESS_ASSISTANT_DIRECT=true\nOPENCODE_AUTH=true\n';
+const ASSISTANT_DIRECT_ON = 'OP_ACCESS_ASSISTANT_DIRECT=true\n';
 
 type RouteHandler = (event: unknown) => Response | Promise<Response>;
 type AssistantKeyRouteModule = { GET: RouteHandler };
@@ -106,14 +103,16 @@ describe('GET /api/host/assistant-key', () => {
     expect(res.status).toBe(401);
   });
 
-  test('available:false when assistantDirect is off — OpenCode requires no auth, so the stored value would be meaningless', async () => {
+  test('available:true with assistantDirect off — OpenCode requires auth either way', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    // resetState() -> ensureSecrets() already materialized the secret file;
-    // the toggle being off must still withhold it.
+    // resetState() -> ensureSecrets() already materialized the secret file, and
+    // that file IS the credential now. This used to answer available:false
+    // because the key was gated on a network toggle; the honest answer is the
+    // key the assistant actually accepts, whether or not its port is published.
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ available: false });
+    expect(await res.json()).toMatchObject({ available: true, username: 'opencode' });
     expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
@@ -131,20 +130,33 @@ describe('GET /api/host/assistant-key', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
-  test('withholds the key when OPENCODE_AUTH is off, whatever the stored intent says', async () => {
+  test('shows the key on a DEFAULT install — nothing has to be published first', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    // A row an apply never writes — hand-edited, or restored from before the
-    // intent keys existed. OpenCode is what OPENCODE_AUTH configures, so with it
-    // off OpenCode accepts any request and the stored key protects nothing;
-    // showing it would advertise a protection that is not in effect. The route
-    // gates on the same resolver /oc authenticates with, so the dashboard cannot
-    // claim auth is on while the assistant disagrees.
-    seedSecretsEnv(homeDir, 'OP_ACCESS_ASSISTANT_DIRECT=true\n');
+    // This used to answer `available: false`: the key was withheld unless
+    // OPENCODE_AUTH was on, which tracked whether the assistant port was
+    // published. OpenCode authenticates either way now, so the key is what an
+    // external client needs and what the guardian and /oc actually send —
+    // withholding it described a posture that no longer exists.
+    seedSecretsEnv(homeDir, '');
     writeSecret(homeDir, 'op_opencode_password', 's3cret-key\n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ available: false });
+    expect(await res.json()).toEqual({
+      available: true,
+      username: 'opencode',
+      password: 's3cret-key',
+    });
+  });
+
+  test('a stale OPENCODE_AUTH=false row does not withhold it either', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
+    // Upgraded homes carry the retired key until the schema-9 sweep.
+    seedSecretsEnv(homeDir, 'OPENCODE_AUTH=false\n');
+    writeSecret(homeDir, 'op_opencode_password', 's3cret-key\n');
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    expect(await res.json()).toMatchObject({ available: true, password: 's3cret-key' });
   });
 
   test('honours the OPENCODE_SERVER_* overrides the shared resolver applies', async () => {

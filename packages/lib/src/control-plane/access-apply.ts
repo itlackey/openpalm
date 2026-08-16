@@ -2,7 +2,7 @@
  * Applying network access toggles — write, reconcile, recreate, advertise.
  *
  * A toggle save used to be a file write and nothing more. The bind addresses,
- * `OPENCODE_AUTH` and `GUARDIAN_DIRECT_INGRESS` are consumed EXCLUSIVELY by
+ * `GUARDIAN_DIRECT_INGRESS` is consumed EXCLUSIVELY by
  * Compose interpolation — published ports and container environment — which
  * only change when a container is RECREATED. Both affordances the product
  * pointed operators at (`openpalm restart` and the Containers-tab restart
@@ -61,10 +61,9 @@ const logger = createLogger("access-apply");
  */
 const KEY_OWNER: Record<keyof AccessEnv, "assistant" | "guardian"> = {
   // The assistant container publishes BOTH the UI co-process port and the
-  // OpenCode port, and receives OPENCODE_AUTH in its environment.
+  // OpenCode port.
   OP_UI_BIND_ADDRESS: "assistant",
   OP_ASSISTANT_BIND_ADDRESS: "assistant",
-  OPENCODE_AUTH: "assistant",
   OP_GUARDIAN_BIND_ADDRESS: "guardian",
   OP_API_BIND_ADDRESS: "guardian",
   // GUARDIAN_DIRECT_INGRESS is consumed by the guardian's own listener — the

@@ -102,34 +102,31 @@ export function resolveGuardianUrl(): string {
 }
 
 /**
- * #563 D2 — guardian upstream Basic auth to the assistant.
+ * Guardian upstream Basic auth to the assistant.
  *
- * When a network access preset turns the assistant's own OpenCode auth on
- * (`OPENCODE_AUTH=true` + the operator's password in the `op_opencode_password`
- * secret), the guardian's calls to the assistant over `assistant_net` would
- * otherwise 401 — breaking every portal. This resolves the same two env vars
- * the assistant's compose service and entrypoint use into a ready-to-attach
- * `authorization` header value, fail-closed at boot: auth enabled with a
- * missing/empty password file is a boot error naming both vars, never a silent
+ * The assistant's OpenCode requires a password in EVERY configuration, so the
+ * guardian's calls over `assistant_net` always carry one. This resolves the
+ * same env var the assistant's compose service and entrypoint use into a
+ * ready-to-attach `authorization` header value, fail-closed at boot: a
+ * missing/empty password file is a boot error naming the var, never a silent
  * 401 storm at request time.
- * Gating on `OPENCODE_AUTH` (not on file presence, since the secret file is
- * now ALWAYS materialized, #563/D3) keeps the default posture byte-identical:
- * no header is ever attached unless the operator turned auth on.
+ *
+ * It used to be gated on `OPENCODE_AUTH`, which tracked whether the assistant
+ * port was published — so the guardian attached a credential only when the
+ * operator had flipped a network toggle, and the assistant, the guardian and
+ * two healthchecks each had to reach the same verdict about that flag. There
+ * is no flag left to disagree about.
  */
 export type AssistantUpstreamAuth = { authorization: string };
-
-const UPSTREAM_AUTH_TRUTHY_RE = /^(true|1|yes)$/i;
 
 export function resolveAssistantUpstreamAuth(
   env: Record<string, string | undefined>,
   readFileFn: (path: string) => string = (p) => readFileSync(p, "utf-8"),
-): AssistantUpstreamAuth | null {
-  if (!UPSTREAM_AUTH_TRUTHY_RE.test((env.OPENCODE_AUTH ?? "").trim())) return null;
-
+): AssistantUpstreamAuth {
   const passwordFile = env.OPENCODE_SERVER_PASSWORD_FILE || "";
   if (!passwordFile) {
     throw new Error(
-      "OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE is not set — the guardian cannot authenticate its upstream assistant calls.",
+      "OPENCODE_SERVER_PASSWORD_FILE is not set — the guardian cannot authenticate its upstream assistant calls, and the assistant always requires a credential.",
     );
   }
 
@@ -138,7 +135,7 @@ export function resolveAssistantUpstreamAuth(
     raw = readFileFn(passwordFile);
   } catch (err) {
     throw new Error(
-      `OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      `OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) could not be read: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
@@ -151,7 +148,7 @@ export function resolveAssistantUpstreamAuth(
   const password = raw.replace(/\n+$/, "");
   if (password.trim() === "") {
     throw new Error(
-      `OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) is empty.`,
+      `OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) is empty — the assistant always requires a credential.`,
     );
   }
 
@@ -161,11 +158,35 @@ export function resolveAssistantUpstreamAuth(
   return { authorization: `Basic ${Buffer.from(`${username}:${password}`, "utf-8").toString("base64")}` };
 }
 
-/** Read once at module load. */
-export const ASSISTANT_UPSTREAM_AUTH = resolveAssistantUpstreamAuth(Bun.env);
+let cachedUpstreamAuth: AssistantUpstreamAuth | undefined;
 
-/** Sets `authorization` from ASSISTANT_UPSTREAM_AUTH when configured; no-op otherwise. */
+/**
+ * The upstream credential, resolved once and cached.
+ *
+ * Resolved on FIRST USE rather than at module load. While this was gated on
+ * `OPENCODE_AUTH` a module-load call was harmless — it returned null in any
+ * environment without the flag. Unconditional, it would throw during `import`
+ * for anything that touches this module without the compose secret mounted:
+ * a test, a CLI tool, a type-check harness. Boot-time fail-fast is still the
+ * behaviour that matters, and {@link assertAssistantUpstreamAuth} is how the
+ * server asks for it explicitly at startup.
+ */
+export function assistantUpstreamAuth(): AssistantUpstreamAuth {
+  cachedUpstreamAuth ??= resolveAssistantUpstreamAuth(Bun.env);
+  return cachedUpstreamAuth;
+}
+
+/**
+ * Resolve the upstream credential at startup so a missing secret is a boot
+ * failure, not a 401 storm on the first portal message. Call once from the
+ * server entry points.
+ */
+export function assertAssistantUpstreamAuth(): void {
+  assistantUpstreamAuth();
+}
+
+/** Sets `authorization` for an upstream assistant call. Always attaches — the assistant always requires it. */
 export function withAssistantUpstreamAuth(headers: Headers): Headers {
-  if (ASSISTANT_UPSTREAM_AUTH) headers.set("authorization", ASSISTANT_UPSTREAM_AUTH.authorization);
+  headers.set("authorization", assistantUpstreamAuth().authorization);
   return headers;
 }

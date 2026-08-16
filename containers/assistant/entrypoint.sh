@@ -81,23 +81,6 @@ ensure_home_layout() {
 #
 # There is no package version resolution to perform at container boot.
 
-# ── LAN-exposure helper ──────────────────────────────────────────────────────
-# Used by start_ui's exposure warning when OpenCode is bound off-loopback with
-# auth disabled (see start_ui below).
-is_loopback_address() {
-  case "$1" in
-    127.0.0.1|localhost|::1) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-opencode_auth_enabled() {
-  case "${OPENCODE_AUTH:-false}" in
-    true|TRUE|True|1|yes|YES) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 # Voice LAN-access opt-in (OP_VOICE_LAN_ACCESS, core.compose.yml
 # interpolation — this entrypoint has no OP_HOME and cannot read
 # state/stack.env itself). Off by default: see the OP_UI_NO_LOCAL_VOICE
@@ -117,32 +100,31 @@ voice_lan_access_enabled() {
   esac
 }
 
-# #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
-# secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
-# materialized non-empty by ensureSecrets (random seed on first install, or a
-# retained password after direct Assistant auth is disabled) and
-# must stay inert while OPENCODE_AUTH is off — otherwise reading it here would
-# turn on OpenCode Basic auth against an unauthenticated healthcheck probe and
-# wedge the stack unhealthy. Decision D1: an explicit OPENCODE_SERVER_PASSWORD
-# env value is deliberately never unset when auth is off — silently dropping
-# an operator-supplied credential would be a silent auth downgrade; instead
-# the posture-gated healthcheck (core.compose.yml, containers/assistant/
-# Dockerfile) fails loud on the mismatch. Explicit OPENCODE_SERVER_PASSWORD
-# env wins over *_FILE; trailing newline stripped by command substitution.
-# Fail fast when auth is enabled but no password resolves — auth-on with an
-# unknown password is a dead stack that looks healthy, so failing loud here
-# is the debuggable behavior.
+# Resolve OpenCode's Basic-auth password from the compose secret file.
+#
+# UNCONDITIONAL. OpenCode authenticates in every configuration — there is no
+# posture flag any more. The gate that used to live here (OPENCODE_AUTH, which
+# tracked whether the assistant port was published) meant the default install
+# ran OpenCode with NO password, and it had to be mirrored identically by the
+# guardian, two healthchecks and the host resolver; any disagreement produced a
+# 401 storm instead of an error.
+#
+# The secret file is ALWAYS materialized non-empty by ensureSecrets (random
+# seed on first install, preserved across reruns). Explicit
+# OPENCODE_SERVER_PASSWORD env wins over *_FILE; trailing newlines are stripped
+# by command substitution, matching every other reader of this secret.
+#
+# Fail fast when nothing resolves: a container that starts unauthenticated
+# because its secret went missing is exactly the silent downgrade this change
+# exists to remove, and it would look healthy while doing it.
 resolve_opencode_server_password() {
-  if ! opencode_auth_enabled; then
-    return 0
-  fi
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
      && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
     OPENCODE_SERVER_PASSWORD="$(cat "${OPENCODE_SERVER_PASSWORD_FILE}")"
     export OPENCODE_SERVER_PASSWORD
   fi
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
-    echo "ERROR: OPENCODE_AUTH=${OPENCODE_AUTH:-} is enabled but no password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password)." >&2
+    echo "ERROR: no OpenCode server password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password). OpenCode is never started unauthenticated." >&2
     exit 1
   fi
 }
@@ -154,16 +136,12 @@ start_ui() {
   # /oc proxy — seeded as the one locked connection in runtime-config.json
   # below. This is THE listener a home install publishes.
 
-  # ── LAN-exposure warning ─────────────────────────────────────────────────
-  # When OpenCode is bound off loopback and auth is disabled, warn loudly but
-  # keep the UI available. Exposure policy is an operator decision; silently
-  # removing the configured UI is not an acceptable substitute for that warning.
-  # Flat: generated explicitly by the access toggles, so unset means loopback.
-  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"
+  # The LAN-exposure warning that used to live here is gone with the posture it
+  # warned about: it fired when OpenCode was bound off-loopback AND
+  # unauthenticated, and OpenCode is never unauthenticated now. Publishing the
+  # port changes who can reach a password-protected server, which is a plain
+  # operator decision and not a warning.
   rm -f /tmp/openpalm-ui-skip
-  if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
-    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated; the UI will still start. Publishing the assistant API is expected to generate a key — this combination means something wrote the bind by hand." >&2
-  fi
 
   local ui_pkg="/opt/openpalm/ui/node_modules/@openpalm/ui"
   local ui_build="${ui_pkg}/build"

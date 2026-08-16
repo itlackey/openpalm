@@ -1111,16 +1111,18 @@ describe('performSetup', () => {
 		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=0\.0\.0\.0$/m);
 		expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
-		expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+		expect(stackEnv).not.toMatch(/^OPENCODE_AUTH=/m);
 	});
 
-	it('assistantDirect turns auth on and GENERATES the key — never asks for one', async () => {
-		const result = await performSetup(makeValidSpec({ access: { assistantDirect: true } }));
+	it('GENERATES OpenCode\'s key on every install — never asks for one, never leaves it unset', async () => {
+		// The default install, with nothing published. This is the regression
+		// that mattered: OpenCode used to run with NO password unless the
+		// operator turned assistantDirect on.
+		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);
 
 		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
-		expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
-		expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
+		expect(stackEnv).not.toMatch(/^OPENCODE_AUTH=/m);
 
 		const key = readSecret(homeDir, 'op_opencode_password')?.trim();
 		expect(key).toBeTruthy();

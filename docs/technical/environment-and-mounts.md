@@ -88,7 +88,7 @@ The setup v2 schema uses only a flat optional `access` object.
 | Setup boolean | Generated behavior |
 |---|---|
 | `access.networkAccess` | Generates `OP_UI_BIND_ADDRESS` |
-| `access.assistantDirect` | Generates `OP_ASSISTANT_BIND_ADDRESS` and `OPENCODE_AUTH`; a direct API gets a generated password |
+| `access.assistantDirect` | Generates `OP_ASSISTANT_BIND_ADDRESS`. A bind and nothing else — OpenCode requires its generated password whether or not the port is published |
 | `access.guardianNetwork` | Generates `OP_GUARDIAN_BIND_ADDRESS` and `GUARDIAN_DIRECT_INGRESS` |
 | `access.guardianOpenaiApi` | Generates `OP_API_BIND_ADDRESS` and ensures the `api` addon is enabled |
 
@@ -156,7 +156,6 @@ copy — there is no runtime download.
 |---|---|---|
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | OpenCode listener |
-| `OPENCODE_AUTH` | Generated, default `false` | Enables direct-OpenCode Basic auth only when direct publication is selected |
 | `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated OpenCode server credential |
 | `OP_UI_LOGIN_PASSWORD_FILE` | `/run/secrets/ui_login_password` | Login credential passed only to the UI child |
 | `OP_OPENCODE_URL` | `http://localhost:4096` | Local upstream for the UI's same-origin `/oc` proxy |
@@ -365,7 +364,6 @@ OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 | `OP_VOICE_PORT_HOST` | Voice loopback publication port |
 | `OP_PAPERCLIP_PORT` | Paperclip loopback publication port |
 | `OP_HOST_UI_PORT` | Host-process UI port, default `3880` |
-| `OPENCODE_AUTH` | Generated direct-assistant auth posture |
 | `GUARDIAN_DIRECT_INGRESS` | Generated Guardian direct-ingress posture |
 | `OP_ACCESS_NETWORK`, `OP_ACCESS_ASSISTANT_DIRECT`, `OP_ACCESS_GUARDIAN`, `OP_ACCESS_OPENAI_API` | The four access toggles' stored intent (`true`/`false`), written alongside the generated bind/auth row above so a read is a read, not an inference from bind addresses (`access-toggles.ts` `ACCESS_INTENT_KEYS`) |
 | `GUARDIAN_CONTENT_VALIDATION` | Content-validation opt-out switch; on by default |

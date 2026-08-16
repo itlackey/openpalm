@@ -6,4 +6,11 @@
 # Force a throwaway OP_HOME for every bun test run so tests can never
 # accidentally touch ~/.openpalm or the repo's .dev directory.
 # See scripts/test-isolate-op-home.ts for the tripwire logic.
-preload = ["./scripts/test-isolate-op-home.ts"]
+# The guardian ALWAYS attaches Basic auth to its upstream assistant calls
+# (guardian/src/config.ts) and resolves it from a compose secret. Tests get a
+# throwaway one so every suite exercises that real always-attached path rather
+# than failing on a missing mount.
+preload = [
+  "./scripts/test-isolate-op-home.ts",
+  "./scripts/test-guardian-upstream-secret.ts",
+]

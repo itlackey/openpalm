@@ -250,8 +250,11 @@ EOF
 		printf '%s\n' 'dev-admin-token' >"$private_secrets_dir/op_ui_login_password"
 		chmod 600 "$private_secrets_dir/op_ui_login_password"
 	fi
+	# A REAL value, not an empty file: OpenCode requires a password in every
+	# configuration now, and the assistant entrypoint refuses to start without
+	# one. "Empty = auth off" is no longer a posture.
 	if [[ ! -f "$private_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
-		: >"$private_secrets_dir/op_opencode_password"
+		printf '%s\n' 'dev-opencode-password' >"$private_secrets_dir/op_opencode_password"
 		chmod 600 "$private_secrets_dir/op_opencode_password"
 	fi
 fi
