@@ -309,39 +309,23 @@ describe("resolveWorkspaceAdvertisement", () => {
     ).toEqual({ kind: "port", port: 4820 });
   });
 
-  test("Tailscale declares the port it serves — the same one it discloses in the exposure card", () => {
-    // One number, one source: whatever OP_WORKSPACE_PORT says is what the serve
-    // entry publishes, what the card discloses, and what /advanced frames.
+  test("the remote addon does not move the workspace — Tailscale serves the derived port", () => {
+    // Tailscale gives a node ONE name and serves the workspace on a second port
+    // of it, which is exactly what the default composes. There is deliberately
+    // no per-provider hook: the one that existed returned byte-identical output
+    // to this fallback, so it was an extension point with no user.
     expect(
       resolveWorkspaceAdvertisement({ OP_ENABLED_ADDONS: "remote", OP_WORKSPACE_PORT: "4820" }),
     ).toEqual({ kind: "port", port: 4820 });
-  });
-
-  test("a provider only speaks when its addon is enabled", () => {
-    // A stored provider selection with the addon off deploys nothing, so it
-    // must not move the workspace either.
     expect(
       resolveWorkspaceAdvertisement({ OP_REMOTE_PROFILE: "addon.remote.tailscale" }),
     ).toEqual({ kind: "port", port: 3820 });
   });
 
-  test("every provider that declares an origin declares a usable one", () => {
-    // A provider is free to return null ("I do not move the workspace"), but a
-    // declaration that cannot be framed is worse than none: /advanced would
-    // point the iframe at it and show a dead pane.
+  test("no provider carries a workspace hook to drift out of sync with this", () => {
+    // If one is ever added back, this fails and whoever adds it has to say so.
     for (const provider of Object.values(REMOTE_PROVIDERS)) {
-      const declared = provider.workspaceOrigin?.({
-        OP_ENABLED_ADDONS: "remote",
-        OP_REMOTE_PROFILE: provider.profile,
-      });
-      if (!declared) continue;
-      if (declared.kind === "absolute") {
-        expect(parseWorkspaceOrigin(declared.origin)).toBe(declared.origin);
-      } else {
-        expect(Number.isInteger(declared.port)).toBe(true);
-        expect(declared.port).toBeGreaterThan(0);
-        expect(declared.port).toBeLessThan(65536);
-      }
+      expect(provider, provider.id).not.toHaveProperty("workspaceOrigin");
     }
   });
 });

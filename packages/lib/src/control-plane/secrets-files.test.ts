@@ -121,26 +121,24 @@ describe('file-based control-plane secrets', () => {
     expect(readSecret(homeDir, 'op_guardian_admin_token')).toBe('freshly-seeded-value');
   });
 
-  it('treats a BLANK secret file as missing too — one newline is 1 byte, not 0', () => {
-    // The 0-byte check above does not catch this, and neither does the
-    // assistant entrypoint's `[ -s ]` guard: a newline-only file passes both,
-    // then reads back empty once `$(cat)` strips the trailing newline. Since
-    // OpenCode lost its auth posture that is fatal — the entrypoint exits
-    // rather than serve unauthenticated and the guardian throws at boot — so a
-    // single stray newline from a hand edit or a restored backup would take
-    // the whole stack down.
-    for (const blank of ['\n', '   ', ' \n\n', '\t\n']) {
+  it('leaves a blank-but-nonzero secret alone — the file is the operator’s', () => {
+    // A newline-only file is 1 byte, so it is not "torn" and is not re-seeded.
+    // That is deliberate: emptying op_opencode_password is how someone turns
+    // OpenCode's auth off, and silently regenerating it would overwrite that
+    // decision. The boot path warns instead of failing, so nothing downstream
+    // needs this function to launder the value.
+    for (const blank of ['\n', '   ', ' \n\n']) {
       const homeDir = tempStackDir();
       writeFileSync(secretPath(homeDir, 'op_opencode_password'), blank);
 
-      const value = ensureSecret(homeDir, 'op_opencode_password', () => 'freshly-seeded-value');
-
-      expect(value, JSON.stringify(blank)).toBe('freshly-seeded-value');
-      expect(readSecret(homeDir, 'op_opencode_password')).toBe('freshly-seeded-value');
+      expect(
+        ensureSecret(homeDir, 'op_opencode_password', () => 'freshly-seeded-value'),
+        JSON.stringify(blank),
+      ).toBe(blank);
     }
   });
 
-  it('never re-seeds a secret whose value merely LOOKS odd — only blank counts', () => {
+  it('never rewrites a secret whose value merely LOOKS odd', () => {
     // Surrounding whitespace is preserved everywhere else in this codebase
     // (the entrypoint's `$(cat)` strips trailing newlines only), so a password
     // like "pw " must survive untouched rather than be silently rotated.

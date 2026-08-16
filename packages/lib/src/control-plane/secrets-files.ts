@@ -145,19 +145,12 @@ export function ensureSecret(homeDir: string, name: string, valueFactory: () => 
   // returned (and depended on) as a permanent empty string.
   const torn = existsSync(path) && statSync(path).size === 0;
   const existing = torn ? null : readSecret(homeDir, name);
-  // BLANK content is treated the same way, and the 0-byte check above is not
-  // enough to catch it: a file holding just a newline is 1 byte, so it passes
-  // both that check and the entrypoint's `[ -s ]` guard, then reads back as
-  // empty once `$(cat)` strips the trailing newline.
-  //
-  // This became load-bearing when OpenCode stopped having an auth posture. A
-  // blank `op_opencode_password` used to be harmless (auth was off by default
-  // and nothing read the file); now the assistant entrypoint exits rather than
-  // start OpenCode unauthenticated, and the guardian throws at boot — so one
-  // stray newline, from a hand edit or a restored backup, would take the whole
-  // stack down. No secret this function mints is ever legitimately blank, so
-  // re-seeding is right for all of them, not just that one.
-  if (existing !== null && existing.trim() !== "") return existing;
+  // A non-empty file is the operator's, whatever is in it. This deliberately
+  // does NOT re-seed a blank-but-nonzero file (one newline): that was a guard
+  // added to stop a blank `op_opencode_password` bricking the stack, which is
+  // the wrong end to fix — silently rewriting a file someone put there is not
+  // this function's business. The boot path no longer treats blank as fatal.
+  if (existing !== null) return existing;
   const value = valueFactory();
   writeSecret(homeDir, name, value);
   return value;

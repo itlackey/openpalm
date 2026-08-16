@@ -114,9 +114,12 @@ voice_lan_access_enabled() {
 # OPENCODE_SERVER_PASSWORD env wins over *_FILE; trailing newlines are stripped
 # by command substitution, matching every other reader of this secret.
 #
-# Fail fast when nothing resolves: a container that starts unauthenticated
-# because its secret went missing is exactly the silent downgrade this change
-# exists to remove, and it would look healthy while doing it.
+# An empty result is NOT fatal. Setup generates this password on every install
+# and compose always grants the file, so an empty one means someone emptied it
+# on purpose — and OpenCode then serves without auth, which is what they asked
+# for. Refusing to boot over it turned a local decision into a dead container,
+# and the guard added to prevent that (silently re-seeding the file from under
+# them) was worse. Warn, and get out of the way.
 resolve_opencode_server_password() {
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
      && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
@@ -124,8 +127,7 @@ resolve_opencode_server_password() {
     export OPENCODE_SERVER_PASSWORD
   fi
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
-    echo "ERROR: no OpenCode server password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password). OpenCode is never started unauthenticated." >&2
-    exit 1
+    echo "WARNING: no OpenCode server password resolved — OpenCode will serve UNAUTHENTICATED. Set OPENCODE_SERVER_PASSWORD, or restore the opencode_server_password compose secret." >&2
   fi
 }
 

@@ -20,12 +20,7 @@ import {
 } from './rate-limit.ts';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
-import {
-  assertAssistantUpstreamAuth,
-  DIRECT_PORT,
-  readPositiveIntEnv,
-  resolveCorsAllowedOrigin,
-} from './config';
+import { DIRECT_PORT, readPositiveIntEnv, resolveCorsAllowedOrigin } from './config';
 
 const logger = createLogger('guardian');
 
@@ -249,13 +244,6 @@ export interface StartGuardianOptions {
  */
 export function startGuardian(options: StartGuardianOptions = {}): GuardianServers {
   for (const transport of options.transports ?? []) registerTransport(transport);
-
-  // Fail loudly at BOOT if the assistant credential cannot be resolved. The
-  // assistant requires Basic auth in every configuration, so a guardian that
-  // starts without one 401s every portal message forever — a dead stack that
-  // looks healthy. Resolving it here (rather than at module load) keeps the
-  // module importable by tests and tools that never make an upstream call.
-  assertAssistantUpstreamAuth();
 
   initializePrincipalStore();
   seedPortalPrincipalsFromEnv();
