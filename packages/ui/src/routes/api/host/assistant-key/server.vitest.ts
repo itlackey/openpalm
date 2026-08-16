@@ -18,7 +18,7 @@ import { writeSecret } from '@openpalm/lib';
 /**
  * The stack.env row a real `applyAccessToggles` writes when assistantDirect is
  * ON. It is a BIND and nothing more now — the key's availability does not
- * depend on it, because OpenCode requires a password in every configuration.
+ * depend on it — the key exists on every install, published or not.
  */
 const ASSISTANT_DIRECT_ON = 'OP_ACCESS_ASSISTANT_DIRECT=true\n';
 

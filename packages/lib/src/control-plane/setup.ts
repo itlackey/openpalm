@@ -438,8 +438,9 @@ export async function performSetup(
 					...resolveAccessIntentEnv(toggles),
 					...resolveAccessEnv(toggles, { guardianIngressRequired }),
 				};
-				// OpenCode ALWAYS authenticates, with a key the system GENERATES. The
-				// operator is never asked to invent one: the human-facing credential
+				// Seed OpenCode's key on EVERY install — this is what makes it
+				// authenticated by default, published or not. The system generates it;
+				// the operator is never asked to invent one: the human-facing credential
 				// is the UI login password in every configuration, and this key is
 				// copy-pasted into another app. Preserved across reruns — rotating it
 				// would break every client that already holds it.

@@ -125,9 +125,10 @@ export async function fetchAccessStatus(): Promise<AccessStatus> {
 /**
  * The generated OpenCode Basic-auth key `assistantDirect`'s own copy promises
  * is "shown in the dashboard" (`ACCESS_TOGGLE_DESCRIPTIONS.assistantDirect` in
- * `@openpalm/lib`). OpenCode requires it in every configuration, so it is
- * available on any install whose secret store is readable — `available: false`
- * now means only that (nothing deployed, or the store is unreachable). GET
+ * `@openpalm/lib`). Setup generates it on every install, so it is available on
+ * any install whose secret store is readable — `available: false` now means
+ * only that (nothing deployed, the store is unreachable, or the operator
+ * emptied the secret). GET
  * /api/host/assistant-key sends `Cache-Control: no-store`; the value must
  * never be persisted or logged by a caller.
  */

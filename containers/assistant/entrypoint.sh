@@ -102,15 +102,16 @@ voice_lan_access_enabled() {
 
 # Resolve OpenCode's Basic-auth password from the compose secret file.
 #
-# UNCONDITIONAL. OpenCode authenticates in every configuration — there is no
-# posture flag any more. The gate that used to live here (OPENCODE_AUTH, which
+# UNCONDITIONAL: there is no posture flag any more, only this file. Setup
+# generates it on every install, so OpenCode is authenticated by default.
+# The gate that used to live here (OPENCODE_AUTH, which
 # tracked whether the assistant port was published) meant the default install
 # ran OpenCode with NO password, and it had to be mirrored identically by the
 # guardian, two healthchecks and the host resolver; any disagreement produced a
 # 401 storm instead of an error.
 #
-# The secret file is ALWAYS materialized non-empty by ensureSecrets (random
-# seed on first install, preserved across reruns). Explicit
+# ensureSecrets seeds the file on first install and preserves it across
+# reruns. Explicit
 # OPENCODE_SERVER_PASSWORD env wins over *_FILE; trailing newlines are stripped
 # by command substitution, matching every other reader of this secret.
 #
@@ -138,11 +139,12 @@ start_ui() {
   # /oc proxy — seeded as the one locked connection in runtime-config.json
   # below. This is THE listener a home install publishes.
 
-  # The LAN-exposure warning that used to live here is gone with the posture it
-  # warned about: it fired when OpenCode was bound off-loopback AND
-  # unauthenticated, and OpenCode is never unauthenticated now. Publishing the
-  # port changes who can reach a password-protected server, which is a plain
-  # operator decision and not a warning.
+  # The LAN-exposure warning that used to live here is gone with the posture
+  # it warned about: it fired when OpenCode was bound off-loopback AND
+  # unauthenticated, which was the DEFAULT then and is not now. Publishing the
+  # port changes who can reach a password-protected server — a plain operator
+  # decision, not a warning. resolve_opencode_server_password above warns on
+  # the one case that still matters, an emptied secret.
   rm -f /tmp/openpalm-ui-skip
 
   local ui_pkg="/opt/openpalm/ui/node_modules/@openpalm/ui"

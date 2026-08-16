@@ -395,9 +395,4 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     writeStackEnv('OP_UI_BIND_ADDRESS=0.0.0.0\n');
     expect(computeOpencodeWorkspace()).toEqual({ port: 3820 });
   });
-
-
-
-
-
 });

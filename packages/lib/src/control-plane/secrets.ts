@@ -157,9 +157,10 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // The API key end users paste into OpenAI-compatible clients (guardian edge,
   // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
   ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
-  // The OpenCode server key. THE credential OpenCode serves — it authenticates
-  // in every configuration, so this file is load-bearing on every install, not
-  // just the one that publishes the assistant API. Both the assistant's and the
+  // The OpenCode server key. THE credential OpenCode serves, so this file is
+  // load-bearing on every install, not just the one that publishes the
+  // assistant API — seeding it here is what makes OpenCode authenticated by
+  // default. Both the assistant's and the
   // guardian's compose `secrets:` grants reference it unconditionally
   // (core.compose.yml / portals.compose.yml), and the assistant entrypoint
   // refuses to start without a non-empty value.

@@ -64,8 +64,11 @@ export function assistantAuthHeaders(target: OpenCodeCredential): Record<string,
  * Resolve the credential the assistant's OpenCode currently requires, from the
  * home's persisted state.
  *
- * UNCONDITIONAL. OpenCode authenticates in every configuration, so there is no
- * posture to consult and no combination in which this returns no password.
+ * UNCONDITIONAL: there is no posture flag to consult. The secret file is the
+ * whole answer — setup generates one on every install, so in practice this
+ * always yields a password. It returns none only when that file is missing or
+ * blank, which is an operator emptying their own secret; callers treat that as
+ * "no credential to send", matching the entrypoint's own reader.
  *
  * It used to be gated on `OPENCODE_AUTH`, which tracked whether the assistant
  * port was published. That made "is OpenCode password-protected?" depend on a

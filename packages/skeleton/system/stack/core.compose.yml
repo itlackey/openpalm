@@ -52,8 +52,8 @@ services:
       # config under HOME (~/.config/opencode), so no extra mount is needed.
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
-      # OpenCode ALWAYS requires this password. There is no posture flag: the
-      # retired OPENCODE_AUTH tracked whether the assistant port was published,
+      # OpenCode's password. There is no posture flag: the retired
+      # OPENCODE_AUTH tracked whether the assistant port was published,
       # which meant the default install ran OpenCode with no password at all
       # and every consumer — this service, the guardian, two healthchecks, the
       # host resolver — had to agree about a gate they could disagree about.

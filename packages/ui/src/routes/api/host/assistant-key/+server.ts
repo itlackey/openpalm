@@ -53,9 +53,9 @@ export const GET: RequestHandler = async (event) => {
   // OP_OPENCODE_PASSWORD overrides the resolver honours, so an operator using
   // any of them would have been shown a key the assistant rejects.
   //
-  // Its `password` is also the availability answer. OpenCode authenticates in
-  // every configuration now, so this is populated on any install whose secret
-  // store is readable — the key is worth showing whether or not the assistant
+  // Its `password` is also the availability answer. Setup generates the key on
+  // every install, so this is populated on any install whose secret store is
+  // readable — the key is worth showing whether or not the assistant
   // port is published, because it is what an external OpenCode client needs
   // and it is what the guardian and the /oc proxy actually send. An install
   // that has never deployed reports "nothing to show".

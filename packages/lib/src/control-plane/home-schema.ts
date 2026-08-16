@@ -209,7 +209,7 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // pruneRemovedAddonState strips the now-unknown id without substitution —
   // ordering guaranteed because applyHome runs migrations first.
   { since: 7, run: migrateChatAddonRemoval },
-  // OpenCode authenticates in every configuration now, so OPENCODE_AUTH is a
+  // OpenCode's auth no longer tracks publication, so OPENCODE_AUTH is a
   // stale row on every upgraded home. The bump to 9 also matters on its own:
   // an older binary's credential resolver honours that key, so pointed at
   // always-authenticated containers it would attach no credential and 401 —

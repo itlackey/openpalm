@@ -152,10 +152,11 @@ services:
       # deletes/archives evicted sessions upstream; '0' disables it.
       GUARDIAN_SESSION_ACTIVE_GRACE_MS: ${GUARDIAN_SESSION_ACTIVE_GRACE_MS:-86400000}
       GUARDIAN_RECONCILE_INTERVAL_MS: ${GUARDIAN_RECONCILE_INTERVAL_MS:-300000}
-      # Upstream credential for assistant_net calls. The assistant's OpenCode
-      # requires Basic auth in every configuration, so this is always read and
-      # always attached; a missing or empty file is a guardian boot error, not
-      # a silent 401 storm (see guardian/src/config.ts). The moderator's own
+      # Upstream credential for assistant_net calls. Setup generates this
+      # password on every install, so the assistant's OpenCode is authenticated
+      # by default and the guardian attaches the same value it serves. Both
+      # sides read this one file, so they agree even when an operator empties
+      # it (see guardian/src/config.ts). The moderator's own
       # loopback OpenCode spawn is a separate, unauthenticated process on
       # 127.0.0.1 inside this container and is unaffected.
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password

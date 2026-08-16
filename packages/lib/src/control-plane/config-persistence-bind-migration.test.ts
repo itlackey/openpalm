@@ -76,7 +76,7 @@ describe('legacy bind address migration', () => {
 
   test('a published OpenCode is a bind, not an auth posture', () => {
     // This migration used to also write OPENCODE_AUTH=true here. OpenCode
-    // authenticates in every configuration now, so the migration has one job
+    // is authenticated by default now, so the migration has one job
     // left: materialize the bind the legacy cascade implied.
     withStackEnv('OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n', (homeDir, read) => {
       expect(migrateLegacyBindAddresses(homeDir)).toBe(true);

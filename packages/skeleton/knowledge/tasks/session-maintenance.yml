@@ -29,9 +29,9 @@ command:
     CUTOFF=$(( $(date +%s) - 30*24*60*60 ))
 
     # Match the Assistant healthcheck's auth handling (core.compose.yml):
-    # OpenCode requires Basic auth in every configuration, so an
-    # unauthenticated request gets a 401 — under `curl -f` that exits non-zero
-    # and the task silently deletes nothing forever.
+    # OpenCode is authenticated by default, so an unauthenticated request gets
+    # a 401 — under `curl -f` that exits non-zero and the task silently deletes
+    # nothing forever.
     PW_FILE="${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}"
     [ -r "$PW_FILE" ] || { echo "$PW_FILE is unreadable — OpenCode always requires a credential" >&2; exit 1; }
     AUTH="-u ${OPENCODE_SERVER_USERNAME:-opencode}:$(cat "$PW_FILE")"

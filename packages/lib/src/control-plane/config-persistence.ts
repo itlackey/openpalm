@@ -128,7 +128,7 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
  * published guardian port answering 404 to everything.
  *
  * A legacy `OPENCODE_AUTH` row is neither copied nor derived — OpenCode
- * authenticates in every configuration now, and the schema-9 sweep
+ * is authenticated by default now, and the schema-9 sweep
  * ({@link migrateRetiredOpencodeAuth}) removes the stale key.
  */
 export function migrateLegacyBindAddresses(homeDir: string): boolean {
@@ -275,7 +275,7 @@ export function migrateRetiredOpencodeAuth(homeDir: string): boolean {
 
   writeFileAtomic(path, next, 0o600);
   logger.warn(
-    "Removed the retired OPENCODE_AUTH row — OpenCode now authenticates in every configuration",
+    "Removed the retired OPENCODE_AUTH row — OpenCode's auth no longer tracks publication",
   );
   return true;
 }

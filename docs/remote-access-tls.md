@@ -182,6 +182,13 @@ Skipping the workspace block is a supported choice, not a broken config:
 `/advanced` probes the address before framing it and says plainly that the
 workspace is not available here when nothing answers.
 
+The UI never needs firewalling: with `OP_TRUSTED_PROXY=1` it stays bound to
+`127.0.0.1:3880` the whole time, so port `3880` is not reachable from anything
+but this host regardless of what Caddy does. Guardian's direct listener is
+different — `access.guardianNetwork` on means `3830` is bound `0.0.0.0` (see
+[Guardian](#guardian) above), so keep it firewalled from untrusted networks if
+Caddy's HTTPS endpoint should be the only way in.
+
 ## Cloudflare Tunnel
 
 The UI and the Guardian work normally. The **embedded workspace does not**:
@@ -192,28 +199,6 @@ unavailable and links to `/chat`, which works fully.
 
 If you need the OpenCode workspace over a tunnel, reach it over Tailscale (or
 any proxy that can front an arbitrary port on the UI's own hostname) instead.
-
-setting the cookie domain.
-
-Configure DNS and certificates using Caddy's normal HTTPS workflow, then set:
-
-```dotenv
-GUARDIAN_CORS_ALLOWED_ORIGINS=https://ui.example.com
-```
-
-Open `https://ui.example.com` and use `https://guardian.example.com/oc` as the
-Guardian connection URL.
-
-Skipping the workspace block is a supported choice, not a broken config:
-`/advanced` probes the address before framing it and says plainly that the
-workspace is not available here when nothing answers.
-
-The UI never needs firewalling: with `OP_TRUSTED_PROXY=1` it stays bound to
-`127.0.0.1:3880` the whole time, so port `3880` is not reachable from anything
-but this host regardless of what Caddy does. Guardian's direct listener is
-different — `access.guardianNetwork` on means `3830` is bound `0.0.0.0` (see
-[Guardian](#guardian) above), so keep it firewalled from untrusted networks if
-Caddy's HTTPS endpoint should be the only way in.
 
 ## CORS
 
