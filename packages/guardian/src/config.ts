@@ -140,11 +140,18 @@ export function resolveAssistantUpstreamAuth(
   // secret with `$(cat file)` — command substitution strips ONLY trailing
   // newlines, preserving surrounding spaces/tabs. Using `.trim()` here diverged
   // (guardian sent a differently-trimmed password than OpenCode expected → a
-  // silent 401 storm on every upstream call). Strip trailing newlines only; a
-  // whitespace-only file means no password, matching the entrypoint's own
-  // reader, so the assistant is serving unauthenticated and we send nothing.
+  // silent 401 storm on every upstream call).
+  //
+  // EXACTLY empty, not `.trim()`. A `.trim()` here was the same divergence in
+  // a new place: the assistant entrypoint reads this file with `$(cat)` and
+  // tests `[ -z ]`, so a file holding "   " starts OpenCode WITH a
+  // three-space password, and lib's resolver hands the UI proxy the same
+  // three spaces. Trimming here alone made the guardian the one consumer that
+  // saw "no password" — every portal request 401ing while direct UI traffic
+  // authenticated fine. Only a genuinely empty post-newline value means no
+  // credential, and then all three agree.
   const password = raw.replace(/\n+$/, "");
-  if (password.trim() === "") return null;
+  if (password === "") return null;
 
   // PR #564 r3566889740: honor OPENCODE_SERVER_USERNAME (default 'opencode'),
   // matching the host UI (endpoints.ts) so an operator override doesn't 401.

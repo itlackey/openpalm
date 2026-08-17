@@ -86,8 +86,8 @@ describe("resolveAssistantUpstreamAuth — no password means no header, never a 
     ).toBeNull();
   });
 
-  test("an empty or whitespace-only password file", () => {
-    for (const contents of ["", "\n", "   \n", "\t\n"]) {
+  test("an empty password file — but ONLY exactly empty", () => {
+    for (const contents of ["", "\n", "\n\n"]) {
       expect(
         resolveAssistantUpstreamAuth(
           { OPENCODE_SERVER_PASSWORD_FILE: PASSWORD_FILE },
@@ -95,6 +95,24 @@ describe("resolveAssistantUpstreamAuth — no password means no header, never a 
         ),
         JSON.stringify(contents),
       ).toBeNull();
+    }
+  });
+
+  test("a whitespace-only password is a PASSWORD, matching the other two readers", () => {
+    // The regression this pins: `.trim()` here made the guardian the only
+    // consumer that read "   " as no credential. The entrypoint starts OpenCode
+    // with those three spaces (`$(cat)` + `[ -z ]`) and lib's resolver hands
+    // the UI proxy the same, so trimming here 401'd every portal request while
+    // direct UI traffic authenticated fine.
+    for (const contents of ["   \n", "\t\n", " "]) {
+      const auth = resolveAssistantUpstreamAuth(
+        { OPENCODE_SERVER_PASSWORD_FILE: PASSWORD_FILE },
+        withFile(contents),
+      );
+      const expected = contents.replace(/\n+$/, "");
+      expect(auth?.authorization, JSON.stringify(contents)).toBe(
+        `Basic ${Buffer.from(`opencode:${expected}`, "utf-8").toString("base64")}`,
+      );
     }
   });
 });

@@ -21,7 +21,7 @@ import {
 } from './setup.js';
 import type { SetupSpec, SetupConnection } from './setup.js';
 import type { ControlPlaneState } from './types.js';
-import { readSecret, secretPath } from './secrets-files.js';
+import { readSecret, secretPath, writeSecret } from './secrets-files.js';
 import { patchStateEnvFile } from './secrets.js';
 import { setAddonEnabled } from './addons.js';
 import { guardianRequired } from './guardian-required.js';
@@ -1129,6 +1129,21 @@ describe('performSetup', () => {
 		expect((key ?? '').length).toBeGreaterThanOrEqual(32);
 		// The generated key never lands in the non-secret env file.
 		expect(stackEnv).not.toContain(key ?? 'unreachable');
+	});
+
+	it('a setup rerun PRESERVES a deliberately blanked OpenCode key', async () => {
+		// Emptying op_opencode_password is how an operator runs OpenCode without
+		// auth — a supported posture. A branch here used to re-seed whenever the
+		// stored value was blank after trimming, and since ensureSecrets runs
+		// first that branch could ONLY be reached in exactly this case: an
+		// unrelated setup rerun silently regenerated a password, re-enabled auth
+		// on the next deploy, and stranded the direct clients they had set up.
+		expect((await performSetup(makeValidSpec())).ok).toBe(true);
+		writeSecret(homeDir, 'op_opencode_password', '\n');
+
+		expect((await performSetup(makeValidSpec())).ok).toBe(true);
+
+		expect(readSecret(homeDir, 'op_opencode_password')).toBe('\n');
 	});
 
 	// REGRESSION: a setup rerun must not switch off the guardian's direct
