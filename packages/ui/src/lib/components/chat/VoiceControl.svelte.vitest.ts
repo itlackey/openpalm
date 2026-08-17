@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 
 const mocks = vi.hoisted(() => {
 	const voiceState = {
@@ -208,8 +208,15 @@ describe('VoiceControl accessibility', () => {
 		}
 
 		const enabledButtons = container.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+		// Put the browser back on the keyboard before focusing anything.
+		// Chromium ignores focus({ focusVisible: true }) and decides
+		// `:focus-visible` from the last REAL input event, so the mouse clicks in
+		// the tests above leave programmatic focus non-visible for the rest of the
+		// file — the ring measured 0 no matter how correct the rule was. A trusted
+		// key event flips the heuristic back.
+		await userEvent.keyboard('{Tab}');
 		for (const button of enabledButtons) {
-			button.focus({ focusVisible: true });
+			button.focus();
 			expect(document.activeElement).toBe(button);
 			const style = getComputedStyle(button);
 			expect(style.outlineStyle).not.toBe('none');

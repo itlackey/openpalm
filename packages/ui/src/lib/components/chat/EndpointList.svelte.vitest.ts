@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 
 const endpointsService = vi.hoisted(() => ({
   active: { id: 'local', label: 'Local assistant', url: 'http://127.0.0.1:3800', isDefault: true },
@@ -96,9 +96,20 @@ describe('EndpointList', () => {
   test('shows a two-pixel focus indicator on every endpoint control', async () => {
     const { container } = await render(EndpointList);
     document.documentElement.style.setProperty('--s-hair', '1px');
+    // The ring is `outline: 2px solid var(--s-seal)`. The design tokens live in
+    // the app shell, which a component test never mounts, so --s-seal resolves
+    // to nothing, the shorthand is invalid at computed-value time, and
+    // outline-width reads 0px however correct the rule is. Supply the token the
+    // same way the contrast test above supplies the paper and ink shades.
+    container.style.setProperty('--s-seal', '#b53a2d');
     const controls = container.querySelectorAll<HTMLElement>('button');
     expect(controls.length).toBeGreaterThan(0);
 
+    // Chromium ignores focus({ focusVisible: true }) and reads `:focus-visible`
+    // off the last real input event, so a click anywhere earlier in this file
+    // would leave every programmatic focus below non-visible. A trusted key
+    // event pins the heuristic to the keyboard regardless of test order.
+    await userEvent.keyboard('{Tab}');
     for (const control of controls) {
       control.focus();
       expect(Number.parseFloat(getComputedStyle(control).outlineWidth)).toBeGreaterThanOrEqual(2);
