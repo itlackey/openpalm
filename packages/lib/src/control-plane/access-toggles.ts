@@ -81,7 +81,7 @@ export const ACCESS_TOGGLE_DESCRIPTIONS: Record<keyof AccessToggles, string> = {
   networkAccess:
     "Open the assistant in a browser from your phone, tablet, or another computer. Everyone still signs in with your password.",
   assistantDirect:
-    "For other apps that speak OpenCode directly. Uses its own generated key, shown in the dashboard — not your sign-in password.",
+    "For other apps that speak OpenCode directly. They authenticate with its generated key, shown in the dashboard — not your sign-in password. OpenCode requires that key whether or not this is on; this only decides who can reach the port.",
   guardianNetwork:
     "Apps and devices connect through the guardian, which screens, logs, and rate-limits everything it forwards.",
   guardianOpenaiApi:
@@ -104,7 +104,6 @@ export type AccessEnv = {
   OP_ASSISTANT_BIND_ADDRESS: string;
   OP_GUARDIAN_BIND_ADDRESS: string;
   OP_API_BIND_ADDRESS: string;
-  OPENCODE_AUTH: "true" | "false";
   /**
    * The guardian 404s its entire direct listener unless this is on, so it
    * tracks `guardianNetwork` exactly — publishing a port to a listener that
@@ -156,16 +155,19 @@ export const ACCESS_ENV_KEYS = [
   "OP_ASSISTANT_BIND_ADDRESS",
   "OP_GUARDIAN_BIND_ADDRESS",
   "OP_API_BIND_ADDRESS",
-  "OPENCODE_AUTH",
   "GUARDIAN_DIRECT_INGRESS",
 ] as const satisfies readonly (keyof AccessEnv)[];
 
 /**
  * Resolve toggles into the generated env row.
  *
- * `OPENCODE_AUTH` tracks `assistantDirect` exactly: OpenCode authenticates iff
- * it is published. When it is not published there is no network-reachable
- * surface to authenticate, and the UI's proxy reaches it over loopback.
+ * `assistantDirect` is a BIND, and nothing else. It used to also write
+ * `OPENCODE_AUTH`, so OpenCode authenticated only when it was published —
+ * which meant the default install ran OpenCode with no password at all, and
+ * an operator who wanted the workspace had a toggle standing between them and
+ * a credential. OpenCode is authenticated unconditionally now (the entrypoint
+ * always resolves the secret), so there is no posture to track: publishing the
+ * port changes who can reach it, never whether a password is required.
  *
  * `opts.guardianIngressRequired` is the ONE place another feature may add a
  * reason for `GUARDIAN_DIRECT_INGRESS` to be "true" without also opening the
@@ -194,7 +196,6 @@ export function resolveAccessEnv(
     OP_ASSISTANT_BIND_ADDRESS: toggles.assistantDirect ? LAN : LOOPBACK,
     OP_GUARDIAN_BIND_ADDRESS: toggles.guardianNetwork ? LAN : LOOPBACK,
     OP_API_BIND_ADDRESS: toggles.guardianOpenaiApi ? LAN : LOOPBACK,
-    OPENCODE_AUTH: toggles.assistantDirect ? "true" : "false",
     GUARDIAN_DIRECT_INGRESS:
       toggles.guardianNetwork || opts.guardianIngressRequired ? "true" : "false",
   };
@@ -215,16 +216,6 @@ export function resolveAccessEnv(
  */
 export function remoteRequiresGuardianIngress(enabled: boolean, target: RemoteTarget): boolean {
   return enabled && (target === "guardian" || target === "both");
-}
-
-/**
- * True when `assistantDirect` requires a generated OpenCode key. Callers mint
- * one rather than asking the operator to invent it — the human-facing
- * credential is the UI login password in every configuration, without
- * exception.
- */
-export function requiresAssistantKey(toggles: AccessToggles): boolean {
-  return toggles.assistantDirect;
 }
 
 // ── Reading current state ────────────────────────────────────────────────

@@ -52,24 +52,21 @@ services:
       # config under HOME (~/.config/opencode), so no extra mount is needed.
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
-      # Auth is off by default because the assistant is only reachable via the
-      # internal assistant_net Docker network and the host port binding
-      # defaults to 127.0.0.1 (loopback-only). Guardian communicates with the
-      # assistant over assistant_net without credentials in that default
-      # posture, and the scheduler runs as a co-process inside this container
-      # so it reaches OpenCode via http://localhost:4096.
+      # OpenCode's password. There is no posture flag: the retired
+      # OPENCODE_AUTH tracked whether the assistant port was published,
+      # which meant the default install ran OpenCode with no password at all
+      # and every consumer — this service, the guardian, two healthchecks, the
+      # host resolver — had to agree about a gate they could disagree about.
       #
-      # Generated: auth is on iff the assistant API is PUBLISHED (the
-      # "assistantDirect" access toggle). When it is not published there is no
-      # network-reachable surface to authenticate, and the UI's /oc proxy and
-      # the guardian both reach it over loopback / assistant_net. The key is
-      # system-generated into the op_opencode_password secret, which BOTH this
-      # service (serves Basic auth) and the guardian (attaches it upstream, see
-      # portals.compose.yml) read. Never a password the operator invents.
-      OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
-      # The OpenCode server password, read from the compose secret
-      # below. Never a raw OPENCODE_SERVER_PASSWORD env value (secret-audit.ts
-      # forbids *_PASSWORD-suffixed compose environment keys).
+      # The key is system-generated into the op_opencode_password secret, which
+      # BOTH this service (serves Basic auth) and the guardian (attaches it
+      # upstream, see portals.compose.yml) read. Never a password the operator
+      # invents — the human-facing credential is the UI login, in every
+      # configuration.
+      #
+      # Read from the compose secret below. Never a raw
+      # OPENCODE_SERVER_PASSWORD env value (secret-audit.ts forbids
+      # *_PASSWORD-suffixed compose environment keys).
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       TERM: xterm-256color
       HOME: /home/opencode
@@ -253,13 +250,13 @@ services:
     # custom.compose.yml's `environment:` made this probe follow it to a port
     # nothing listens on. A literal cannot drift. The UI's /health route is
     # exempt from the login/setup wall (packages/ui hooks.server.ts).
-    # #564 P1-1: the /health probe authenticates iff the container-side
-    # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
-    # assistant API is published, and an unauthenticated `curl -f` then
-    # 401s forever — guardian's `depends_on: assistant: condition:
-    # service_healthy` blocks on that and the whole stack never deploys. The
-    # gate mirrors the entrypoint's opencode_auth_enabled truthy set exactly
-    # so probe and server can never disagree about the posture. The username
+    # The /health probe ALWAYS authenticates, because OpenCode always requires
+    # it. This used to be gated on the container-side OPENCODE_AUTH, mirroring
+    # the entrypoint's own truthy set so probe and server could not disagree
+    # about the posture — with no posture left there is nothing to mirror and
+    # nothing to drift. An unauthenticated probe would 401 forever, and
+    # guardian's `depends_on: assistant: condition: service_healthy` blocks on
+    # that, so the whole stack would never deploy. The username
     # defaults to OpenCode's own default `opencode` (an overlay-injected
     # OPENCODE_SERVER_USERNAME is honored); the password is `cat`ed from the
     # same OPENCODE_SERVER_PASSWORD_FILE the entrypoint reads — a Docker
@@ -280,13 +277,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          case "$${OPENCODE_AUTH:-false}" in
-          true|TRUE|True|1|yes|YES)
           curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"
-          http://localhost:4096/health || exit 1 ;;
-          *)
-          curl -sf http://localhost:4096/health || exit 1 ;;
-          esac;
+          http://localhost:4096/health || exit 1;
           if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:3000/health >/dev/null || exit 1; fi
       interval: 30s
       timeout: 10s

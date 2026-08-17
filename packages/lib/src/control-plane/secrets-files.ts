@@ -145,6 +145,11 @@ export function ensureSecret(homeDir: string, name: string, valueFactory: () => 
   // returned (and depended on) as a permanent empty string.
   const torn = existsSync(path) && statSync(path).size === 0;
   const existing = torn ? null : readSecret(homeDir, name);
+  // A non-empty file is the operator's, whatever is in it. This deliberately
+  // does NOT re-seed a blank-but-nonzero file (one newline): that was a guard
+  // added to stop a blank `op_opencode_password` bricking the stack, which is
+  // the wrong end to fix — silently rewriting a file someone put there is not
+  // this function's business. The boot path no longer treats blank as fatal.
   if (existing !== null) return existing;
   const value = valueFactory();
   writeSecret(homeDir, name, value);

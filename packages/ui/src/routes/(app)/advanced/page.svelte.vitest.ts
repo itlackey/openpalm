@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   appPage: { url: new URL('http://127.0.0.1:3800/advanced') },
   goto: vi.fn().mockResolvedValue(undefined),
   afterNavigate: vi.fn(),
-  opencodeWorkspace: undefined as { port: number } | undefined,
+  opencodeWorkspace: undefined as { port: number; origin?: string } | undefined,
   workspaceReachable: true,
   active: null as Record<string, unknown> | null,
   probeHealth: vi.fn(),
@@ -118,10 +118,11 @@ import AdvancedPage from './+page.svelte';
 
 const WORKSPACE_PORT = 39810;
 const WORKSPACE_URL = `http://127.0.0.1:${WORKSPACE_PORT}`;
-const NATIVE_NOTICE = 'runs on OpenPalm’s own surface';
+const UNAVAILABLE_HEADING = 'The OpenCode workspace isn’t available here';
 
 const workspaceFrame = () => browserPage.getByTitle('OpenCode — Advanced Chat');
-const nativeSurface = () => browserPage.getByText(NATIVE_NOTICE, { exact: false });
+const unavailable = () => browserPage.getByText(UNAVAILABLE_HEADING, { exact: false });
+const continueInChat = () => browserPage.getByRole('link', { name: 'Continue in Chat' });
 
 beforeEach(() => {
   mocks.opencodeWorkspace = undefined;
@@ -139,23 +140,38 @@ describe('/advanced — the locked /oc connection frames OpenCode’s own origin
     await expect.element(workspaceFrame()).toHaveAttribute('src', WORKSPACE_URL);
   });
 
-  test('keeps the native surface when there is no workspace advertised', async () => {
+  test('says so, and links to Chat, when no workspace is advertised', async () => {
     render(AdvancedPage);
 
-    await expect.element(nativeSurface()).toBeVisible();
+    await expect.element(unavailable()).toBeVisible();
+    await expect.element(continueInChat()).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
   });
 
-  test('keeps the native surface when the advertised port does not answer', async () => {
+  test('says so, and links to Chat, when the advertised port does not answer', async () => {
     // The address composes fine — it is this page's own host and the server's
-    // port — but nothing forwarded that port to this browser. A blank frame is
-    // the failure this replaces.
+    // port — but nothing forwarded that port to this browser.
     mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
     mocks.workspaceReachable = false;
     render(AdvancedPage);
 
-    await expect.element(nativeSurface()).toBeVisible();
+    await expect.element(unavailable()).toBeVisible();
+    await expect.element(continueInChat()).toBeVisible();
     expect(workspaceFrame().elements()).toHaveLength(0);
+  });
+
+  test('never renders a second copy of the chat surface', async () => {
+    // The defect this route existed NOT to have: when the workspace was
+    // unreachable it rendered a partial duplicate of /chat — a composer, a
+    // message list, permission cards — under a heading promising OpenCode. A
+    // deployment problem looked like a broken app.
+    mocks.opencodeWorkspace = { port: WORKSPACE_PORT };
+    mocks.workspaceReachable = false;
+    render(AdvancedPage);
+
+    await expect.element(unavailable()).toBeVisible();
+    expect(browserPage.getByRole('textbox').elements()).toHaveLength(0);
+    expect(browserPage.getByRole('button', { name: /send/i }).elements()).toHaveLength(0);
   });
 
 });

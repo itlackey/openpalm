@@ -491,15 +491,15 @@
             autocomplete="new-password"
           />
           <small>
-            Forwarded as HTTP Basic auth. Only required for a remote assistant with the
-            <strong>Allow direct connections to the assistant API</strong> access toggle on
-            (<code>OPENCODE_AUTH=true</code>).
+            Forwarded as HTTP Basic auth. An OpenPalm assistant ALWAYS requires it — OpenCode is
+            never served without a password. Find the remote host's value in its own Assistant
+            settings, under Advanced.
           </small>
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
               The password lives as the file secret <code>private/secrets/op_opencode_password</code> on the
-              remote host — never in <code>stack.env</code>. It is generated once when the toggle first
-              turns on and is not reissued by turning it off and back on. Rotation is a two-step process:
+              remote host — never in <code>stack.env</code>. It is generated once at install and is never
+              reissued on its own. Rotation is a two-step process:
               <ol>
                 <li>
                   On the remote host: edit <code>private/secrets/op_opencode_password</code> directly (or

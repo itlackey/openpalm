@@ -312,7 +312,11 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
 describe('computeOpencodeWorkspace — where OpenCode’s own web UI is published', () => {
   let homeDir = '';
   let savedHome: string | undefined;
-  const WORKSPACE_ENV_KEYS = ['OP_WORKSPACE_PORT'] as const;
+  const WORKSPACE_ENV_KEYS = [
+    'OP_WORKSPACE_PORT',
+    'OP_ENABLED_ADDONS',
+    'OP_REMOTE_PROFILE',
+  ] as const;
   let savedWorkspaceEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {

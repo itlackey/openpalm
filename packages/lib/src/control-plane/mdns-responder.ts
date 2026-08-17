@@ -518,7 +518,7 @@ export function _setMdnsProbeForTests(probe: MdnsProbe | null): void {
  * WHICH capability level owns a port — but wrong here, and specifically wrong
  * for the front door {@link resolveFrontDoor} documents as its fallback: with
  * `assistantDirect` alone, the front door is OpenCode, which serves no such
- * route (and, since that toggle also turns OPENCODE_AUTH on, answers 401 even
+ * route (and, since OpenCode always requires Basic auth, answers 401 even
  * where it does serve one). Both collapse to absent, so the headless
  * direct-only install never advertised the name the fallback exists to give it.
  */

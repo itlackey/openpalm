@@ -120,6 +120,33 @@ describe('file-based control-plane secrets', () => {
     expect(value).toBe('freshly-seeded-value');
     expect(readSecret(homeDir, 'op_guardian_admin_token')).toBe('freshly-seeded-value');
   });
+
+  it('leaves a blank-but-nonzero secret alone — the file is the operator’s', () => {
+    // A newline-only file is 1 byte, so it is not "torn" and is not re-seeded.
+    // That is deliberate: emptying op_opencode_password is how someone turns
+    // OpenCode's auth off, and silently regenerating it would overwrite that
+    // decision. The boot path warns instead of failing, so nothing downstream
+    // needs this function to launder the value.
+    for (const blank of ['\n', '   ', ' \n\n']) {
+      const homeDir = tempStackDir();
+      writeFileSync(secretPath(homeDir, 'op_opencode_password'), blank);
+
+      expect(
+        ensureSecret(homeDir, 'op_opencode_password', () => 'freshly-seeded-value'),
+        JSON.stringify(blank),
+      ).toBe(blank);
+    }
+  });
+
+  it('never rewrites a secret whose value merely LOOKS odd', () => {
+    // Surrounding whitespace is preserved everywhere else in this codebase
+    // (the entrypoint's `$(cat)` strips trailing newlines only), so a password
+    // like "pw " must survive untouched rather than be silently rotated.
+    const homeDir = tempStackDir();
+    writeSecret(homeDir, 'op_opencode_password', ' pass word \n');
+
+    expect(ensureSecret(homeDir, 'op_opencode_password', () => 'rotated')).toBe(' pass word \n');
+  });
 });
 
 describe('secrets-dir file browser API (admin Secrets tab)', () => {

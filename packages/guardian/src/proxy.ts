@@ -78,7 +78,7 @@ const HOP_BY_HOP = new Set([
 
 // Inbound-only headers stripped before forwarding upstream: the guardian's own
 // Basic credentials and its routing hints must never leak to the assistant. The
-// upstream Basic auth (if the assistant runs with OPENCODE_AUTH on) is injected
+// upstream Basic auth (the assistant always requires it) is injected
 // server-side instead, via withAssistantUpstreamAuth.
 const STRIP_INBOUND = new Set(['authorization', 'x-openpalm-user', 'x-openpalm-session-key']);
 
@@ -87,7 +87,7 @@ const STRIP_INBOUND = new Set(['authorization', 'x-openpalm-user', 'x-openpalm-s
 /**
  * Forward the client's end-to-end request headers, stripping hop-by-hop headers +
  * the guardian's inbound creds/hints, then inject the guardian→assistant upstream
- * auth (no-op unless OPENCODE_AUTH is on). This is a strip-list model (transparent)
+ * auth (always attached). This is a strip-list model (transparent)
  * — not the old fresh-minimal allowlist.
  */
 function buildUpstreamHeaders(req: Request): Headers {

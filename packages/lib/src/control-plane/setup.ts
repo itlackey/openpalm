@@ -37,13 +37,11 @@ import {
 } from './addons.js';
 import {
 	coerceAccessToggles,
-	requiresAssistantKey,
 	resolveAccessEnv,
 	resolveAccessIntentEnv,
 	type AccessToggles
 } from './access-toggles.js';
 import { computeGuardianIngressRequired } from './remote-providers.js';
-import { randomHex } from './crypto.js';
 export { validateSetupSpec } from './setup-validation.js';
 
 const logger = createLogger('setup');
@@ -439,18 +437,17 @@ export async function performSetup(
 					...resolveAccessIntentEnv(toggles),
 					...resolveAccessEnv(toggles, { guardianIngressRequired }),
 				};
-				// Publishing the assistant API always turns auth on, with a key the
-				// system GENERATES. The operator is never asked to invent one: the
-				// human-facing credential is the UI login password in every
-				// configuration, and this key is copy-pasted into another app.
-				// Preserved across reruns — rotating it would break every client that
-				// already holds it.
-				if (
-					requiresAssistantKey(toggles) &&
-					!readSecret(state.homeDir, 'op_opencode_password')?.trim()
-				) {
-					patches.OP_OPENCODE_PASSWORD = randomHex(24);
-				}
+				// OpenCode's key is NOT seeded here. `ensureSecrets` above already
+				// does it unconditionally (secrets.ts), which is what makes OpenCode
+				// authenticated by default on every install.
+				//
+				// A branch here used to re-seed when the stored value was blank after
+				// trimming. Given ensureSecrets ran first, the only state that could
+				// still reach it was a file an operator had deliberately emptied to
+				// run OpenCode without auth — so an unrelated setup rerun silently
+				// regenerated a password, re-enabled auth on the next deploy, and
+				// stranded whatever direct clients they had configured. The branch
+				// could only ever fire in the one case where it was wrong.
 				patchSecretsEnvFile(state.homeDir, patches);
 			}
 			// Provider API keys land in OpenCode's auth.json (bind-mounted into

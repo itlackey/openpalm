@@ -15,11 +15,7 @@
  * a value the stack route itself deliberately never inlines (unlike the rest
  * of that payload, this one is a live credential).
  *
- * Two safety properties beyond the auth guard:
- *  - Only returned while `assistantDirect` is actually ON. When it is off,
- *    OpenCode requires no auth at all (see `resolveAccessEnv` — `OPENCODE_AUTH`
- *    tracks `assistantDirect` exactly), so the stored value is meaningless
- *    and returning it would suggest a protection that is not in effect.
+ * One safety property beyond the auth guard:
  *  - `Cache-Control: no-store` — this is the one host-stack response that
  *    carries a live secret; nothing downstream (browser cache, a proxy) may
  *    retain it.
@@ -57,12 +53,12 @@ export const GET: RequestHandler = async (event) => {
   // OP_OPENCODE_PASSWORD overrides the resolver honours, so an operator using
   // any of them would have been shown a key the assistant rejects.
   //
-  // Its `password` is also the availability answer: it is populated only when
-  // OPENCODE_AUTH is on, which `resolveAccessEnv` derives from `assistantDirect`
-  // on every apply. Gating on it directly means the dashboard cannot disagree
-  // with the server about whether auth is in effect — where reading the toggle
-  // separately made that agreement a convention between two implementations.
-  // An install that has never deployed reports the same "nothing to show".
+  // Its `password` is also the availability answer. Setup generates the key on
+  // every install, so this is populated on any install whose secret store is
+  // readable — the key is worth showing whether or not the assistant
+  // port is published, because it is what an external OpenCode client needs
+  // and it is what the guardian and the /oc proxy actually send. An install
+  // that has never deployed reports "nothing to show".
   const { username, password } = resolveOpenCodeCredential(getState().homeDir);
   if (!password) {
     return jsonNoStore(200, { available: false }, requestId);

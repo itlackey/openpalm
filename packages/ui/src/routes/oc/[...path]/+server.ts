@@ -28,10 +28,10 @@
  *
  * Basic auth for the upstream is attached HERE, server-side, from the same
  * resolver. That is what closes the third LAN failure: the seeded connection
- * used to carry `auth: { mode: "none" }` regardless of `OPENCODE_AUTH`, so the
- * browser 401'd against an auth-enabled OpenCode and the operator had to paste
- * the password into the connection editor by hand. The browser now never sees
- * an OpenCode credential at all.
+ * used to carry `auth: { mode: "none" }` whether or not OpenCode wanted one, so
+ * the browser 401'd and the operator had to paste the password into the
+ * connection editor by hand. OpenCode now always wants one, and the browser
+ * never sees it.
  *
  * Remote/third-party assistants are unaffected: they keep the browser-direct
  * transport and their own credentials. The split is now meaningful rather than

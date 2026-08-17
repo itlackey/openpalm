@@ -157,15 +157,16 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // The API key end users paste into OpenAI-compatible clients (guardian edge,
   // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
   ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
-  // The OpenCode server key. Always materialized because BOTH the assistant's
-  // and guardian's compose `secrets:` grants reference this file
-  // unconditionally (core.compose.yml / portals.compose.yml); the random seed
-  // is inert while OPENCODE_AUTH=false (the default), which is every
-  // configuration except the one that publishes the assistant API. That
-  // configuration keeps this generated value rather than replacing it — the
-  // operator is never asked to invent a second password.
-  // ensureSecret also re-seeds a torn/0-byte file (scripts/dev-setup.sh seeds
-  // an empty one).
+  // The OpenCode server key. THE credential OpenCode serves, so this file is
+  // load-bearing on every install, not just the one that publishes the
+  // assistant API — seeding it here is what makes OpenCode authenticated by
+  // default. Both the assistant's and the
+  // guardian's compose `secrets:` grants reference it unconditionally
+  // (core.compose.yml / portals.compose.yml), and the assistant entrypoint
+  // refuses to start without a non-empty value.
+  // Seeded once and preserved: the operator is never asked to invent a second
+  // password, and rotating it here would break every client already holding it.
+  // ensureSecret also re-seeds a torn/0-byte file.
   ensureSecret(state.homeDir, 'op_opencode_password', () => crypto.randomUUID().replace(/-/g, ''));
   // Every remote-access provider's declared secret files, for exactly the
   // same reason as the OpenCode key above: services.compose.yml declares

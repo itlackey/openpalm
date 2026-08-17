@@ -228,7 +228,7 @@ describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
   });
 });
 
-describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", () => {
+describe("opencode_server_password compose plumbing — always attached, never raw", () => {
   // Raw text search rather than the parsed ComposeDoc type above (which does
   // not model `secrets:` blocks) — mirrors the style of the loopback-default
   // string checks elsewhere in this file.
@@ -243,9 +243,28 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
     secrets?: Record<string, { file?: string }>;
   };
 
-  test("T28: assistant OPENCODE_AUTH is compose-interpolated with a false default", () => {
-    const env = coreDoc.services?.assistant?.environment ?? {};
-    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
+  test("T28: no service carries an OPENCODE_AUTH posture flag any more", () => {
+    // It tracked whether the assistant port was published, so the default
+    // install ran OpenCode with NO password — and the assistant, the guardian
+    // and two healthchecks each had to agree about the flag or 401 each other.
+    // OpenCode authenticates unconditionally; there is nothing to interpolate.
+    for (const doc of [coreDoc, portalsDoc]) {
+      for (const [name, service] of Object.entries(doc.services ?? {})) {
+        expect(service.environment ?? {}, name).not.toHaveProperty("OPENCODE_AUTH");
+      }
+    }
+    expect(coreRaw).not.toContain("OPENCODE_AUTH:");
+    expect(portalsRaw).not.toContain("OPENCODE_AUTH:");
+  });
+
+  test("the assistant healthcheck authenticates unconditionally", () => {
+    // An unauthenticated probe 401s forever against an always-authenticated
+    // OpenCode, and the guardian's `depends_on: service_healthy` blocks on it —
+    // the whole stack never deploys.
+    expect(coreRaw).toContain(
+      'curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"',
+    );
+    expect(coreRaw).not.toContain("true|TRUE|True|1|yes|YES");
   });
 
   test("T29: assistant receives the OpenCode server password as a *_FILE secret, never raw", () => {
@@ -263,9 +282,8 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
     );
   });
 
-  test("T30: guardian receives the same auth pair", () => {
+  test("T30: guardian receives the same password file", () => {
     const env = portalsDoc.services?.guardian?.environment ?? {};
-    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
     expect(env.OPENCODE_SERVER_PASSWORD_FILE).toBe("/run/secrets/opencode_server_password");
 
     const secrets = (portalsDoc.services?.guardian?.secrets ?? []) as string[];

@@ -122,13 +122,14 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
  *
  * Exposure is preserved exactly, using the cascade's own precedence (an
  * explicit per-service key beats the root — see `readAccessToggles`). Two
- * values are DERIVED rather than copied, because the flat model makes them
- * consequences of a toggle rather than independent settings:
- *   - `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving
- *     a published guardian port answering 404 to everything;
- *   - `OPENCODE_AUTH`, which now tracks "is OpenCode published" exactly. A
- *     legacy row with auth on but OpenCode on loopback is relaxed to no auth
- *     on a listener nothing off-box can reach.
+ * One value is DERIVED rather than copied, because the flat model makes it a
+ * consequence of a toggle rather than an independent setting:
+ * `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving a
+ * published guardian port answering 404 to everything.
+ *
+ * A legacy `OPENCODE_AUTH` row is neither copied nor derived — OpenCode
+ * is authenticated by default now, and the schema-9 sweep
+ * ({@link migrateRetiredOpencodeAuth}) removes the stale key.
  */
 export function migrateLegacyBindAddresses(homeDir: string): boolean {
   const path = legacyKnowledgeStackEnvFile(homeDir);
@@ -243,6 +244,39 @@ export function migrateAccessIntent(homeDir: string): boolean {
 
   writeFileAtomic(path, next, 0o600);
   logger.warn("Recorded network access intent explicitly", { retired, ...toggles });
+  return true;
+}
+
+/**
+ * Strip the retired `OPENCODE_AUTH` row from `state/stack.env`.
+ *
+ * The key used to track `assistantDirect`: OpenCode authenticated only while
+ * its port was published, so the default install ran it with no password and
+ * turning the toggle off silently removed the credential from a running
+ * server. OpenCode authenticates unconditionally now — nothing reads the key,
+ * `resolveAccessEnv` no longer writes it, and compose no longer interpolates
+ * it — so what is left on an upgraded home is a stale row that reads like a
+ * live setting.
+ *
+ * Removal only, and inert by construction: with no reader left, a home that
+ * kept the row would behave identically. It is swept anyway because an
+ * operator reading their own `stack.env` should not find a security-shaped
+ * key that means nothing.
+ */
+export function migrateRetiredOpencodeAuth(homeDir: string): boolean {
+  const path = stackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  if (!Object.hasOwn(parseEnvContent(content), "OPENCODE_AUTH")) return false;
+
+  const next = removeEnvKey(content, "OPENCODE_AUTH");
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn(
+    "Removed the retired OPENCODE_AUTH row — OpenCode's auth no longer tracks publication",
+  );
   return true;
 }
 

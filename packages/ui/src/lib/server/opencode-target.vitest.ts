@@ -21,7 +21,6 @@ const ENV_KEYS = [
   'OP_OPENCODE_URL',
   'OP_ASSISTANT_URL',
   'OP_ASSISTANT_PORT',
-  'OPENCODE_AUTH',
   'OPENCODE_SERVER_USERNAME',
   'OPENCODE_SERVER_PASSWORD',
   'OP_OPENCODE_PASSWORD',
@@ -103,46 +102,42 @@ describe('getAssistantOpencodeTarget — URL derivation', () => {
 });
 
 describe('getAssistantOpencodeTarget — credential derivation', () => {
-  test('no credential when OPENCODE_AUTH is off, even though the secret exists', () => {
-    // The secret file is ALWAYS materialized by ensureSecrets, so its presence
-    // says nothing about whether OpenCode requires auth.
+  test('uses the generated key on a DEFAULT install — nothing has to be turned on', () => {
+    // The regression this pins: the credential used to be gated on
+    // OPENCODE_AUTH, which tracked whether the assistant port was published.
+    // A default install therefore reached OpenCode with no password, and
+    // OpenCode served without one.
+    seedGeneratedKey('generated-key\n');
+    seedStackEnv('');
+    expect(getAssistantOpencodeTarget().password).toBe('generated-key');
+  });
+
+  test('a stale OPENCODE_AUTH row cannot switch the credential off', () => {
+    // Upgraded homes carry the retired key until the schema-9 migration sweeps
+    // it. Honouring it would send no credential to an always-authenticated
+    // container — a 401 on every chat token.
     seedGeneratedKey('generated-key\n');
     seedStackEnv('OPENCODE_AUTH=false\n');
-    expect(getAssistantOpencodeTarget().password).toBeUndefined();
-  });
-
-  test('uses the generated key when OPENCODE_AUTH is on in stack.env', () => {
-    seedGeneratedKey('generated-key\n');
-    seedStackEnv('OPENCODE_AUTH=true\n');
     expect(getAssistantOpencodeTarget().password).toBe('generated-key');
   });
 
-  test('reads OPENCODE_AUTH from disk on every call, so a toggle takes effect without a restart', () => {
+  test('reads the secret from disk on every call, so a rotation needs no restart', () => {
     seedGeneratedKey('generated-key\n');
-    seedStackEnv('OPENCODE_AUTH=false\n');
-    expect(getAssistantOpencodeTarget().password).toBeUndefined();
-
-    seedStackEnv('OPENCODE_AUTH=true\n');
     expect(getAssistantOpencodeTarget().password).toBe('generated-key');
-  });
 
-  test.each(['true', 'TRUE', '1', 'yes', ' true '])('treats %s as auth-enabled', (value) => {
-    seedGeneratedKey('generated-key\n');
-    seedStackEnv(`OPENCODE_AUTH=${value}\n`);
-    expect(getAssistantOpencodeTarget().password).toBe('generated-key');
+    seedGeneratedKey('rotated-key\n');
+    expect(getAssistantOpencodeTarget().password).toBe('rotated-key');
   });
 
   test('strips only trailing newlines from the secret, preserving surrounding spaces', () => {
     // The assistant entrypoint's `$(cat)` and the guardian strip trailing
     // newlines only; trimming spaces here would 401 a password like "pw ".
     seedGeneratedKey('pass word \n\n');
-    seedStackEnv('OPENCODE_AUTH=true\n');
     expect(getAssistantOpencodeTarget().password).toBe('pass word ');
   });
 
   test('an explicit OPENCODE_SERVER_PASSWORD wins over the generated key', () => {
     seedGeneratedKey('generated-key\n');
-    seedStackEnv('OPENCODE_AUTH=true\n');
     process.env.OPENCODE_SERVER_PASSWORD = 'explicit';
     expect(getAssistantOpencodeTarget().password).toBe('explicit');
   });

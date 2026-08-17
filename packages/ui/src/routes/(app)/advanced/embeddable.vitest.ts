@@ -11,7 +11,7 @@ const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
 const LOCAL_ACTIVE_CONNECTION = { isDefault: true, hasPassword: false };
 const REMOTE_ACTIVE_CONNECTION = { isDefault: false, hasPassword: false };
 /** The server's advertisement: a port and nothing else. */
-const HINT = { port: 3820 };
+const HINT = { port: 3820 } as const;
 
 describe('isEmbeddableOpencodeUi — this app’s own origin is not an OpenCode UI', () => {
   test('refuses the locked same-origin /oc pass-through', () => {

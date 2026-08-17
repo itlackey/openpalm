@@ -57,12 +57,13 @@ function normalizeBrowserFacingUrl(raw: string): string {
  * The assistant's OpenCode: URL and, when OpenCode is configured to require
  * it, the Basic-auth credential to reach it.
  *
- * Read fresh on every call. `OPENCODE_AUTH` and the generated key are
- * operator-changeable at runtime, and a cached credential would 401 the whole
- * UI until the process restarted. Fresh does not have to mean twice, though:
- * both resolvers read the same `state/stack.env`, so this reads it once and
- * hands the row to each. `/oc` calls this per request — the app's busiest
- * server path — and was parsing that file two times for every chat token.
+ * Read fresh on every call. The generated key is operator-changeable at
+ * runtime (`openpalm doctor`, a rotation, a restored backup), and a cached
+ * credential would 401 the whole UI until the process restarted.
+ *
+ * There is no longer a posture to read: OpenCode requires a password in every
+ * configuration, so the credential resolver consults the secret file alone and
+ * the stack env is read here only for the URL.
  */
 export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   const homeDir = getState().homeDir;
@@ -75,7 +76,7 @@ export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   // The divergence had teeth: an assistant published on a CONCRETE LAN
   // interface (Docker's `bind:port:target` maps the port onto that interface
   // ONLY, not also onto loopback) resolved here to an unreachable 127.0.0.1.
-  const { username, password } = resolveOpenCodeCredential(homeDir, process.env, persistedEnv);
+  const { username, password } = resolveOpenCodeCredential(homeDir, process.env);
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',

@@ -110,6 +110,9 @@ export function isSecureRequest(request: Request): boolean {
 /**
  * Build the `Set-Cookie` value that issues/renews the session cookie.
  * `secure` is derived from the request so LAN-over-HTTP installs still work.
+ *
+ * Host-only, with no `Domain`. The workspace is another PORT of this same
+ * hostname and cookies ignore ports, so there is nothing to widen for.
  */
 export function sessionCookieHeader(token: string, request: Request): string {
   const parts = [

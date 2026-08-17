@@ -13,7 +13,13 @@ export type EmbeddableConnection = { baseUrl: string; hasPassword: boolean };
 /** The page's own location, narrowed to what this decision reads. */
 export type EmbeddingPage = { origin: string; protocol: string };
 
-/** The server's `opencodeWorkspace` advertisement (see computeOpencodeWorkspace). */
+/**
+ * The server's `opencodeWorkspace` advertisement: the port the listener binds,
+ * and nothing else. The browser supplies the host — a server cannot tell a LAN
+ * IP from a tailnet name from a reverse-proxied domain — which is also why the
+ * workspace must be fronted on the SAME hostname as the UI: the session cookie
+ * is what authenticates it, and cookies are scoped by host, not by port.
+ */
 export type OpencodeWorkspaceHint = { port: number };
 export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 

@@ -8,7 +8,6 @@ import { promptYesNo } from '../lib/prompt.ts';
 import type { UIServerOptions } from '../lib/ui-server.ts';
 import {
 	resolveOpenPalmHome,
-	resolveConfigDir,
 	ensureHomeDirs,
 	readStackEnv,
 	resolveHostUiPort,
@@ -261,7 +260,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	}
 
 	const homeDir = resolveOpenPalmHome();
-	const configDir = resolveConfigDir();
 	const dataDir = `${homeDir}/data`;
 	const workDir = defaultWorkDir();
 
@@ -360,7 +358,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 		}
 
 		// ── Bootstrap files ────────────────────────────────────────────────────
-		await prepareInstallFiles(homeDir, configDir, dataDir, workDir);
+		await prepareInstallFiles(homeDir, dataDir, workDir);
 	} finally {
 		releaseInstallLock(seedLock);
 	}
@@ -382,7 +380,6 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
 async function prepareInstallFiles(
 	homeDir: string,
-	configDir: string,
 	dataDir: string,
 	workDir: string
 ): Promise<void> {

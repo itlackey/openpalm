@@ -137,7 +137,6 @@ fi
 if [ "$enabled" = "1" ]; then
   port="${GUARDIAN_MODERATION_PORT:-4097}"
   echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
-  OPENCODE_AUTH=false \
   OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
     opencode serve --hostname 127.0.0.1 --port "${port}" \
     --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &

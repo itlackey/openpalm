@@ -138,10 +138,9 @@ port is served but never funneled: it stays private to your own tailnet devices
 even when public access is on. It needs no CORS entry and no separate password;
 it takes the same `op_session` cookie the UI issued, which the browser sends
 there because cookies are scoped by host and not by port. Keep the tailnet port
-number equal to `OP_WORKSPACE_PORT`, because the browser composes the workspace
-address from the page it is on plus that one number — if they differ,
-`/advanced` probes a port nothing answers and falls back to its native chat
-surface.
+number equal to `OP_WORKSPACE_PORT` — Tailscale gives a node one name, so the
+workspace surfaces on a second PORT of that name, and the address `/advanced`
+opens is the page's own host plus that number.
 
 ## Caddy
 
@@ -152,10 +151,9 @@ ui.example.com {
   reverse_proxy 127.0.0.1:3880
 }
 
-# OpenCode's own web UI, framed by /advanced. It must keep the SAME hostname as
-# the UI (the session cookie is what authenticates it, and cookies are scoped by
-# host) and the SAME port number as OP_WORKSPACE_PORT (the browser composes this
-# address from the page it is on plus that number).
+# OpenCode's own web UI, framed by /advanced. SAME hostname as the UI and the
+# SAME port number as OP_WORKSPACE_PORT — that is exactly the address
+# /advanced opens, so nothing needs configuring on the OpenPalm side.
 ui.example.com:3820 {
   reverse_proxy 127.0.0.1:3820
 }
@@ -165,18 +163,24 @@ guardian.example.com {
 }
 ```
 
+The hostname has to match the UI's. The OpenPalm session cookie is what signs
+you in to the workspace, and cookies are scoped by host — a different PORT is
+fine (cookies ignore ports), a different hostname is not. There is deliberately
+no setting to override this: the whole address is the page's own host plus
+`OP_WORKSPACE_PORT`.
+
 Configure DNS and certificates using Caddy's normal HTTPS workflow, then set:
 
 ```dotenv
 GUARDIAN_CORS_ALLOWED_ORIGINS=https://ui.example.com
 ```
 
-Open `https://ui.example.com` and use
-`https://guardian.example.com/oc` as the Guardian connection URL.
+Open `https://ui.example.com` and use `https://guardian.example.com/oc` as the
+Guardian connection URL.
 
-Skipping the `:3820` block is a supported choice, not a broken config:
-`/advanced` probes that address before framing it and falls back to OpenPalm's
-own chat surface when nothing answers.
+Skipping the workspace block is a supported choice, not a broken config:
+`/advanced` probes the address before framing it and says plainly that the
+workspace is not available here when nothing answers.
 
 The UI never needs firewalling: with `OP_TRUSTED_PROXY=1` it stays bound to
 `127.0.0.1:3880` the whole time, so port `3880` is not reachable from anything
@@ -184,6 +188,17 @@ but this host regardless of what Caddy does. Guardian's direct listener is
 different — `access.guardianNetwork` on means `3830` is bound `0.0.0.0` (see
 [Guardian](#guardian) above), so keep it firewalled from untrusted networks if
 Caddy's HTTPS endpoint should be the only way in.
+
+## Cloudflare Tunnel
+
+The UI and the Guardian work normally. The **embedded workspace does not**:
+Cloudflare proxies a fixed set of ports and `OP_WORKSPACE_PORT` is not among
+them, so the workspace cannot be fronted on the UI's hostname — and a second
+hostname cannot carry the session cookie. `/advanced` says the workspace is
+unavailable and links to `/chat`, which works fully.
+
+If you need the OpenCode workspace over a tunnel, reach it over Tailscale (or
+any proxy that can front an arbitrary port on the UI's own hostname) instead.
 
 ## CORS
 

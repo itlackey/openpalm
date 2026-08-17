@@ -1,7 +1,7 @@
 /**
  * Saving access toggles must APPLY them.
  *
- * The bind addresses, OPENCODE_AUTH and GUARDIAN_DIRECT_INGRESS reach Docker
+ * The bind addresses and GUARDIAN_DIRECT_INGRESS reach Docker
  * only through Compose interpolation, which is re-read on container RECREATE.
  * Every "restart" the product offered runs `compose restart`, which keeps the
  * original port bindings and environment — so a toggle save wrote a file,
@@ -108,13 +108,13 @@ describe("diffAccessEnv", () => {
 });
 
 describe("resolveRecreateScope", () => {
-  test("UI/assistant/auth keys map to the assistant container only", () => {
+  test("UI and assistant bind keys map to the assistant container only", () => {
     expect(resolveRecreateScope(["OP_UI_BIND_ADDRESS"], [], ["assistant", "guardian"])).toEqual([
       "assistant",
     ]);
-    expect(resolveRecreateScope(["OPENCODE_AUTH"], [], ["assistant", "guardian"])).toEqual([
-      "assistant",
-    ]);
+    expect(
+      resolveRecreateScope(["OP_ASSISTANT_BIND_ADDRESS"], [], ["assistant", "guardian"]),
+    ).toEqual(["assistant"]);
   });
 
   test("a guardian-only change never recreates the assistant — that would drop a live chat turn", () => {
@@ -170,16 +170,19 @@ describe("applyAccessToggles", () => {
     expect(calls.recreated).toEqual([]);
   });
 
-  test("turning assistantDirect off recreates the assistant so OpenCode stops requiring auth", async () => {
-    // Otherwise the host proxy drops Basic auth while the running OpenCode
-    // still demands it, and /oc chat 401s until an unrelated future up -d.
-    const state = makeHome("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\nOPENCODE_AUTH=true\n");
+  test("turning assistantDirect off recreates the assistant so the port actually closes", async () => {
+    // The bind is baked in at container-create time, so an un-recreated
+    // assistant keeps answering on 0.0.0.0 while the stored intent says
+    // loopback. (It no longer also flips an auth posture — OpenCode
+    // authenticates either way.)
+    const state = makeHome("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
     const { deps, calls } = makeDeps(["assistant"]);
 
     const result = await applyAccessToggles(state, ALL_OFF, { deps });
 
-    expect(result.changedKeys).toContain("OPENCODE_AUTH");
-    expect(readEnv(state).OPENCODE_AUTH).toBe("false");
+    expect(result.changedKeys).toContain("OP_ASSISTANT_BIND_ADDRESS");
+    expect(readEnv(state).OP_ASSISTANT_BIND_ADDRESS).toBe("127.0.0.1");
+    expect(readEnv(state)).not.toHaveProperty("OPENCODE_AUTH");
     expect(calls.recreated).toEqual([["assistant"]]);
   });
 

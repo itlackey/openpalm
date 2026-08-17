@@ -339,9 +339,9 @@ EXPOSE 4096 3000
 # core.compose.yml's own healthcheck (same skip-marker exemption, same fixed
 # port). curl is already installed above.
 #
-# #564 P1-1 (D3 mirror): the /health probe authenticates iff OPENCODE_AUTH is
-# truthy, using the same truthy set and username/password resolution as
-# core.compose.yml. This variant additionally prefers a raw OPENCODE_SERVER_
+# The /health probe ALWAYS authenticates — OpenCode requires a password in
+# every configuration, so there is no posture to gate on. This variant
+# additionally prefers a raw OPENCODE_SERVER_
 # PASSWORD env value over the secret file (env wins, file fallback — mirrors
 # the entrypoint's own resolve_opencode_server_password precedence) because a
 # bare `docker run` may supply the password as env with no secret file
@@ -360,7 +360,7 @@ EXPOSE 4096 3000
 # the real stack, and healthcheck-parity.test.ts pins the two together so a
 # future edit to one side alone fails CI instead of silently drifting again.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-  CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-ui-skip ] || curl -sf http://localhost:3000/health >/dev/null; }' || exit 1
+  CMD bash -c 'curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null && { [ -f /tmp/openpalm-ui-skip ] || curl -sf http://localhost:3000/health >/dev/null; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER node

@@ -51,10 +51,12 @@ smoke_seed_secrets() {
   openssl rand -hex 16 > "$home/private/secrets/op_api_key"
   openssl rand -hex 16 > "$home/private/secrets/portal_discord_secret"
   openssl rand -hex 16 > "$home/private/secrets/portal_slack_secret"
-  # op_opencode_password: always materialized by performSetup since #563 — the
-  # compose files grant it as a file-backed secret to assistant+guardian, so
-  # boot fails if it is absent. Empty file = OPENCODE_AUTH off (smoke posture).
-  : > "$home/private/secrets/op_opencode_password"
+  # op_opencode_password: always materialized by performSetup — the compose
+  # files grant it as a file-backed secret to assistant+guardian, so boot fails
+  # if it is absent. It must be NON-EMPTY: OpenCode requires a password in
+  # every configuration, and the assistant entrypoint refuses to start without
+  # one ("empty = auth off" is no longer a posture).
+  openssl rand -hex 16 > "$home/private/secrets/op_opencode_password"
   printf '%s\n' 'discord-smoke-token' > "$home/private/secrets/discord_bot_token"
 
   touch "$home/knowledge/env/user.env"

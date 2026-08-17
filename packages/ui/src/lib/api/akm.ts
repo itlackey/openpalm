@@ -123,12 +123,14 @@ export async function fetchAccessStatus(): Promise<AccessStatus> {
 }
 
 /**
- * The generated OpenCode Basic-auth key `assistantDirect`'s own copy
- * promises is "shown in the dashboard" (`ACCESS_TOGGLE_DESCRIPTIONS.assistantDirect`
- * in `@openpalm/lib`). `available` is false whenever the toggle is off — at
- * that point OpenCode requires no auth, so there is nothing meaningful to
- * show. GET /api/host/assistant-key sends `Cache-Control: no-store`; the
- * value must never be persisted or logged by a caller.
+ * The generated OpenCode Basic-auth key `assistantDirect`'s own copy promises
+ * is "shown in the dashboard" (`ACCESS_TOGGLE_DESCRIPTIONS.assistantDirect` in
+ * `@openpalm/lib`). Setup generates it on every install, so it is available on
+ * any install whose secret store is readable — `available: false` now means
+ * only that (nothing deployed, the store is unreachable, or the operator
+ * emptied the secret). GET
+ * /api/host/assistant-key sends `Cache-Control: no-store`; the value must
+ * never be persisted or logged by a caller.
  */
 export type AssistantKey =
   | { available: false }

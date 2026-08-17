@@ -250,3 +250,18 @@ describe("remoteAddonEnabled", () => {
     expect(remoteAddonEnabled({ OP_ENABLED_ADDONS: "gateway, remote" })).toBe(true);
   });
 });
+
+// ── The workspace address is NOT a provider concern ──────────────────────
+
+describe("the remote addon does not move the workspace", () => {
+  test("no provider carries a workspace hook", () => {
+    // One briefly did, and it returned byte-identical output to the plain
+    // fallback in network-contract.ts — an extension point with no user.
+    // Tailscale gives a node ONE name and serves the workspace on a second
+    // port of it, which is exactly what the default already composes. If a
+    // hook is ever added back, this fails and whoever adds it has to say why.
+    for (const provider of Object.values(REMOTE_PROVIDERS)) {
+      expect(provider, provider.id).not.toHaveProperty("workspaceOrigin");
+    }
+  });
+});

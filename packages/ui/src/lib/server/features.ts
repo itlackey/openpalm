@@ -166,10 +166,13 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
   // is a synchronous readFileSync. The container co-process has the key
   // injected by compose (core.compose.yml: OP_WORKSPACE_PORT), so that lane
   // never touches the disk at all.
-  const workspacePort = (persisted: Record<string, string> = {}): { port: number } => ({
-    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, process.env, persisted),
+  const advertise = (persisted: Record<string, string> = {}): { port: number } => ({
+    port: resolveEnvPort('OP_WORKSPACE_PORT', DEFAULT_WORKSPACE_PORT, {
+      ...persisted,
+      ...process.env,
+    }),
   });
-  if (process.env.OP_WORKSPACE_PORT?.trim()) return workspacePort();
+  if (process.env.OP_WORKSPACE_PORT?.trim()) return advertise();
 
   try {
     const { homeDir, stackDir } = getState();
@@ -181,7 +184,7 @@ export function computeOpencodeWorkspace(): { port: number } | undefined {
     // returns before the default can apply. Same guard
     // buildServedUiRuntimeConfig uses before seeding a connection.
     if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return undefined;
-    return workspacePort(readStackEnv(homeDir));
+    return advertise(readStackEnv(homeDir));
   } catch {
     // No readable OP_HOME and nothing injected: nothing to advertise.
     return undefined;

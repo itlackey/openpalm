@@ -14,7 +14,7 @@ import type { Capability, ServerRuntimeContext } from "$lib/types.js";
  * OpenCode client bound to the assistant target.
  *
  * Built per call rather than cached: the target's CREDENTIAL is as mutable as
- * its URL (an operator toggling `assistantDirect` flips `OPENCODE_AUTH` and the
+ * its URL (an operator toggling `assistantDirect` moves the bind and the
  * generated key at runtime), and a client cached on URL alone kept sending a
  * stale credential — or none — until the process restarted. The factory is a
  * closure over two strings, so rebuilding it is free.

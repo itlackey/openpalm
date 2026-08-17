@@ -5,10 +5,6 @@
   import { onMount } from 'svelte';
   import ConversationFrame from '$lib/components/chrome/ConversationFrame.svelte';
   import ChatFooter from '$lib/components/chat/ChatFooter.svelte';
-  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
-  import ChatInput from '$lib/components/chat/ChatInput.svelte';
-  import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
-  import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
   import { buildAdvancedIframeUrl, buildAdvancedPath } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -19,12 +15,15 @@
   import { resolveSessionTitle } from '$lib/session-title.js';
   import { themeService } from '$lib/theme-state.svelte.js';
 
-  // Phase 3b ("One UI, delete the split"): the browser owns connections and
-  // talks to OpenCode DIRECTLY — there is no host proxy to probe. Which
-  // OpenCode web UI this page frames (or whether it can frame one at all) is
-  // decided in ./embeddable.ts; the two cases that reach the native chat
-  // surface instead are a credentialed / Guardian connection, and an app-origin
-  // connection with no reachable workspace advertisement.
+  // This route has exactly one job: show OpenCode's own web UI. Which one it
+  // frames — or whether it can frame one at all — is decided in ./embeddable.ts.
+  //
+  // It deliberately has NO chat fallback. It used to render a second, partial
+  // copy of /chat whenever the workspace was unreachable, under a heading
+  // promising OpenCode; that turned every deployment problem into what looked
+  // like a broken app, and made /advanced a worse duplicate of the surface that
+  // already worked. When there is no workspace, this page says so and links to
+  // /chat.
 
   const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
@@ -50,7 +49,7 @@
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
 
-  type Mode = 'checking' | 'iframe' | 'native' | 'dead';
+  type Mode = 'checking' | 'iframe' | 'unavailable' | 'dead';
   let mode = $state<Mode>('checking');
   // The resolved OpenCode web-UI URL for the iframe. Empty until resolve().
   let frameUrl = $state('');
@@ -104,21 +103,14 @@
     // The workspace address is composed from the page, so it is a well-formed
     // guess rather than a promise — whether the port is actually forwarded
     // through whatever fronts this app is a fact only the browser can measure.
-    // Measuring it here costs one round trip and is what keeps a deployment
-    // that has not opened that port on the native chat surface instead of
-    // staring at a blank frame.
+    // Measuring it costs one round trip and buys an honest message instead of a
+    // blank frame.
     const workspaceOnly = !isEmbeddable(conn);
     const base = workspaceOnly ? workspaceUrl : conn.baseUrl;
     const usable = base !== null && (!workspaceOnly || (await isWorkspaceReachable(base)));
     if (!isCurrentProbe(token, conn.id)) return;
     if (!usable) {
-      mode = 'native';
-      // The chat store now talks to the active connection via the direct
-      // transport; make sure this connection's sessions are loaded.
-      await chat.onEndpointChanged(conn.id);
-      if (requestedSessionId) {
-        await chat.openSession(requestedSessionId);
-      }
+      mode = 'unavailable';
       return;
     }
 
@@ -217,22 +209,6 @@
     }, 600);
   }
 
-  // ── Native chat surface wiring (credentialed fallback) ───────────────────
-  let permissionActionInFlight = $state<'once' | 'always' | 'reject' | null>(null);
-
-  async function handleSend(text: string): Promise<void> {
-    await chat.send(text);
-  }
-
-  async function handlePermissionReply(reply: 'once' | 'always' | 'reject'): Promise<void> {
-    permissionActionInFlight = reply;
-    try {
-      await chat.answerPermission(reply);
-    } finally {
-      permissionActionInFlight = null;
-    }
-  }
-
   // Lock scroll on mount; restore on destroy. This is a CSS side-effect tied to
   // component lifetime, not navigation, so onMount is correct here.
   onMount(() => {
@@ -283,61 +259,40 @@
           </div>
         {/if}
       </div>
-    {:else if mode === 'native'}
-      <!-- No OpenCode web UI this browser can reach: the connection is
-           credentialed (OpenPalm keeps Basic auth out of iframe URLs, so the
-           embedded UI could not authenticate), or it is this app's own /oc API
-           pass-through and the workspace port is either unadvertised or not
-           forwarded to this browser. No new-tab link here: the same address
-           the frame would use is the one that just failed. -->
-      <div class="native-shell">
-        <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
-          <div class="native-scroll">
-            <p class="native-notice" role="note">
-              The OpenCode workspace can’t be embedded for this assistant — this conversation
-              runs on OpenPalm’s own surface.
-            </p>
-            {#if chat.entriesLoading}
-              <p class="native-status" role="status">Loading conversation…</p>
-            {:else if chat.entries.length === 0}
-              <p class="native-status" role="status">
-                Start chatting with {active?.label ?? 'your assistant'} below.
-              </p>
-            {/if}
-            {#each chat.entries as entry (entry.id)}
-              <ChatMessage {entry} />
-            {/each}
-            {#if chat.pendingAssistantText}
-              <div class="native-pending">{chat.pendingAssistantText}</div>
-            {/if}
-            {#if chat.pendingPermission}
-              <PermissionCard
-                permission={chat.pendingPermission}
-                actionInFlight={permissionActionInFlight}
-                onReply={handlePermissionReply}
-              />
-            {/if}
-            {#if chat.pendingQuestion}
-              <QuestionCard
-                question={chat.pendingQuestion}
-                onOption={(answer) => void chat.answerQuestion(answer)}
-                onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
-                onDraft={(index, value) => chat.setQuestionAnswer(index, value)}
-                onSubmit={() => void chat.answerQuestion()}
-                onReject={() => void chat.rejectQuestion()}
-              />
-            {/if}
-          </div>
-          {#if chat.error}
-            <div class="alert error" role="alert">{chat.error}</div>
-          {/if}
-          <ChatInput
-            sending={chat.sending}
-            questionPending={chat.pendingQuestion?.status === 'pending'}
-            onSend={handleSend}
-            onStop={() => void chat.stopTurn()}
-          />
-        </section>
+    {:else if mode === 'unavailable'}
+      <!-- This route IS the OpenCode workspace. When there is no workspace to
+           show, it says so and points at the surface that does work — it does
+           NOT render a second copy of /chat. That fallback was this page's
+           original defect: a half-working duplicate of the chat surface, shown
+           under a heading promising OpenCode, which made a deployment problem
+           look like a broken app. -->
+      <div class="advanced-status" role="status" aria-live="polite">
+        <h2>The OpenCode workspace isn’t available here</h2>
+        {#if !runtimeContext.opencodeWorkspace}
+          <p>
+            This install doesn’t advertise a workspace port, so there is nothing for this page to
+            open. It arrives with the assistant — if you’ve just updated, the stack may still need
+            to be redeployed.
+          </p>
+        {:else if workspaceUrl}
+          <p>
+            Nothing answered at <code>{workspaceUrl}</code>. The workspace runs on its own port on
+            this same host; if you reach OpenPalm through a reverse proxy or a tunnel, that port has
+            to be fronted too.
+          </p>
+        {:else}
+          <p>
+            This assistant is a remote connection with its own credentials, so its OpenCode UI
+            can’t be embedded here.
+          </p>
+        {/if}
+        <a class="btn btn-primary btn-lg" href={resolvePath('/chat')}>Continue in Chat</a>
+        {#if workspaceUrl}
+          <button class="btn btn-secondary btn-lg" onclick={reconnect} disabled={reconnecting}>
+            {reconnecting ? 'Retrying…' : 'Try again'}
+          </button>
+        {/if}
+        <a class="doc-link" href={resolvePath('/connections')}>Manage connections</a>
       </div>
     {:else}
       <div class="advanced-status" role={mode === 'dead' ? 'alert' : 'status'} aria-live="polite">
@@ -431,52 +386,9 @@
   /* min-width: 0 on both: a flex item's default min-width is its MIN-CONTENT
      width, so one unbreakable run of text in a message would otherwise push
      this column past the viewport (same rule as ConversationFrame's content). */
-  .native-shell {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-  }
-  .native-chat {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .native-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-sp-3);
-    padding: var(--s-sp-4);
-    max-width: 52rem;
-    width: 100%;
-    margin: 0 auto;
-  }
-  .native-status {
-    color: var(--s-ink-2);
-    text-align: center;
-    margin: var(--s-sp-6) 0;
-  }
   /* The composer sits directly under the scrolling thread here (the chat page
      nests it inside ChatFooter, which supplies this separation). Without a
      rule the last line of a message reads as part of the input. */
-  .native-chat :global(.s-composer) {
-    border-top: var(--s-hair) solid var(--s-line);
-    padding: var(--s-sp-3) var(--s-sp-4);
-  }
-  .native-notice {
-    margin: 0 0 var(--s-sp-2);
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    line-height: 1.5;
-    text-align: center;
-    overflow-wrap: anywhere;
-  }
   .workspace-link {
     color: var(--s-ink-2);
     text-decoration: underline;
@@ -485,21 +397,7 @@
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
   }
-  .native-pending {
-    white-space: pre-wrap;
-    color: var(--s-ink-2);
-  }
 
-  .alert.error {
-    margin: 0 auto var(--s-sp-2);
-    max-width: 52rem;
-    width: 100%;
-    padding: var(--s-sp-3);
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
-    color: var(--s-seal);
-    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
-  }
 
   .advanced-status {
     flex: 1;
@@ -519,7 +417,6 @@
   .advanced-status .btn { margin-top: var(--s-sp-3); text-decoration: none; }
 
   @media (max-width: 900px) {
-    .native-shell { flex-direction: column; }
   }
 
   @media (prefers-reduced-motion: reduce) {
