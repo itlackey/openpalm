@@ -7,8 +7,55 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **OpenCode requires a password by default; `OPENCODE_AUTH` is gone.** That
+  flag tracked the `assistantDirect` access toggle, so OpenCode authenticated
+  only while its port was published — meaning the default install ran it with
+  **no password at all**, and turning the toggle back off silently removed the
+  credential from a running server. The same gate was re-implemented in six
+  places (assistant entrypoint, guardian, two healthchecks, a scheduled task,
+  the host resolver), and any disagreement between them produced a 401 storm
+  rather than an error. There is now one answer everywhere: the generated
+  `op_opencode_password` secret, which setup seeds on every install.
+  `assistantDirect` becomes what its label always claimed — a bind, deciding
+  who can reach a password-protected port.
+
+  **Breaking for host-local clients.** The assistant port
+  (`127.0.0.1:3810`) previously answered without a credential on a default
+  install. Anything pointed at it directly now gets `401` until it picks up the
+  key from `private/secrets/op_opencode_password` (or the host dashboard). The
+  UI, the guardian and the portals are unaffected — they attach it server-side.
+
+  Emptying that secret is still how an operator runs OpenCode without auth;
+  the container starts with a warning rather than refusing to boot.
+
+- **Home schema 8 → 9.** A migration sweeps the retired `OPENCODE_AUTH` row
+  from `state/stack.env`. **The bump is one-way**: older binaries are refused
+  on write paths, deliberately — their credential resolver honours that key and
+  would attach nothing against an authenticated assistant.
+
 ### Fixed
 
+- **`/advanced` no longer renders a fake chat surface.** When the OpenCode
+  workspace could not be reached it fell through to a partial duplicate of
+  `/chat` — a composer, a message list, permission cards — under a heading
+  promising OpenCode, so every deployment problem looked like a broken app and
+  the route became a worse copy of the surface that already worked. It now says
+  the workspace is unavailable and links to `/chat`. There is deliberately no
+  chat fallback.
+- **The guardian read a whitespace-only OpenCode password differently from
+  everyone else.** It trimmed before deciding whether a credential existed,
+  while the assistant entrypoint (`$(cat)` + `[ -z ]`) and the shared resolver
+  strip trailing newlines only. A secret holding spaces therefore started
+  OpenCode *with* that password and reached the UI proxy fine, while the
+  guardian alone sent no header — 401 on every portal request. Only an exactly
+  empty value now means "no credential", so all three consumers agree.
+- **A setup rerun no longer regenerates a deliberately emptied OpenCode key.**
+  `ensureSecrets` already seeds the secret unconditionally and runs first, so a
+  later re-seed branch could only ever fire for a file an operator had emptied
+  on purpose — an unrelated rerun silently restored authentication and stranded
+  the direct clients they had configured.
 - **The assistant no longer ships OpenPalm's contributor instructions as its
   own.** The image baked the repository's root `AGENTS.md` — "all work must
   comply with core-principles.md", commit conventions, the delivery checklist —
