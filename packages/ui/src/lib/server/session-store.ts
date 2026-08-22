@@ -43,7 +43,7 @@ const LOGIN_PASSWORD_SECRET = 'op_ui_login_password';
  * below is the only per-request disk touch on the cache-hit path; the fuller
  * `readSecret` (which also hardens directory/file permissions) only runs
  * when the file has actually changed. `secretPath` name-routes delegated
- * secrets (op_ui_login_password among them) to `private/secrets` (G1), so the
+ * secrets (op_ui_login_password among them) to `state/secrets` (G1), so the
  * stat and the read below always agree on the location.
  */
 let passwordFileCache: { mtimeMs: number; size: number; value: string } | undefined;
@@ -82,7 +82,7 @@ const _testOverrides = new Set<string>();
 
 /**
  * Read the operator UI login password from the file-based stack secret
- * (`private/secrets/op_ui_login_password` — a delegated secret, relocated out
+ * (`state/secrets/op_ui_login_password` — a delegated secret, relocated out
  * of the assistant-reachable stash by G1), falling back to
  * `process.env.OP_UI_LOGIN_PASSWORD` only when no secret file exists yet.
  *
@@ -102,7 +102,7 @@ export function getUiLoginPassword(): string {
   // CLOSED to its injected value. In that process `resolveOpenPalmHome()`
   // resolves inside the agent-writable data mount (no host OP_HOME is
   // injected), so a file-first read lets any write under
-  // `private/secrets/op_ui_login_password` there — by the agent, a restored
+  // `state/secrets/op_ui_login_password` there — by the agent, a restored
   // backup, or a misbehaving plugin — silently replace the operator's LAN
   // login password, with no diagnostic beyond "my password stopped working".
   // The compose secret is the only authority for this process; the same
@@ -138,13 +138,14 @@ export function getUiLoginPassword(): string {
  * unreachable — minting and validation both fail closed rather than falling
  * back to a weaker key.
  *
- * `op_session_signing_key` is a DELEGATED secret (secrets-files.ts), so
- * `ensureSecret` name-routes it to `private/secrets`, which is never mounted
- * into the assistant. It was missed when the other delegated secrets moved
- * there, leaving it under `knowledge/secrets` — bind-mounted into the assistant
- * at `/stash`. Combined with the login password the same mount exposed, that
- * made a host-admin session cookie forgeable from inside the container, which
- * is exactly what mixing in a server key is supposed to prevent.
+ * `ensureSecret` name-routes `op_session_signing_key` to `state/secrets`,
+ * which is never mounted into the assistant — it gets there by default now
+ * (secrets-files.ts routes default-deny), not by being on a list. It was missed
+ * when the other delegated secrets moved there, leaving it under
+ * `knowledge/secrets` — bind-mounted into the assistant at `/stash`. Combined
+ * with the login password the same mount exposed, that made a host-admin
+ * session cookie forgeable from inside the container, which is exactly what
+ * mixing in a server key is supposed to prevent.
  */
 function sessionSigningKey(): Buffer | null {
   const password = getUiLoginPassword();

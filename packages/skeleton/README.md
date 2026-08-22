@@ -42,13 +42,15 @@ packages/skeleton/
   system/
     assistant/              managed assistant OpenCode config
     guardian/               managed Guardian OpenCode config
+    paperclip/              managed Paperclip OpenCode bootstrap
+    skills/                 release-shipped AKM skills (mounted :ro as a system bundle)
     stack/
       core.compose.yml
       services.compose.yml
       portals.compose.yml
       voice.compose.cdi.yml
       voice.compose.rootless.yml
-  knowledge/                shipped AKM skills and task examples
+  knowledge/                AKM user env and secrets seeds, task examples
   data/                     empty durable-directory seeds
   openpalm.sh               example Bash Compose helper
   openpalm.ps1              example PowerShell Compose helper
@@ -74,7 +76,7 @@ system/                         managed release assets
   assistant/                    managed config -> /etc/opencode
   guardian/                     managed config -> /etc/opencode
 state/stack.env                 sole non-secret Compose env file
-private/secrets/                delegated runtime credentials
+state/secrets/                delegated runtime credentials
 knowledge/
   secrets/auth.json             assistant-readable provider auth
   env/user.env                  AKM env loaded on demand
@@ -90,8 +92,7 @@ workspace/                      assistant /work mount
 |---|---|---|
 | `config/` | User | Existing files are preserved; defaults are seeded if missing |
 | `system/` | OpenPalm release | Refreshed on reconcile/update |
-| `state/` | OpenPalm app | Updated as runtime records change |
-| `private/` | OpenPalm app | Delegated secrets, never mounted as a tree into the assistant |
+| `state/` | OpenPalm app | Runtime records plus the delegated secrets (`state/secrets/`, `state/env/`), never mounted as a tree into the assistant |
 | `knowledge/` | User/services | AKM stash, provider auth, tasks, and user env |
 | `data/` | Services | Durable runtime state |
 | `cache/` | Services | Regenerable and excluded from lifecycle backups |

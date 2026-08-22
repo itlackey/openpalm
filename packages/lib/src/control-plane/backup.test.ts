@@ -1,8 +1,8 @@
 /**
  * S5 — backup lifecycle defects (placement/atomicity/prune).
  *
- * backup.ts already correctly EXCLUDES data/ from the safety snapshot (not
- * covered here — see backup-space.test.ts). These tests cover what remains:
+ * The wholesale data/ + cache/ exclusion is covered in backup-space.test.ts,
+ * where the estimate that must mirror it lives. These tests cover what remains:
  *   - pruneBackupDirs/listBackupDirs order by mtime, not lexicographically,
  *     and treat plain-timestamp / ui-* / skeleton-* as separate namespaces
  *     so each is retained (and pruned) independently.
@@ -12,6 +12,9 @@
  *     DESTINATION filesystem, and fails closed when unmeasurable.
  *   - the backup destination is configurable (OP_BACKUP_DIR) and defaults to
  *     data/backups when unset.
+ *   - a service's data and its credentials are one restore unit (§5, G5): the
+ *     credentials of a service whose data/ tree is out of scope leave with it,
+ *     and the completion marker names them.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
@@ -19,6 +22,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   utimesSync,
@@ -30,6 +34,7 @@ import {
   BACKUP_COMPLETE_MARKER,
   backupOpenPalmHome,
   checkBackupFreeSpace,
+  estimateHomeBackupBytes,
   listBackupDirs,
   planBackupPrune,
   pruneBackupDirs,
@@ -172,6 +177,48 @@ describe('backupOpenPalmHome atomicity', () => {
     const backupsDir = join(homeDir, 'data', 'backups');
     const remaining = existsSync(backupsDir) ? readdirSync(backupsDir) : [];
     expect(remaining).toEqual([]);
+  });
+});
+
+describe('a service\'s data and credentials are one restore unit', () => {
+  it('leaves out the credentials of a service whose data/ tree is out of scope, and names them in the marker', () => {
+    // Paperclip: data/paperclip is skipped wholesale, so state/env/paperclip.env
+    // (BETTER_AUTH_SECRET) must not be snapshotted alone — restoring it without
+    // the database is the G5 trap.
+    mkdirSync(join(homeDir, 'data', 'paperclip'), { recursive: true });
+    writeFileSync(join(homeDir, 'data', 'paperclip', 'postgres.db'), 'rows');
+    mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'env', 'paperclip.env'), 'BETTER_AUTH_SECRET=secret\n');
+    // The rest of state/ is control-plane, not service-owned: it stays.
+    mkdirSync(join(homeDir, 'state', 'secrets'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'secrets', 'op_ui_login_password'), 'pw');
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_HOME=x\n');
+
+    const backupDir = backupOpenPalmHome(homeDir) as string;
+    expect(existsSync(join(backupDir, 'state', 'env', 'paperclip.env'))).toBe(false);
+    expect(existsSync(join(backupDir, 'state', 'secrets', 'op_ui_login_password'))).toBe(true);
+    expect(existsSync(join(backupDir, 'state', 'stack.env'))).toBe(true);
+    expect(existsSync(join(backupDir, 'data'))).toBe(false);
+
+    // The snapshot says what it does not contain.
+    expect(readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), 'utf-8')).toContain(
+      join('state', 'env', 'paperclip.env'),
+    );
+
+    // The estimator uses the same scope, so the space guard cannot count bytes
+    // the copy never writes.
+    expect(estimateHomeBackupBytes(homeDir)).toBe(
+      'pw'.length + 'OP_HOME=x\n'.length,
+    );
+  });
+
+  it('keeps a state/env file that pairs with no out-of-scope service', () => {
+    mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'env', 'orphan.env'), 'KEY=value\n');
+
+    const backupDir = backupOpenPalmHome(homeDir) as string;
+    expect(existsSync(join(backupDir, 'state', 'env', 'orphan.env'))).toBe(true);
+    expect(readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), 'utf-8')).not.toContain('Skipped');
   });
 });
 

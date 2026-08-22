@@ -267,12 +267,12 @@ the assistant is explicitly restarted below.
 
 ```bash
 TEST_UI_PASSWORD="$(openssl rand -hex 32)"
-printf '%s\n' "$TEST_UI_PASSWORD" > "$TEST_HOME/private/secrets/op_ui_login_password"
-chmod 600 "$TEST_HOME/private/secrets/op_ui_login_password"
+printf '%s\n' "$TEST_UI_PASSWORD" > "$TEST_HOME/state/secrets/op_ui_login_password"
+chmod 600 "$TEST_HOME/state/secrets/op_ui_login_password"
 
 # A real install seeds this delegated secret as an existing empty file.
-: > "$TEST_HOME/private/secrets/ts_authkey"
-chmod 600 "$TEST_HOME/private/secrets/ts_authkey"
+: > "$TEST_HOME/state/secrets/ts_authkey"
+chmod 600 "$TEST_HOME/state/secrets/ts_authkey"
 ```
 
 Capture the retained Admin supervisor, not only its socket-owning child:
@@ -396,8 +396,8 @@ use this test-only continuation without printing the key:
 ```bash
 umask 077
 read -rsp 'Disposable Tailscale auth key: ' TEST_TS_AUTHKEY; printf '\n'
-printf '%s\n' "$TEST_TS_AUTHKEY" > "$TEST_HOME/private/secrets/ts_authkey"
-chmod 600 "$TEST_HOME/private/secrets/ts_authkey"
+printf '%s\n' "$TEST_TS_AUTHKEY" > "$TEST_HOME/state/secrets/ts_authkey"
+chmod 600 "$TEST_HOME/state/secrets/ts_authkey"
 unset TEST_TS_AUTHKEY
 ```
 
@@ -405,7 +405,7 @@ Verify secret placement and non-secret configuration without displaying the
 secret:
 
 ```bash
-test "$(stat -c '%a' "$TEST_HOME/private/secrets/ts_authkey")" = 600
+test "$(stat -c '%a' "$TEST_HOME/state/secrets/ts_authkey")" = 600
 if [[ -e "$TEST_HOME/knowledge/secrets/ts_authkey" ]]; then
   record_failure 'ts_authkey leaked into the assistant-readable knowledge tree'
 fi
@@ -422,7 +422,7 @@ grep -E '^OP_REMOTE_(TARGET|PUBLIC|HOSTNAME)=' "$TEST_HOME/state/stack.env"
 
 Required results:
 
-- The key exists only at `private/secrets/ts_authkey`, mode `0600`.
+- The key exists only at `state/secrets/ts_authkey`, mode `0600`.
 - Neither `state/stack.env` nor the assistant-readable `knowledge/` tree holds
   the key.
 - Target and visibility are `assistant` and `false`. No hostname is pinned
@@ -487,7 +487,7 @@ Required results:
 - `docker port` prints nothing: the sidecar publishes no host port.
 - The sidecar joins only this project's `assistant_net` and `portal_net`, mounts
   `state/remote`, `data/tunnel`, and the named Tailscale secret, and has no
-  Docker socket or broad `private/` mount.
+  Docker socket or broad `state/secrets/` mount.
 - The sidecar runs as the configured non-root UID/GID with
   `privileged=false`, no added capabilities, and no device mounts.
 - `TS_AUTH_ONCE=true` is active, so the one-off key enrolls the persisted node
@@ -816,8 +816,8 @@ if [[ "$TEST_HOME/data/tunnel" != "$REPO/.cache/manual-tailscale-paperclip/data/
 fi
 rm -rf -- "$TEST_HOME/data/tunnel"
 mkdir -m 700 "$TEST_HOME/data/tunnel"
-: > "$TEST_HOME/private/secrets/ts_authkey"
-chmod 600 "$TEST_HOME/private/secrets/ts_authkey"
+: > "$TEST_HOME/state/secrets/ts_authkey"
+chmod 600 "$TEST_HOME/state/secrets/ts_authkey"
 op_test addon enable remote
 test "$(docker inspect --format '{{.State.Status}}' "$TUNNEL_CONTAINER")" = running
 
@@ -940,9 +940,9 @@ error, re-run `initdb` by hand with stderr attached inside the container.
 Inspect the OpenPalm boundary without printing secret values:
 
 ```bash
-test "$(stat -c '%a' "$TEST_HOME/private/env")" = 700
-test "$(stat -c '%a' "$TEST_HOME/private/env/paperclip.env")" = 600
-awk -F= 'NF {print $1}' "$TEST_HOME/private/env/paperclip.env" | sort
+test "$(stat -c '%a' "$TEST_HOME/state/env")" = 700
+test "$(stat -c '%a' "$TEST_HOME/state/env/paperclip.env")" = 600
+awk -F= 'NF {print $1}' "$TEST_HOME/state/env/paperclip.env" | sort
 docker port "$PAPERCLIP_CONTAINER" 3100/tcp
 docker inspect --format '{{.Config.User}}' "$PAPERCLIP_CONTAINER"
 docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' \
@@ -965,13 +965,13 @@ Required results:
 - Paperclip binds only `127.0.0.1:3940`, runs as the configured non-root UID/GID,
   and joins only this project's `addon_net`.
 - Its mounts are limited to `/paperclip`, managed and user OpenCode config,
-  Paperclip AKM config/state, the shared `/stash`, and the two nested
-  Paperclip-specific `/stash/env` and `/stash/secrets` overlays. The user
-  OpenCode config is read-only; mutable runtime config and plugin dependencies
-  come from `cache/paperclip-opencode/runtime`.
-- The nested mounts obscure the assistant's `knowledge/env/user.env` and
-  `knowledge/secrets/auth.json`. Paperclip has no `/work`, broad `private/`
-  mount, assistant or Guardian credential, Docker socket, `assistant_net`, or
+  Paperclip AKM config/state, and the shared `/stash`. There are no per-service
+  overmounts on `/stash`. The user OpenCode config is read-only; mutable runtime
+  config and plugin dependencies come from `cache/paperclip-opencode/runtime`.
+- Paperclip sees the shared stash exactly as the assistant does, including
+  `knowledge/env/user.env` and `knowledge/secrets/auth.json`; delegated
+  credentials are not there. It has no `/work`, no `state/secrets/` mount, no
+  assistant or Guardian credential, no Docker socket, and no `assistant_net` or
   `portal_net` access.
 - Authenticated/private deployment and telemetry opt-out values are active.
 - `http://<host-LAN-address>:3940` is unreachable from a second device.
@@ -1071,12 +1071,12 @@ description: Disposable Paperclip AKM integration acceptance marker.
 The expected knowledge marker is PAPERCLIP_AKM_KNOWLEDGE_OK.
 EOF
 printf 'PAPERCLIP_AKM_ENV_CANARY=paperclip-env-value-must-not-be-printed\n' \
-  > "$TEST_HOME/knowledge/paperclip/env/user.env"
+  > "$TEST_HOME/knowledge/env/user.env"
 printf 'paperclip-secret-value-must-not-be-printed\n' \
-  > "$TEST_HOME/knowledge/paperclip/secrets/manual-acceptance.txt"
+  > "$TEST_HOME/knowledge/secrets/manual-acceptance.txt"
 chmod 600 \
-  "$TEST_HOME/knowledge/paperclip/env/user.env" \
-  "$TEST_HOME/knowledge/paperclip/secrets/manual-acceptance.txt"
+  "$TEST_HOME/knowledge/env/user.env" \
+  "$TEST_HOME/knowledge/secrets/manual-acceptance.txt"
 
 docker exec "$PAPERCLIP_CONTAINER" akm index
 docker exec "$PAPERCLIP_CONTAINER" akm search \
@@ -1134,14 +1134,14 @@ Capture only a hash of the OpenPalm-managed Paperclip env, then disable and
 re-enable the addon through the Admin UI:
 
 ```bash
-PAPERCLIP_ENV_HASH_BEFORE="$(sha256sum "$TEST_HOME/private/env/paperclip.env" | cut -d' ' -f1)"
+PAPERCLIP_ENV_HASH_BEFORE="$(sha256sum "$TEST_HOME/state/env/paperclip.env" | cut -d' ' -f1)"
 export PAPERCLIP_ENV_HASH_BEFORE
 ```
 
 Required results:
 
 - Disable stops Paperclip but does not remove `data/paperclip` or
-  `private/env/paperclip.env`.
+  `state/env/paperclip.env`.
 - Re-enable starts the service without a CLI fallback.
 - The test account can still sign in, and the company, project, issue, marker
   comment, and run survive.
@@ -1152,7 +1152,7 @@ Verify the hash:
 
 ```bash
 test "$PAPERCLIP_ENV_HASH_BEFORE" = \
-  "$(sha256sum "$TEST_HOME/private/env/paperclip.env" | cut -d' ' -f1)"
+  "$(sha256sum "$TEST_HOME/state/env/paperclip.env" | cut -d' ' -f1)"
 ```
 
 If Admin re-enable records Paperclip as enabled but does not start it, retain
@@ -1185,7 +1185,8 @@ docker exec -w /app "$PAPERCLIP_CONTAINER" \
 
 Required result: the command reports a successful backup under the Paperclip
 data tree. Remember that OpenPalm lifecycle safety backups exclude
-`data/paperclip`; this test does not change that operator responsibility.
+`data/paperclip` and, with it, `state/env/paperclip.env`; this test does not
+change that operator responsibility.
 
 ## 10. Clean Up Fail-Closed
 

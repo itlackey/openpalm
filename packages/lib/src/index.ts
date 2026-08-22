@@ -100,7 +100,6 @@ export {
   resolveStackDir,
   resolveSystemDir,
   resolveStateDir,
-  resolvePrivateDir,
   resolveLogsDir,
   ensureHomeDirs,
   homeSchemaVersionFile,
@@ -116,8 +115,8 @@ export {
   userEnvFile,
   secretsDir,
   authJsonFile,
-  privateDir,
-  privateSecretsDir,
+  stateSecretsDir,
+  stateEnvDir,
   resolveBackupsDirFor,
   resolveCacheDir,
   legacyKnowledgeStackEnvFile,
@@ -172,7 +171,7 @@ export {
 } from "./control-plane/secrets.js";
 export {
   resolveSecretsDir,
-  resolvePrivateSecretsDir,
+  resolveStateSecretsDir,
   secretPath,
   readSecret,
   writeSecret,
@@ -184,11 +183,11 @@ export {
   readSecretFile,
   writeSecretFile,
   removeSecretFile,
-  DELEGATED_SECRET_NAMES,
-  isDelegatedSecretName,
+  AGENT_READABLE_SECRET_NAMES,
+  isAgentReadableSecretName,
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
-export { migrateDelegatedSecretsToPrivateDir } from './control-plane/secrets-migration.js';
+export { migrateDelegatedSecretsToStateDir } from './control-plane/secrets-migration.js';
 export type { DelegatedSecretMigrationResult } from './control-plane/secrets-migration.js';
 export {
   PAIRING_CODE_PREFIX,
@@ -299,6 +298,7 @@ export {
   detectHostAkmConfig,
   hostAkmConfigPath,
   importHostAkmConfig,
+  ensureSystemBundle,
   stripRetiredAkmConfigKeys,
 } from "./control-plane/akm-sources.js";
 export type { HostAkmConfigStatus } from "./control-plane/akm-sources.js";

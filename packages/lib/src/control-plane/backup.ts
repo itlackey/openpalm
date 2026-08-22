@@ -1,25 +1,91 @@
 import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { resolveBackupsDirFor } from "./home.js";
+import { dirname, join, relative, sep } from "node:path";
+import { resolveBackupsDirFor, stateEnvDir } from "./home.js";
 
 export function timestampDirName(now = new Date()): string {
   return now.toISOString().replace(/[:.]/g, "-");
 }
 
 /**
- * Recursively sum the apparent size (in bytes) of every file under `path`,
- * excluding the entire top-level `data/` directory — mirroring
- * {@link backupOpenPalmHome}'s own copy scope, which skips the whole `data`
- * entry (not just `data/backups`) because it is large, regenerable runtime
- * state that is never copied into a safety snapshot. Estimating more than
- * that would make the space guard refuse legitimate backups whenever `data/`
- * happens to be large, even though that size is never actually written.
+ * The top-level trees a safety snapshot never copies. `data/` is large,
+ * regenerable service state; `cache/` (S1) is regenerable by definition.
+ * Copying either re-creates the multi-GB snapshots #581 AC4 exists to prevent.
+ */
+const UNBACKED_TOP_LEVEL: ReadonlySet<string> = new Set(["data", "cache"]);
+
+/** What a safety snapshot copies, and what it deliberately leaves out. */
+export interface BackupScope {
+  /** True when `path` (absolute, inside the home) belongs in the snapshot. */
+  includes(path: string): boolean;
+  /**
+   * Absolute paths left out because the service they belong to is out of scope
+   * — recorded so the snapshot can name them (constitution §5).
+   */
+  skippedCredentials: string[];
+}
+
+/**
+ * THE backup scope, resolved once per snapshot and shared by the copy and the
+ * estimator. Two hand-mirrored denylists is how the space guard and the copy
+ * scope drifted apart before (G6); there is one definition here instead.
+ *
+ * §5 — a service's data and its credentials are ONE restore unit: a snapshot
+ * takes both or neither. `data/<svc>` is out of scope, so `<svc>`'s credentials
+ * are too. Restoring only the credentials is the G5 trap: Paperclip's
+ * `BETTER_AUTH_SECRET` back without `data/paperclip` yields a working login
+ * against an empty database, and the operator reads that as a successful
+ * restore. Both halves now leave together, and the documented per-service
+ * procedure (docs/backup-restore.md) takes them together.
+ *
+ * The pairing key is the SERVICE NAME, derived — not listed. `state/env/<svc>.env`
+ * is the only credential artifact named after a service, so it is the only one
+ * that can be paired with a `data/<svc>` tree without a hand-maintained map
+ * (lesson 24). `state/secrets/` holds control-plane credentials named by ROLE,
+ * several of them shared across services, and each is an INPUT its service's
+ * `data/` tree is derived from (a tailnet auth key, an admin token) rather than
+ * something that authenticates existing rows — nothing there pairs, and it all
+ * stays in scope.
+ */
+export function resolveBackupScope(homeDir: string): BackupScope {
+  let services: string[] = [];
+  try {
+    services = readdirSync(join(homeDir, "data"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    /* no data/ tree yet — nothing is out of scope by service */
+  }
+  const skippedCredentials = services
+    .map((service) => join(stateEnvDir(homeDir), `${service}.env`))
+    .filter((path) => existsSync(path));
+  const skipped = new Set(skippedCredentials);
+
+  return {
+    includes(path: string): boolean {
+      const rel = relative(homeDir, path);
+      // Not under the home at all: not this scope's call to make.
+      if (!rel || rel.startsWith("..")) return true;
+      if (UNBACKED_TOP_LEVEL.has(rel.split(sep)[0])) return false;
+      return !skipped.has(path);
+    },
+    skippedCredentials,
+  };
+}
+
+/**
+ * Recursively sum the apparent size (in bytes) of every file under `homeDir`
+ * that {@link resolveBackupScope} includes — the same predicate
+ * {@link backupOpenPalmHome} copies by, so the estimate cannot drift from what
+ * is actually written. Estimating more than that would make the space guard
+ * refuse legitimate backups whenever `data/` happens to be large, even though
+ * that size is never written.
  *
  * Cheap enough for a pre-backup estimate; errors on individual entries are
  * skipped (a transient unreadable file should not block the safety copy).
  */
 export function estimateHomeBackupBytes(homeDir: string): number {
   if (!existsSync(homeDir)) return 0;
+  const scope = resolveBackupScope(homeDir);
   let total = 0;
   const walk = (dir: string): void => {
     let entries: Dirent[];
@@ -30,7 +96,7 @@ export function estimateHomeBackupBytes(homeDir: string): number {
     }
     for (const entry of entries) {
       const full = join(dir, entry.name);
-      if (dir === homeDir && (entry.name === "data" || entry.name === "cache")) continue;
+      if (!scope.includes(full)) continue;
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile()) {
@@ -185,7 +251,9 @@ export interface BackupOpenPalmHomeOptions {
  * installed under `data/guardian`; see containers/guardian/Dockerfile). Either
  * way, snapshotting `data/` buys nothing for recovery (the rollback/restore
  * path never reads these snapshots) and previously filled the disk (~5 GB per
- * snapshot).
+ * snapshot). A service excluded that way loses its credentials from the
+ * snapshot too — see {@link resolveBackupScope} — and the completion marker
+ * names each one, so the snapshot itself says what it does not contain.
  *
  * Atomicity: every entry is copied into a hidden `.staging-<timestamp>` dir
  * first; only on full success is a completion marker written and the staging
@@ -198,6 +266,7 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
 
   const destRoot = resolveBackupsDirFor(homeDir);
   const threshold = options.threshold ?? 0.8;
+  const scope = resolveBackupScope(homeDir);
 
   // Wire the space guard BEFORE any mutation: measure the DESTINATION
   // filesystem (which per S5 may be a configured external mount, not
@@ -218,16 +287,18 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   rmSync(stagingDir, { recursive: true, force: true });
   mkdirSync(stagingDir, { recursive: true });
 
-  const copyEntry = options.copyEntry ?? ((source: string, target: string) => cpSync(source, target, { recursive: true }));
+  const copyEntry =
+    options.copyEntry ??
+    ((source: string, target: string) => cpSync(source, target, { recursive: true, filter: scope.includes }));
 
   let copiedAny = false;
   try {
     for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
-      // `data` is large regenerable runtime state; `cache` (S1) is purely
-      // regenerable by definition. Copying either would re-create the
-      // multi-GB snapshots #581 AC4 exists to prevent.
-      if (entry.name === "data" || entry.name === "cache") continue;
-      copyEntry(join(homeDir, entry.name), join(stagingDir, entry.name));
+      const source = join(homeDir, entry.name);
+      // The scope skips the `data`/`cache` trees wholesale here, and prunes an
+      // excluded service's credentials from inside the trees that are copied.
+      if (!scope.includes(source)) continue;
+      copyEntry(source, join(stagingDir, entry.name));
       copiedAny = true;
     }
   } catch (err) {
@@ -247,7 +318,25 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   // successfully. A crash before this point leaves only a hidden `.staging-`
   // dir (cleaned up by the next call's cleanupStaleStaging, or manually) —
   // never a half-written directory at the name callers/listBackupDirs expect.
-  writeFileSync(join(stagingDir, BACKUP_COMPLETE_MARKER), new Date().toISOString());
+  //
+  // The marker also NAMES the credentials the scope left out (§5). Whoever
+  // restores this snapshot months from now is the person who needs to know
+  // that a service's login secret is not in it, and the marker travels with
+  // the snapshot; a log line at backup time does not.
+  writeFileSync(
+    join(stagingDir, BACKUP_COMPLETE_MARKER),
+    [
+      new Date().toISOString(),
+      ...(scope.skippedCredentials.length > 0
+        ? [
+            "",
+            "Skipped — these belong to a service whose data/ tree is out of scope,",
+            "and are restored with it (see docs/backup-restore.md):",
+            ...scope.skippedCredentials.map((path) => `  ${relative(homeDir, path)}`),
+          ]
+        : []),
+    ].join("\n"),
+  );
   renameSync(stagingDir, finalDir);
   return finalDir;
 }

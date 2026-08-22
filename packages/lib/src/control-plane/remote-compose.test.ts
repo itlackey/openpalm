@@ -58,6 +58,14 @@ function serviceNetworks(networks: ComposeService["networks"]): string[] {
   return Object.keys(networks);
 }
 
+// Container-side target of a short-form mount. Interpolations come out first:
+// the guarded `${OP_HOME:?}` mount sources carry a colon of their own, so a
+// bare split(':') reads `?}/state/remote` as the target and every assertion
+// built on it silently stops meaning anything.
+function mountTarget(entry: string): string | undefined {
+  return entry.replace(/\$\{[^}]*\}/g, "").split(":")[1];
+}
+
 const compose = loadServicesCompose();
 const tunnel = compose.services?.tunnel;
 
@@ -136,7 +144,7 @@ describe("tunnel service — network reachability", () => {
 
 describe("tunnel service — volume mounts are directories, at the right container paths", () => {
   test("mounts OP_HOME's remote serve-config dir at /config", () => {
-    expect(tunnel?.volumes ?? []).toContain("${OP_HOME}/state/remote:/config");
+    expect(tunnel?.volumes ?? []).toContain("${OP_HOME:?}/state/remote:/config");
   });
 
   test("REGRESSION: the /config source is NOT under system/, which is overwritten wholesale on update", () => {
@@ -154,13 +162,12 @@ describe("tunnel service — volume mounts are directories, at the right contain
   });
 
   test("mounts OP_HOME's tunnel state dir at /var/lib/tailscale", () => {
-    expect(tunnel?.volumes ?? []).toContain("${OP_HOME}/data/tunnel:/var/lib/tailscale");
+    expect(tunnel?.volumes ?? []).toContain("${OP_HOME:?}/data/tunnel:/var/lib/tailscale");
   });
 
   test("neither volumes entry is a bind of a single file (both sides of the ':' split stay directory paths, not the generated serve.json itself)", () => {
     for (const entry of tunnel?.volumes ?? []) {
-      const [, target] = entry.split(":");
-      expect(target).not.toMatch(/serve\.json$/);
+      expect(mountTarget(entry)).not.toMatch(/serve\.json$/);
     }
   });
 });
@@ -173,8 +180,7 @@ describe("tunnel service — TS_SERVE_CONFIG points inside the mounted /config d
     // edit to one side can't silently orphan the other.
     const configMount = (tunnel?.volumes ?? []).find((v) => v.endsWith(":/config"));
     expect(configMount).toBeDefined();
-    const mountTarget = configMount?.split(":")[1];
-    expect(tunnel?.environment?.TS_SERVE_CONFIG).toBe(`${mountTarget}/serve.json`);
+    expect(tunnel?.environment?.TS_SERVE_CONFIG).toBe(`${mountTarget(configMount ?? "")}/serve.json`);
   });
 });
 
@@ -195,8 +201,8 @@ describe("tunnel service — TS_AUTHKEY is delivered via the secret file, never 
     expect(tunnel?.secrets ?? []).toContain("ts_authkey");
   });
 
-  test("the ts_authkey secret is declared top-level, sourced from the delegated private secrets dir", () => {
-    expect(compose.secrets?.ts_authkey?.file).toBe("${OP_HOME}/private/secrets/ts_authkey");
+  test("the ts_authkey secret is declared top-level, sourced from the delegated state secrets dir", () => {
+    expect(compose.secrets?.ts_authkey?.file).toBe("${OP_HOME:?}/state/secrets/ts_authkey");
   });
 });
 

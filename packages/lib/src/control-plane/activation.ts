@@ -56,7 +56,7 @@ export async function runComposeActivation<T>(
 			composeConfig: resolved.config,
 			homeDir: state.homeDir,
 			secretsDir: `${state.homeDir}/knowledge/secrets`,
-			privateSecretsDir: `${state.homeDir}/private/secrets`
+			stateSecretsDir: `${state.homeDir}/state/secrets`
 		});
 		if (!result.ok) {
 			throw activationError(

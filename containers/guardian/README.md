@@ -45,13 +45,16 @@ forwarded, `flag` is forwarded and audited, and `block` is rejected.
 Escalation fails closed: timeout, moderator failure, or an unparseable verdict
 returns `403 content_blocked`.
 
-Managed moderation instructions come from host `system/guardian/`, mounted at
-`/etc/opencode`. User model selection comes separately from
+Managed moderation instructions come from host `system/guardian/`, mounted
+read-only at `/opt/openpalm/guardian-config`; the entrypoint republishes them
+into `OPENCODE_CONFIG_DIR` (`/etc/opencode`), a regenerable copy bound from
+`cache/guardian-opencode/runtime/` because OpenCode writes into every config
+directory it loads. User model selection comes separately from
 `config/guardian/`, mounted as Guardian's OpenCode global config.
 
 ## Credentials and Mounts
 
-- Delegated principal, admin, API, bot, and OpenCode-server credentials originate in host `private/secrets/` and arrive through narrow Compose grants.
+- Delegated principal, admin, API, bot, and OpenCode-server credentials originate in host `state/secrets/` and arrive through narrow Compose grants.
 - Provider `knowledge/secrets/auth.json` remains the assistant-readable source; Guardian receives it as the `guardian_auth_json` Compose secret and copies it into its private home.
 - Guardian does not mount the full `knowledge/` tree.
 - Durable state is under `data/guardian/`; regenerable cache is under `cache/guardian/`; audit logs are under `data/logs/`.

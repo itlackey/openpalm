@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
+  ensureSystemBundle,
   stripRetiredAkmConfigKeys,
   importHostAkmConfig,
   detectHostAkmConfig,
@@ -32,15 +33,18 @@ afterEach(() => {
 });
 
 describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => {
-  it("creates a loadable 0.9.0 config: /host-stash secondary bundle + configVersion + primary openpalm bundle", () => {
+  it("creates a loadable 0.9.0 config: /host-stash secondary bundle + configVersion + primary openpalm bundle + read-only system bundle", () => {
     addHostStashToOpenpalmConfig(state, true);
     const cfg = readJson(opConfigPath);
     const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
-    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm", "openpalm-system"]);
     expect(bundles[HOST_SOURCE_NAME]).toEqual({ path: "/host-stash", writable: true, enabled: true });
     // Mirrors persistAkmConfig: akm 0.9.0 refuses a config without these.
     expect(cfg.configVersion).toBe("0.9.0");
     expect(bundles.openpalm).toEqual({ path: "/stash", writable: true });
+    // Release-shipped skills: never a write target (`:ro` in compose is the
+    // boundary; this flag is the routing half).
+    expect(bundles["openpalm-system"]).toEqual({ path: "/system-stash", writable: false, enabled: true });
     expect(cfg.defaultBundle).toBe("openpalm");
     expect(cfg.defaultWriteTarget).toBeUndefined();
     expect(cfg.stashDir).toBeUndefined();
@@ -50,7 +54,7 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
     addHostStashToOpenpalmConfig(state, true);
     addHostStashToOpenpalmConfig(state, false);
     const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
-    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm", "openpalm-system"]);
     expect(bundles[HOST_SOURCE_NAME].writable).toBe(false);
   });
 
@@ -114,7 +118,7 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
     writeFileSync(opConfigPath, "{ this is not json");
     addHostStashToOpenpalmConfig(state, true);
     const bundles = readJson(opConfigPath).bundles as Record<string, unknown>;
-    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm", "openpalm-system"]);
   });
 
   it("writes mode 0600", () => {
@@ -123,6 +127,47 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
   });
 });
 
+
+describe("ensureSystemBundle (upgrade heals a config written before system/skills)", () => {
+  it("adds the read-only /system-stash bundle to an existing config, touching nothing else", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      configVersion: "0.9.0",
+      bundles: { openpalm: { path: "/stash", writable: true } },
+      defaultBundle: "openpalm",
+      engines: { default: { kind: "llm" } },
+    }, null, 2));
+
+    expect(ensureSystemBundle(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
+    expect(bundles["openpalm-system"]).toEqual({ path: "/system-stash", writable: false, enabled: true });
+    expect(bundles.openpalm).toEqual({ path: "/stash", writable: true });
+    expect(cfg.defaultBundle).toBe("openpalm");
+    expect(cfg.defaultWriteTarget).toBeUndefined();
+    expect(cfg.engines).toEqual({ default: { kind: "llm" } });
+  });
+
+  it("is a no-op once the entry is present — no rewrite on every lifecycle pass", () => {
+    writeFileSync(opConfigPath, JSON.stringify({ configVersion: "0.9.0", bundles: {} }));
+    expect(ensureSystemBundle(state)).toBe(true);
+    const after = readFileSync(opConfigPath, "utf-8");
+
+    expect(ensureSystemBundle(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
+    // The neighbouring sweep must not fight it back the other way: both run on
+    // every lifecycle pass, and they used to disagree about a trailing newline.
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
+    expect(ensureSystemBundle(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
+  });
+
+  it("leaves an absent config absent — install owns creation, not this sweep", () => {
+    expect(ensureSystemBundle(state)).toBe(false);
+    expect(existsSync(opConfigPath)).toBe(false);
+  });
+});
 
 describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
   it("removes the retired keys that make akm 0.9 reject the whole file", () => {

@@ -21,6 +21,15 @@
 # baked-package invariant is only proven "green" when it actually survives
 # under the real deployment shape.
 #
+# The managed moderator config is part of that topology: compose mounts
+# OP_HOME/system/guardian read-only at /opt/openpalm/guardian-config and the
+# entrypoint republishes it into OPENCODE_CONFIG_DIR. With content validation
+# enabled (the default this script boots under) that mount is mandatory — the
+# entrypoint fails closed rather than moderate against no policy — so the
+# skeleton's copy is mounted here the same way. OPENCODE_CONFIG_DIR itself is
+# left as the image's own writable directory; it is a disposable runtime copy,
+# and nothing about the baked-package invariant lives there.
+#
 # Run locally: ./scripts/guardian-image-offline-smoke.sh
 #
 # Wired into CI (.github/workflows/ci.yml, "Guardian offline-boot smoke").
@@ -72,6 +81,7 @@ echo "Booting with --network none (no DNS, no registry, no assistant reachabilit
 echo "and an empty host bind-mount at /opt/openpalm/guardian (production mount topology)..."
 docker run -d --network none --name "$CONTAINER" \
   -v "${GUARDIAN_DATA_DIR}:/opt/openpalm/guardian" \
+  -v "${ROOT}/packages/skeleton/system/guardian:/opt/openpalm/guardian-config:ro" \
   -e GUARDIAN_AUDIT_PATH=/opt/openpalm/guardian/logs/audit.log \
   "$IMAGE" >/dev/null
 

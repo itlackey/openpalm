@@ -71,7 +71,7 @@ commands translate enabled IDs to profiles. Raw Docker Compose requires active
 `--profile` arguments or an explicit `COMPOSE_PROFILES` value.
 
 Delegated UI, Guardian, API, portal, bot, and OpenCode-server credentials come
-from `$OP_HOME/private/secrets/`. Provider auth remains at
+from `$OP_HOME/state/secrets/`. Provider auth remains at
 `$OP_HOME/knowledge/secrets/auth.json` because the assistant's OpenCode runtime
 must read it.
 

@@ -20,8 +20,9 @@
  * the UI reported "metrics unavailable" with no indication why. The stash
  * mount is the whole of host sharing.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { isAbsolute } from "node:path";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { mergeEnvContent, removeEnvKey, parseEnvFile } from "./env.js";
 import { stackEnvPath } from "./paths.js";
@@ -59,12 +60,26 @@ export function getHostAkmSharingStatus(state: ControlPlaneState): HostAkmSharin
   };
 }
 
-/** Enable host AKM sharing: point OP_HOST_AKM_STASH at ~/akm. Nothing else. */
+/**
+ * Enable host AKM sharing: point OP_HOST_AKM_STASH at ~/akm. Nothing else.
+ *
+ * C14: this is the ONE bind source outside OP_HOME, so it inherits none of the
+ * pre-creation the rest of the mount graph gets from ensureComposeVolumeTargets
+ * (scoped to OP_HOME by design). Validate and create it here instead — a
+ * relative path would resolve against whatever Docker's cwd happens to be, and
+ * a missing directory is created ROOT-owned by Docker on native Linux, which
+ * then fails every write from the non-root container.
+ */
 export function enableHostAkmSharing(state: ControlPlaneState): void {
+  const hostStashPath = hostAkmStashPath();
+  if (!isAbsolute(hostStashPath)) {
+    throw new Error(`host akm stash path is not absolute: ${hostStashPath}`);
+  }
+  mkdirSync(hostStashPath, { recursive: true });
   const envPath = stackEnvPath(state);
   const existing = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
-  writeFileAtomic(envPath, mergeEnvContent(existing, { [ENV_KEY]: hostAkmStashPath() }), 0o600);
-  logger.info("host akm sharing enabled", { hostStashPath: hostAkmStashPath() });
+  writeFileAtomic(envPath, mergeEnvContent(existing, { [ENV_KEY]: hostStashPath }), 0o600);
+  logger.info("host akm sharing enabled", { hostStashPath });
 }
 
 /**

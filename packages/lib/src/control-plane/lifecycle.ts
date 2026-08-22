@@ -48,7 +48,7 @@ import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } fro
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
-import { stripRetiredAkmConfigKeys } from './akm-sources.js';
+import { ensureSystemBundle, stripRetiredAkmConfigKeys } from './akm-sources.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -213,6 +213,10 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// An upgrade can leave the assistant's akm config carrying keys the newer
 	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
 	stripRetiredAkmConfigKeys(state);
+	// Same "an upgraded install heals itself" sweep for the release-shipped
+	// skills bundle: only setup and install pin it, so without this an upgraded
+	// home gets the :ro /system-stash mount with nothing configured to read it.
+	ensureSystemBundle(state);
 	ensureOpenCodeConfig();
 	ensureOpenCodeSystemConfig();
 }

@@ -8,12 +8,14 @@
  *   data/      — RUNTIME: persistent service data, logs, backups, rollback (never written by install/update)
  *   knowledge/ — USER/services: akm knowledge (user env, secrets, tasks)
  *   workspace/ — USER: shared assistant work area
- *   state/     — app-written records: stack.env (THE non-secret Compose --env-file),
- *                host identity, schema version
- *   private/   — APP: delegated service credentials never mounted into the assistant
+ *   state/     — app-written records AND generated runtime config: stack.env (THE
+ *                non-secret Compose --env-file), host identity, schema version,
+ *                generated config a container reads (state/remote/), and the
+ *                credentials never mounted into the assistant (state/secrets/,
+ *                state/env/) — all app-owned, none release-shipped
  *   cache/     — SYSTEM: regenerable container caches
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
@@ -27,10 +29,24 @@ function resolveHome(): string {
   return tmpdir();
 }
 
+/**
+ * THE OP_HOME root, canonicalized (§F7).
+ *
+ * realpath runs HERE, at the single place the root is resolved, so a symlinked
+ * home normalizes once instead of per call site: every "is this path under
+ * OP_HOME?" test (bind-mount pre-creation, purge, backup scope) then compares
+ * canonical against canonical. A root that does not exist yet — the moment
+ * before `ensureHomeDirs` — has nothing to canonicalize, so the lexical path
+ * stands.
+ */
 export function resolveOpenPalmHome(): string {
   const raw = process.env.OP_HOME;
-  if (raw) return resolvePath(raw);
-  return `${resolveHome()}/.openpalm`;
+  const home = raw ? resolvePath(raw) : `${resolveHome()}/.openpalm`;
+  try {
+    return realpathSync(home);
+  } catch {
+    return home;
+  }
 }
 
 export function resolveConfigDir(): string {
@@ -68,18 +84,16 @@ export function resolveSystemDir(): string {
   return `${resolveOpenPalmHome()}/system`;
 }
 
-/** State tree: app-written records (pins, enabled add-ons, channel, setup). */
+/**
+ * State tree: app-written records (pins, enabled add-ons, channel, setup), the
+ * runtime config this application generates for containers to read — the
+ * remote addon's serve config (see remoteServeConfigDir) is bind-mounted from
+ * here — and the credentials that are never mounted into the assistant
+ * (`state/secrets/`, `state/env/`; §G1). All of it is app-owned; none of it is
+ * release-shipped, and none of it is reachable from the assistant's `/stash`.
+ */
 export function resolveStateDir(): string {
   return `${resolveOpenPalmHome()}/state`;
-}
-
-/**
- * Private tree (§G1): delegated secrets consumed only by the guardian/portals,
- * relocated out of the assistant-reachable `knowledge/` stash. Must be included
- * in every destructive lifecycle path (purge, ownership) like the other trees.
- */
-export function resolvePrivateDir(): string {
-  return privateDir(resolveOpenPalmHome());
 }
 
 // ── Well-known files — THE single source of truth ────────────────────────────
@@ -154,7 +168,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 9;
+export const HOME_SCHEMA_VERSION = 10;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
@@ -242,28 +256,29 @@ export function authJsonFile(home: string): string {
 }
 
 /**
- * Root of the private (non-stash) tree: app-owned material the assistant
- * agent must never reach, distinct from every tree `home.ts` documents at the
- * top of this file. `knowledge/` (including `knowledge/secrets/`) is
- * bind-mounted wholesale into the assistant at `/stash` (core.compose.yml) and
- * is `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
- * tool. Anything under `private/` stays outside `/stash`; host consumers read
- * files directly and container consumers receive only named Compose secrets.
+ * The DEFAULT secrets location — never exposed through the Assistant stash.
+ *
+ * `knowledge/` (including `knowledge/secrets/`) is bind-mounted wholesale into
+ * the assistant at `/stash` (core.compose.yml) and is
+ * `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
+ * tool. `state/` is not mounted there at all, which is what makes it the safe
+ * default: `secrets-files.ts` routes every name here unless it is explicitly
+ * agent-readable, and every container grant but `guardian_auth_json` points
+ * here. Host consumers read these files directly; container consumers receive
+ * only named Compose secrets. 0700, like `secretsDir`.
  */
-export function privateDir(home: string): string {
-  return `${home}/private`;
+export function stateSecretsDir(home: string): string {
+  return `${home}/state/secrets`;
 }
 
 /**
- * Delegated service credentials are never exposed through the Assistant stash.
- * This is the one relocation target for those secrets:
- * `ensureSecrets`/`secrets-files.ts`
- * write them here, the migration in `secrets-migration.ts` moves pre-existing
- * installs' copies here from `secretsDir()`, and every container grant points
- * here. 0700, like `secretsDir`.
+ * Generated env files handed to a container as an `env_file` — Paperclip's
+ * upstream-required keys (see paperclip.ts) are the only ones today. Same
+ * exposure answer as its sibling `state/secrets/`: app-written, 0700, and
+ * outside the assistant's `/stash`.
  */
-export function privateSecretsDir(home: string): string {
-  return `${privateDir(home)}/secrets`;
+export function stateEnvDir(home: string): string {
+  return `${home}/state/env`;
 }
 
 export function resolveLogsDir(): string {
@@ -322,6 +337,8 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/cache`,
     `${home}/cache/assistant`,
     `${home}/cache/guardian`,
+    `${home}/cache/guardian-opencode`, // regenerable moderator OpenCode config
+    `${home}/cache/guardian-opencode/runtime`, // mutable copy of system/guardian
     `${home}/cache/paperclip-opencode`, // regenerable OpenCode plugin dependencies
     `${home}/cache/paperclip-opencode/runtime`, // mutable config + node_modules
 
@@ -357,23 +374,21 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
-    `${home}/knowledge/paperclip/env`, // Paperclip-only AKM env overlay
-    `${home}/knowledge/paperclip/secrets`, // Paperclip-only AKM secrets overlay
-
-    // private/ — delegated secrets (guardian/portal-only, never assistant-reachable; §G1)
-    `${home}/private`,
-    `${home}/private/secrets`,
 
     // workspace/ — shared assistant work area
     `${home}/workspace`,
 
-    // system/ — managed tree (release-shipped assets, overwritten); state/ — app-written records
+    // system/ — managed tree (release-shipped assets, overwritten); state/ —
+    // app-written records, generated runtime config (state/remote/) and the
+    // credentials the assistant must never reach (state/secrets/, state/env/)
     `${home}/system/stack`,         // fixed compose files (managed, overwritten on update)
     `${home}/system/assistant`,     // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
-    `${home}/system/guardian`,      // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
+    `${home}/system/guardian`,      // MANAGED guardian OpenCode config (mounted :ro)
     `${home}/system/paperclip`,     // MANAGED Paperclip OpenCode plugin bootstrap
+    `${home}/system/skills`,        // MANAGED release-shipped akm skills (:ro system bundle)
     `${home}/state`,
     `${home}/state/remote`,         // remote addon: generated Tailscale serve config (see remoteServeConfigDir)
+    `${home}/state/secrets`,        // the default secrets tree (never assistant-reachable; §G1)
   ]) {
     mkdirSync(dir, { recursive: true });
   }

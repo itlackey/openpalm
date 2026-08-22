@@ -117,7 +117,7 @@ access:
 ```
 
 Portal bot credentials can be supplied through `portalCredentials`; setup
-writes sensitive values to `private/secrets/` and non-secret portal settings to
+writes sensitive values to `state/secrets/` and non-secret portal settings to
 `state/stack.env`.
 
 The access object contains independent booleans. There is no nested network
@@ -175,7 +175,7 @@ needs generated directories and files, including:
 config/{assistant,guardian,akm,stack}/
 system/{assistant,guardian,stack}/
 state/
-private/secrets/
+state/secrets/
 knowledge/{env,secrets,tasks}/
 data/{assistant,guardian,akm,logs,ui,backups,rollback}/
 cache/{assistant,guardian}/
@@ -190,19 +190,19 @@ Baseline generated secret material includes:
 
 ```text
 knowledge/secrets/auth.json
-private/secrets/op_ui_login_password
-private/secrets/op_opencode_password
-private/secrets/op_guardian_admin_token
-private/secrets/op_guardian_mcp_token
-private/secrets/op_api_key
-private/secrets/portal_api_secret
-private/secrets/portal_discord_secret
-private/secrets/portal_slack_secret
+state/secrets/op_ui_login_password
+state/secrets/op_opencode_password
+state/secrets/op_guardian_admin_token
+state/secrets/op_guardian_mcp_token
+state/secrets/op_api_key
+state/secrets/portal_api_secret
+state/secrets/portal_discord_secret
+state/secrets/portal_slack_secret
 ```
 
-Enabling Discord additionally requires `private/secrets/discord_bot_token`.
-Enabling Slack requires `private/secrets/slack_bot_token` and
-`private/secrets/slack_app_token`. Secret directories use mode `0700`; files
+Enabling Discord additionally requires `state/secrets/discord_bot_token`.
+Enabling Slack requires `state/secrets/slack_bot_token` and
+`state/secrets/slack_app_token`. Secret directories use mode `0700`; files
 use `0600`.
 
 Raw copying omits generated state and can leave required secrets or bind-source
@@ -227,7 +227,7 @@ With nothing else set, the tunnel starts in interactive-login mode: the
 sign-in link appears on the addon's status card in the UI, or in the
 container logs (`openpalm logs tunnel`). For fully unattended installs,
 pre-authorize the node by writing a reusable Tailscale auth key to
-`private/secrets/ts_authkey` (mode `0600`; the file is seeded empty by
+`state/secrets/ts_authkey` (mode `0600`; the file is seeded empty by
 install, and blank deliberately means interactive login). Know what a
 reusable auth key exposes before scripting one.
 

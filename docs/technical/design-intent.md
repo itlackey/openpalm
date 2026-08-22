@@ -23,7 +23,7 @@ OpenPalm is a file-assembly control plane over Docker Compose:
 - `state/stack.env` contains non-secret app-written runtime state.
 - `knowledge/secrets/auth.json` contains assistant-readable OpenCode provider
   authentication.
-- `private/secrets/` contains delegated UI, OpenCode-server, Guardian, API,
+- `state/secrets/` contains delegated UI, OpenCode-server, Guardian, API,
   portal, and bot credentials outside assistant `/stash`.
 - `data/`, `cache/`, `knowledge/`, and `workspace/` have the ownership and
   backup behavior defined in `core-principles.md`.
@@ -42,7 +42,7 @@ render Compose templates or merge arbitrary fragments into managed files.
   service-specific access toggle.
 - Containers receive delegated credentials as named files, not broad secret
   directories or environment files. The sole exception is Paperclip's audited,
-  exact-key `private/env/paperclip.env`, required by its digest-pinned upstream
+  exact-key `state/env/paperclip.env`, required by its digest-pinned upstream
   image.
 
 ## Extensibility
@@ -61,8 +61,8 @@ consumer-specific implementation.
 
 - Install and update overwrite managed assets, preserve user-owned files, and
   validate the assembled Compose configuration before mutation.
-- Rollback and backups cover durable state, including `private/`, but exclude
-  regenerable caches.
+- Rollback and backups cover durable state, including `state/secrets/`, but
+  exclude regenerable caches.
 - A native Electron harness changes only when its native contract changes. The
   UI and shared control plane update independently through the installed UI
   package.

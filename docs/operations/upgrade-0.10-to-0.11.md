@@ -49,12 +49,12 @@ The current destination contract is:
 - user configuration: `config/`
 - app state: `state/stack.env`
 - OpenCode provider auth: `knowledge/secrets/auth.json`
-- delegated UI/Guardian/API/portal/bot credentials: `private/secrets/`
+- delegated UI/Guardian/API/portal/bot credentials: `state/secrets/`
 - AKM user env: `knowledge/env/user.env`
 - durable service state: `data/`
 
 Do not manually move all old secrets into `knowledge/secrets/`; that directory
-is assistant-readable. The migration routes delegated names to `private/`.
+is assistant-readable. The migration routes delegated names to `state/secrets/`.
 
 ## 4. Reconcile Credentials
 
@@ -79,7 +79,7 @@ Then verify:
 2. Assistant chat can reach the selected provider.
 3. Each enabled portal authenticates through Guardian.
 4. `state/stack.env` contains no credential values.
-5. Delegated credentials exist only under `private/secrets/`.
+5. Delegated credentials exist only under `state/secrets/`.
 
 ## Recovery
 

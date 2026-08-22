@@ -302,7 +302,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 			const proceed = await promptYesNo(
 				`--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup} ` +
 					'— everything except data/ and cache/ (chat history and other regenerable runtime ' +
-					'state are NOT included) — then prune old backups down to the 3 most recent. Continue? [y/N]'
+					'state are NOT included), and addon credentials leave with their service data/ tree so ' +
+					'the two restore together — then prune old backups down to the 3 most recent. Continue? [y/N]'
 			);
 			if (!proceed) {
 				// A declined confirmation is a no-op, not a success: exit non-zero so

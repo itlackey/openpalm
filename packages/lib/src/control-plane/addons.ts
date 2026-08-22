@@ -437,7 +437,7 @@ export function pruneRemovedAddonState(
  * that fails safe — the guardian still deploys for the remote reason, and
  * nothing is added to a broken env.
  *
- * The seeded `private/secrets/portal_chat_secret` file is deliberately NOT
+ * The seeded `state/secrets/portal_chat_secret` file is deliberately NOT
  * deleted: nothing mounts it anymore, and lifecycle code does not remove
  * secret files it did not just write.
  */

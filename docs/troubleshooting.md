@@ -174,7 +174,7 @@ http://127.0.0.1:3810
 ```
 
 Username `opencode`; password is the contents of
-`private/secrets/op_opencode_password`. This is **not** the UI login password —
+`state/secrets/op_opencode_password`. This is **not** the UI login password —
 that one only signs in to the OpenPalm UI and Opencode will reject it.
 
 Two things that look right but are not:
@@ -191,8 +191,8 @@ Two things that look right but are not:
 For `401` or `403` responses:
 
 - Confirm the portal and Guardian are running under the same active profile set.
-- Confirm the relevant `portal_<id>_secret` exists in `private/secrets/`.
-- Confirm bot credentials also live in `private/secrets/`.
+- Confirm the relevant `portal_<id>_secret` exists in `state/secrets/`.
+- Confirm bot credentials also live in `state/secrets/`.
 - Recreate Guardian and the portal after rotating startup-only secrets.
 - Check `openpalm logs guardian` and `openpalm logs <portal>`.
 

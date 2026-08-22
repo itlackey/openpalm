@@ -18,31 +18,32 @@ ownership:
 | Host path | Owner | Purpose |
 |---|---|---|
 | `config/` | User | Non-secret assistant, guardian, AKM, and custom stack config |
-| `system/` | OpenPalm | Release assets overwritten on reconcile, including managed Compose and OpenCode config |
-| `state/` | OpenPalm | App-written records, including the one `state/stack.env` |
+| `system/` | OpenPalm | Release assets overwritten on reconcile, including managed Compose, OpenCode config, and the shipped `system/skills/` AKM bundle |
+| `state/` | OpenPalm | App-written records, including the one `state/stack.env`, the generated runtime config containers read (`state/remote/`), and the delegated credentials that must not enter assistant `/stash` (`state/secrets/`, `state/env/`) |
 | `knowledge/` | User/services | AKM stash, tasks, user env, and provider `secrets/auth.json`; mounted into the assistant at `/stash` |
 | `data/` | Services | Durable homes, databases, logs, backups, and rollback state |
 | `workspace/` | User | Shared assistant work area, mounted at `/work` |
-| `private/` | OpenPalm | Delegated credentials that must not enter assistant `/stash` |
 | `cache/` | System | Regenerable assistant and guardian caches |
 
 Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 
-> **A final reorganization of this layout has been approved** (2026-08-08) and
-> is not yet implemented; everything below describes the current runtime. Under
-> the accepted design `knowledge/` remains the one stash, shared with an addon
-> or not via an AKM bundle entry — replacing the parent-mount-plus-overmount
-> scheme described under Paperclip below — and `private/` merges into `state/`
-> (credentials at `state/secrets/`). Stash contents keep AKM's asset layout. See
-> [`core-principles.md`](core-principles.md) § Accepted changes for the binding
-> rules and
+> **This is the reorganized layout** approved 2026-08-08. `knowledge/` is the
+> one stash, shared with an addon or not via an AKM
+> bundle entry rather than a parent mount with overmounts on top of it, and the
+> retired `private/` tree has merged into `state/`. Stash contents keep AKM's
+> asset layout. See [`core-principles.md`](core-principles.md) § Accepted
+> changes for the binding rules and
 > [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
 > for the decision record and migration.
 
-Lifecycle safety backups include `private/` and exclude `data/` and regenerable
-`cache/`. `uninstall --purge` removes every `OP_HOME` tree, including `private/`
-and `cache/`. Ownership reconciliation covers durable/user/private paths and does
-not spend a recursive repair pass on regenerable cache content.
+Lifecycle safety backups include `state/` and exclude `data/` and regenerable
+`cache/`. A service excluded that way takes its own credentials with it:
+`state/env/<service>.env` is left out alongside `data/<service>/`, so the pair
+is backed up and restored as one unit, and the snapshot's `.backup-complete`
+marker names each file it skipped. `uninstall --purge` removes every `OP_HOME`
+tree, including `state/` and `cache/`. Ownership reconciliation covers
+durable/user/state paths and does not spend a recursive repair pass on
+regenerable cache content.
 
 ## Compose Files, Env, and Secrets
 
@@ -62,15 +63,19 @@ Compose receives exactly one non-secret env file:
 --env-file "$OP_HOME/state/stack.env"
 ```
 
-Secret storage is split by exposure:
+Secret storage is split by exposure, and the split is default-deny: a secret
+lands in `state/secrets/` unless its name is on the agent-readable allowlist
+in `secrets-files.ts` (`AGENT_READABLE_SECRET_NAMES`).
 
-- `knowledge/secrets/auth.json` is OpenCode provider auth state. It remains in
-  the assistant-readable knowledge tree and is bind-mounted into the assistant.
-- `private/secrets/` holds delegated credentials: the UI password, OpenCode
-  server password, Guardian/API tokens, portal principal secrets, and bot
-  tokens. The directory is never mounted into assistant `/stash`; Compose grants
-  only named files to the service process that consumes them.
-- `private/env/paperclip.env` is the sole audited env-file exception. The pinned
+- `knowledge/secrets/auth.json` is OpenCode provider auth state, and is the only
+  name on that allowlist. It remains in the assistant-readable knowledge tree
+  and is bind-mounted into the assistant.
+- `state/secrets/` holds everything else: the UI password, OpenCode server
+  password, Guardian/API tokens, portal principal secrets, bot tokens, and any
+  credential a later release adds without saying where it goes. The directory is
+  never mounted into assistant `/stash`; Compose grants only named files to the
+  service process that consumes them.
+- `state/env/paperclip.env` is the sole audited env-file exception. The pinned
   upstream image requires its two server secrets as environment variables; the
   audit enforces the exact path, exact key set, values, and file modes.
 - `knowledge/env/user.env` is the AKM `env/user` backing file. It is not a
@@ -112,6 +117,7 @@ Compose source: `packages/skeleton/system/stack/core.compose.yml`.
 | `$OP_HOME/system/assistant` | `/etc/opencode` | rw | Managed `OPENCODE_CONFIG_DIR` |
 | `$OP_HOME/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Provider auth state |
 | `$OP_HOME/knowledge` | `/stash` | rw | AKM stash, including `env/user.env` and `tasks/` |
+| `$OP_HOME/system/skills` | `/system-stash` | ro | Release-shipped skills, as a read-only AKM bundle |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM cache and task logs |
 | `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM databases and task history |
@@ -119,9 +125,9 @@ Compose source: `packages/skeleton/system/stack/core.compose.yml`.
 | `$OP_HOME/workspace` | `/work` | rw | Shared work area |
 | `assistant-persistent` | `/opt/persistent` | rw | Optional-tool persistence |
 
-`private/` is not a volume. The assistant service receives only the individual
-`op_opencode_password` and `op_ui_login_password` files it needs through Compose
-secrets at `/run/secrets/`; neither appears under `/stash`.
+`state/secrets/` is not a volume. The assistant service receives only the
+individual `op_opencode_password` and `op_ui_login_password` files it needs
+through Compose secrets at `/run/secrets/`; neither appears under `/stash`.
 
 ### Ports
 
@@ -181,21 +187,21 @@ Compose source: `packages/skeleton/system/stack/services.compose.yml`.
 | `$OP_HOME/cache/paperclip-opencode/runtime` | `/etc/opencode` | rw | Regenerable OpenCode runtime config and exact-pinned plugin dependencies |
 | `$OP_HOME/config/paperclip/akm` | `/etc/akm` | rw | Paperclip-specific AKM config |
 | `$OP_HOME/knowledge` | `/stash` | rw | Shared knowledge and AKM assets |
-| `$OP_HOME/knowledge/paperclip/secrets` | `/stash/secrets` | rw | Paperclip-authorized secret assets; obscures assistant provider auth |
-| `$OP_HOME/knowledge/paperclip/env` | `/stash/env` | rw | Paperclip-authorized env assets; obscures assistant `user.env` |
 | `$OP_HOME/data/paperclip-akm/cache` | `/opt/akm/cache` | rw | Paperclip AKM cache |
 | `$OP_HOME/data/paperclip-akm/data` | `/opt/akm/data` | rw | Paperclip AKM database and runtime state |
-| `$OP_HOME/private/env/paperclip.env` | Compose `env_file` | ro input | Upstream-required authentication and agent-JWT secrets |
+| `$OP_HOME/state/env/paperclip.env` | Compose `env_file` | ro input | Upstream-required authentication and agent-JWT secrets |
 
 Paperclip is a normal `addon.paperclip` service. It is published only at
 `127.0.0.1:${OP_PAPERCLIP_PORT:-3840}` and joins only `addon_net`.
 
-The parent `/stash` mount is intentionally followed by more-specific env and
-secret mounts. Paperclip can use shared knowledge, but its canonical AKM value
-paths resolve only to `knowledge/paperclip/`; it cannot reach the assistant's
-`knowledge/env/user.env` or `knowledge/secrets/auth.json` through those paths.
-Values under `knowledge/paperclip/` remain visible to the assistant and must be
-treated as agent-readable.
+Paperclip sees the shared stash as it is. It used to receive two per-service
+overmounts on `/stash/env` and `/stash/secrets` — a boundary held up by hiding
+one mount behind another, which is exactly what the tree-name-equals-mount rule
+forbids. Nothing agent-private lives under `knowledge/` any more (secret routing
+is default-deny into `state/secrets/`), so the overmounts guarded nothing.
+Everything in `knowledge/` is readable by every agent that gets `/stash`, the
+assistant and Paperclip alike; grant an addon a narrower view with a `:ro`
+mount and an AKM bundle entry, not by covering a path.
 
 ### Key Environment
 
@@ -203,7 +209,7 @@ treated as agent-readable.
 |---|---|---|
 | `XDG_CONFIG_HOME` | `/paperclip/.config` | Keeps model preflight and agent runs on one user config |
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Mutable runtime copy of managed plugin bootstrap and permissions |
-| `AKM_BUNDLE_DIR` | `/stash` | Shared bundle with Paperclip-specific value overlays |
+| `AKM_BUNDLE_DIR` | `/stash` | The shared stash bundle |
 | `AKM_CONFIG_DIR` | `/etc/akm` | Paperclip AKM config |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable state |
@@ -230,13 +236,14 @@ op --profile addon.paperclip exec -w /app paperclip \
 openpalm addon disable paperclip && cp -a ~/.openpalm/data/paperclip <destination>
 ```
 
-The credentials in `private/env/paperclip.env` *are* in backup scope (all of
-`private/` is), so a restore that brings back the secrets without
-`data/paperclip` yields a working login against an empty database. Back up both
-or neither.
+The credentials in `state/env/paperclip.env` leave the snapshot **with**
+`data/paperclip`: a service's data and its credentials are one restore unit, so
+a snapshot takes both or neither. Restoring the secrets alone would give a
+working login against an empty database and read as a successful restore. The
+snapshot names what it left out in its `.backup-complete` marker; the two
+commands above take both halves together.
 
-Paperclip OpenCode/AKM user config and `knowledge/paperclip/` are also in
-lifecycle safety backup scope. `data/paperclip-akm/` is service state and
+Paperclip OpenCode/AKM user config is also in lifecycle safety backup scope. `data/paperclip-akm/` is service state and
 excluded; `cache/paperclip-opencode/runtime/` is regenerable and excluded.
 
 ## Guardian
@@ -251,13 +258,19 @@ profile-gated and is not an always-on core service.
 | `$OP_HOME/data/guardian` | `/opt/openpalm/guardian` | rw | Guardian home and SQLite state |
 | `$OP_HOME/cache/guardian` | `/opt/openpalm/guardian/.cache` | rw | Regenerable Bun cache |
 | `$OP_HOME/data/logs` | `/opt/openpalm/logs` | rw | Guardian audit log |
-| `$OP_HOME/system/guardian` | `/etc/opencode` | rw | Managed moderator config/instructions |
+| `$OP_HOME/system/guardian` | `/opt/openpalm/guardian-config` | ro | Managed moderator policy source (instructions, permissions) |
+| `$OP_HOME/cache/guardian-opencode/runtime` | `/etc/opencode` | rw | Regenerable moderator `OPENCODE_CONFIG_DIR`, republished from the managed source at boot |
 | `$OP_HOME/config/guardian` | `/opt/openpalm/guardian/.config/opencode` | rw | User moderation model config |
 | `knowledge/secrets/auth.json` via `guardian_auth_json` | `/run/secrets/guardian_auth_json` | ro | Provider auth copied into Guardian home at boot |
-| Named files from `private/secrets/` | `/run/secrets/<name>` | ro | Guardian, API, portal, and upstream credentials |
+| Named files from `state/secrets/` | `/run/secrets/<name>` | ro | Guardian, API, portal, and upstream credentials |
 
 Guardian mounts no `knowledge/` directory. Provider `auth.json` is delivered as
-one Compose secret; delegated credentials come from `private/secrets/`.
+one Compose secret; delegated credentials come from `state/secrets/`.
+
+The managed moderator config arrives read-only, and `OPENCODE_CONFIG_DIR` is a
+separate regenerable copy under `cache/`. OpenCode writes into every config
+directory it loads, so this split is what keeps `system/guardian/` a policy tree
+the policed process cannot rewrite — the same split Paperclip uses.
 
 ### Ports
 
@@ -318,7 +331,7 @@ container and there is no socket-proxy service.
 |---|---|---|
 | `PORT` / `OP_HOST_UI_PORT` | `3880` | Host UI listener |
 | `OP_HOME` | Host environment | OpenPalm home |
-| `OP_UI_LOGIN_PASSWORD` | Loaded from `private/secrets/op_ui_login_password` | Session login verification |
+| `OP_UI_LOGIN_PASSWORD` | Loaded from `state/secrets/op_ui_login_password` | Session login verification |
 | `OP_TRUSTED_PROXY` | Off | Non-admin `openpalm app` only: trusts `Host`/`x-forwarded-proto` from an operator-managed reverse proxy (Tailscale Serve, Caddy, nginx) **without** widening the listener off loopback |
 | `OP_ALLOW_REMOTE_SETUP` | Off | Non-admin `openpalm app` only: binds `0.0.0.0` directly, for the rare case with no reverse proxy in front |
 

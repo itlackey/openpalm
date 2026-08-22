@@ -36,7 +36,8 @@ Managed files are replaced on reconcile. Durable user customizations belong in
 | `data/assistant/` | `/home/opencode` | Persistent runtime home |
 | `cache/assistant/` | `/home/opencode/.cache` | Regenerable runtime cache |
 | `knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Provider auth state |
-| `knowledge/` | `/stash` | AKM stash, user env, tasks, skills, and knowledge |
+| `knowledge/` | `/stash` | AKM stash: user env, tasks, knowledge, and the operator's own skills |
+| `system/skills/` | `/system-stash` (ro) | Release-shipped AKM skills bundle |
 | `config/akm/` | `/etc/akm` | AKM config |
 | `data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
 | `data/akm/data/` | `/opt/akm/data` | AKM durable data |
@@ -90,7 +91,8 @@ validation.
 
 | Host/source | Container path | Purpose |
 |---|---|---|
-| `system/guardian/` | `/etc/opencode` | Managed moderator instructions and permissions |
+| `system/guardian/` | `/opt/openpalm/guardian-config` (ro) | Managed moderator instructions and permissions |
+| `cache/guardian-opencode/runtime/` | `/etc/opencode` | Regenerable `OPENCODE_CONFIG_DIR`, republished from the managed source at boot |
 | `config/guardian/` | `/opt/openpalm/guardian/.config/opencode` | User-selectable moderation model |
 | `knowledge/secrets/auth.json` via Compose secret | `/run/secrets/guardian_auth_json` | Provider auth input copied into Guardian home |
 
@@ -127,10 +129,9 @@ and exact installed versions are checked before a release manifest is marked
 current. No runtime config or dependency content is stored in the managed or
 user config trees or included in backups.
 
-Paperclip receives shared knowledge at `/stash`, with
-`knowledge/paperclip/env/` and `knowledge/paperclip/secrets/` mounted over the
-canonical `/stash/env` and `/stash/secrets` paths. Its AKM config and state are
-isolated at `/etc/akm`, `/opt/akm/cache`, and `/opt/akm/data`.
+Paperclip receives shared knowledge at `/stash` as-is — no per-service
+overmounts. Its AKM config and state are isolated at `/etc/akm`,
+`/opt/akm/cache`, and `/opt/akm/data`.
 
 The compatibility adapter is required by the OpenCode `1.3.0` bundled in the
 current digest-pinned Paperclip image. Re-test plugin loading, bare `akm`, and
@@ -150,9 +151,9 @@ instructions prohibit environment enumeration so that run key is not logged.
 - Provider `auth.json` is the only service credential retained under
   `knowledge/secrets/` for assistant access.
 - UI, OpenCode server, Guardian, API, portal, and bot credentials live under
-  `private/secrets/`.
-- The private tree is never mounted into `/stash`. Compose exposes only named
-  secret files to consuming service processes.
+  `state/secrets/`.
+- `state/secrets/` and `state/env/` are never bind-mounted. Compose exposes only
+  named secret files to consuming service processes.
 - `state/stack.env` contains non-secret runtime configuration only.
 
 ## Day-to-Day Changes

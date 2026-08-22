@@ -732,9 +732,9 @@ describe('validate command', () => {
 		const stateDir = join(tempHome, 'state');
 		// op_ui_login_password is a DELEGATED secret (guardian/portal/UI-consumed),
 		// so G1 relocates it out of the assistant-reachable knowledge/secrets stash
-		// into private/secrets/. Seed it where the name-routed secretPath() now
+		// into state/secrets/. Seed it where the name-routed secretPath() now
 		// resolves it.
-		const secretDir = join(tempHome, 'private', 'secrets');
+		const secretDir = join(tempHome, 'state', 'secrets');
 		mkdirSync(stackDir, { recursive: true });
 		mkdirSync(stateDir, { recursive: true });
 		mkdirSync(secretDir, { recursive: true, mode: 0o700 });

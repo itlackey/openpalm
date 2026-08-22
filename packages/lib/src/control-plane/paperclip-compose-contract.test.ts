@@ -59,28 +59,29 @@ describe('Paperclip addon Compose contract', () => {
 		]);
 	});
 
-	test('mounts shared knowledge with Paperclip-specific env and secret overlays', () => {
+	test('mounts shared knowledge as-is, with no per-service overmounts', () => {
 		const paperclip = services.services?.paperclip;
 		expect(paperclip?.volumes).toEqual([
-			'${OP_HOME}/data/paperclip:/paperclip',
+			'${OP_HOME:?}/data/paperclip:/paperclip',
 			// The en_US.UTF-8 alias the paperclip-locale one-shot materializes,
 			// at glibc's DEFAULT lookup path — the library wipes the environment
 			// when it spawns initdb, so LOCPATH could never reach it. The HOST
 			// side is dotless so ensureComposeVolumeTargets pre-creates a
 			// directory rather than an empty file (see compose-mount-basename).
-			'${OP_HOME}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro',
-			'${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro',
-			'${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro',
-			'${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode',
-			'${OP_HOME}/config/paperclip/akm:/etc/akm',
-			'${OP_HOME}/knowledge:/stash',
-			'${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets',
-			'${OP_HOME}/knowledge/paperclip/env:/stash/env',
-			'${OP_HOME}/data/paperclip-akm/cache:/opt/akm/cache',
-			'${OP_HOME}/data/paperclip-akm/data:/opt/akm/data'
+			'${OP_HOME:?}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro',
+			'${OP_HOME:?}/config/paperclip/opencode:/paperclip/.config/opencode:ro',
+			'${OP_HOME:?}/system/paperclip:/opt/openpalm/paperclip:ro',
+			'${OP_HOME:?}/cache/paperclip-opencode/runtime:/etc/opencode',
+			'${OP_HOME:?}/config/paperclip/akm:/etc/akm',
+			'${OP_HOME:?}/knowledge:/stash',
+			'${OP_HOME:?}/data/paperclip-akm/cache:/opt/akm/cache',
+			'${OP_HOME:?}/data/paperclip-akm/data:/opt/akm/data'
 		]);
-		expect(paperclip?.volumes).not.toContain('${OP_HOME}/knowledge/secrets:/stash/secrets');
-		expect(paperclip?.volumes).not.toContain('${OP_HOME}/knowledge/env:/stash/env');
+		// The retired overmounts: a boundary held up by hiding one mount behind
+		// another. Nothing agent-private lives under knowledge/ any more, so
+		// there is nothing left for them to hide.
+		expect(paperclip?.volumes).not.toContain('${OP_HOME:?}/knowledge/paperclip/secrets:/stash/secrets');
+		expect(paperclip?.volumes).not.toContain('${OP_HOME:?}/knowledge/paperclip/env:/stash/env');
 	});
 
 	test('passes one consistent OpenCode and AKM environment to every agent run', () => {

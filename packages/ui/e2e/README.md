@@ -81,7 +81,7 @@ Current stack files are:
 - Managed compose: `.dev-e2e/system/stack/*.compose.yml`
 - User overlay: `.dev-e2e/config/stack/custom.compose.yml`
 - Runtime record: `.dev-e2e/state/stack.env`
-- Delegated service secrets: `.dev-e2e/private/secrets/`
+- Delegated service secrets: `.dev-e2e/state/secrets/`
 - Shared provider-auth exception: `.dev-e2e/knowledge/secrets/auth.json`
 
 It enables the `api` addon and `addon.api` profile so the profile-gated Guardian
@@ -93,7 +93,7 @@ assistant/Guardian images, starts the stack and loopback host admin, then checks
 - `/api/auth/login`
 - unauthenticated and authenticated `/api/host/containers/list`
 - authenticated `/api/host/health`
-- no Docker socket or delegated `private/` tree mounted into the assistant
+- no Docker socket or delegated `state/secrets/` tree mounted into the assistant
 - all selected stack Playwright files
 
 The launcher does not test the voice service, voice hardware, model-backed chat,

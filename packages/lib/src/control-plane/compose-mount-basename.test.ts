@@ -28,8 +28,10 @@ function bindSources(): Array<{ file: string; source: string; line: string }> {
   for (const file of readdirSync(STACK_DIR).filter((f) => f.endsWith(".yml"))) {
     for (const raw of readFileSync(`${STACK_DIR}${file}`, "utf-8").split("\n")) {
       const line = raw.trim();
-      // Short-form volume rows only: `- <host>:<container>[:mode]`.
-      const m = /^- (\$\{OP_(?:HOME|HOST)[^:]*\}[^:]*):/.exec(line);
+      // Short-form volume rows only: `- <host>:<container>[:mode]`. The
+      // interpolation runs to its own `}` — the guarded `${OP_HOME:?}` sources
+      // carry a colon inside the braces.
+      const m = /^- (\$\{OP_(?:HOME|HOST)[^}]*\}[^:]*):/.exec(line);
       if (m) out.push({ file, source: m[1], line });
     }
   }

@@ -294,10 +294,10 @@ if grep -q '/var/run/docker.sock' <<<"$mounts"; then
 else
   pass "Assistant has no Docker socket mount"
 fi
-if grep -Fq "${OP_E2E_HOME}/private ->" <<<"$mounts"; then
-  fail "Assistant unexpectedly mounts the delegated private tree"
+if grep -Fq "${OP_E2E_HOME}/state/secrets ->" <<<"$mounts"; then
+  fail "Assistant unexpectedly mounts the delegated secrets tree"
 else
-  pass "Assistant receives only named private secret files, not the private tree"
+  pass "Assistant receives only named secret files, not the state/secrets tree"
 fi
 
 if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then

@@ -99,11 +99,11 @@ function seedInstalledHome(home: string): void {
 	mkdirSync(join(home, 'knowledge'), { recursive: true });
 	mkdirSync(join(home, 'workspace'), { recursive: true });
 	mkdirSync(join(home, 'data'), { recursive: true });
-	// §G1: delegated secrets live under private/secrets (outside the
+	// §G1: delegated secrets live under state/secrets (outside the
 	// agent-reachable knowledge/ tree). Seed a live credential so the purge
 	// test can prove it is not left on disk (Codex #5).
-	mkdirSync(join(home, 'private', 'secrets'), { recursive: true });
-	writeFileSync(join(home, 'private', 'secrets', 'op_ui_login_password'), 'hunter2\n');
+	mkdirSync(join(home, 'state', 'secrets'), { recursive: true });
+	writeFileSync(join(home, 'state', 'secrets', 'op_ui_login_password'), 'hunter2\n');
 }
 
 describe('runUninstallAction --purge (C1)', () => {
@@ -114,19 +114,34 @@ describe('runUninstallAction --purge (C1)', () => {
 		const { runUninstallAction } = await import(`${uninstallModuleUrl}?t=${Math.random()}`);
 		await runUninstallAction({ purge: true });
 
+		// §G1/Codex #5: state/ carries the delegated secrets tree, so this one
+		// assertion covers both the records and the credentials.
 		expect(existsSync(join(tempHome, 'state'))).toBe(false);
 		expect(existsSync(join(tempHome, 'system'))).toBe(false);
 		expect(existsSync(join(tempHome, 'config'))).toBe(false);
 		expect(existsSync(join(tempHome, 'knowledge'))).toBe(false);
 		expect(existsSync(join(tempHome, 'workspace'))).toBe(false);
 		expect(existsSync(join(tempHome, 'data'))).toBe(false);
-		// §G1/Codex #5: the delegated secrets tree must not survive --purge.
-		expect(existsSync(join(tempHome, 'private'))).toBe(false);
-
 		// The next plain `install` must not see this as an existing install.
 		expect(realLib.classifyLocalInstall(join(tempHome, 'system', 'stack'), tempHome)).toBe(
 			'not_installed'
 		);
+	});
+
+	test('a private/ tree the layout migration could not consume is still purged', async () => {
+		seedInstalledHome(tempHome);
+		// migrateOpHomeLayout leaves private/ in place whenever the old and new
+		// copies of a credential disagree, or when it holds anything the
+		// relocation does not move. No resolver reaches it, so purge names it
+		// literally — otherwise "all data removed" prints over a live credential.
+		mkdirSync(join(tempHome, 'private', 'secrets'), { recursive: true });
+		writeFileSync(join(tempHome, 'private', 'secrets', 'ts_authkey'), 'tskey-abc\n');
+		resetMocks();
+
+		const { runUninstallAction } = await import(`${uninstallModuleUrl}?t=${Math.random()}`);
+		await runUninstallAction({ purge: true });
+
+		expect(existsSync(join(tempHome, 'private'))).toBe(false);
 	});
 
 	test('without --purge, config/data survive and only compose down runs', async () => {

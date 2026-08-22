@@ -16,7 +16,7 @@
  * Values use dotenv quoting because AKM and OpenPalm parse this as a `.env`
  * asset. Agent tools load it only in their own scoped subprocesses.
  *
- * `stack.env`, provider `auth.json`, and delegated `private/secrets/` files are
+ * `stack.env`, provider `auth.json`, and delegated `state/secrets/` files are
  * outside this file. Service credentials are granted as named Compose secrets.
  *
  * Layout:

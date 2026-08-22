@@ -797,7 +797,7 @@ describe('performSetup', () => {
 		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
 	});
 
-	it('writes the UI login password to its secret file (private/secrets — §G1 delegated)', async () => {
+	it('writes the UI login password to its secret file (state/secrets — §G1 delegated)', async () => {
 		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);
 
@@ -997,6 +997,17 @@ describe('performSetup', () => {
 		}
 	});
 
+	it('leaves host akm sharing OFF when the spec omits hostAkm', async () => {
+		// C14: an omitted field used to turn on an rw bind of a directory OUTSIDE
+		// OP_HOME — for every headless/API caller, and for the wizard's own OFF
+		// position, which sends the key only when the box is ticked.
+		const result = await performSetup(makeValidSpec());
+		expect(result.ok).toBe(true);
+		expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8')).not.toContain(
+			'OP_HOST_AKM_STASH='
+		);
+	});
+
 	it('does not create a stack.yml (addon state lives in stack.env)', async () => {
 		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);
@@ -1101,7 +1112,7 @@ describe('performSetup', () => {
 	// ── #563 T23-T27: network preset plumbing through performSetup ───────────
 
 	// §G1: op_opencode_password is a delegated secret — secretPath() routes it
-	// (and every other delegated name) to private/secrets/, not knowledge/secrets/.
+	// (and every other delegated name) to state/secrets/, not knowledge/secrets/.
 	const secretPathFor = (name: string) => secretPath(homeDir, name);
 
 	it('networkAccess publishes ONLY the UI — OpenCode stays loopback', async () => {

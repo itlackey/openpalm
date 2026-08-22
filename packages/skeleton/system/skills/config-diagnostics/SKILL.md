@@ -38,7 +38,7 @@ process. Never call `/api/host/*` or imply that host validation was performed.
 5. Explain the expected storage boundary without asking the user to paste a
    value into chat:
    - provider OpenCode auth: `knowledge/secrets/auth.json`
-   - delegated UI/Guardian/API/portal/bot credentials: `private/secrets/`
+   - delegated UI/Guardian/API/portal/bot credentials: `state/secrets/`
    - AKM user env: `knowledge/env/user.env`
    - non-secret runtime state: `state/stack.env`
 

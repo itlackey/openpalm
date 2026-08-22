@@ -71,21 +71,22 @@ describe('no /admin paths left in client code', () => {
   });
 });
 
-// Review 2026-07-10 F1: packages/skeleton/knowledge ships to every user
-// install (assistant-visible skills/docs). A dead /admin path there is worse
-// than one in our own source — it's advice we hand to the assistant that
-// drives a live "why isn't my connection working?" flow straight into a 404.
-// Scanned as plain text (not just .md) so future knowledge file types are
-// covered without editing this walker.
-const SKELETON_KNOWLEDGE_DIR = fileURLToPath(
-  new URL('../../../../skeleton/knowledge/', import.meta.url)
+// Review 2026-07-10 F1: the shipped skills ship to every user install
+// (assistant-visible skills/docs). A dead /admin path there is worse than one
+// in our own source — it's advice we hand to the assistant that drives a live
+// "why isn't my connection working?" flow straight into a 404. Scanned as
+// plain text (not just .md) so future skill file types are covered without
+// editing this walker. They live in the MANAGED system/ tree now, which is
+// what gives them an update channel.
+const SKELETON_SKILLS_DIR = fileURLToPath(
+  new URL('../../../../skeleton/system/skills/', import.meta.url)
 );
 
-function knowledgeFiles(): string[] {
-  if (!existsSync(SKELETON_KNOWLEDGE_DIR)) return [];
-  return (readdirSync(SKELETON_KNOWLEDGE_DIR, { recursive: true }) as string[])
+function skillFiles(): string[] {
+  if (!existsSync(SKELETON_SKILLS_DIR)) return [];
+  return (readdirSync(SKELETON_SKILLS_DIR, { recursive: true }) as string[])
     .filter((rel) => /\.(md|ts|js|json)$/.test(rel))
-    .map((rel) => join(SKELETON_KNOWLEDGE_DIR, rel));
+    .map((rel) => join(SKELETON_SKILLS_DIR, rel));
 }
 
 // Knowledge files are prose/markdown, not JS/TS source, so an endpoint
@@ -109,16 +110,16 @@ function bareOffendersRelativeTo(files: string[], base: string): string[] {
 }
 
 function bareOffendersIn(files: string[]): string[] {
-  return bareOffendersRelativeTo(files, SKELETON_KNOWLEDGE_DIR);
+  return bareOffendersRelativeTo(files, SKELETON_SKILLS_DIR);
 }
 
-describe('no /admin paths left in shipped skeleton knowledge (review 2026-07-10 F1)', () => {
+describe('no /admin paths left in the shipped skills (review 2026-07-10 F1)', () => {
   test('the scan sees the tree (sanity)', () => {
-    expect(knowledgeFiles().length).toBeGreaterThanOrEqual(5);
+    expect(skillFiles().length).toBeGreaterThanOrEqual(5);
   });
 
-  test('no shipped skill/doc under packages/skeleton/knowledge references a dead /admin path', () => {
-    expect(bareOffendersIn(knowledgeFiles())).toEqual([]);
+  test('no shipped skill/doc under packages/skeleton/system/skills references a dead /admin path', () => {
+    expect(bareOffendersIn(skillFiles())).toEqual([]);
   });
 });
 

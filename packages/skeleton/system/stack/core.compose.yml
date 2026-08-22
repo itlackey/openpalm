@@ -18,13 +18,17 @@
 #
 # Directory model:
 #   ~/.openpalm/system/       — managed release assets, including system/stack/
-#                               core/services/portals compose files
+#                               core/services/portals compose files and the
+#                               release-shipped system/skills akm bundle
 #   ~/.openpalm/config/       — user-editable config, including only the
 #                               config/stack/custom.compose.yml stack overlay
 #   ~/.openpalm/data/         — persistent service data, logs, backups, rollback
-#   ~/.openpalm/knowledge/    — AKM knowledge (skills, env, tasks, agents) plus
+#   ~/.openpalm/knowledge/    — AKM knowledge (env, tasks, agents) plus
 #                               provider secrets/auth.json
-#   ~/.openpalm/private/      — delegated service credentials outside /stash
+#   ~/.openpalm/state/        — app-written records and generated runtime
+#                               config, including the delegated service
+#                               credentials (state/secrets/, state/env/)
+#                               outside /stash
 #   ~/.openpalm/cache/        — regenerable Assistant and Guardian caches
 #   ~/.openpalm/workspace/    — shared work area
 
@@ -203,7 +207,7 @@ services:
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
-      - ${OP_HOME}/data/assistant:/home/opencode
+      - ${OP_HOME:?}/data/assistant:/home/opencode
       # S1: regenerable caches (bun/npm/opencode) live OUTSIDE durable data/,
       # in a purgeable cache/ tree. This is a host BIND, not a named volume:
       # the first attempt (921412b1) nested a named volume inside the HOME bind
@@ -211,15 +215,22 @@ services:
       # smoke. ensureHomeDirs pre-creates cache/assistant operator-owned, so
       # Docker never has to create it. Purge with `openpalm doctor
       # --clean-caches`; excluded from backups.
-      - ${OP_HOME}/cache/assistant:/home/opencode/.cache
-      - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
-      - ${OP_HOME}/system/assistant:/etc/opencode
-      - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
+      - ${OP_HOME:?}/cache/assistant:/home/opencode/.cache
+      - ${OP_HOME:?}/config/assistant:/home/opencode/.config/opencode
+      - ${OP_HOME:?}/system/assistant:/etc/opencode
+      - ${OP_HOME:?}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
       # Primary stash + config are ALWAYS OpenPalm-managed.
-      - ${OP_HOME}/knowledge:/stash
-      - ${OP_HOME}/config/akm:/etc/akm
-      - ${OP_HOME}/data/akm/cache:/opt/akm/cache
-      - ${OP_HOME}/data/akm/data:/opt/akm/data
+      - ${OP_HOME:?}/knowledge:/stash
+      # Release-shipped skills, as a SYSTEM akm bundle. `:ro` is the boundary —
+      # the `writable: false` entry in config/akm/config.json only stops akm
+      # from choosing this bundle as a write target. system/ is overwritten
+      # wholesale on every update, which is how a shipped skill gets a fix
+      # channel at all; a writable mount would let the assistant edit a file
+      # the next update silently reverts.
+      - ${OP_HOME:?}/system/skills:/system-stash:ro
+      - ${OP_HOME:?}/config/akm:/etc/akm
+      - ${OP_HOME:?}/data/akm/cache:/opt/akm/cache
+      - ${OP_HOME:?}/data/akm/data:/opt/akm/data
       # Host AKM secondary stash. ALWAYS mounted: when the host has AKM,
       # OP_HOST_AKM_STASH points at the user's personal stash (e.g. ~/akm) and
       # "sharing" = a writable secondary source entry named host-akm in
@@ -227,8 +238,8 @@ services:
       # falls back to an always-present empty dir, so compose never errors and
       # akm simply never walks it (it is not a configured source). The container
       # NEVER chowns this mount (see entrypoint.sh).
-      - ${OP_HOST_AKM_STASH:-${OP_HOME}/data/akm/empty-host-stash}:/host-stash
-      - ${OP_HOME}/workspace:/work
+      - ${OP_HOST_AKM_STASH:-${OP_HOME:?}/data/akm/empty-host-stash}:/host-stash
+      - ${OP_HOME:?}/workspace:/work
       # Escape hatch for prefix-style global installs that cannot cleanly live
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
@@ -312,21 +323,21 @@ networks:
 # for `docker compose config`, so this same top-level secret is also declared
 # in portals.compose.yml (the guardian's grant).
 #
-# G1: op_opencode_password and op_ui_login_password are DELEGATED secrets —
-# consumed only by the guardian/portals and this service's own server process,
-# never by the assistant agent — so they live under private/secrets/, NOT
-# knowledge/secrets/ (which is bind-mounted wholesale into the assistant at
-# /stash and is agent-reachable). The canonical delegated-name list is
-# packages/lib/src/control-plane/secrets-files.ts DELEGATED_SECRET_NAMES.
+# G1: op_opencode_password and op_ui_login_password live under state/secrets/,
+# NOT knowledge/secrets/ (which is bind-mounted wholesale into the assistant at
+# /stash and is agent-reachable). That is not a per-name decision: secret
+# routing is default-deny, so every name lands there unless it is on the
+# agent-readable allowlist in packages/lib/src/control-plane/secrets-files.ts
+# (AGENT_READABLE_SECRET_NAMES — auth.json alone).
 secrets:
   opencode_server_password:
-    file: ${OP_HOME}/private/secrets/op_opencode_password
+    file: ${OP_HOME:?}/state/secrets/op_opencode_password
   # UI login password for the container-served @openpalm/ui co-process.
   # Guaranteed present before any shipped deploy: setup fail-closes without it
   # (setup.ts security.uiLoginPassword), and the dev/smoke fixtures seed it.
   # Manual-compose users: see docs/operations/manual-compose-runbook.md.
   ui_login_password:
-    file: ${OP_HOME}/private/secrets/op_ui_login_password
+    file: ${OP_HOME:?}/state/secrets/op_ui_login_password
 
 volumes:
   assistant-persistent:

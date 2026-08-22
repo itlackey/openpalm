@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
@@ -9,7 +10,6 @@ import {
   releaseInstallLock,
   resolveConfigDir,
   resolveDataDir,
-  resolvePrivateDir,
   resolveStashDir,
   resolveStateDir,
   resolveSystemDir,
@@ -75,12 +75,13 @@ export async function runUninstallAction(
       // state/stack.env (OP_SETUP_COMPLETE) or system/stack/core.compose.yml
       // trips classifyLocalInstall and blocks the next plain `install`,
       // contradicting the purge's own "all data removed" message.
-      // §G1: private/ holds the delegated secrets (UI login password,
+      // §G1: state/ also holds the delegated secrets (UI login password,
       // guardian/API tokens, portal principals, bot credentials) that were
-      // moved OUT of the agent-reachable knowledge/ tree. It is a sibling of
-      // knowledge/, so resolveStashDir() does not reach it — purge it
-      // explicitly or `--purge` reports "all data removed" while leaving every
-      // live credential on disk (Codex #5).
+      // moved OUT of the agent-reachable knowledge/ tree, under state/secrets/
+      // and state/env/. resolveStashDir() does not reach them — that is the
+      // point — so resolveStateDir() below is what keeps `--purge`'s "all data
+      // removed" message true instead of leaving every live credential on disk
+      // (Codex #5).
       // dataDir owns the lifecycle lock, so it is removed LAST, only after
       // every other destructive purge step has completed — state/ and
       // system/ hold no lock or in-use handle so they are safe to go first.
@@ -89,9 +90,18 @@ export async function runUninstallAction(
         resolveSystemDir(),
         resolveConfigDir(),
         resolveStashDir(),
-        resolvePrivateDir(),
         resolveWorkspaceDir(),
         resolveCacheDir(),
+        // The retired `private/` tree, named literally because no resolver
+        // reaches it anymore. `migrateOpHomeLayout` leaves it in place when the
+        // old and new copies of a credential disagree, or when it holds
+        // anything the relocation does not move (a subdirectory, a symlink, an
+        // operator's own file) — and in those states it still holds live
+        // credentials. Purge is an ALLOWLIST, so a tree missing from it is
+        // silently kept while the command reports "all data removed": G7,
+        // verbatim. Drop this once the supported upgrade floor passes schema
+        // 10, the same lifetime rule the MIGRATIONS entries follow.
+        join(state.homeDir, 'private'),
         resolveDataDir(),
       ];
       // A backup destination configured OUTSIDE OP_HOME (OP_BACKUP_DIR) is not

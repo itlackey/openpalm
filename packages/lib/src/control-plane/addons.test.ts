@@ -121,7 +121,7 @@ describe('addon runtime state', () => {
       services: ['paperclip'],
     });
     expect(listEnabledAddonIds(homeDir)).toContain('paperclip');
-    const paperclipEnv = join(homeDir, 'private', 'env', 'paperclip.env');
+    const paperclipEnv = join(homeDir, 'state', 'env', 'paperclip.env');
     expect(existsSync(paperclipEnv)).toBe(true);
 
     writeFileSync(

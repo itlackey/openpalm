@@ -15,13 +15,13 @@ assistant container cannot manage the stack.
 │   └── stack/custom.compose.yml    # only user-owned Compose overlay
 ├── system/                         # managed; refreshed by lifecycle operations
 │   ├── assistant/                  # managed assistant config -> /etc/opencode
-│   ├── guardian/                   # managed Guardian config -> /etc/opencode
+│   ├── guardian/                   # managed Guardian config, republished into /etc/opencode
 │   └── stack/
 │       ├── core.compose.yml
 │       ├── services.compose.yml
 │       └── portals.compose.yml
 ├── state/stack.env                 # sole non-secret Compose env file
-├── private/secrets/                # delegated service credentials
+├── state/secrets/                # delegated service credentials
 ├── knowledge/
 │   ├── secrets/auth.json           # assistant-readable provider auth
 │   ├── env/user.env                # AKM env, loaded on demand
@@ -81,7 +81,7 @@ The two runtime secret areas have different trust boundaries:
 
 | Path | Access |
 |---|---|
-| `private/secrets/` | UI, Guardian, compatible API, portals, bots, and OpenCode server only, through narrow grants |
+| `state/secrets/` | UI, Guardian, compatible API, portals, bots, and OpenCode server only, through narrow grants |
 | `knowledge/secrets/auth.json` | Assistant OpenCode provider credentials; Guardian gets a narrow copy through Compose secrets |
 
 `knowledge/env/user.env` is available through `akm env run user -- <command>` on demand. The
@@ -317,12 +317,12 @@ bind variable.
 
 Use [Remote Access over TLS](remote-access-tls.md) for browser and Guardian
 fronting. To manage Guardian principals headlessly, call its loopback-only admin
-listener with the token from `private/secrets/`:
+listener with the token from `state/secrets/`:
 
 ```bash
 token="$(openssl rand -hex 24)"
 curl -X POST http://127.0.0.1:3831/admin/principals \
-  -H "authorization: Bearer $(cat ~/.openpalm/private/secrets/op_guardian_admin_token)" \
+  -H "authorization: Bearer $(cat ~/.openpalm/state/secrets/op_guardian_admin_token)" \
   -H 'content-type: application/json' \
   -d '{"id":"my-phone","kind":"direct","token":"'"$token"'","label":"My phone"}'
 printf 'Principal token: %s\n' "$token"
@@ -332,7 +332,7 @@ Do not expose port `3831` through a reverse proxy.
 
 ## Backup
 
-Full-home archives include `private/` naturally. Exclude `cache/` when you do
+Full-home archives include `state/secrets/` naturally. Exclude `cache/` when you do
 not need regenerable package/model caches. See
 [Backup & Restore](backup-restore.md) for consistent stop, archive, and restore
 steps.

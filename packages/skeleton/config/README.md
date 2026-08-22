@@ -20,7 +20,7 @@ separately under `system/assistant/`, `system/guardian/`, and
 Managed Compose files live under `system/stack/`.
 
 `state/stack.env`, not `config/stack/`, is the sole Compose env file. Secrets
-live in `private/secrets/`, except assistant-readable provider auth at
+live in `state/secrets/`, except assistant-readable provider auth at
 `knowledge/secrets/auth.json`.
 
 Add custom services or overrides only to `config/stack/custom.compose.yml`.

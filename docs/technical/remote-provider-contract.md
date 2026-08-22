@@ -88,7 +88,7 @@ every install — required because Compose fails container creation outright
 when a declared secret's source file is missing, so the hand-edit enable
 path can never brick the stack. For Tailscale, blank `ts_authkey` is
 meaningful, not placeholder: it selects interactive login. Delegated-secret
-placement (`private/secrets/`, never the assistant-visible stash) follows
+placement (`state/secrets/`, never the assistant-visible stash) follows
 `secrets-files.ts`.
 
 ## Guardian Ingress

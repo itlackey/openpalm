@@ -40,7 +40,7 @@ Key boundaries include:
 - Host listeners default to loopback. Broader exposure is explicit and
   service-specific.
 - Provider `auth.json` is assistant-readable by design. Delegated UI, Guardian,
-  API, portal, and bot credentials live under `private/secrets/` and are granted
+  API, portal, and bot credentials live under `state/secrets/` and are granted
   to containers as named files.
 - Admin browser sessions use an HttpOnly, SameSite=Lax HMAC-signed cookie;
   host routes also require a server-side capability.

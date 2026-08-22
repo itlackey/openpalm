@@ -49,17 +49,17 @@ commands.
 
 ## Configure Credentials
 
-Both Slack tokens are delegated secrets under `private/secrets/`:
+Both Slack tokens are delegated secrets under `state/secrets/`:
 
 ```bash
-install -d -m 700 "$HOME/.openpalm/private/secrets"
+install -d -m 700 "$HOME/.openpalm/state/secrets"
 printf '%s\n' 'xoxb-your-bot-token' \
-  > "$HOME/.openpalm/private/secrets/slack_bot_token"
+  > "$HOME/.openpalm/state/secrets/slack_bot_token"
 printf '%s\n' 'xapp-your-app-token' \
-  > "$HOME/.openpalm/private/secrets/slack_app_token"
+  > "$HOME/.openpalm/state/secrets/slack_app_token"
 chmod 600 \
-  "$HOME/.openpalm/private/secrets/slack_bot_token" \
-  "$HOME/.openpalm/private/secrets/slack_app_token"
+  "$HOME/.openpalm/state/secrets/slack_bot_token" \
+  "$HOME/.openpalm/state/secrets/slack_app_token"
 ```
 
 Optional non-secret controls belong in `state/stack.env`:
@@ -70,7 +70,7 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-The installer generates `private/secrets/portal_slack_secret` for Guardian
+The installer generates `state/secrets/portal_slack_secret` for Guardian
 principal authentication. You may configure all of these values through the
 host admin UI instead of editing files.
 

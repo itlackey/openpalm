@@ -91,16 +91,16 @@ describe('an existing home migrates exactly once', () => {
 
   test('schema 5 migrates the persisted Paperclip signing key', () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
-    mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
     writeFileSync(stackEnvFile(homeDir), 'OP_ENABLED_ADDONS=paperclip\n');
     writeFileSync(
-      join(homeDir, 'private', 'env', 'paperclip.env'),
+      join(homeDir, 'state', 'env', 'paperclip.env'),
       'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=legacy\n',
     );
     writeHomeSchemaVersion(homeDir, 5);
 
     expect(runHomeMigrations(homeDir)).toBe(true);
-    expect(readFileSync(join(homeDir, 'private', 'env', 'paperclip.env'), 'utf8')).toBe(
+    expect(readFileSync(join(homeDir, 'state', 'env', 'paperclip.env'), 'utf8')).toBe(
       'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=legacy\n',
     );
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
@@ -300,6 +300,92 @@ describe('v7 → v8: the removed chat addon', () => {
     expect(runHomeMigrations(homeDir)).toBe(false);
 
     expect(env()).toBe(before);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+});
+
+// ── schema 9 → 10: private/ folds into state/, retired skeleton trees go ──────
+
+describe('schema 9 → 10: the OP_HOME layout change', () => {
+  /** A v9 home with the retired trees populated. */
+  function seedV9Home(): void {
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
+    mkdirSync(join(homeDir, 'private', 'secrets'), { recursive: true });
+    mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+    writeFileSync(join(homeDir, 'private', 'secrets', 'op_ui_login_password'), 'hunter2\n');
+    writeFileSync(join(homeDir, 'private', 'secrets', 'ts_authkey'), 'tskey-abc\n');
+    writeFileSync(join(homeDir, 'private', 'env', 'paperclip.env'), 'BETTER_AUTH_SECRET=a\n');
+    writeHomeSchemaVersion(homeDir, 9);
+  }
+
+  test('credentials move to state/, and the emptied private/ tree is removed', () => {
+    seedV9Home();
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(readFileSync(join(homeDir, 'state', 'secrets', 'op_ui_login_password'), 'utf8')).toBe('hunter2\n');
+    expect(readFileSync(join(homeDir, 'state', 'secrets', 'ts_authkey'), 'utf8')).toBe('tskey-abc\n');
+    expect(readFileSync(join(homeDir, 'state', 'env', 'paperclip.env'), 'utf8')).toBe('BETTER_AUTH_SECRET=a\n');
+    expect(existsSync(join(homeDir, 'private'))).toBe(false);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('a name present in BOTH locations with different content leaves both alone', () => {
+    seedV9Home();
+    mkdirSync(join(homeDir, 'state', 'secrets'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'secrets', 'ts_authkey'), 'tskey-different\n');
+
+    runHomeMigrations(homeDir);
+
+    // Neither version of a credential is discarded to resolve a conflict.
+    expect(readFileSync(join(homeDir, 'private', 'secrets', 'ts_authkey'), 'utf8')).toBe('tskey-abc\n');
+    expect(readFileSync(join(homeDir, 'state', 'secrets', 'ts_authkey'), 'utf8')).toBe('tskey-different\n');
+    // The unambiguous ones still moved, and private/ survives holding only the conflict.
+    expect(existsSync(join(homeDir, 'state', 'secrets', 'op_ui_login_password'))).toBe(true);
+    expect(existsSync(join(homeDir, 'private', 'secrets', 'op_ui_login_password'))).toBe(false);
+  });
+
+  test('identical content in both locations completes the interrupted move', () => {
+    seedV9Home();
+    mkdirSync(join(homeDir, 'state', 'secrets'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'secrets', 'ts_authkey'), 'tskey-abc\n');
+
+    runHomeMigrations(homeDir);
+
+    expect(existsSync(join(homeDir, 'private'))).toBe(false);
+    expect(readFileSync(join(homeDir, 'state', 'secrets', 'ts_authkey'), 'utf8')).toBe('tskey-abc\n');
+  });
+
+  test('the always-empty knowledge/paperclip overlay dirs are removed', () => {
+    seedV9Home();
+    mkdirSync(join(homeDir, 'knowledge', 'paperclip', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'knowledge', 'paperclip', 'secrets'), { recursive: true });
+
+    runHomeMigrations(homeDir);
+
+    expect(existsSync(join(homeDir, 'knowledge', 'paperclip'))).toBe(false);
+  });
+
+  test('an operator file under the retired overlay keeps its directory', () => {
+    seedV9Home();
+    mkdirSync(join(homeDir, 'knowledge', 'paperclip', 'secrets'), { recursive: true });
+    writeFileSync(join(homeDir, 'knowledge', 'paperclip', 'secrets', 'mine.txt'), 'keep\n');
+
+    runHomeMigrations(homeDir);
+
+    expect(readFileSync(join(homeDir, 'knowledge', 'paperclip', 'secrets', 'mine.txt'), 'utf8')).toBe('keep\n');
+  });
+
+  // The stash-skill dedup is NOT a migration: it needs the shipped tree to
+  // compare against, so it runs from applyHomeSeed (see ui-assets.test.ts).
+
+  test('a home with none of the retired trees reports no change but still stamps 10', () => {
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
+    writeHomeSchemaVersion(homeDir, 9);
+
+    expect(runHomeMigrations(homeDir)).toBe(false);
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 });

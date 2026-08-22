@@ -150,7 +150,7 @@ describe("classifyLocalInstall (disk markers)", () => {
   it("installed when compose exists and both guardian tokens are present, even without the OP_SETUP_COMPLETE stamp (hand-built install, R1-R3)", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
-    const secretsDir = join(dir, "private", "secrets");
+    const secretsDir = join(dir, "state", "secrets");
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
     writeFileSync(join(secretsDir, "op_guardian_mcp_token"), "cafef00d\n");
@@ -161,7 +161,7 @@ describe("classifyLocalInstall (disk markers)", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
     writeStackEnv("OP_SETUP_COMPLETE=false\n");
-    const secretsDir = join(dir, "private", "secrets");
+    const secretsDir = join(dir, "state", "secrets");
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
     expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");

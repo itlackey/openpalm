@@ -179,8 +179,8 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
   it('accepts the shipped named-secret aliases only at their canonical files', () => {
     const issues = auditResolvedComposeSecrets({
       secrets: {
-        opencode_server_password: { file: `${tempDir}/private/secrets/op_opencode_password` },
-        ui_login_password: { file: `${tempDir}/private/secrets/op_ui_login_password` },
+        opencode_server_password: { file: `${tempDir}/state/secrets/op_opencode_password` },
+        ui_login_password: { file: `${tempDir}/state/secrets/op_ui_login_password` },
         guardian_auth_json: { file: `${tempDir}/knowledge/secrets/auth.json` },
       },
     }, { homeDir: tempDir });
@@ -188,13 +188,13 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
     expect(issues).toEqual([]);
   });
 
-  it('accepts ts_authkey sourced from private/secrets — a delegated name (secrets-files.ts), not a pattern match', () => {
+  it('accepts ts_authkey sourced from state/secrets — a delegated name (secrets-files.ts), not a pattern match', () => {
     // Regression: the delegated-name check used to be a pattern list that
     // omitted ts_authkey, so a remote-addon activation failed the audit even
     // though the secret was at exactly the path the provisioner writes.
     const issues = auditResolvedComposeSecrets({
       secrets: {
-        ts_authkey: { file: `${tempDir}/private/secrets/ts_authkey` },
+        ts_authkey: { file: `${tempDir}/state/secrets/ts_authkey` },
       },
       services: {
         tunnel: {
@@ -209,7 +209,7 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
   it('rejects a top-level source override even when the service grant name is allowed', () => {
     const issues = auditResolvedComposeSecrets({
       secrets: {
-        ui_login_password: { file: `${tempDir}/private/secrets/attacker` },
+        ui_login_password: { file: `${tempDir}/state/secrets/attacker` },
       },
       services: {
         assistant: {
@@ -222,22 +222,36 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
     expect(issues.map((entry) => entry.code)).toContain('compose-secret-source-boundary');
   });
 
-  it('rejects an assistant private bind mount in the fully merged service view', () => {
+  it('rejects an assistant credential bind mount in the fully merged service view', () => {
     const issues = auditResolvedComposeSecrets({
       services: {
         assistant: {
-          volumes: [{ type: 'bind', source: `${tempDir}/private`, target: '/stash/private' }],
+          volumes: [{ type: 'bind', source: `${tempDir}/state/secrets`, target: '/stash/secrets' }],
         },
       },
     }, { homeDir: tempDir });
 
-    expect(issues.map((entry) => entry.code)).toContain('compose-private-bind-mount');
+    expect(issues.map((entry) => entry.code)).toContain('compose-credential-bind-mount');
+  });
+
+  // state/ is not off-limits as a whole — the tunnel bind-mounts state/remote/
+  // for its generated serve config. Only the two credential subtrees are.
+  it('accepts a bind mount of another state/ subtree', () => {
+    const issues = auditResolvedComposeSecrets({
+      services: {
+        tunnel: {
+          volumes: [{ type: 'bind', source: `${tempDir}/state/remote`, target: '/config' }],
+        },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues.map((entry) => entry.code)).not.toContain('compose-credential-bind-mount');
   });
 
   it('rejects merged overlay env_file and secret target redirection', () => {
     const issues = auditResolvedComposeSecrets({
       secrets: {
-        portal_chat_secret: { file: `${tempDir}/private/secrets/portal_chat_secret` },
+        portal_chat_secret: { file: `${tempDir}/state/secrets/portal_chat_secret` },
       },
       services: {
         chat: {
@@ -308,19 +322,19 @@ describe('Paperclip env-file exception', () => {
 services:
   paperclip:
     env_file:
-      - \${OP_HOME}/private/env/paperclip.env
+      - \${OP_HOME:?}/state/env/paperclip.env
 `)).toEqual([]);
 
     expect(auditComposeSecrets(`
 services:
   paperclip:
     env_file:
-      - \${OP_HOME}/private/env/other.env
+      - \${OP_HOME:?}/state/env/other.env
 `).map((entry) => entry.code)).toEqual(['compose-service-env-file']);
   });
 
   it('requires resolved secret values to match the hardened private file', () => {
-    const envPath = join(tempDir, 'private', 'env', 'paperclip.env');
+    const envPath = join(tempDir, 'state', 'env', 'paperclip.env');
     mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
     chmodSync(dirname(envPath), 0o700);
     writeFileSync(
@@ -345,12 +359,12 @@ services:
     }, { homeDir: tempDir }).map((entry) => entry.code)).toContain('paperclip-env-value-boundary');
 
     expect(auditResolvedComposeSecrets({
-      services: { paperclip: { env_file: ['/tmp/private/env/paperclip.env'] } },
+      services: { paperclip: { env_file: ['/tmp/state/env/paperclip.env'] } },
     }, { homeDir: tempDir }).map((entry) => entry.code)).toContain('paperclip-env-file-boundary');
   });
 
   it('rejects an empty required Paperclip secret', () => {
-    const envPath = join(tempDir, 'private', 'env', 'paperclip.env');
+    const envPath = join(tempDir, 'state', 'env', 'paperclip.env');
     mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
     chmodSync(dirname(envPath), 0o700);
     writeFileSync(envPath, 'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=\n', {

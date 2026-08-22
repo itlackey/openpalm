@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { privateSecretsDir, stackEnvFile } from '@openpalm/lib';
+import { stateSecretsDir, stackEnvFile } from '@openpalm/lib';
 import { _replaceState } from '$lib/server/state.js';
 import { makeTestState } from '$lib/server/test-helpers.js';
 import { getAssistantOpencodeTarget, validateConnectionUrl } from './opencode-target.js';
@@ -36,7 +36,7 @@ function seedStackEnv(content: string): void {
 }
 
 function seedGeneratedKey(value: string): void {
-  const dir = privateSecretsDir(home);
+  const dir = stateSecretsDir(home);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'op_opencode_password'), value);
 }

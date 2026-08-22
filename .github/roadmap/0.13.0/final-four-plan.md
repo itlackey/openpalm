@@ -549,7 +549,7 @@ zero-risk fallback if the maintainer prefers; it leaves the incident report's
   (`assistant-endpoint.ts`, the one place URL precedence is decided) +
   `createOpenCodeClient` (`opencode-client.ts:127,139` already has
   `listSessions`/`deleteSession`) shimmed to `SessionDeletionClient`; Basic
-  auth read from `${OP_HOME}/private/secrets/op_opencode_password`
+  auth read from `${OP_HOME}/state/secrets/op_opencode_password`
   (`core.compose.yml:277-278` — note the file name). Calls
   `runOpenCodeDbMaintenance(client, dbPath, {confirm, retention,
   skipVacuumStage: true})` (the option exists, `opencode-db-maintenance.ts:455`).

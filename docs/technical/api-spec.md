@@ -85,7 +85,7 @@ Generic host secret actions route names to one of two stores:
 
 - OpenCode provider auth remains in `knowledge/secrets/auth.json`.
 - Delegated UI, OpenCode-server, Guardian, API, portal, and bot credentials live
-  under `private/secrets/`.
+  under `state/secrets/`.
 
 Secret-list responses expose metadata, not values. `state/stack.env` is
 non-secret and secret-looking keys are rejected or relocated through the
@@ -96,7 +96,7 @@ name-routed secret writer.
 `GET /api/host/config/validate` performs the current narrow bootability check:
 
 1. `state/stack.env` must exist.
-2. `private/secrets/op_ui_login_password` must be present and non-empty.
+2. `state/secrets/op_ui_login_password` must be present and non-empty.
 
 It does not claim to run a complete Compose, registry, provider, or filesystem
 audit. Compose preflight and the dedicated diagnostics/secret-audit paths cover

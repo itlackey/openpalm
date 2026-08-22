@@ -19,14 +19,14 @@ not bootstrap this addon by copying `packages/skeleton/`.
 
 ## Configure Credentials
 
-The bot token is delegated and belongs under `private/secrets/`. The application
+The bot token is delegated and belongs under `state/secrets/`. The application
 ID and access lists are non-secret and belong in `state/stack.env`.
 
 ```bash
-install -d -m 700 "$HOME/.openpalm/private/secrets"
+install -d -m 700 "$HOME/.openpalm/state/secrets"
 printf '%s\n' 'your-bot-token' \
-  > "$HOME/.openpalm/private/secrets/discord_bot_token"
-chmod 600 "$HOME/.openpalm/private/secrets/discord_bot_token"
+  > "$HOME/.openpalm/state/secrets/discord_bot_token"
+chmod 600 "$HOME/.openpalm/state/secrets/discord_bot_token"
 ```
 
 ```dotenv
@@ -44,7 +44,7 @@ DISCORD_ALLOWED_USERS=345678901234567890
 DISCORD_BLOCKED_USERS=456789012345678901
 ```
 
-The installer generates `private/secrets/portal_discord_secret`. Guardian and
+The installer generates `state/secrets/portal_discord_secret`. Guardian and
 the Discord adapter receive that shared principal value through narrow Compose
 secret grants. Do not move it into the assistant-readable knowledge tree.
 

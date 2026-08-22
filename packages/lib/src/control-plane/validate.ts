@@ -8,7 +8,7 @@
  * function never shells out and never reads schemas.
  */
 import { existsSync } from "node:fs";
-import { privateSecretsDir } from "./home.js";
+import { stateSecretsDir } from "./home.js";
 import { readSecret } from "./secrets-files.js";
 import { stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
@@ -47,7 +47,7 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     const name = key.toLowerCase();
     const value = readSecret(state.homeDir, name);
     if (!value || value.trim().length === 0) {
-      errors.push(`ERROR: required secret ${key} is missing or empty in ${privateSecretsDir(state.homeDir)}/${name}`);
+      errors.push(`ERROR: required secret ${key} is missing or empty in ${stateSecretsDir(state.homeDir)}/${name}`);
     }
   }
 

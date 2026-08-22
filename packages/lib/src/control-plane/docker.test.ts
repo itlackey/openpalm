@@ -250,7 +250,7 @@ describe("buildComposePreflightError (shared CLI + lib message)", () => {
     // "run update to repair it" guidance would send the operator in a circle.
     const msg = buildComposePreflightError(
       options,
-      'secret "ui_login_password" not found: /home/.openpalm/private/secrets/op_ui_login_password: no such file or directory',
+      'secret "ui_login_password" not found: /home/.openpalm/state/secrets/op_ui_login_password: no such file or directory',
     );
     expect(msg).toContain("openpalm reset-password");
     expect(msg).not.toContain("Run `openpalm update` to repair it");

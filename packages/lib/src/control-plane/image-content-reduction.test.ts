@@ -66,14 +66,14 @@ describe('dead seeded tool manifests removed from the skeleton', () => {
 // ── IMG-2: on-demand install skill manifest ─────────────────────────────────
 
 describe('IMG-2 — on-demand install skill', () => {
-  const SKILL_DIR = join(REPO_ROOT, 'packages/skeleton/knowledge/skills/install-optional-tool');
+  const SKILL_DIR = join(REPO_ROOT, 'packages/skeleton/system/skills/install-optional-tool');
 
   test('SKILL.md exists', () => {
     expect(existsSync(join(SKILL_DIR, 'SKILL.md'))).toBe(true);
   });
 
   test('tools.json manifest lists every removed CLI plus gcloud', () => {
-    const manifest = readJson('packages/skeleton/knowledge/skills/install-optional-tool/tools.json');
+    const manifest = readJson('packages/skeleton/system/skills/install-optional-tool/tools.json');
     for (const id of ['codex', 'claude', 'copilot', 'pi', 'gcloud']) {
       expect(manifest).toHaveProperty(id);
     }

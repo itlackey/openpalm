@@ -57,7 +57,7 @@ Important paths are:
 |-- config/stack/custom.compose.yml
 |                                  user-owned compose overlay
 |-- state/stack.env               non-secret runtime record and enabled addons
-|-- private/secrets/              delegated Guardian/portal/admin secret files
+|-- state/secrets/              delegated Guardian/portal/admin secret files
 |-- knowledge/secrets/auth.json   shared OpenCode provider-auth exception
 |-- knowledge/env/user.env        user-managed AKM env data
 |-- data/                          service data, logs, backups, and rollback
@@ -66,7 +66,7 @@ Important paths are:
 
 Do not put delegated service credentials in `knowledge/secrets/`: that tree is
 assistant-reachable through `/stash`. Delegated secrets belong in
-`private/secrets/`; `knowledge/secrets/auth.json` is the deliberate shared
+`state/secrets/`; `knowledge/secrets/auth.json` is the deliberate shared
 provider-auth exception. Compose configuration comes from `state/stack.env`,
 not `knowledge/env/user.env`.
 

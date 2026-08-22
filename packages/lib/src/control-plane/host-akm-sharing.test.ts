@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, statSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -83,6 +83,14 @@ describe("enableHostAkmSharing", () => {
   it("sets the env key with no host config present", () => {
     enableHostAkmSharing(state);
     expect(readFileSync(stackEnv, "utf-8")).toContain("OP_HOST_AKM_STASH=");
+  });
+
+  it("pre-creates the host stash dir so Docker never creates it root-owned", () => {
+    // C14: the one bind source outside OP_HOME, so ensureComposeVolumeTargets
+    // (scoped to OP_HOME) never pre-creates it.
+    expect(existsSync(join(fakeHome, "akm"))).toBe(false);
+    enableHostAkmSharing(state);
+    expect(statSync(join(fakeHome, "akm")).isDirectory()).toBe(true);
   });
 
   it("is idempotent", () => {

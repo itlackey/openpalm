@@ -293,8 +293,8 @@ the nearest shipped precedent:
 | Provider selection | default variant | voice/ollama machinery: `openpalm.profile.*` labels, `OP_REMOTE_PROFILE` selection |
 | Images | `tailscale/tailscale:v1.98.10@sha256:…` | `fosrl/pangolin`, `traefik`, `fosrl/gerbil`, `fosrl/newt` — each pinned to a release *and* digest at implementation time; upstream's compose floats `latest`, ours must not |
 | Config keys in `state/stack.env` | `OP_REMOTE_TARGET/PUBLIC/HOSTNAME` | `OP_REMOTE_PROFILE` selects the variant; `OP_PANGOLIN_DOMAIN_MODE/DDNS_NAME/BASE_DOMAIN/DASHBOARD_DOMAIN/ACME_EMAIL/HTTP_PORT/HTTPS_PORT/TARGET`; connector adds `OP_PANGOLIN_ENDPOINT/NEWT_ID` |
-| Delegated secrets (`DELEGATED_SECRET_NAMES`) | `ts_authkey` | `newt_secret` (connector; operator-pasteable, same class as `ts_authkey`), `pangolin_server_secret` (server variants; generated once), `duckdns_token` (ddns mode; pasted once), `pangolin_api_key` (optional, §8) |
-| Generated artifacts | `state/remote/serve.json` | `private/pangolin/config.yml` (embeds the server secret, hence `private/`), `state/pangolin/traefik/*.yml`, `private/secrets/newt_config` (connector), `state/pangolin/blueprint.yml` (§8.1) — all written with `writeFileAtomic`, none in `DELEGATED_SECRET_NAMES` (that set is for operator-suppliable credentials; generated files are seeded by explicit `ensureSecret`/`ensureHomeDirs` calls, the way `ts_authkey` and `serve.json` are handled today) |
+| Secrets (`state/secrets/`) | `ts_authkey` | `newt_secret` (connector; operator-pasteable, same class as `ts_authkey`), `pangolin_server_secret` (server variants; generated once), `duckdns_token` (ddns mode; pasted once), `pangolin_api_key` (optional, §8) — routing is default-deny, so none of them is registered anywhere; only an AGENT-READABLE secret needs a name on `AGENT_READABLE_SECRET_NAMES` |
+| Generated artifacts | `state/remote/serve.json` | `state/pangolin/config.yml` (embeds the server secret, so it stays in the never-agent-mounted `state/` tree), `state/pangolin/traefik/*.yml`, `state/secrets/newt_config` (connector), `state/pangolin/blueprint.yml` (§8.1) — all written with `writeFileAtomic`, and all seeded by explicit `ensureSecret`/`ensureHomeDirs` calls, the way `ts_authkey` and `serve.json` are handled today |
 | Apply hook | `if (name === 'remote') applyRemoteAccess(...)` in `addons.ts` and the credentials route | `applyPangolinConfig(...)`, dispatched through the `REMOTE_PROVIDERS` registry (`remote-access-providers.md` §3), which replaces the name special-case — and supersedes the `ADDON_APPLY_HOOKS` table an earlier revision proposed here |
 | Recreate scope (`ADDON_ENV_RECREATE_SCOPE`) | `OP_REMOTE_*` → `["tunnel"]` | `OP_PANGOLIN_*` → the variant's services |
 | Guardian ingress | `remoteRequiresGuardianIngress(enabled, target)` through `resolveAccessEnv(toggles, { guardianIngressRequired })` | the same hook — see below |
@@ -394,12 +394,13 @@ can add the routers by hand; the stack will not.
     logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
     volumes:
       # config.yml embeds server.secret, so the whole generated config dir
-      # lives under private/ (0700), not state/. db/ and letsencrypt/ are
-      # service-owned runtime data and stay under data/ — nested binds below
-      # put them where Pangolin expects inside /app/config.
-      - ${OP_HOME}/private/pangolin:/app/config
-      - ${OP_HOME}/data/pangolin/db:/app/config/db
-      - ${OP_HOME}/data/pangolin/letsencrypt:/app/config/letsencrypt
+      # lives under state/ (0700) — the tree that is never mounted into the
+      # assistant. db/ and letsencrypt/ are service-owned runtime data and stay
+      # under data/ — nested binds below put them where Pangolin expects inside
+      # /app/config.
+      - ${OP_HOME:?}/state/pangolin:/app/config
+      - ${OP_HOME:?}/data/pangolin/db:/app/config/db
+      - ${OP_HOME:?}/data/pangolin/letsencrypt:/app/config/letsencrypt
     ports:
       # Integration API, loopback ONLY as a literal — the host control plane
       # is its only intended caller (§8.1). Never routed through Traefik.
@@ -493,7 +494,7 @@ restarts, the UI shows unhealthy until credentials arrive.
 
 ## 7. What the control plane writes
 
-Following the intent-in-`stack.env` / secrets-in-`private/` /
+Following the intent-in-`stack.env` / secrets-in-`state/secrets/` /
 runtime-data-in-`data/` split:
 
 ```
@@ -510,14 +511,14 @@ runtime-data-in-`data/` split:
 │    OP_PANGOLIN_ENDPOINT=               # connector only
 │    OP_PANGOLIN_NEWT_ID=                # connector only
 │
-├─ state/pangolin/                       # GENERATED, non-secret
+├─ state/pangolin/                       # GENERATED
 │    traefik/traefik_config.yml          #   static config: providers, ACME
 │    traefik/dynamic_config.yml          #   dashboard/API routers
 │    blueprint.yml                       #   desired resources — §8.1
+│    config.yml                          #   0600 — embeds server.secret, so it
+│                                        #   stays in the never-agent-mounted tree
 │
-├─ private/pangolin/config.yml           # GENERATED, 0600 — embeds
-│                                        #   server.secret, so private/
-├─ private/secrets/
+├─ state/secrets/
 │    pangolin_server_secret              # generated once at first enable
 │    pangolin_api_key                    # optional, pasted (§8.1)
 │    duckdns_token                       # ddns mode: pasted once (§8.1)

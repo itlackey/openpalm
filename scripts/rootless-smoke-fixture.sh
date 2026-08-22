@@ -30,7 +30,7 @@ smoke_copy_skeleton() {
 # (host-swap previously omitted it and drifted).
 #
 # Everything below except auth.json is a delegated service secret. It is never
-# exposed through the Assistant stash and lives under private/secrets/, not
+# exposed through the Assistant stash and lives under state/secrets/, not
 # knowledge/secrets/ (which is
 # bind-mounted wholesale into the assistant at /stash). auth.json stays under
 # knowledge/secrets/ — it is shared with the assistant's own OpenCode process.
@@ -38,30 +38,30 @@ smoke_copy_skeleton() {
 smoke_seed_secrets() {
   local home="$1"
   local ui_password="${2:-rootless-smoke-password}"
-  mkdir -p "$home/knowledge/secrets" "$home/knowledge/env" "$home/private/secrets"
+  mkdir -p "$home/knowledge/secrets" "$home/knowledge/env" "$home/state/secrets"
 
-  printf '%s\n' "$ui_password" > "$home/private/secrets/op_ui_login_password"
+  printf '%s\n' "$ui_password" > "$home/state/secrets/op_ui_login_password"
   printf '%s\n' '{}' > "$home/knowledge/secrets/auth.json"
-  openssl rand -hex 16 > "$home/private/secrets/op_guardian_admin_token"
-  openssl rand -hex 16 > "$home/private/secrets/op_guardian_mcp_token"
-  openssl rand -hex 16 > "$home/private/secrets/portal_api_secret"
+  openssl rand -hex 16 > "$home/state/secrets/op_guardian_admin_token"
+  openssl rand -hex 16 > "$home/state/secrets/op_guardian_mcp_token"
+  openssl rand -hex 16 > "$home/state/secrets/portal_api_secret"
   # op_api_key: the OpenAI-compat edge key (S.1b). Seeded on real installs by
   # ensureSecrets(); the guardian container bind-mounts it, so the fixture must
   # provide it too or the container fails to start.
-  openssl rand -hex 16 > "$home/private/secrets/op_api_key"
-  openssl rand -hex 16 > "$home/private/secrets/portal_discord_secret"
-  openssl rand -hex 16 > "$home/private/secrets/portal_slack_secret"
+  openssl rand -hex 16 > "$home/state/secrets/op_api_key"
+  openssl rand -hex 16 > "$home/state/secrets/portal_discord_secret"
+  openssl rand -hex 16 > "$home/state/secrets/portal_slack_secret"
   # op_opencode_password: always materialized by performSetup — the compose
   # files grant it as a file-backed secret to assistant+guardian, so boot fails
   # if it is absent. It must be NON-EMPTY: OpenCode requires a password in
   # every configuration, and the assistant entrypoint refuses to start without
   # one ("empty = auth off" is no longer a posture).
-  openssl rand -hex 16 > "$home/private/secrets/op_opencode_password"
-  printf '%s\n' 'discord-smoke-token' > "$home/private/secrets/discord_bot_token"
+  openssl rand -hex 16 > "$home/state/secrets/op_opencode_password"
+  printf '%s\n' 'discord-smoke-token' > "$home/state/secrets/discord_bot_token"
 
   touch "$home/knowledge/env/user.env"
-  chmod 700 "$home/knowledge/secrets" "$home/private/secrets"
-  chmod 600 "$home/knowledge/secrets/"* "$home/private/secrets/"* "$home/knowledge/env/user.env"
+  chmod 700 "$home/knowledge/secrets" "$home/state/secrets"
+  chmod 600 "$home/knowledge/secrets/"* "$home/state/secrets/"* "$home/knowledge/env/user.env"
 }
 
 # Write the common stack.env block (non-secret compose config) to the isolated
@@ -144,6 +144,10 @@ smoke_build_images() {
   export GUARDIAN_VERSION
   export PLATFORM_VERSION
   export OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION
+  # Compose interpolates the whole project before it builds anything, so the
+  # `${OP_HOME:?}` mount and secret sources abort the command when it is unset.
+  # Only image builds are requested here, so the value is never dereferenced.
+  export OP_HOME="${OP_HOME:-$PWD/.smoke-build-home}"
   local targets=()
   local target
   for target in "$@"; do

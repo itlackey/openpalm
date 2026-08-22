@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -125,6 +125,58 @@ describe('applyHomeSeed', () => {
       process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
       await applyHomeSeed(home);
       expect(readSkeletonVersion(home)).toBe('1.2.3');
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('drops a stash skill byte-identical to the shipped one and keeps a modified or operator-authored one', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-'));
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'notify'), { recursive: true });
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'config-diagnostics'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'notify', 'SKILL.md'), 'shipped notify\n');
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'config-diagnostics', 'SKILL.md'), 'shipped diag\n');
+    // The stash copies an older release seeded: one pristine, one the operator
+    // edited, one of their own that never shipped.
+    mkdirSync(join(home, 'knowledge', 'skills', 'notify'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'skills', 'config-diagnostics'), { recursive: true });
+    mkdirSync(join(home, 'knowledge', 'skills', 'mine'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'skills', 'notify', 'SKILL.md'), 'shipped notify\n');
+    writeFileSync(join(home, 'knowledge', 'skills', 'config-diagnostics', 'SKILL.md'), 'my edits\n');
+    writeFileSync(join(home, 'knowledge', 'skills', 'mine', 'SKILL.md'), 'mine\n');
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+
+      expect(existsSync(join(home, 'knowledge', 'skills', 'notify'))).toBe(false);
+      expect(readFileSync(join(home, 'knowledge', 'skills', 'config-diagnostics', 'SKILL.md'), 'utf8')).toBe('my edits\n');
+      expect(readFileSync(join(home, 'knowledge', 'skills', 'mine', 'SKILL.md'), 'utf8')).toBe('mine\n');
+
+      // Idempotent by construction: a second seed removes nothing further.
+      await applyHomeSeed(home);
+      expect(readFileSync(join(home, 'knowledge', 'skills', 'config-diagnostics', 'SKILL.md'), 'utf8')).toBe('my edits\n');
+      expect(readFileSync(join(home, 'knowledge', 'skills', 'mine', 'SKILL.md'), 'utf8')).toBe('mine\n');
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('an emptied knowledge/skills is removed, so akm does not index a bare dir', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-empty-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-empty-'));
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'notify'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'notify', 'SKILL.md'), 'shipped notify\n');
+    mkdirSync(join(home, 'knowledge', 'skills', 'notify'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'skills', 'notify', 'SKILL.md'), 'shipped notify\n');
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(existsSync(join(home, 'knowledge', 'skills'))).toBe(false);
     } finally {
       rmSync(skeletonSrc, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });

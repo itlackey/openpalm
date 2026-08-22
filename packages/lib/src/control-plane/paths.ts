@@ -9,8 +9,12 @@
  *   config/stack/  — USER custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/  — MANAGED fixed compose files (core/services/portals), overwritten on reconcile
  *   data/          — persistent service data, logs, backups, rollback
- *   knowledge/     — akm knowledge (skills, user env, secrets, agents); secrets + auth.json live here
- *   state/         — app-written records: the stack env file, pins, host identity, schema version
+ *   knowledge/     — akm assets (user env, tasks, agents, the operator's own skills) plus the
+ *                    agent-readable provider auth.json; the whole tree is mounted into the assistant
+ *   system/skills/ — MANAGED release-shipped akm skills, mounted `:ro` as a second bundle
+ *   state/         — app-written records (the stack env file, pins, host identity, schema version),
+ *                    generated runtime config (state/remote/), and the credentials that are never
+ *                    mounted into the assistant (state/secrets/, state/env/)
  *   workspace/     — shared work area
  */
 

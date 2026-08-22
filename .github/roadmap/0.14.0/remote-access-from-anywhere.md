@@ -280,10 +280,12 @@ precedent `voice.compose.lan.yml` already uses. `KEY_OWNER` in
 `patchSecretsEnvFile` — which `applyAccessToggles` calls — is guarded by
 `assertNoSecretLikeStackEnvKeys`, whose `SECRET_LIKE_KEY_RE` throws on any key
 matching `TOKEN`, `SECRET`, `API_KEY`, and friends. A tunnel auth key therefore
-**cannot travel through the toggle-apply path**. It must be a delegated secret:
-a file under `private/secrets/`, registered in `DELEGATED_SECRET_NAMES`,
-mounted as a Compose secret — a separate write path and a separate API route
-from the toggle, mirroring how the Discord bot token works today.
+**cannot travel through the toggle-apply path**. It must be a secret file under
+`state/secrets/`, mounted as a Compose secret — a separate write path and a
+separate API route from the toggle, mirroring how the Discord bot token works
+today. Secret routing is default-deny, so this needs no registration anywhere:
+only a secret the assistant must be able to READ goes on
+`AGENT_READABLE_SECRET_NAMES`, and a tunnel auth key is not one.
 
 **(iii) It produces a URL, which is derived state, not intent.** The existing
 toggles produce nothing readable. This one produces
@@ -300,7 +302,7 @@ approved are three separately observed facts.
 ## 5. The config file
 
 Follow the repo's existing split exactly: intent in `state/stack.env`, secrets
-in `private/secrets/`, generated compose in `system/stack/`, observed state read
+in `state/secrets/`, generated compose in `system/stack/`, observed state read
 live and never persisted. The mode and hostname are richer than a boolean, so
 they get one small JSON file in the user-owned `config/` tree.
 
@@ -319,7 +321,7 @@ they get one small JSON file in the user-owned `config/` tree.
 │      "hostname": "openpalm"
 │    }
 │
-├─ private/secrets/op_tailscale_authkey  # 0600, DELEGATED. Never in stack.env.
+├─ state/secrets/op_tailscale_authkey    # 0600, never agent-readable or in stack.env.
 │
 └─ system/stack/
    ├─ remote.compose.yml                 # NEW managed overlay (release-shipped)
@@ -397,7 +399,7 @@ services:
 
 secrets:
   op_tailscale_authkey:
-    file: ${OP_HOME}/private/secrets/op_tailscale_authkey
+    file: ${OP_HOME:?}/state/secrets/op_tailscale_authkey
 
 networks:
   assistant_net:
@@ -708,7 +710,7 @@ containerboot logs that login will be interactive and tailscaled emits a
 account"** button (read `.AuthURL` from `tailscale status --json`, or scrape
 `composeLogs`, already exported). The user signs in with Google/GitHub/Apple
 SSO — no password to invent, no admin console, no secret to copy. Persist a key
-to `private/secrets/op_tailscale_authkey` afterwards for unattended
+to `state/secrets/op_tailscale_authkey` afterwards for unattended
 re-registration.
 
 The second one-time step applies **only** to "Anyone with the link": a browser

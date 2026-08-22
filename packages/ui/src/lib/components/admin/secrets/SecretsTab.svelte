@@ -104,12 +104,14 @@
   <div class="panel-header">
     <div>
       <h2>Secrets</h2>
-      <!-- Says what these files ARE. They are not encrypted — they are
-           plaintext, 0600, in two trees: knowledge/secrets/ (provider auth
-           the assistant reads through /stash) and private/secrets/ (delegated
-           UI/guardian/portal credentials, never in /stash). listSecretFiles
-           reads both, so naming only the first was wrong twice over. -->
-      <p class="panel-subtitle">Plaintext credential files (0600) in knowledge/secrets/ and private/secrets/</p>
+      <!-- Says what these files ARE and, since the trees differ in who can
+           read them, which one each row is in. They are not encrypted — they
+           are plaintext, 0600. Everything lands in state/secrets/ (never in
+           /stash) unless its name is on the agent-readable allowlist, which
+           today is auth.json alone: provider auth the assistant's own OpenCode
+           reads through /stash. listSecretFiles lists exactly the files this
+           tab can reach, so no row here edits a file somewhere else. -->
+      <p class="panel-subtitle">Plaintext credential files (0600) in state/secrets/, plus the agent-readable knowledge/secrets/auth.json</p>
     </div>
     <div class="panel-header-actions">
       <button class="btn btn-secondary btn-sm" onclick={() => void loadFiles()} disabled={filesRes.loading || busy}>

@@ -20,7 +20,7 @@ Never delete a file or directory that:
 - lives outside obviously generated paths such as `node_modules/`,
   `.svelte-kit/`, `dist/`, `build/`, or `.cache/`
 
-This includes `.dev*`, `.private`, `.env*`, `knowledge`, `private`, `data`,
+This includes `.dev*`, `.private`, `.env*`, `knowledge`, `data`,
 `state`, backups, `~/.openpalm`, `~/.config`, planning directories, and any
 directory containing credentials.
 
@@ -242,7 +242,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit UI/API config actions, and — for exactly one file — the assistant itself. The assistant maintains its own `config/assistant/user-profile.md` (what it has learned about the operator) and writes nothing else in the tree. It still holds no admin credential and has no default network path to the admin process (Security invariant 3), so this is a file write inside its own mounted config dir, not a control-plane action.
-- **Secret boundary.** `state/stack.env` is non-secret runtime configuration only. Provider `knowledge/secrets/auth.json` remains assistant-readable. Delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`, never in assistant `/stash`, and are granted as named Compose secret files. `knowledge/env/user.env` is AKM env backing state loaded on demand, not a Compose env file or entrypoint source.
+- **Secret boundary.** `state/stack.env` is non-secret runtime configuration only. Provider `knowledge/secrets/auth.json` remains assistant-readable. Delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `state/secrets/`, never in assistant `/stash`, and are granted as named Compose secret files. `knowledge/env/user.env` is AKM env backing state loaded on demand, not a Compose env file or entrypoint source.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).

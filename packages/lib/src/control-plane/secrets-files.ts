@@ -1,8 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { secretsDir as secretsDirPath, privateSecretsDir as privateSecretsDirPath } from './home.js';
+import { secretsDir as secretsDirPath, stateSecretsDir as stateSecretsDirPath } from './home.js';
 import { randomHex } from './crypto.js';
-import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
@@ -14,56 +13,36 @@ function validateSecretName(name: string): void {
 }
 
 /**
- * Delegated service credentials are consumed by their UI, OpenCode server,
- * Guardian, API, portal, or bot process, never through the Assistant stash.
- * These are written to (and read from) `privateSecretsDir()` instead of the stash-visible
- * `secretsDir()`; every other secret name keeps living in `secretsDir()`
- * (notably `auth.json`, shared with the assistant's own OpenCode process).
+ * The secret files the Assistant agent is allowed to read — the ONE explicit
+ * exception to default-deny routing. Every other name, including every name
+ * nobody has thought of yet, resolves to `stateSecretsDir()`, which is never
+ * mounted into the assistant.
  *
- * The portal principal secrets (`portal_<id>_secret`) are derived from
- * `PORTAL_SECRET_ADDON_IDS` — the same single source of truth
- * `ensurePortalSecret` uses — so this list can never drift from the set of
- * portal secrets actually provisioned.
+ * `auth.json` is OpenCode's provider auth. The assistant's own OpenCode process
+ * reads it at `/home/opencode/.local/share/opencode/auth.json`, a single-file
+ * bind mount of `knowledge/secrets/auth.json` (core.compose.yml), and it is the
+ * only `knowledge/secrets` path any managed compose file names.
+ *
+ * A2: this is the inverse of the hand-maintained list it replaces. Under that
+ * one an unlisted secret defaulted into the agent-readable tree, which is how
+ * `op_session_signing_key` — the key that signs host-admin cookies — became
+ * readable from /stash. A name forgotten here costs nothing: it stays private.
  */
-export const DELEGATED_SECRET_NAMES: ReadonlySet<string> = new Set([
-  'op_guardian_admin_token',
-  'op_guardian_mcp_token',
-  'op_api_key',
-  'discord_bot_token',
-  'slack_bot_token',
-  'slack_app_token',
-  'op_opencode_password',
-  'op_ui_login_password',
-  // The HMAC key mixed into every session cookie. It belongs here for the same
-  // reason op_ui_login_password does, and was missed when that one moved: with
-  // the key readable from /stash, anything running inside the assistant — or
-  // anything that prompt-injects it — can forge a valid host-admin session
-  // cookie, which is precisely the attack the key exists to prevent.
-  'op_session_signing_key',
-  // Tailnet join credential (TS_AUTHKEY) for the `remote` addon's tunnel
-  // container. It is handed to `tunnel` only as a Compose secret, never read
-  // from stack.env or the stash. Anything that can read it can use it to
-  // enroll an arbitrary device onto the user's own tailnet — i.e. it grants
-  // network access to every other device the user has signed in there, not
-  // just this assistant — so, like the portal secrets below, it must stay out
-  // of the assistant-visible /stash tree.
-  'ts_authkey',
-  ...PORTAL_SECRET_ADDON_IDS.map(portalSecretName),
-]);
+export const AGENT_READABLE_SECRET_NAMES: ReadonlySet<string> = new Set(['auth.json']);
 
-export function isDelegatedSecretName(name: string): boolean {
-  return DELEGATED_SECRET_NAMES.has(name);
+export function isAgentReadableSecretName(name: string): boolean {
+  return AGENT_READABLE_SECRET_NAMES.has(name);
 }
 
 /**
- * Resolve (and harden) the delegated-secrets dir for an OP_HOME —
- * `${home}/private/secrets` (home.ts `privateSecretsDir`). Never bind-mounted
+ * Resolve (and harden) the DEFAULT secrets dir for an OP_HOME —
+ * `${home}/state/secrets` (home.ts `stateSecretsDir`). Never bind-mounted
  * into the Assistant stash. Container consumers receive named Compose secret
- * files; host consumers read the same private files directly. Same hardening
+ * files; host consumers read the same state files directly. Same hardening
  * as `resolveSecretsDir`.
  */
-export function resolvePrivateSecretsDir(homeDir: string): string {
-  const dir = privateSecretsDirPath(homeDir);
+export function resolveStateSecretsDir(homeDir: string): string {
+  const dir = stateSecretsDirPath(homeDir);
   mkdirSync(dir, { recursive: true, mode: SECRETS_DIR_MODE });
   chmodSync(dir, SECRETS_DIR_MODE);
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -73,10 +52,12 @@ export function resolvePrivateSecretsDir(homeDir: string): string {
 }
 
 /**
- * Resolve (and harden) the secrets dir for an OP_HOME. The location comes from
- * the single source of truth (home.ts `secretsDir`) — secrets are USER-owned
- * `knowledge/secrets`, derived from `homeDir` alone, never inferred from a
- * sibling path. Ensures 0700 on the dir and 0600 on its files.
+ * Resolve (and harden) the AGENT-READABLE secrets dir for an OP_HOME. The
+ * location comes from the single source of truth (home.ts `secretsDir`) —
+ * `knowledge/secrets`, the AKM stash's own secrets asset dir, derived from
+ * `homeDir` alone, never inferred from a sibling path. Only the names in
+ * `AGENT_READABLE_SECRET_NAMES` route here. Ensures 0700 on the dir and 0600
+ * on its files.
  */
 export function resolveSecretsDir(homeDir: string): string {
   const dir = secretsDirPath(homeDir);
@@ -93,13 +74,34 @@ export function resolveSecretsDir(homeDir: string): string {
  * that makes every generic call site (readSecret/writeSecret/ensureSecret/
  * patchSecretsEnvFile/readSecretFile/writeSecretFile/removeSecretFile, all of
  * which take a name and never a directory) resolve to the correct location
- * automatically, delegated or not, with no call-site changes required. See
- * DELEGATED_SECRET_NAMES. Shared by both the strict SECRET_NAME_RE API
+ * automatically, with no call-site changes required. Default-deny: the state
+ * tree unless the name is explicitly agent-readable
+ * (AGENT_READABLE_SECRET_NAMES). Shared by both the strict SECRET_NAME_RE API
  * (secretPath) and the looser basename API (the admin Secrets-tab file
  * browser) — neither validates the name here, callers do that first.
  */
 function resolveSecretsDirForName(homeDir: string, name: string): string {
-  return isDelegatedSecretName(name) ? resolvePrivateSecretsDir(homeDir) : resolveSecretsDir(homeDir);
+  return isAgentReadableSecretName(name) ? resolveSecretsDir(homeDir) : resolveStateSecretsDir(homeDir);
+}
+
+/**
+ * Both secrets dirs, each paired with the routing predicate that owns it —
+ * the listing form of `resolveSecretsDirForName`, and the reason no listing
+ * here merges the two trees implicitly any more.
+ *
+ * A file is listed ONLY from the dir its own name routes to. Under default-deny
+ * an agent-readable-tree file whose name is not on the allowlist is unreachable
+ * through readSecret/readSecretFile, so listing it would hand callers a name
+ * that reads back as missing — and a write against it would create a second
+ * copy in the state tree while the /stash-visible original quietly survived.
+ * The two predicates are complements, so a name can never be listed twice and
+ * the old "state entry shadows the knowledge one" rule has nothing left to do.
+ */
+function routedSecretsDirs(homeDir: string): Array<{ dir: string; owns: (name: string) => boolean }> {
+  return [
+    { dir: resolveSecretsDir(homeDir), owns: isAgentReadableSecretName },
+    { dir: resolveStateSecretsDir(homeDir), owns: (name) => !isAgentReadableSecretName(name) },
+  ];
 }
 
 export function secretPath(homeDir: string, name: string): string {
@@ -124,16 +126,12 @@ export function writeSecret(homeDir: string, name: string, value: string): void 
   // would silently lock the operator out until `openpalm reset-password`.
   //
   // Safe to rename here (unlike writeSecretFile's auth.json case below):
-  // SECRET_NAME_RE forbids dots, so this never targets auth.json, and every
-  // name it CAN target is either a delegated `private/secrets/*` file — never
-  // bind-mounted, only handed to containers as a Compose `secrets: file:`
-  // entry copied in at container-create time, so a new inode is irrelevant —
-  // or a non-delegated `knowledge/secrets/*` file, which lives inside the
-  // wholesale `knowledge:/stash` DIRECTORY bind mount (core.compose.yml). A
-  // directory bind mount tracks the directory, not a per-file inode, so a
-  // rename of a file inside it is visible to the container immediately. Only
-  // a mount of one SPECIFIC file (auth.json's separate bind, see
-  // writeFileInPlace's docblock) breaks on rename.
+  // SECRET_NAME_RE forbids dots, so this never targets auth.json — the one
+  // agent-readable name — and therefore always lands on a `state/secrets/*`
+  // file, which is never bind-mounted, only handed to containers as a Compose
+  // `secrets: file:` entry copied in at container-create time, so a new inode
+  // is irrelevant. Only a mount of one SPECIFIC file (auth.json's separate
+  // bind, see writeFileInPlace's docblock) breaks on rename.
   writeFileAtomic(path, value, SECRET_FILE_MODE);
   chmodSync(path, SECRET_FILE_MODE);
 }
@@ -161,19 +159,19 @@ export function removeSecret(homeDir: string, name: string): void {
 }
 
 /**
- * Every secret NAME across both dirs (`secretsDir()` and the delegated
- * `privateSecretsDir()`), merged into one alphabetically-sorted list. Callers
- * never need to know which physical directory a given name lives in —
- * `readSecret`/`writeSecret`/etc. route by name via `secretPath`.
+ * Every secret NAME the name-routed API resolves to a real file, alphabetically
+ * sorted. Callers never need to know which physical directory a given name
+ * lives in — `readSecret`/`writeSecret`/etc. route by name via `secretPath`,
+ * and `routedSecretsDirs` guarantees this listing agrees with that routing.
  */
 export function listSecretNames(homeDir: string): string[] {
-  const names = new Set<string>();
-  for (const dir of [resolveSecretsDir(homeDir), resolvePrivateSecretsDir(homeDir)]) {
+  const names: string[] = [];
+  for (const { dir, owns } of routedSecretsDirs(homeDir)) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isFile() && SECRET_NAME_RE.test(entry.name)) names.add(entry.name);
+      if (entry.isFile() && SECRET_NAME_RE.test(entry.name) && owns(entry.name)) names.push(entry.name);
     }
   }
-  return [...names].sort();
+  return names.sort();
 }
 
 // ── Raw file access for the Secrets admin tab ──────────────────────────────
@@ -192,20 +190,22 @@ export function assertSafeSecretFilename(name: string): void {
 export type SecretFileInfo = { name: string; size: number };
 
 /**
- * List every regular file across both secrets dirs (incl. auth.json), with
- * byte size. Delegated names are looked up in `privateSecretsDir()`; a stray
- * same-named leftover in `secretsDir()` (an interrupted migration) is
- * shadowed by the private entry rather than duplicated in the listing.
+ * List every regular file the basename API can reach, with byte size — the
+ * state tree, plus the agent-readable tree for the allowlisted names only
+ * (that is what puts `auth.json` in the Secrets tab). Same `routedSecretsDirs`
+ * rule as `listSecretNames`: the tab never lists a file it would then read or
+ * write somewhere else.
  */
 export function listSecretFiles(homeDir: string): SecretFileInfo[] {
-  const files = new Map<string, SecretFileInfo>();
-  for (const dir of [resolveSecretsDir(homeDir), resolvePrivateSecretsDir(homeDir)]) {
+  const files: SecretFileInfo[] = [];
+  for (const { dir, owns } of routedSecretsDirs(homeDir)) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile() || !SECRET_FILENAME_RE.test(entry.name) || entry.name.includes('..')) continue;
-      files.set(entry.name, { name: entry.name, size: statSync(join(dir, entry.name)).size });
+      if (!owns(entry.name)) continue;
+      files.push({ name: entry.name, size: statSync(join(dir, entry.name)).size });
     }
   }
-  return [...files.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Read a secrets-dir file by basename (raw contents), or null if absent. */

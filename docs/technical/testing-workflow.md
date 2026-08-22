@@ -94,7 +94,7 @@ The script performs the following current contract:
 2. Uses managed compose files under `.dev-e2e/system/stack/`, the user overlay
    `.dev-e2e/config/stack/custom.compose.yml`, and
    `.dev-e2e/state/stack.env`.
-3. Seeds delegated service secrets under `.dev-e2e/private/secrets/`; the shared
+3. Seeds delegated service secrets under `.dev-e2e/state/secrets/`; the shared
    OpenCode provider file remains `.dev-e2e/knowledge/secrets/auth.json`.
 4. Enables the `api` addon and Compose profile `addon.api`, which includes the
    profile-gated Guardian without Discord, Slack, or cloud credentials.
@@ -104,7 +104,7 @@ The script performs the following current contract:
    direct ingress returns 404; logs in through `/api/auth/login`; checks current
    `/api/host/containers/list` and `/api/host/health` auth behavior.
 7. Verifies the assistant has neither the Docker socket nor the delegated
-   `private/` secret tree mounted.
+   `state/secrets/` tree mounted.
 8. Runs Playwright with `RUN_DOCKER_STACK_TESTS=1`. The stack configuration
    collects `*.stack.ts` and also reuses the common `auth-flow.pw.ts` contract.
 

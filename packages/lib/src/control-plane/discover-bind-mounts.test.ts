@@ -58,7 +58,7 @@ describe('discoverHomeBindMountSources (compose config --format json)', () => {
     homeDir = makeHome();
     const state = makeState(homeDir);
 
-    // The real stack mounts `${OP_HOST_AKM_STASH:-${OP_HOME}/data/akm/empty-host-stash}`.
+    // The real stack mounts `${OP_HOST_AKM_STASH:-${OP_HOME:?}/data/akm/empty-host-stash}`.
     // The deleted `expandEnvVars` regex mangled *nested* `${...:-${...}}` defaults
     // and dropped the mount entirely. Docker resolves it to an absolute path,
     // which discovery must consume directly.
