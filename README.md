@@ -39,9 +39,7 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 Use the [latest published release](https://github.com/itlackey/openpalm/releases/latest). See the [changelog](CHANGELOG.md) for current work and release-specific upgrade notes.
 
-The desktop app currently ships only in the `0.13.0` prerelease — the latest
-stable release has CLI binaries only, no desktop assets. See the download
-table below. The `access.*` setup-spec fields (`networkAccess`,
+See the download table below. The `access.*` setup-spec fields (`networkAccess`,
 `assistantDirect`, `guardianNetwork`, `guardianOpenaiApi`) require `0.13.0` or
 newer; see [Setup Guide](docs/setup-guide.md#headless-setup).
 
@@ -68,14 +66,14 @@ newer; see [Setup Guide](docs/setup-guide.md#headless-setup).
 Grab the file matching your platform from the
 [releases page](https://github.com/itlackey/openpalm/releases). Filenames are
 versioned — `<version>` below stands for the release tag (e.g.
-`0.13.0-beta.15`) — so link to the releases page, not to a specific file URL.
+`0.13.0`) — so link to the releases page, not to a specific file URL.
 
 | Platform | Filename | Run |
 |---|---|---|
 | **Mac (Apple Silicon)** | `OpenPalm-<version>-arm64-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
 | **Mac (Intel)** | `OpenPalm-<version>-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
 | **Windows (portable)** | `OpenPalm-<version>-win.zip` | Unzip → run **OpenPalm.exe**. No install step, but no auto-update either. |
-| **Windows (installer)** | NSIS `.exe`, on releases that ship one | Run it to install per-user (no admin prompt); updates itself in place afterward. |
+| **Windows (installer)** | `OpenPalm-Setup-<version>.exe` | Run it to install per-user (no admin prompt); updates itself in place afterward. |
 | **Linux (x64)** | `OpenPalm-<version>.AppImage` | `chmod +x` → run |
 | **Linux (arm64)** | `OpenPalm-<version>-arm64.AppImage` | `chmod +x` → run |
 
@@ -86,9 +84,9 @@ versioned — `<version>` below stands for the release tag (e.g.
 >
 > **Windows: pick one.** The portable zip needs no install but never
 > auto-updates; the installer replaces itself on new releases but writes to
-> `%LOCALAPPDATA%`. Not every release ships the installer — see
-> [Desktop app updates](docs/managing-openpalm.md#desktop-app-updates) for
-> which releases have it and the full auto-update matrix.
+> `%LOCALAPPDATA%`. See
+> [Desktop app updates](docs/managing-openpalm.md#desktop-app-updates) for the
+> full auto-update matrix.
 >
 > **Linux AppImage needs `libfuse2`**, which Ubuntu 22.04+, Debian 12+, and
 > Fedora no longer install by default. Without it the AppImage fails with
@@ -107,11 +105,6 @@ versioned — `<version>` below stands for the release tag (e.g.
 > On other distros, install the equivalent `fuse2`/`libfuse2` package. If you
 > can't install libfuse2, run
 > `./OpenPalm-<version>.AppImage --appimage-extract-and-run` instead.
->
-> **The desktop app currently ships only in the `0.13.0` prerelease** — the
-> latest stable release has no desktop assets yet. Check "Show prereleases" (or
-> the equivalent expander) on the
-> [releases page](https://github.com/itlackey/openpalm/releases) to find it.
 
 Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
 

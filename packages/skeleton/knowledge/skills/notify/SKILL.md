@@ -1,5 +1,8 @@
 ---
+name: notify
 description: Send notifications to various destinations such as Discord, Telegram, Slack, Microsoft Teams, and email.
+updated: 2026-07-29
+lint_skip: [stale-path]
 ---
 
 # Notify

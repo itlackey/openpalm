@@ -3,6 +3,8 @@ name: config-diagnostics
 type: skill
 description: Diagnose assistant-visible OpenPalm configuration without reading secret values or claiming host-admin access.
 when_to_use: Use when the user reports provider, AKM, model, or assistant configuration problems.
+updated: 2026-07-28
+lint_skip: [stale-path]
 license: MPL-2.0
 metadata:
   author: openpalm

@@ -1,6 +1,8 @@
 ---
 name: install-optional-tool
-description: Install an optional CLI tool that is not baked into the assistant image (Codex CLI, Claude Code, GitHub Copilot CLI, Pi Coding Agent, the Google Cloud CLI, or the Google Workspace CLI) on request. Use this skill whenever the user asks to use, install, or run one of these tools and it is not already on PATH.
+lint_skip: [stale-path]
+description: Install an optional CLI tool that is not baked into the assistant image (Codex CLI, Claude Code, GitHub Copilot CLI, Pi Coding Agent, or the Google Cloud CLI) on request. Use this skill whenever the user asks to use, install, or run one of these tools and it is not already on PATH.
+updated: 2026-08-08
 ---
 
 # Install Optional Tool

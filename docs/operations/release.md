@@ -15,9 +15,9 @@ units, no per-unit GitHub Releases, and no deploy bundle.
 not publish.** That means the CLI binary for every platform, the desktop app
 for every platform electron-builder targets, and the electron-updater feed
 files for the release's channel — all in one GitHub Release, together. CLI-only
-releases are not a supported outcome: that gap is exactly how the project's
-last stable release (0.12.52) shipped with zero desktop assets while the
-README told users to download the desktop app from it
+releases are not a supported outcome: that gap is exactly how the 0.12.52
+release shipped with zero desktop assets while the README told users to
+download the desktop app from it
 (`docs/reviews/onboarding-setup-review.md`, D1/D4). Two scripts enforce this
 and both must pass before anything publishes:
 

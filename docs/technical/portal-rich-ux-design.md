@@ -396,7 +396,7 @@ release pins are source-controlled elsewhere:
 For an OpenCode upgrade:
 
 1. Change both exact `opencode-ai` tool-manifest pins together.
-2. Review the SDK, admin plugin, and exact AKM plugin for compatibility; update
+2. Review the SDK and the exact AKM plugin for compatibility; update
    only the consumers that need to move.
 3. If a workspace dependency changed, refresh `bun.lock` and verify a frozen
    install.

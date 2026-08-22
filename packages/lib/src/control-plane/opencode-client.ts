@@ -10,10 +10,10 @@ import { assistantAuthHeaders } from "./opencode-auth.js";
 export type OpenCodeClientOpts = {
   baseUrl: string;
   /**
-   * Basic-auth credential for the target, when it requires one. OpenCode
-   * authenticates ALL clients — including loopback — once `assistantDirect`
-   * turns its auth on, so a client built without this 401s every call the
-   * moment an operator publishes the assistant API.
+   * Basic-auth credential for the target. OpenCode authenticates ALL clients
+   * — including loopback — on every install, so a client built without this
+   * 401s every call unless the operator has deliberately emptied the
+   * `op_opencode_password` secret.
    */
   username?: string;
   password?: string;

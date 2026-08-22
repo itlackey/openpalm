@@ -48,11 +48,10 @@ are `access.assistantDirect`, `access.guardianNetwork`, and
 `access.guardianOpenaiApi`. These are independent booleans, not presets.
 
 > These `access.*` fields require OpenPalm `0.13.0` or newer. `setup.sh` and
-> `setup.ps1` resolve the latest **stable** release by default, which may
-> predate `0.13.0` — on an older resolved release, an `access` object in a
-> setup spec is silently accepted and ignored rather than applied. Pin
-> `--version`/`OP_VERSION` to a `0.13.0`-or-later release (a prerelease, for
-> now) if these fields matter to your install.
+> `setup.ps1` resolve the latest **stable** release by default. On a release
+> older than `0.13.0`, an `access` object in a setup spec is silently accepted
+> and ignored rather than applied — pin `--version`/`OP_VERSION` to
+> `0.13.0` or later if these fields matter to your install.
 
 ## Headless Setup
 

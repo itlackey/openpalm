@@ -62,6 +62,7 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 | Document | Description |
 |---|---|
 | [core-principles.md](technical/core-principles.md) | **Authoritative.** Core goals, security invariants, filesystem + volume-mount contracts |
+| [architecture.md](technical/architecture.md) | Authoritative overview of the app/UI topology — runtime processes, the one-UI model, browser-owned connections, and the admin boundary |
 | [foundations.md](technical/foundations.md) | Stripped-down runtime contract for env, filesystem, mounts, and networks |
 
 ## Implementation rules

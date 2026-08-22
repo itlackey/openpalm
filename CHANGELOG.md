@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-22
+
 ### Changed
 
 - **OpenCode requires a password by default; `OPENCODE_AUTH` is gone.** That
@@ -1266,7 +1268,12 @@ migrations — see **Migration** below.
   first; idempotent). It still validates in 0.12.0 via the deprecated bridge and
   now keeps working past the 0.13.0 removal with no manual edit. If your overlay
   *defines* its own external `channel_lan` network, review the rewrite against the
-  `.pre-portal-rename.bak` copy.
+  `.pre-portal-rename.bak` copy. **Superseded in 0.13.0:** the auto-rewrite is
+  gone. Install/update now fail fast — before writing anything — when an overlay
+  attaches a service to `channel_lan` without defining that network, and ask you
+  to rename it to `portal_net` by hand; an overlay that defines its own
+  `channel_lan` gets a warning instead. See the 0.13.0 *Removed* entry for
+  `channel_lan`.
 
 ## [0.11.1] - 2026-06-08
 
@@ -1841,7 +1848,8 @@ follow-up is re-adding provider API keys (Connections) and LLM/embedding config
 - Caddy reverse proxy with automatic LAN/public network segmentation.
 - Initial XDG directory structure with CONFIG_HOME and DATA_HOME tiers.
 
-[Unreleased]: https://github.com/itlackey/openpalm/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/itlackey/openpalm/compare/0.13.0...HEAD
+[0.13.0]: https://github.com/itlackey/openpalm/compare/0.12.52...0.13.0
 [0.11.0]: https://github.com/itlackey/openpalm/compare/v0.9.0-rc2...v0.11.0
 [0.9.0-rc2]: https://github.com/itlackey/openpalm/compare/v0.8.0...v0.9.0-rc2
 [0.8.0]: https://github.com/itlackey/openpalm/releases/tag/v0.8.0

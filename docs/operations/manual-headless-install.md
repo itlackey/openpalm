@@ -57,7 +57,7 @@ one-liner.
 Example — pin a release and skip the `op` alias, Linux/macOS:
 
 ```bash
-OP_VERSION=0.13.0-beta.15 OP_NO_ALIAS=1 \
+OP_VERSION=0.13.0 OP_NO_ALIAS=1 \
   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
@@ -123,8 +123,8 @@ writes sensitive values to `private/secrets/` and non-secret portal settings to
 The access object contains independent booleans. There is no nested network
 object, preset, operator-supplied OpenCode password, or SSH option.
 
-> The `access` object requires OpenPalm `0.13.0` or newer. On an older
-> resolved release (the current latest **stable** release predates `0.13.0`),
+> The `access` object requires OpenPalm `0.13.0` or newer. On a resolved
+> release older than `0.13.0`,
 > validation does not know about `access` at all — the object is silently
 > accepted and dropped, so none of these booleans take effect and no error is
 > raised. Pin `--version`/`OP_VERSION` to a `0.13.0`-or-later release if you

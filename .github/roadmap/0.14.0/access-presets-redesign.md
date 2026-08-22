@@ -6,9 +6,10 @@ Supersedes: #563 network access presets, and the bind-address model behind them.
 ## 1. The problem
 
 A person installs OpenPalm on a desktop and wants to open the assistant from
-their phone. That has never worked, and it fails three times over:
+their phone. That has never worked. It originally failed three times over; the
+third was resolved in 0.13.0, leaving two:
 
-1. **`Host` → 400.** `checkHostHeader` (`packages/ui/src/lib/server/helpers.ts:270`)
+1. **`Host` → 400.** `checkHostHeader` (`packages/ui/src/lib/server/helpers.ts:304`)
    allows only `localhost` / `127.0.0.1` / `::1`, and runs as the first
    statement in `hooks.server.ts`'s `handle`. Its only escape,
    `OP_ALLOW_REMOTE_SETUP`, appears nowhere in `containers/` or
@@ -16,10 +17,17 @@ their phone. That has never worked, and it fails three times over:
    container.
 2. **CORS preflight fails.** If the page did load, the browser calls OpenCode
    cross-origin, and OpenCode grants only loopback origins.
-3. **401 from OpenCode.** `entrypoint.sh:263` hardcodes
-   `auth: { mode: "none" }` in the seeded connection regardless of
-   `OPENCODE_AUTH`, so the one preset that turns auth on ships a connection
-   with no credentials.
+3. ~~**401 from OpenCode.**~~ **Resolved in 0.13.0 — no longer part of this
+   problem.** This item read: `entrypoint.sh` hardcodes `auth: { mode: "none" }`
+   in the seeded connection regardless of `OPENCODE_AUTH`, so the one preset
+   that turns auth on ships a connection with no credentials. `OPENCODE_AUTH`
+   no longer exists — OpenCode requires the generated `op_opencode_password`
+   on every install — and the seeded connection
+   (`containers/assistant/entrypoint.sh:216`) correctly keeps
+   `auth: { mode: "none" }` because its default `baseUrl` is the same-origin
+   `/oc` proxy (`entrypoint.sh:185`), which attaches the credential
+   server-side (`packages/ui/src/lib/server/opencode-target.ts:79`). Only
+   items 1 and 2 remain.
 
 The configuration surface is a secondary problem, and smaller than it looks:
 most bind/port variables belong to profile-gated containers that do not exist

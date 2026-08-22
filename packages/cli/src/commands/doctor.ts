@@ -423,9 +423,8 @@ export async function runDoctorAction(
 function buildSessionClient(homeDir: string): SessionDeletionClient {
   const client = createOpenCodeClient({
     baseUrl: resolveAssistantEndpoint(homeDir),
-    // OpenCode authenticates every client, loopback included, once
-    // `assistantDirect` is on — without this, session maintenance 401s on
-    // exactly the installs that published the assistant API.
+    // OpenCode authenticates every client, loopback included, on every
+    // install — without this, session maintenance 401s everywhere.
     ...resolveOpenCodeCredential(homeDir),
   });
   return {

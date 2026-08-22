@@ -20,7 +20,7 @@ another.
 reinterpret them.**
 
 AKM ≥ 0.9.0 models multiple stashes as **bundles**: a named map of
-`{path, writable, enabled}` (`akm-sources.ts:33-37`). A bundle path is
+`{path, writable, enabled}` (`akm-sources.ts:37-41`). A bundle path is
 arbitrary, so bundle structure is *configuration*, not layout. Only two
 services run AKM today — the assistant and Paperclip; guardian deliberately
 dropped akm-cli (`containers/guardian/entrypoint.sh:116-118`).
@@ -50,7 +50,7 @@ with that addon's other state.
 Two rules follow:
 
 1. **`:ro` on the mount is the boundary; akm's `writable` flag is a hint.**
-   Paperclip's AKM config dir is mounted **rw** (`services.compose.yml:54`) and
+   Paperclip's AKM config dir is mounted **rw** (`services.compose.yml:126`) and
    its own AKM process is a sanctioned writer of it, so a `writable:false`
    entry is a policy the governed process can rewrite — **A14**, lesson 8. When
    an operator grants a shared bundle read-only, that must be `:ro` in compose.
@@ -80,7 +80,7 @@ line.
 | Change | Effect |
 |---|---|
 | delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:360-361`) |
-| delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
+| delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:130-131`) |
 | `private/` → `state/` | credentials to `state/secrets/`, audited env file to `state/env/`; 8 top-level trees → 7 |
 | skeleton `knowledge/skills/` → `system/skills/` | in **this repo**, not in anyone's `OP_HOME` — `overwriteSystemTree` already refreshes `system/` wholesale, so shipped skills inherit an update channel for free (**B11/K7**) |
 
@@ -102,7 +102,7 @@ index.
 |---|---|---|
 | 1 | Secret routing defaults to `state/secrets/`; Secrets tab targets the agent-readable dir explicitly | 1 line + allowlist (**A2**) |
 | 2 | `${OP_HOME:?}` on mount and secret sources | find/replace (**C10**) |
-| 3 | `system/guardian:/etc/opencode:ro` — verified it never writes there | 1 word (**A14**) |
+| 3 | `system/guardian:/etc/opencode:ro` — not 1 word: the moderator runs `opencode serve` with `OPENCODE_CONFIG_DIR=/etc/opencode` (`containers/guardian/entrypoint.sh:136-143`) and OpenCode writes into every config dir it loads (`ensureGitignore()` + `npm install @opencode-ai/plugin`, `opencode-behavior-notes.md:15-17`) | Paperclip's split: `:ro` bootstrap + disposable rw runtime dir (**A14**) |
 | 4 | `realpath()` `OP_HOME` once | 1 line (**F7**) |
 | 5 | Validate + pre-create `OP_HOST_AKM_STASH`; headless default off | few lines (**C14**) |
 | 6 | Backup takes a service's data and credentials together, or neither | (**G5**) |
@@ -110,7 +110,11 @@ index.
 
 ## Accepted as-is
 
-- Assistant writes its own `system/assistant` — OpenCode installs plugins there.
+- Assistant writes its own `system/assistant` — OpenCode npm-installs
+  `@opencode-ai/plugin` into it (declared plugins go to OpenCode's own cache,
+  not a config dir), and the entrypoint seeds `AGENTS.md` there when it is
+  absent on boot; both are runtime extras `overwriteSystemTree` must not read
+  as retired (`core-assets.ts:196-214`).
 - The secret audit stays (**A6**, **A7**) — a user-editable last-wins overlay
   always needs a resolved-config backstop.
 - Deferred: shared tree constant. Parked: an `agent/` parent tree.
@@ -140,22 +144,24 @@ this repo — akm-cli is installed into the image at build time, not vendored:
    `akm improve` task runs unattended at 03:00 and promotes, merges, and
    deletes. If resolution is not deterministically `defaultBundle`, set
    `defaultWriteTarget` explicitly and extend `assertNoDefaultEscalation`
-   (`akm-sources.ts:85-91`) to cover it.
+   (`akm-sources.ts:88-94`) to cover it.
 2. **Cross-bundle read precedence.** A shipped skill and an operator's
    same-named skill is the *expected* collision. Which wins? If it is bundle-map
    iteration order, that is **A8**'s ordering fragility moved from Compose into
    JSON key order — worse, because it is invisible in a diff.
 3. **`writable: false` has never run in production** — the only caller passing
-   it is a unit test (`akm-sources.test.ts:48`). Both the system and shared
+   it is a unit test (`akm-sources.test.ts:51`). Both the system and shared
    tiers rest on it.
 
-Also settle the scheduler: `akm task sync` is invoked with no bundle argument
-(`entrypoint.sh:587`), so which bundles it registers from is unpinned. Whichever
+Also settle the scheduler: `akm task sync --rebind` is invoked with no bundle
+argument (`containers/assistant/entrypoint.sh:611`), so which bundles it
+registers from is unpinned. Whichever
 it is, pin it with a test — if it walks all enabled bundles, then any writer to
 a writable shared bundle schedules `command` execution inside the assistant
 (lesson 7). And note the latent trap: the guard is `[ -d "$tasks_dir" ]`
-(`entrypoint.sh:586`), so if a primary bundle ever moves without `tasks/` being
-pre-created inside it, sync silently never runs and cron gets an empty crontab.
+(`containers/assistant/entrypoint.sh:610`), so if a primary bundle ever moves
+without `tasks/` being pre-created inside it, sync silently never runs and cron
+gets an empty crontab.
 
 ## Why this is the last one
 
