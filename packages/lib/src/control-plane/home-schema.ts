@@ -19,7 +19,16 @@
  * the entry once the supported upgrade floor has passed it — the version does
  * not need to move when a migration is removed.
  */
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  rmdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   HOME_SCHEMA_VERSION,
@@ -42,7 +51,7 @@ import {
 } from './config-persistence.js';
 import { migrateChatAddonRemoval, migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
-import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
+import { migrateDelegatedSecretsToStateDir } from './secrets-migration.js';
 import { migrateLegacyPaperclipEnv } from './paperclip.js';
 
 const logger = createLogger('home-schema');
@@ -168,26 +177,136 @@ function migrateRetiredSkeletonFiles(homeDir: string): boolean {
   return removed;
 }
 
+const SECRETS_DIR_MODE = 0o700;
+const SECRET_FILE_MODE = 0o600;
+
+/**
+ * Move one file, copy → verify → delete, never the other way round.
+ *
+ * Returns whether the source was consumed. A destination that already exists
+ * with DIFFERENT content leaves BOTH files where they are and returns false:
+ * this runs over credentials, and picking a winner between two versions of a
+ * signing key is not a decision a migration gets to make silently. Identical
+ * content means a prior interrupted run already copied it, so only the source
+ * is removed.
+ */
+function relocateFile(from: string, to: string): boolean {
+  const content = readFileSync(from);
+  if (existsSync(to)) {
+    if (!readFileSync(to).equals(content)) {
+      logger.warn('file present in both the old and new location with DIFFERENT content — leaving both in place for manual review', {
+        from,
+        to,
+      });
+      return false;
+    }
+    rmSync(from, { force: true });
+    return true;
+  }
+  writeFileSync(to, content, { mode: SECRET_FILE_MODE });
+  chmodSync(to, SECRET_FILE_MODE);
+  if (!readFileSync(to).equals(content)) {
+    logger.warn('copy failed verification; leaving the original in place', { from, to });
+    return false;
+  }
+  rmSync(from, { force: true });
+  return true;
+}
+
+/** rmdir if empty; a directory holding anything unexpected is left alone. */
+function removeIfEmpty(dir: string): void {
+  if (!existsSync(dir)) return;
+  try {
+    rmdirSync(dir);
+  } catch {
+    // Non-empty (or not a directory): the operator put something here that
+    // this migration does not know about, so it stays.
+  }
+}
+
+/**
+ * The OP_HOME layout change: `private/` folds into `state/`, and the skeleton
+ * tree this release stopped shipping is cleaned up.
+ *
+ * Two parts, in this order:
+ *
+ *  1. `private/secrets/` → `state/secrets/` and `private/env/` →
+ *     `state/env/`. `private/` was an eighth top-level tree whose entire job
+ *     was "app-owned, not agent-reachable" — which is what `state/` already
+ *     meant, so it was a second name for one answer. Every `secrets:` `file:`
+ *     source in the three managed compose files moves with it, which is why
+ *     this must complete before any compose command runs. Same copy → verify →
+ *     delete discipline as the G1 relocation, and the same refusal to resolve
+ *     a content conflict on its own.
+ *  2. `knowledge/paperclip/{env,secrets}` — the always-empty overlay dirs the
+ *     retired `/stash/env` + `/stash/secrets` overmounts pointed at.
+ *
+ * The third half of the move — dropping stash copies of skills that now ship
+ * in `system/skills/` — is deliberately NOT here: it needs the shipped tree to
+ * compare against, which only exists once the seed has run. It lives in
+ * `applyHomeSeed` (ui-assets.ts), where that is guaranteed, and is idempotent
+ * by construction so it needs no version gate.
+ *
+ * Ordering note: this entry sits FIRST in the list below so the credential
+ * consolidation happens before the two knowledge/secrets sweeps at `since: 2`
+ * and `since: 3`. On a home old enough to run all three, the `private/` copy is
+ * the newer one, and moving it into place first means those sweeps compare
+ * against it instead of creating a second candidate for the same name.
+ */
+function migrateOpHomeLayout(homeDir: string): boolean {
+  let changed = false;
+
+  const privateDir = join(homeDir, 'private');
+  for (const leaf of ['secrets', 'env']) {
+    const from = join(privateDir, leaf);
+    if (!existsSync(from)) continue;
+    const to = join(homeDir, 'state', leaf);
+    mkdirSync(to, { recursive: true, mode: SECRETS_DIR_MODE });
+    chmodSync(to, SECRETS_DIR_MODE);
+    const moved: string[] = [];
+    for (const entry of readdirSync(from, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      if (relocateFile(join(from, entry.name), join(to, entry.name))) moved.push(entry.name);
+    }
+    if (moved.length > 0) {
+      changed = true;
+      logger.warn(`Moved OP_HOME private/${leaf} into state/${leaf}`, { moved, to });
+    }
+    removeIfEmpty(from);
+  }
+  removeIfEmpty(privateDir);
+
+  for (const leaf of ['env', 'secrets']) removeIfEmpty(join(homeDir, 'knowledge', 'paperclip', leaf));
+  removeIfEmpty(join(homeDir, 'knowledge', 'paperclip'));
+
+  return changed;
+}
+
 const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
+  // Layout: private/ → state/, plus the skeleton tree this release retired.
+  // FIRST on purpose — see the docblock for why the credential move has to
+  // precede the two knowledge/secrets sweeps below.
+  { since: 9, run: migrateOpHomeLayout },
   { since: 0, run: migrateLegacyDefaultPorts },
   { since: 0, run: migrateLegacyBindAddresses },
   { since: 1, run: migrateToSingleStackEnv },
   { since: 0, run: (homeDir) => migrateProfileOnlyAddonEnablement(homeDir).changed },
   // G1: relocate delegated secrets (guardian/portal-only) out of the
-  // assistant-reachable knowledge/secrets into private/secrets. Idempotent and
+  // assistant-reachable knowledge/secrets into state/secrets. Idempotent and
   // safe on every state a pre-existing home could be in (see
   // secrets-migration.ts/secrets-migration.test.ts); `since: 2` runs it for
   // every home below the new HOME_SCHEMA_VERSION (3), including ones that
   // never recorded a version at all (recorded 0 here still satisfies `2 >= 0`
   // since the loop condition is `migration.since >= recorded`).
-  { since: 2, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  { since: 2, run: (homeDir) => migrateDelegatedSecretsToStateDir(homeDir).migrated.length > 0 },
   // Same migration again at `since: 3`, because the SET it iterates grew:
-  // `op_session_signing_key` was added to DELEGATED_SECRET_NAMES, and a home
+  // `op_session_signing_key` was added to DELEGATED_SECRET_NAMES (which now
+  // lives in secrets-migration.ts, since routing no longer consults it), and a home
   // already stamped 3 would otherwise never re-run it and would keep the
   // cookie-signing key readable from the assistant's /stash. The function
   // re-checks real filesystem state, so this is a no-op for a home that has
   // no such file.
-  { since: 3, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  { since: 3, run: (homeDir) => migrateDelegatedSecretsToStateDir(homeDir).migrated.length > 0 },
   // Record network-access INTENT explicitly in the consolidated state/stack.env
   // and strip the retired cascade keys from it. Must run AFTER
   // migrateToSingleStackEnv (since: 1) so it reads the merged file, and it is

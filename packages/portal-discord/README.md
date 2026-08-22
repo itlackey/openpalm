@@ -48,7 +48,7 @@ you do not need to set it against a plain OpenCode server. See the
 
 - Shipped service definition: `system/stack/portals.compose.yml`, profile `addon.discord`
 - Non-secret values: `~/.openpalm/state/stack.env`
-- Bot and principal secrets: files under `~/.openpalm/private/secrets/`
+- Bot and principal secrets: files under `~/.openpalm/state/secrets/`
 
 Manual start example:
 
@@ -100,7 +100,7 @@ there's no secret mount).
 
 In the shipped stack, secret values are stored as files and exposed only
 through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for
-setup, but setup persists it under `private/secrets/` and the runtime
+setup, but setup persists it under `state/secrets/` and the runtime
 receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
 
 The shipped Compose overlay exposes per-portal overrides through

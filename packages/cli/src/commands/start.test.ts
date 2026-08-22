@@ -127,7 +127,7 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
     // deploy ever running — classifyLocalInstall's documented fallback reads
     // compose + both tokens as "installed" despite OP_SETUP_COMPLETE being
     // unset.
-    const secretsDir = join(homeDir, 'private', 'secrets');
+    const secretsDir = join(homeDir, 'state', 'secrets');
     mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(secretsDir, 'op_guardian_admin_token'), 'admin\n');
     writeFileSync(join(secretsDir, 'op_guardian_mcp_token'), 'mcp\n');

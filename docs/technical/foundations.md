@@ -17,7 +17,6 @@ All runtime state lives under `OP_HOME`, defaulting to `~/.openpalm`:
 |-- knowledge/    AKM stash, env/user.env, tasks, and provider secrets/auth.json
 |-- data/         durable service state, logs, backups, and rollback
 |-- workspace/    shared assistant work area
-|-- private/      delegated credentials, never part of assistant /stash
 `-- cache/        regenerable container caches
 ```
 
@@ -28,21 +27,21 @@ Ownership is a security boundary, not just organization:
 - Managed Compose lives only in `system/stack/`. The only stack file under
   `config/` is `config/stack/custom.compose.yml`.
 - `state/stack.env` is the single non-secret Compose env file.
-- Lifecycle backups include `private/` and omit `data/` and regenerable
+- Lifecycle backups include `state/` and omit `data/` and regenerable
   `cache/`. Purge removes every tree. Ownership repair includes durable and
-  private state but excludes regenerable caches.
+  app-written state but excludes regenerable caches.
 
 ## Credential Boundary
 
 - `knowledge/secrets/auth.json` is the provider credential store used by
   OpenCode. It stays in the assistant-readable knowledge tree.
-- `private/secrets/` holds delegated UI, OpenCode server, Guardian, API, portal,
+- `state/secrets/` holds delegated UI, OpenCode server, Guardian, API, portal,
   Discord, and Slack credentials. It is never bind-mounted into `/stash`.
 - Compose grants delegated credentials as individual files under
   `/run/secrets/` only to the services that need them.
 - The digest-pinned Paperclip image cannot consume file-based auth, so its two
   required server secrets use the sole audited exception:
-  `private/env/paperclip.env`, with an exact key set and strict file modes.
+  `state/env/paperclip.env`, with an exact key set and strict file modes.
 - `knowledge/env/user.env` backs AKM `env/user`. It is neither a Compose env file
   nor sourced by the assistant entrypoint. Scoped tools load it on demand.
 - No service receives a broad secret env file; Paperclip's narrow exact-key file
@@ -130,7 +129,7 @@ deployed it is a transparent native OpenCode reverse proxy with policy overlays:
 Guardian mounts its own data, cache, logs, managed config, and user model config.
 It mounts no `knowledge/` tree. Provider `auth.json` arrives as one Compose
 secret and is copied into Guardian's home at boot; delegated credentials arrive
-from `private/secrets/` as narrow Compose grants.
+from `state/secrets/` as narrow Compose grants.
 
 Guardian listeners:
 

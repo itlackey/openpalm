@@ -197,16 +197,21 @@ services:
       # guardianOpenaiApi toggle is on or the api addon is enabled — the
       # toggle's OFF position means no host listener, not a loopback one.
     volumes:
-      - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
+      - ${OP_HOME:?}/data/guardian:/opt/openpalm/guardian
       # S1: see core.compose.yml — regenerable cache on a pre-created host
       # bind outside durable data/, not a named volume nested in the HOME bind.
-      - ${OP_HOME}/cache/guardian:/opt/openpalm/guardian/.cache
-      - ${OP_HOME}/data/logs:/opt/openpalm/logs
-      # MANAGED guardian config (moderation instructions/server/permission) →
-      # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's
-      # OpenCode global config at ~/.config/opencode (HOME=/opt/openpalm/guardian).
-      - ${OP_HOME}/system/guardian:/etc/opencode
-      - ${OP_HOME}/config/guardian:/opt/openpalm/guardian/.config/opencode
+      - ${OP_HOME:?}/cache/guardian:/opt/openpalm/guardian/.cache
+      - ${OP_HOME:?}/data/logs:/opt/openpalm/logs
+      # MANAGED guardian config (moderation instructions/server/permission),
+      # read-only, plus the regenerable runtime copy OPENCODE_CONFIG_DIR
+      # actually points at. Same split as Paperclip: OpenCode writes into every
+      # config dir it loads, so `system/guardian` cannot BE the config dir
+      # without the policed process being able to rewrite its own policy. USER
+      # config (moderation model) → the operator's OpenCode global config at
+      # ~/.config/opencode (HOME=/opt/openpalm/guardian).
+      - ${OP_HOME:?}/system/guardian:/opt/openpalm/guardian-config:ro
+      - ${OP_HOME:?}/cache/guardian-opencode/runtime:/etc/opencode
+      - ${OP_HOME:?}/config/guardian:/opt/openpalm/guardian/.config/opencode
       # G1: NO bind mount from knowledge/ — the guardian mounts nothing from
       # that tree. Shared OpenCode provider credentials (same file the
       # assistant mounts, so any OpenCode instance uses the same provider
@@ -239,40 +244,42 @@ services:
       start_period: 180s
 
 secrets:
-  # G1: every secret below except `guardian_auth_json` is a DELEGATED secret —
-  # consumed only by the guardian/portals, never by the assistant agent — so
-  # it lives under private/secrets/, NOT knowledge/secrets/ (bind-mounted
-  # wholesale into the assistant at /stash and agent-reachable). The canonical
-  # delegated-name list is packages/lib/src/control-plane/secrets-files.ts.
+  # G1: every secret below except `guardian_auth_json` lives under
+  # state/secrets/, NOT knowledge/secrets/ (bind-mounted wholesale into the
+  # assistant at /stash and agent-reachable). Secret routing is default-deny —
+  # `auth.json` is the only name on the agent-readable allowlist in
+  # packages/lib/src/control-plane/secrets-files.ts, which is exactly why
+  # `guardian_auth_json` is the one exception here.
   portal_api_secret:
-    file: ${OP_HOME}/private/secrets/portal_api_secret
+    file: ${OP_HOME:?}/state/secrets/portal_api_secret
   portal_discord_secret:
-    file: ${OP_HOME}/private/secrets/portal_discord_secret
+    file: ${OP_HOME:?}/state/secrets/portal_discord_secret
   discord_bot_token:
-    file: ${OP_HOME}/private/secrets/discord_bot_token
+    file: ${OP_HOME:?}/state/secrets/discord_bot_token
   portal_slack_secret:
-    file: ${OP_HOME}/private/secrets/portal_slack_secret
+    file: ${OP_HOME:?}/state/secrets/portal_slack_secret
   slack_bot_token:
-    file: ${OP_HOME}/private/secrets/slack_bot_token
+    file: ${OP_HOME:?}/state/secrets/slack_bot_token
   slack_app_token:
-    file: ${OP_HOME}/private/secrets/slack_app_token
+    file: ${OP_HOME:?}/state/secrets/slack_app_token
   op_guardian_admin_token:
-    file: ${OP_HOME}/private/secrets/op_guardian_admin_token
+    file: ${OP_HOME:?}/state/secrets/op_guardian_admin_token
   op_guardian_mcp_token:
-    file: ${OP_HOME}/private/secrets/op_guardian_mcp_token
+    file: ${OP_HOME:?}/state/secrets/op_guardian_mcp_token
   op_api_key:
-    file: ${OP_HOME}/private/secrets/op_api_key
+    file: ${OP_HOME:?}/state/secrets/op_api_key
   # #563 — declared here too (not only in core.compose.yml) so this file
   # stands alone for `docker compose config` when portals.compose.yml is the
   # only file naming the secret in a given invocation.
   opencode_server_password:
-    file: ${OP_HOME}/private/secrets/op_opencode_password
+    file: ${OP_HOME:?}/state/secrets/op_opencode_password
   # G1: the guardian's shared OpenCode provider credentials, delivered as a
   # compose secret instead of a knowledge/ bind mount so the guardian mounts
   # NOTHING from knowledge/ (see the guardian service's volumes above and
   # containers/guardian/entrypoint.sh, which copies this into place). This
-  # file is NOT delegated/relocated — it stays at knowledge/secrets/auth.json,
-  # the same file the assistant bind-mounts (read-write) for its own OpenCode
-  # process; only the DELIVERY mechanism to the guardian changes.
+  # file is the one agent-readable secret — it stays at
+  # knowledge/secrets/auth.json, the same file the assistant bind-mounts
+  # (read-write) for its own OpenCode process; only the DELIVERY mechanism to
+  # the guardian changes.
   guardian_auth_json:
-    file: ${OP_HOME}/knowledge/secrets/auth.json
+    file: ${OP_HOME:?}/knowledge/secrets/auth.json

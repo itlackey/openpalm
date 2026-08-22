@@ -135,9 +135,37 @@ fi
 
 # ── Start OpenCode moderator (when content validation is enabled) ─────────────
 if [ "$enabled" = "1" ]; then
+  # Managed moderator config → disposable runtime copy, the same split
+  # Paperclip's launcher uses. OpenCode WRITES into every config dir it loads
+  # (ensureGitignore, `@opencode-ai/plugin` install), so OPENCODE_CONFIG_DIR
+  # cannot be the lifecycle-owned system/guardian tree itself — that would let
+  # the policed process rewrite its own moderation policy. system/guardian
+  # arrives :ro at $managed_config; the runtime copy is a regenerable cache
+  # bind (cache/guardian-opencode/runtime).
+  managed_config=/opt/openpalm/guardian-config
+  runtime_config="${OPENCODE_CONFIG_DIR:-/etc/opencode}"
+  if [ ! -r "$managed_config/opencode.jsonc" ]; then
+    echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but the managed moderator config is unreadable at ${managed_config} (expected the system/guardian read-only mount). Cannot start." >&2
+    exit 1
+  fi
+  mkdir -p "$runtime_config"
+  # Retired managed files must not survive a release update — OpenCode
+  # auto-discovers whatever is in the config dir. Only OpenCode's own runtime
+  # artifacts are kept; everything else is republished from $managed_config
+  # below. Safe as a blanket sweep here (unlike Paperclip's per-file publish):
+  # this runs once at boot, before anything reads the directory.
+  for entry in "$runtime_config"/* "$runtime_config"/.[!.]* "$runtime_config"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case ${entry##*/} in
+      .gitignore | node_modules | package.json | bun.lock | bun.lockb) ;;
+      *) rm -rf -- "$entry" ;;
+    esac
+  done
+  cp -R "$managed_config/." "$runtime_config/"
+
   port="${GUARDIAN_MODERATION_PORT:-4097}"
   echo "[guardian] starting OpenCode moderator on 127.0.0.1:${port}"
-  OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/etc/opencode}" \
+  OPENCODE_CONFIG_DIR="$runtime_config" \
     opencode serve --hostname 127.0.0.1 --port "${port}" \
     --print-logs --log-level INFO 2>&1 | sed -u 's/^/[moderator] /' >&2 &
 fi

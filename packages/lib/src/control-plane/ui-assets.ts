@@ -5,12 +5,15 @@
  * runtime download path: it was the GitHub host-assets release transport, and
  * it has been deleted along with backup/rollback/restart-on-update.
  */
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeVersion } from './versioning.js';
 import { resolveDataDir } from './home.js';
 import { overwriteSystemTree } from './core-assets.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('ui-assets');
 
 export const UI_VERSION_STAMP = '.openpalm-ui-version';
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
@@ -67,6 +70,73 @@ export function readSkeletonVersion(homeDir: string): string | null {
 }
 function writeSkeletonVersion(homeDir: string, version: string): void { writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`); }
 
+/** Every regular file under `root`, as paths relative to it, sorted. */
+function listFilesRelative(root: string): string[] {
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) files.push(relative(root, path));
+    }
+  };
+  walk(root);
+  return files.sort();
+}
+
+/** Same file list, same bytes. */
+function treesIdentical(a: string, b: string): boolean {
+  const left = listFilesRelative(a);
+  const right = listFilesRelative(b);
+  if (left.length !== right.length || left.some((rel, i) => rel !== right[i])) return false;
+  return left.every((rel) => readFileSync(join(a, rel)).equals(readFileSync(join(b, rel))));
+}
+
+/**
+ * Drop stash copies of shipped skills that are byte-identical to the ones just
+ * refreshed into `system/skills/`.
+ *
+ * The release-shipped skills used to be seeded into `knowledge/skills/`. They
+ * live in the managed tree now, which is what gives them an update channel —
+ * but an identical copy left behind in the stash is indexed by akm twice, once
+ * from the primary bundle and once from the `:ro` system bundle.
+ *
+ * This runs here, not as a schema-gated migration, because this is the one
+ * point where `system/skills/` is guaranteed to hold exactly what this release
+ * ships: `overwriteSystemTree` has just written it. It removes only trees
+ * byte-identical to the shipped ones, so a second pass finds nothing left to
+ * remove and it needs no version gate. Anything that differs is the operator's
+ * own — it stays and shadows the shipped copy, and is named in a warning so
+ * the duplicate is visible rather than silent.
+ */
+function pruneDuplicateShippedSkills(homeDir: string): void {
+  const shipped = join(homeDir, 'system', 'skills');
+  const stash = join(homeDir, 'knowledge', 'skills');
+  if (!existsSync(shipped) || !existsSync(stash)) return;
+
+  const removed: string[] = [];
+  const kept: string[] = [];
+  for (const entry of readdirSync(shipped, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const mine = join(stash, entry.name);
+    if (!existsSync(mine)) continue;
+    if (!treesIdentical(join(shipped, entry.name), mine)) {
+      kept.push(entry.name);
+      continue;
+    }
+    rmSync(mine, { recursive: true, force: true });
+    removed.push(entry.name);
+  }
+  if (removed.length > 0) {
+    logger.warn('Removed shipped skills from knowledge/skills — they are served from the managed system/skills bundle now', { removed });
+  }
+  if (kept.length > 0) {
+    logger.warn('Kept locally modified copies of shipped skills in knowledge/skills; they now shadow the system/skills bundle and are yours to maintain', { kept });
+  }
+  // Emptied by the sweep: leave it only if the operator has skills of their own.
+  try { rmdirSync(stash); } catch { /* non-empty */ }
+}
+
 /**
  * Seed OP_HOME's managed system/ tree (+ any other skeleton files) from a
  * local skeleton source — an Electron extraResources copy, a repo checkout,
@@ -85,24 +155,15 @@ export async function applyHomeSeed(homeDir: string): Promise<{ updated: string[
     );
   }
   const managed = overwriteSystemTree(source, homeDir);
-  // K7 (product decision, not yet resolved): copyTree's skipExisting=true
-  // below treats every non-system/ file — including knowledge/skills/**,
-  // which is release-authored content the operator is not expected to
-  // author or edit, same as system/ — as a one-time seed. That means a skill
-  // bugfix shipped in a LATER release only ever reaches a brand-new OP_HOME;
-  // every home that seeded the old copy keeps it forever, with no update
-  // channel and no signal to the operator that anything is stale. This is
-  // the right call for the REST of this tree (knowledge/env/user.env,
-  // knowledge/secrets/, config/, data/, workspace/ — genuinely user-owned or
-  // user-populated), which is exactly why skills can't simply be folded into
-  // that same skipExisting pass without risking a silent clobber of a
-  // user-customized or user-authored skill (knowledge/skills/ has no
-  // separate "this one's mine" marker the way config/ vs system/ does for
-  // OpenCode config). Moving skills to the always-overwritten system/ tree,
-  // or giving knowledge/skills/** its own changed-file-only refresh (like
-  // overwriteSystemTree, but preserving anything NOT byte-identical to what
-  // was last shipped), are both viable — deferred pending a decision on
-  // whether skills are meant to be user-editable at all.
+  // K7, resolved: the release-shipped skills moved to system/skills/, so
+  // overwriteSystemTree above refreshes them wholesale and a skill bugfix now
+  // reaches an existing OP_HOME. They used to sit under knowledge/skills/,
+  // where the skipExisting=true seed below made them a one-time copy — a
+  // later fix only ever reached a brand-new home, with no update channel and
+  // no signal that anything was stale. skipExisting stays right for what is
+  // left here (knowledge/env/user.env, knowledge/secrets/, config/, data/,
+  // workspace/ — genuinely user-owned or user-populated).
+  pruneDuplicateShippedSkills(homeDir);
   copyTree(source, homeDir, true);
   try {
     const version = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;

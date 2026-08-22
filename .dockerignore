@@ -36,4 +36,4 @@ docs/
 .openpalm/knowledge/env/user.env
 # Secrets — never bake into images (auth.json, per-service secret files)
 .openpalm/knowledge/secrets/**
-.openpalm/private/**
+.openpalm/state/**

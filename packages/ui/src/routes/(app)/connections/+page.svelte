@@ -497,12 +497,12 @@
           </small>
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
-              The password lives as the file secret <code>private/secrets/op_opencode_password</code> on the
+              The password lives as the file secret <code>state/secrets/op_opencode_password</code> on the
               remote host — never in <code>stack.env</code>. It is generated once at install and is never
               reissued on its own. Rotation is a two-step process:
               <ol>
                 <li>
-                  On the remote host: edit <code>private/secrets/op_opencode_password</code> directly (or
+                  On the remote host: edit <code>state/secrets/op_opencode_password</code> directly (or
                   view the current value from Assistant settings, Advanced), then restart the
                   <code>assistant</code> container so it re-reads the file.
                 </li>

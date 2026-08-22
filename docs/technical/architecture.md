@@ -86,11 +86,11 @@ separate listeners.
 - Provider `knowledge/secrets/auth.json` remains in the assistant-readable AKM
   tree and is delivered to Guardian as one Compose secret.
 - Delegated UI, OpenCode server, Guardian, API, portal, and bot credentials live
-  under `private/secrets/`.
-- `private/` is never mounted into assistant `/stash`; services receive only
-  the named files they consume.
+  under `state/secrets/`.
+- `state/secrets/` and `state/env/` are never bind-mounted; services receive
+  only the named files they consume.
 - Paperclip's upstream image requires two environment secrets, delivered through
-  the sole audited exact-key file at `private/env/paperclip.env`.
+  the sole audited exact-key file at `state/env/paperclip.env`.
 - `knowledge/env/user.env` is loaded by scoped tools on demand, not sourced by
   the assistant entrypoint.
 

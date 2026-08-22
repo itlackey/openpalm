@@ -16,7 +16,7 @@ complete install.
 | `$OP_HOME/system/stack/guardian.compose.api.yml` | **Conditional** — the OpenAI-compatible edge's host publish; only when `OP_ACCESS_OPENAI_API=true` or `api` is in `OP_ENABLED_ADDONS` (see below) |
 | `$OP_HOME/config/stack/custom.compose.yml` | Sole user-owned Compose overlay |
 | `$OP_HOME/state/stack.env` | Sole non-secret Compose env file |
-| `$OP_HOME/private/secrets/` | Delegated service secret sources |
+| `$OP_HOME/state/secrets/` | Delegated service secret sources |
 | `$OP_HOME/knowledge/secrets/auth.json` | Provider auth used by OpenCode |
 
 The first three managed files are always present in a generated install and
@@ -218,13 +218,13 @@ not part of the shipped model. Delegated credentials arrive through Compose
 
 ## Secret Rotation
 
-Delegated secrets live in `private/secrets/`. Provider auth remains in
+Delegated secrets live in `state/secrets/`. Provider auth remains in
 `knowledge/secrets/auth.json`.
 
 Example manual rotation:
 
 ```bash
-secret="$HOME/.openpalm/private/secrets/op_api_key"
+secret="$HOME/.openpalm/state/secrets/op_api_key"
 replacement="$(mktemp "$secret.XXXXXX")"
 chmod 600 "$replacement"
 $EDITOR "$replacement"
@@ -262,7 +262,7 @@ tar --exclude='.openpalm/cache' \
   -C "$HOME" .openpalm
 ```
 
-The archive includes `private/`. A full archive without the exclusion also
+The archive includes `state/secrets/`. A full archive without the exclusion also
 includes regenerable caches. See [Backup & Restore](../backup-restore.md).
 
 ## Related Docs

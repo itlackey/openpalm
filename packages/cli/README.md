@@ -74,7 +74,7 @@ The CLI creates and manages:
 system/stack/{core,services,portals}.compose.yml
 config/stack/custom.compose.yml
 state/stack.env
-private/secrets/
+state/secrets/
 knowledge/secrets/auth.json
 knowledge/env/user.env
 data/
@@ -84,7 +84,7 @@ workspace/
 
 `state/stack.env` is the sole Compose env file and contains no secrets.
 Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets live in
-`private/secrets/`. Provider auth remains in `knowledge/secrets/auth.json`.
+`state/secrets/`. Provider auth remains in `knowledge/secrets/auth.json`.
 
 The CLI translates `OP_ENABLED_ADDONS` to active Compose profiles. This is a
 control-plane behavior, not something raw Docker Compose does automatically.
@@ -111,7 +111,7 @@ Current UI APIs use `/api/auth/*`, `/api/host/*`, and `/api/assistant/*`.
 | `OP_PROJECT_NAME` | `openpalm` | Compose project name |
 
 The UI password source is
-`${OP_HOME}/private/secrets/op_ui_login_password`. Browser auth uses an
+`${OP_HOME}/state/secrets/op_ui_login_password`. Browser auth uses an
 `HttpOnly`, `SameSite=Lax` session cookie.
 
 ## Development

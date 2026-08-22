@@ -44,7 +44,8 @@ The managed Compose definition is
 | `${OP_HOME}/system/assistant` | `/etc/opencode` | Managed OpenCode config (`OPENCODE_CONFIG_DIR`) |
 | `${OP_HOME}/config/assistant` | `/home/opencode/.config/opencode` | User OpenCode global config |
 | `${OP_HOME}/config/akm` | `/etc/akm` | AKM config |
-| `${OP_HOME}/knowledge` | `/stash` | AKM knowledge, tasks, skills, and user env |
+| `${OP_HOME}/knowledge` | `/stash` | AKM knowledge, tasks, user env, and the operator's own skills |
+| `${OP_HOME}/system/skills` | `/system-stash` | Release-shipped AKM skills, read-only |
 | `${OP_HOME}/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode provider auth |
 | `${OP_HOME}/data/akm/cache` | `/opt/akm/cache` | AKM cache and task logs |
 | `${OP_HOME}/data/akm/data` | `/opt/akm/data` | AKM databases |
@@ -59,7 +60,7 @@ Managed config and user config are separate. Update may replace
 
 The assistant-readable provider file is
 `knowledge/secrets/auth.json`. Delegated UI, Guardian, API, portal, bot, and
-OpenCode-server credentials live under host `private/secrets/` and are not
+OpenCode-server credentials live under host `state/secrets/` and are not
 mounted as a tree.
 
 The assistant service receives only the specific UI/OpenCode server secret

@@ -283,7 +283,7 @@ export function migrateRetiredOpencodeAuth(homeDir: string): boolean {
 /**
  * Write system-managed values to state/stack.env.
  *
- * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
+ * Secret-like keys are NOT written here — they belong in state/secrets/.
  * Use ensurePortalSecret() for portal secrets.
  */
 export function writeSystemEnv(state: ControlPlaneState): void {
@@ -759,7 +759,7 @@ export function writeRuntimeFiles(
     }
   }
 
-  // Write stack.env (no secrets — those live in knowledge/secrets/)
+  // Write stack.env (no secrets — those live in state/secrets/)
   writeSystemEnv(state);
 
   // Ensure state directory exists

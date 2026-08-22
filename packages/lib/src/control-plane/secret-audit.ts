@@ -8,8 +8,9 @@ import { isSecretLikeKey } from './secrets.js';
 // could drift apart.
 import { PAPERCLIP_ENV_KEYS, paperclipEnvFile } from './paperclip.js';
 // The audit must agree with the writer about which secrets live in
-// private/secrets/ — DELEGATED_SECRET_NAMES is that writer's list.
-import { DELEGATED_SECRET_NAMES } from './secrets-files.js';
+// state/secrets/ — the writer routes default-deny, so the agent-readable
+// allowlist is the whole rule.
+import { isAgentReadableSecretName } from './secrets-files.js';
 
 export { isSecretLikeKey };
 
@@ -32,7 +33,7 @@ export type SecretAuditOptions = {
   stackEnvContent?: string;
   composeConfig?: string | unknown;
   secretsDir?: string;
-  privateSecretsDir?: string;
+  stateSecretsDir?: string;
   homeDir?: string;
 };
 
@@ -166,14 +167,13 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
     return /^(admin|ui|openpalm)_/.test(secretId);
   }
   if (serviceName === 'tunnel') {
-    // ts_authkey (DELEGATED_SECRET_NAMES, secrets-files.ts) is a tailnet JOIN
-    // credential, not a `tunnel_`-prefixed secret — the naming convention the
-    // generic fallback below expects. tunnel also sits on portal_net (the
-    // trust-boundary exception explained atop services.compose.yml), which
-    // would otherwise make isPortalService() below misclassify it as a portal
-    // adapter and require a `portal_tunnel_`/`tunnel_` prefix it can never
-    // have. A single-secret grant, same shape as guardian's op_api_key rule
-    // above.
+    // ts_authkey is a tailnet JOIN credential, not a `tunnel_`-prefixed secret
+    // — the naming convention the generic fallback below expects. tunnel also
+    // sits on portal_net (the trust-boundary exception explained atop
+    // services.compose.yml), which would otherwise make isPortalService() below
+    // misclassify it as a portal adapter and require a
+    // `portal_tunnel_`/`tunnel_` prefix it can never have. A single-secret
+    // grant, same shape as guardian's op_api_key rule above.
     return secretId === 'ts_authkey';
   }
   if (isPortalService(serviceName, service)) {
@@ -268,10 +268,14 @@ export function auditComposeSecrets(
     }
 
     for (const volume of volumeEntries(service.volumes)) {
-      if (volume.type === 'bind' && volume.source && /(?:^|[\\/])private(?:[\\/]|$)/i.test(normalize(volume.source))) {
+      // state/ as a whole IS bind-mounted (the tunnel reads state/remote/), so
+      // this names the two credential subtrees rather than the tree: they are
+      // handed to containers as named Compose secrets and as paperclip's single
+      // audited env_file, never as a mount.
+      if (volume.type === 'bind' && volume.source && /(?:^|[\\/])state[\\/](?:secrets|env)(?:[\\/]|$)/i.test(normalize(volume.source))) {
         issues.push(issue(
-          'compose-private-bind-mount',
-          `service ${serviceName} must not bind-mount private/; delegated credentials are named Compose secrets only.`,
+          'compose-credential-bind-mount',
+          `service ${serviceName} must not bind-mount state/secrets/ or state/env/; delegated credentials are named Compose secrets only.`,
           `services.${serviceName}.volumes`,
         ));
       }
@@ -285,8 +289,8 @@ function isPaperclipEnvFile(serviceName: string, envFile: unknown, resolved: boo
   const entries = Array.isArray(envFile) ? envFile : [envFile];
   if (entries.length !== 1 || typeof entries[0] !== 'string') return false;
   return resolved
-    ? /[\\/]private[\\/]env[\\/]paperclip\.env$/.test(entries[0])
-    : entries[0] === '${OP_HOME}/private/env/paperclip.env';
+    ? /[\\/]state[\\/]env[\\/]paperclip\.env$/.test(entries[0])
+    : entries[0] === '${OP_HOME:?}/state/env/paperclip.env';
 }
 
 /**
@@ -363,10 +367,14 @@ export function auditResolvedComposeSecrets(
   for (const [name, definition] of Object.entries(compose.secrets ?? {})) {
     if (!isRecord(definition) || typeof definition.file !== 'string' || !home) continue;
     const source = resolve(definition.file);
-    const expectedRoot = isDelegatedSecretNameForAudit(name)
-      ? resolve(home, 'private', 'secrets')
-      : resolve(home, 'knowledge', 'secrets');
-    const expected = resolve(expectedRoot, expectedSecretFilename(name));
+    // Routed on the FILENAME the source must have, not the compose secret name:
+    // the alias map below is what turns `guardian_auth_json` into `auth.json`,
+    // the one agent-readable file.
+    const filename = expectedSecretFilename(name);
+    const expectedRoot = isAgentReadableSecretName(filename)
+      ? resolve(home, 'knowledge', 'secrets')
+      : resolve(home, 'state', 'secrets');
+    const expected = resolve(expectedRoot, filename);
     if (source !== expected) {
       issues.push(issue(
         'compose-secret-source-boundary',
@@ -383,15 +391,6 @@ function expectedSecretFilename(name: string): string {
   if (name === 'ui_login_password') return 'op_ui_login_password';
   if (name === 'guardian_auth_json') return 'auth.json';
   return name;
-}
-
-function isDelegatedSecretNameForAudit(name: string): boolean {
-  // DELEGATED_SECRET_NAMES (secrets-files.ts) is authoritative for what the
-  // provisioner writes under private/secrets/ (e.g. ts_authkey); the pattern
-  // covers the compose-level alias names (opencode_server_password,
-  // ui_login_password) that expectedSecretFilename maps onto delegated files.
-  if (DELEGATED_SECRET_NAMES.has(name)) return true;
-  return /^(op_guardian_|op_api_key|discord_bot_token|slack_bot_token|slack_app_token|opencode_server_password|ui_login_password|op_opencode_password|op_ui_login_password|portal_.*_secret$)/.test(name);
 }
 
 export function auditSecretFilesystem(secretsDir: string): SecretAuditIssue[] {
@@ -451,8 +450,8 @@ export function auditFileBasedSecrets(options: SecretAuditOptions): SecretAuditR
   if (options.secretsDir) {
     issues.push(...auditSecretFilesystem(options.secretsDir));
   }
-  if (options.privateSecretsDir) {
-    issues.push(...auditSecretFilesystem(options.privateSecretsDir));
+  if (options.stateSecretsDir) {
+    issues.push(...auditSecretFilesystem(options.stateSecretsDir));
   }
 
   return { ok: issues.length === 0, issues };

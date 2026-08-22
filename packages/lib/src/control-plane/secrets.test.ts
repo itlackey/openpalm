@@ -137,7 +137,7 @@ describe('readStackEnv excludes secret-like keys', () => {
 
 describe('readStackSecretEnv reads from secret files', () => {
   it('reads back a written secret', () => {
-    // discord_bot_token is a delegated secret (§G1) — routed to private/secrets
+    // discord_bot_token is a delegated secret (§G1) — routed to state/secrets
     // by writeSecret's name-based resolution, not the raw knowledge/secrets path.
     // readStackSecretEnv must still find it via listSecretNames scanning both dirs.
     writeSecret(home, 'discord_bot_token', 'tok-abc\n');

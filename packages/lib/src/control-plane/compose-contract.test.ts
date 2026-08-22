@@ -74,7 +74,11 @@ function assertNoOpenPalmVolumeMounts(files: ReadonlyArray<readonly [string, Com
         let source: string | undefined;
         let target: string | undefined;
         if (typeof vol === 'string') {
-          [source, target] = vol.split(':');
+          // Interpolations come out before the fields are split: the guarded
+          // `${OP_HOME:?}` bind sources carry a colon of their own, and a bare
+          // split(':') would read `?}/data/guardian` as the target — making
+          // every assertion below vacuous for exactly the mounts it guards.
+          [source, target] = vol.replace(/\$\{[^}]*\}/g, '').split(':');
         } else {
           // Long-form entry (`{ type, source, target }`). An explicit
           // non-'volume' type (bind, tmpfs) is never a named-volume mount

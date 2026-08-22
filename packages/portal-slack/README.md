@@ -49,7 +49,7 @@ you do not need to set it against a plain OpenCode server. See the
 
 - Shipped service definition: `system/stack/portals.compose.yml`, profile `addon.slack`
 - Non-secret values: `~/.openpalm/state/stack.env`
-- Bot and principal secrets: files under `~/.openpalm/private/secrets/`
+- Bot and principal secrets: files under `~/.openpalm/state/secrets/`
 
 Manual start example:
 
@@ -100,7 +100,7 @@ there's no secret mount).
 In the shipped stack, secret values are stored as files and exposed only
 through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and
 `SLACK_APP_TOKEN` for setup, but setup persists them under
-`private/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and
+`state/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and
 `SLACK_APP_TOKEN_FILE`, not raw tokens.
 
 The shipped Compose overlay exposes per-portal overrides through

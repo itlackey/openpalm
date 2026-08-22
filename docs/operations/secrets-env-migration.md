@@ -10,7 +10,7 @@ at `/stash`.
 | Path | Contents |
 |---|---|
 | `state/stack.env` | The sole non-secret Compose `--env-file` |
-| `private/secrets/` | Delegated UI, OpenCode-server, Guardian, API, portal, and bot credentials |
+| `state/secrets/` | Delegated UI, OpenCode-server, Guardian, API, portal, and bot credentials |
 | `knowledge/secrets/auth.json` | Assistant-readable OpenCode provider auth only |
 | `knowledge/env/user.env` | AKM `env/user` data loaded by scoped tools on demand |
 | `system/stack/` | Release-managed Compose files |
@@ -21,7 +21,7 @@ Compose does not perform `OP_HOME` migrations.
 
 ## Supported Upgrade Path
 
-1. Make a full external backup of `OP_HOME`, including `private/`,
+1. Make a full external backup of `OP_HOME`, including `state/`,
    `knowledge/`, and service-owned `data/`. See [Backup and
    Restore](../backup-restore.md).
 2. Install the current CLI, then run the normal lifecycle update:
@@ -42,32 +42,39 @@ The current CLI invokes the versioned migration before normal lifecycle
 reconciliation. It consolidates supported legacy stack env files into
 `state/stack.env`, preserves the effective values and operator comments it can
 carry forward, and relocates known delegated credentials from the
-Assistant-readable secret directory into `private/secrets/`.
+Assistant-readable secret directory into `state/secrets/`.
 
 If the same delegated secret exists in both old and current locations with
 different bytes, migration leaves both files in place and logs a warning rather
 than choosing one. Resolve that conflict from the external backup: retain the
-intended value under `private/secrets/` with mode `0600`, then remove the stale
+intended value under `state/secrets/` with mode `0600`, then remove the stale
 Assistant-readable copy.
 
 Do not bulk-move `knowledge/secrets/`: provider `auth.json` deliberately remains
 there. Do not put `state/stack.env` or delegated service credentials under
 `knowledge/`.
 
-## Upcoming layout change
+## Final layout change
 
-A final reorganization has been approved (2026-08-08) and is not yet
-implemented. When it lands, the current CLI will migrate supported homes
-automatically, as it has for every previous layout move:
+The reorganization approved 2026-08-08 has landed. The CLI migrates supported
+homes automatically on the next lifecycle command, as it has for every previous
+layout move:
 
 - `knowledge/` stays the one stash with AKM's asset layout unchanged; sharing
-  it with an addon becomes an AKM bundle entry, and the per-addon
-  `knowledge/paperclip/` overlay directories are removed;
-- `private/` is merged into `state/`: delegated credentials move to
-  `state/secrets/` and the audited env file to `state/env/`;
+  it with an addon is an AKM bundle entry, and the per-addon
+  `knowledge/paperclip/` overlay directories and the `/stash/{env,secrets}`
+  overmounts they backed are gone;
+- release-shipped skills moved from `knowledge/skills/` to `system/skills/`,
+  which is refreshed wholesale on update, so a shipped skill finally has a fix
+  channel. A copy under `knowledge/skills/` that is byte-identical to what the
+  release ships is removed; a modified copy is kept as yours and logged;
+- the retired `private/` tree is merged into `state/`: delegated credentials
+  move to `state/secrets/` and the audited env file to `state/env/`;
 - the internal secret API defaults to `state/secrets/`, while
   operator-managed (agent-readable) secrets keep their existing home.
 
-Do not pre-move anything by hand. See
+Do not move anything by hand. If your `config/stack/custom.compose.yml` names
+`private/secrets/` or `private/env/` paths, update it yourself — the migration
+never rewrites the user overlay. See
 [`../technical/core-principles.md`](../technical/core-principles.md)
 § Accepted changes.

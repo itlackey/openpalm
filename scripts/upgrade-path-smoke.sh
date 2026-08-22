@@ -62,7 +62,7 @@ smoke_copy_skeleton_version() {
 #
 # Writes the pre-split legacy artifacts a real 0.12.x install had:
 #   knowledge/env/stack.env  — the stack env before it moved to state/
-#   knowledge/secrets/*      — delegated secrets before §G1 moved them to private/
+#   knowledge/secrets/*      — delegated secrets before §G1 moved them to state/secrets/
 # and removes any schema-version record, so the home reads as version 0.
 #
 # Usage: smoke_seed_legacy_install_state <home>
@@ -80,7 +80,7 @@ OP_ASSISTANT_PORT=3801
 EOF
 
   # Delegated secrets in their pre-§G1 home. The migration must relocate these
-  # into private/secrets and remove the originals from the assistant-reachable
+  # into state/secrets and remove the originals from the assistant-reachable
   # knowledge tree.
   mkdir -p "${home}/knowledge/secrets"
   chmod 700 "${home}/knowledge/secrets"
@@ -203,13 +203,13 @@ for version in "${VERSIONS[@]}"; do
   # Leaving one behind is a live credential exposure, so assert BOTH ends.
   moved_all="yes"; left_behind=""
   for name in op_guardian_admin_token op_api_key discord_bot_token op_ui_login_password; do
-    [ -f "${home}/private/secrets/${name}" ] || moved_all="no"
+    [ -f "${home}/state/secrets/${name}" ] || moved_all="no"
     [ -f "${home}/knowledge/secrets/${name}" ] && left_behind="${left_behind} ${name}"
   done
   if [ "$moved_all" = "yes" ] && [ -z "$left_behind" ]; then
-    pass "${version}: delegated secrets relocated to private/ (none left in knowledge/)"
+    pass "${version}: delegated secrets relocated to state/secrets/ (none left in knowledge/)"
   else
-    fail "${version}: secrets migration incomplete (missing from private: ${moved_all}; still in knowledge:${left_behind:-none})"
+    fail "${version}: secrets migration incomplete (missing from state/secrets: ${moved_all}; still in knowledge:${left_behind:-none})"
   fi
 
   # Nothing the operator owned may be destroyed by an upgrade.

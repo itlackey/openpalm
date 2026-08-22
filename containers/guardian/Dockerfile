@@ -55,13 +55,18 @@ COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # ARG below. This is the heavy layer (the opencode binary) and it depends only
 # on the manifest COPY'd above, so it stays cached across releases instead of
 # being re-pushed and re-pulled every time the version stamp changes.
-RUN mkdir -p /opt/openpalm/guardian/.cache/bun/install \
+# OPENCODE_CONFIG_DIR is the moderator's DISPOSABLE runtime config copy, which
+# the entrypoint republishes from the read-only managed mount on every boot.
+# The shipped compose binds cache/guardian-opencode/runtime over it; create it
+# here (world-writable, same arbitrary-uid rationale as the trees below) so a
+# bare `docker run` still has somewhere to publish to.
+RUN mkdir -p /opt/openpalm/guardian/.cache/bun/install /etc/opencode \
     && bun install --cwd /opt/openpalm/tools --production \
     && rm -rf /opt/openpalm/tools/node_modules/opencode-linux-x64-musl \
               /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline \
               /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline-musl \
               /opt/openpalm/tools/node_modules/opencode-linux-arm64-musl \
-    && chmod -R a+rwX /opt/openpalm /opt/openpalm/tools
+    && chmod -R a+rwX /opt/openpalm /opt/openpalm/tools /etc/opencode
 
 # Release version — everything below this line is cache-invalidated on every
 # release, so keep it below the heavy tools layer above (IMG-6).

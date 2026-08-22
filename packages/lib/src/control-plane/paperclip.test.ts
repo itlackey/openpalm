@@ -28,13 +28,13 @@ describe('preparePaperclipAddon', () => {
 		expect(parseEnvFile(paperclipEnvFile(homeDir))).toEqual(first);
 		expect(first.BETTER_AUTH_SECRET).toHaveLength(64);
 		expect(first.PAPERCLIP_AGENT_JWT_SECRET).toHaveLength(64);
-		expect(statSync(join(homeDir, 'private', 'env')).mode & 0o777).toBe(0o700);
+		expect(statSync(join(homeDir, 'state', 'env')).mode & 0o777).toBe(0o700);
 		expect(statSync(paperclipEnvFile(homeDir)).mode & 0o777).toBe(0o600);
 	});
 
 	it('migrates the unused legacy signing key without rotating its value', () => {
 		const homeDir = createHome();
-		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
 		writeFileSync(
 			paperclipEnvFile(homeDir),
 			'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=legacy-signing\n'
@@ -50,7 +50,7 @@ describe('preparePaperclipAddon', () => {
 
 	it('rejects unsupported values instead of passing them into Paperclip', () => {
 		const homeDir = createHome();
-		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
 		writeFileSync(paperclipEnvFile(homeDir), 'UNEXPECTED_SECRET=value\n');
 
 		expect(() => preparePaperclipAddon(homeDir)).toThrow(/unsupported key/);
@@ -58,7 +58,7 @@ describe('preparePaperclipAddon', () => {
 
 	it('names the env file path in the unsupported-key error', () => {
 		const homeDir = createHome();
-		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
 		writeFileSync(paperclipEnvFile(homeDir), 'UNEXPECTED_SECRET=value\n');
 
 		expect(() => preparePaperclipAddon(homeDir, { enabled: true })).toThrow(
@@ -68,7 +68,7 @@ describe('preparePaperclipAddon', () => {
 
 	it('does not throw for unknown keys when the addon is disabled — seeds and preserves them', () => {
 		const homeDir = createHome();
-		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
 		writeFileSync(paperclipEnvFile(homeDir), 'UNEXPECTED_SECRET=value\n');
 
 		preparePaperclipAddon(homeDir, { enabled: false });
@@ -84,7 +84,7 @@ describe('preparePaperclipAddon', () => {
 
 	it('leaves a complete file with unknown keys untouched when the addon is disabled', () => {
 		const homeDir = createHome();
-		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
 		writeFileSync(
 			paperclipEnvFile(homeDir),
 			'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=jwt\nUNEXPECTED_SECRET=value\n'

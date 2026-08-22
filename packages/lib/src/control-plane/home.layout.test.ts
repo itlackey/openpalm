@@ -16,6 +16,8 @@ import {
   hostIdentityFile,
   userEnvFile,
   secretsDir,
+  stateSecretsDir,
+  stateEnvDir,
   authJsonFile,
   ensureHomeDirs,
   remoteServeConfigDir,
@@ -32,6 +34,10 @@ describe("OP_HOME layout (single source of truth)", () => {
     expect(userEnvFile(H)).toBe("/op/home/knowledge/env/user.env");
     expect(secretsDir(H)).toBe("/op/home/knowledge/secrets");
     expect(authJsonFile(H)).toBe("/op/home/knowledge/secrets/auth.json");
+    // The default (non-agent-readable) credential trees. They are children of
+    // state/, not an eighth top-level tree — one exposure answer per tree.
+    expect(stateSecretsDir(H)).toBe("/op/home/state/secrets");
+    expect(stateEnvDir(H)).toBe("/op/home/state/env");
     expect(composeFilePath(H, "core.compose.yml")).toBe("/op/home/system/stack/core.compose.yml");
   });
 
@@ -51,10 +57,16 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(existsSync(join(home, 'config/paperclip/opencode'))).toBe(true);
       expect(existsSync(join(home, 'config/paperclip/akm'))).toBe(true);
       expect(existsSync(join(home, 'system/paperclip'))).toBe(true);
+      expect(existsSync(join(home, 'cache/guardian-opencode'))).toBe(true);
+      expect(existsSync(join(home, 'cache/guardian-opencode/runtime'))).toBe(true);
       expect(existsSync(join(home, 'cache/paperclip-opencode'))).toBe(true);
       expect(existsSync(join(home, 'cache/paperclip-opencode/runtime'))).toBe(true);
-      expect(existsSync(join(home, 'knowledge/paperclip/env'))).toBe(true);
-      expect(existsSync(join(home, 'knowledge/paperclip/secrets'))).toBe(true);
+      expect(existsSync(join(home, 'system/skills'))).toBe(true);
+      expect(existsSync(join(home, 'state/secrets'))).toBe(true);
+      // The retired per-service stash overlays the /stash/{env,secrets}
+      // overmounts pointed at, and the retired private/ tree.
+      expect(existsSync(join(home, 'knowledge/paperclip'))).toBe(false);
+      expect(existsSync(join(home, 'private'))).toBe(false);
       expect(existsSync(join(home, 'data/paperclip-akm/cache'))).toBe(true);
       expect(existsSync(join(home, 'data/paperclip-akm/data'))).toBe(true);
       expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);

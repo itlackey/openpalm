@@ -116,7 +116,7 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 | `~/.openpalm/config/stack/custom.compose.yml` | User Compose overlay |
 | `~/.openpalm/state/stack.env` | Non-secret pins and addon state |
 | `~/.openpalm/knowledge/env/` | AKM user env loaded by scoped tools |
-| `~/.openpalm/private/secrets/` | Delegated service credentials |
+| `~/.openpalm/state/secrets/` | Delegated service credentials |
 | `~/.openpalm/config/` | Other user-editable config |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/data/logs/` | Logs and audit files |

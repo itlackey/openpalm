@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildEnvFiles } from './config-persistence.js';
 import { assertNoSecretLikeStackEnvKeys, patchSecretsEnvFile } from './secrets.js';
-import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, ensureSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename, DELEGATED_SECRET_NAMES } from './secrets-files.js';
-import { privateSecretsDir, secretsDir } from './home.js';
+import { listSecretNames, readSecret, resolveStateSecretsDir, resolveSecretsDir, secretPath, writeSecret, ensureSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename, AGENT_READABLE_SECRET_NAMES } from './secrets-files.js';
+import { stateSecretsDir, secretsDir } from './home.js';
 import type { ControlPlaneState } from './types.js';
 
 function tempStackDir(): string {
@@ -18,8 +18,8 @@ describe('file-based control-plane secrets', () => {
 
     writeSecret(stackDir, 'portal_chat_secret', 'value');
 
-    expect(resolveSecretsDir(stackDir)).toBe(join(stackDir, 'knowledge', 'secrets'));
-    expect(statSync(resolveSecretsDir(stackDir)).mode & 0o777).toBe(0o700);
+    expect(resolveStateSecretsDir(stackDir)).toBe(join(stackDir, 'state', 'secrets'));
+    expect(statSync(resolveStateSecretsDir(stackDir)).mode & 0o777).toBe(0o700);
     expect(statSync(secretPath(stackDir, 'portal_chat_secret')).mode & 0o777).toBe(0o600);
     expect(readSecret(stackDir, 'portal_chat_secret')).toBe('value');
     expect(listSecretNames(stackDir)).toEqual(['portal_chat_secret']);
@@ -72,40 +72,41 @@ describe('file-based control-plane secrets', () => {
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');
   });
 
-  // Delegated service credentials must resolve under
-  // private/secrets/, never under knowledge/secrets/ (bind-mounted wholesale
-  // into the assistant at /stash). This is the discriminating property the
-  // relocation exists for: a round-trip-only test (write then read the same
-  // name back) would stay green even if delegated routing were disabled
-  // entirely, because both directories are readable/writable the same way.
-  // Only asserting the PHYSICAL PATH catches that regression.
-  it('routes every delegated secret name under privateSecretsDir, never secretsDir', () => {
+  // Routing is default-deny (A2): a secret name resolves under state/secrets/,
+  // never under knowledge/secrets/ (bind-mounted wholesale into the assistant at
+  // /stash), unless it is explicitly agent-readable. The names below include one
+  // (`portal_owner_secret`) that no list anywhere mentions — that is the point:
+  // the safe location is what a name gets for free.
+  //
+  // A round-trip-only test (write then read the same name back) would stay
+  // green even if routing were disabled entirely, because both directories are
+  // readable/writable the same way. Only asserting the PHYSICAL PATH catches
+  // that regression.
+  it('routes an unlisted secret name under stateSecretsDir, never secretsDir', () => {
     const homeDir = tempStackDir();
 
-    for (const name of DELEGATED_SECRET_NAMES) {
+    for (const name of ['op_session_signing_key', 'ts_authkey', 'portal_owner_secret', 'openai_api_key']) {
+      expect(AGENT_READABLE_SECRET_NAMES.has(name)).toBe(false);
       const path = secretPath(homeDir, name);
-      expect(path).toBe(join(privateSecretsDir(homeDir), name));
+      expect(path).toBe(join(stateSecretsDir(homeDir), name));
       expect(path.startsWith(secretsDir(homeDir))).toBe(false);
 
       writeSecret(homeDir, name, `value-for-${name}`);
       expect(readSecret(homeDir, name)).toBe(`value-for-${name}`);
-      // The value must actually land on disk under private/secrets/, not
+      // The value must actually land on disk under state/secrets/, not
       // merely resolve there in-memory.
-      expect(statSync(join(privateSecretsDir(homeDir), name)).isFile()).toBe(true);
+      expect(statSync(join(stateSecretsDir(homeDir), name)).isFile()).toBe(true);
     }
   });
 
-  it('routes a non-delegated secret name (e.g. auth.json-adjacent) under secretsDir, never privateSecretsDir', () => {
+  it('routes an agent-readable name (auth.json) under secretsDir, never stateSecretsDir', () => {
     const homeDir = tempStackDir();
-    const name = 'portal_owner_secret'; // not in DELEGATED_SECRET_NAMES
 
-    expect(DELEGATED_SECRET_NAMES.has(name)).toBe(false);
-    const path = secretPath(homeDir, name);
-    expect(path).toBe(join(secretsDir(homeDir), name));
-    expect(path.startsWith(privateSecretsDir(homeDir))).toBe(false);
+    expect([...AGENT_READABLE_SECRET_NAMES]).toEqual(['auth.json']);
+    writeSecretFile(homeDir, 'auth.json', '{"anthropic":{"type":"api"}}');
 
-    writeSecret(homeDir, name, 'non-delegated-value');
-    expect(statSync(join(secretsDir(homeDir), name)).isFile()).toBe(true);
+    expect(statSync(join(secretsDir(homeDir), 'auth.json')).isFile()).toBe(true);
+    expect(existsSync(join(stateSecretsDir(homeDir), 'auth.json'))).toBe(false);
   });
 
   it('treats a zero-byte (torn) secret file as missing and re-seeds it (0.1)', () => {
@@ -161,6 +162,21 @@ describe('secrets-dir file browser API (admin Secrets tab)', () => {
     expect(files.find((f) => f.name === 'auth.json')?.size).toBe('{"k":1}'.length);
     // strict API still excludes the dotted file
     expect(listSecretNames(stackDir)).not.toContain('auth.json');
+  });
+
+  // The listing must agree with the routing, or the Secrets tab edits a file
+  // other than the one it shows. `knowledge/secrets` is AKM's own secrets asset
+  // dir as well as auth.json's home, so a name in there that is not
+  // agent-readable is simply not this tab's file: readSecretFile would resolve
+  // it to state/secrets and a save would leave the /stash-visible original
+  // untouched while writing a second copy.
+  it('does not list a knowledge/secrets file whose name routes to state/secrets', () => {
+    const stackDir = tempStackDir();
+    writeFileSync(join(resolveSecretsDir(stackDir), 'akm_owned_token'), 'akm-value');
+
+    expect(listSecretFiles(stackDir).map((f) => f.name)).not.toContain('akm_owned_token');
+    expect(listSecretNames(stackDir)).not.toContain('akm_owned_token');
+    expect(readSecretFile(stackDir, 'akm_owned_token')).toBeNull();
   });
 
   it('reads, writes (0600), and removes a dotted file by basename', () => {

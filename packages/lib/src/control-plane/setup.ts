@@ -77,6 +77,7 @@ export type SetupSpec = {
 	voiceProfile?: string;
 	ollamaProfile?: string;
 	imageTag?: string;
+	/** Share the personal ~/akm stash. OPT-IN: absent means off (C14). */
 	hostAkm?: boolean;
 	/**
 	 * Network access toggles. Absent = leave network config untouched, so a
@@ -201,6 +202,18 @@ export type AkmConfig = {
 /** The bundle id OpenPalm uses for the assistant's primary /stash bundle. */
 export const PRIMARY_BUNDLE_ID = 'openpalm';
 
+/**
+ * The bundle id for the release-shipped skills at /system-stash
+ * (OP_HOME/system/skills, mounted `:ro` — core.compose.yml).
+ *
+ * `writable: false` is routing, not a boundary: it stops akm from ever picking
+ * this bundle as the target of an untargeted write. The `:ro` mount is what
+ * actually makes it read-only. Never the default bundle and never the default
+ * write target — the assistant's own writes belong in /stash, which is the one
+ * tree a backup captures as user data.
+ */
+export const SYSTEM_BUNDLE_ID = 'openpalm-system';
+
 /** The engine name OpenPalm writes for the setup wizard's LLM selection. */
 export const DEFAULT_LLM_ENGINE_NAME = 'default';
 
@@ -292,15 +305,23 @@ export function persistAkmConfig(
 		};
 	}
 
-	// The assistant's primary bundle is ALWAYS /stash (the bind mount). Pin it
-	// in config so it is explicit and operator-edits can't repoint it; the UI
-	// does not expose the bundle path. (The host task-runner still uses its own
-	// AKM_BUNDLE_DIR env, which takes precedence over the configured bundle.)
+	// The assistant's primary bundle is ALWAYS /stash (the bind mount), and the
+	// release-shipped skills are ALWAYS a read-only secondary at /system-stash.
+	// Pin both in config so they are explicit and operator-edits can't repoint
+	// them; the UI does not expose bundle paths. (The host task-runner still
+	// uses its own AKM_BUNDLE_DIR env, which takes precedence over the
+	// configured bundle.)
 	const bundles = updated.bundles ?? {};
 	bundles[PRIMARY_BUNDLE_ID] = {
 		...(bundles[PRIMARY_BUNDLE_ID] ?? {}),
 		path: '/stash',
 		writable: true
+	};
+	bundles[SYSTEM_BUNDLE_ID] = {
+		...(bundles[SYSTEM_BUNDLE_ID] ?? {}),
+		path: '/system-stash',
+		writable: false,
+		enabled: true
 	};
 	updated.bundles = bundles;
 	if (typeof updated.defaultBundle !== 'string') updated.defaultBundle = PRIMARY_BUNDLE_ID;
@@ -534,8 +555,12 @@ export async function performSetup(
 			// OP_HOST_AKM_STASH is set (enabled), or the always-present empty dir
 			// when it is unset (disabled). The shared DIRECTORY is all of it — the
 			// host's own akm config and CLI are never read (see host-akm-sharing).
+			// C14: OPT-IN. Only an explicit `true` enables it. This used to be
+			// `hostAkm !== false`, so an omitted field — every headless/API caller,
+			// and the wizard itself, which sends the key only when the box is
+			// ticked — turned on an rw bind of a directory OUTSIDE OP_HOME.
 			addHostStashToOpenpalmConfig(state);
-			if (hostAkm !== false) {
+			if (hostAkm === true) {
 				enableHostAkmSharing(state);
 				logger.info('host akm sharing enabled during setup');
 			} else {

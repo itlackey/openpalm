@@ -2,7 +2,7 @@
  * GET  /api/host/addons/:name/credentials — Return the addon's .env.schema as
  *   structured fields plus secret presence metadata.
  * POST /api/host/addons/:name/credentials — Write supplied fields into
- *   knowledge/secrets/<ENV_KEY> (@sensitive) or state/stack.env
+ *   state/secrets/<ENV_KEY> (@sensitive) or state/stack.env
  *   (non-sensitive). Split determined by `# @sensitive` schema annotation.
  *   Body shape: { values: { KEY: VALUE | "" } }. Empty strings clear the key.
  *
@@ -170,7 +170,7 @@ export const GET: RequestHandler = async (event) => {
   }
 
   const schemaFields = parseEnvSchema(config.envSchema);
-  // Sensitive fields live in knowledge/secrets/; non-sensitive in stack.env.
+  // Sensitive fields live in state/secrets/; non-sensitive in stack.env.
   const secretEnv = readStackSecretEnv(state.homeDir);
   const stackEnv = readStackEnv(state.homeDir);
 

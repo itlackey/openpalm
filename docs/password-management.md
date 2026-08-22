@@ -9,7 +9,6 @@ to host, Guardian, API, portal, and bot processes.
 ~/.openpalm/
   state/
     stack.env                 # sole Compose env file; non-secret
-  private/
     secrets/                  # delegated service secrets; never mounted as a tree
   knowledge/
     secrets/
@@ -22,7 +21,7 @@ Directories are created with mode `0700` and secret files with mode `0600`.
 
 ## Delegated Secrets
 
-`private/secrets/` contains credentials that the assistant must not read:
+`state/secrets/` contains credentials that the assistant must not read:
 
 - `op_ui_login_password`
 - `op_opencode_password`
@@ -34,7 +33,7 @@ Directories are created with mode `0700` and secret files with mode `0600`.
 
 Compose grants each service only its required files and exposes their paths
 through `*_FILE` variables. The assistant does not receive a bind mount of
-`private/`.
+`state/secrets/`.
 
 `knowledge/secrets/auth.json` is the exception because the assistant's OpenCode
 runtime needs provider credentials. Guardian receives the same file through a
@@ -70,7 +69,7 @@ Do not place passwords, tokens, API keys, or credential JSON in this file.
 The UI login password is stored at:
 
 ```text
-~/.openpalm/private/secrets/op_ui_login_password
+~/.openpalm/state/secrets/op_ui_login_password
 ```
 
 Browser login uses `POST /api/auth/login`. A successful login issues the
@@ -114,7 +113,7 @@ cached the old credentials.
 ## Rotation
 
 Use OpenPalm's setup/admin flows where available. For a delegated file under
-`private/secrets/`, a manual rotation should:
+`state/secrets/`, a manual rotation should:
 
 1. Write a temporary replacement with mode `0600`, then atomically rename it over the old file.
 2. Recreate every service that reads that secret at startup.
@@ -130,6 +129,6 @@ processes so a bind mount is not left on a replaced inode.
 
 ## Backups
 
-Back up `private/`, `knowledge/`, `config/`, `system/`, and `state/` together.
+Back up `state/`, `knowledge/`, `config/`, and `system/` together.
 A full `OP_HOME` archive naturally includes both secret trees. See
 [Backup & Restore](backup-restore.md).

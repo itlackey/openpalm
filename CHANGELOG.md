@@ -9,6 +9,64 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`OP_HOME` is seven trees, not eight: `private/` folds into `state/`.**
+  `private/` existed to say "app-owned and not agent-readable", which is what
+  `state/` already meant — one answer under two names, and a name that had to
+  be remembered in every destructive lifecycle path (it was missed in `--purge`
+  once already). Delegated credentials now live at `state/secrets/`, and the
+  audited Paperclip env file at `state/env/paperclip.env`. Every `secrets:`
+  `file:` source in the three managed compose files moved with them.
+
+  A schema-gated migration relocates the files with the usual discipline —
+  backup first, copy, verify the copy, only then delete, and leave BOTH files
+  in place with a loud warning when the two locations disagree.
+
+  **`config/stack/custom.compose.yml` is not rewritten.** If your overlay names
+  `${OP_HOME}/private/secrets/...` or `${OP_HOME}/private/env/...`, repoint it
+  at `state/` yourself; the migration never touches the user overlay, by
+  design.
+
+- **Shipped skills moved to `system/skills/` and became updatable.** They used
+  to be seeded once into `knowledge/skills/` and then frozen: a skill bugfix in
+  a later release only ever reached a brand-new home. `system/` is refreshed
+  wholesale on every update, so they now have a fix channel. The assistant
+  reads them as a read-only AKM bundle (`system/skills` mounted `:ro` at
+  `/system-stash`, `writable: false`). Seeding removes a copy under
+  `knowledge/skills/` only when it is byte-identical to what the release ships,
+  so akm does not index it twice; a modified copy stays as yours, shadows the
+  shipped one, and is named in a warning.
+
+- **Paperclip no longer overmounts `/stash/env` and `/stash/secrets`.** Those
+  two mounts hid the assistant's canonical AKM asset directories behind empty
+  per-service ones — a boundary held up by hiding one mount behind another.
+  Secret routing is default-deny into `state/secrets/` now, so they guarded
+  nothing. `knowledge/paperclip/{env,secrets}` is deleted with them; put values
+  Paperclip agents may use in the stash's own `env/` and `secrets/`, which
+  every `/stash` holder can read.
+
+- **Home schema 9 → 10.** One migration covers the `private/` relocation and
+  the retired Paperclip overlay dirs.
+
+- **The Guardian's managed moderator config is now read-only at its source.**
+  `system/guardian/` mounts `:ro` at `/opt/openpalm/guardian-config` and the
+  entrypoint republishes it into `OPENCODE_CONFIG_DIR` on every boot — OpenCode
+  writes into every config directory it loads, so the old arrangement made the
+  moderation policy writable by the process it polices. The runtime copy is a
+  new regenerable tree, `cache/guardian-opencode/runtime/`, created by
+  `ensureHomeDirs` and excluded from backups like every other cache. The
+  moderator now refuses to start when the managed config is unreadable instead
+  of moderating against no policy.
+
+- **A safety snapshot takes a service's data and credentials together, or
+  neither.** Lifecycle backups have always excluded `data/`, so Paperclip's
+  embedded PostgreSQL cluster was out of scope while `state/env/paperclip.env`
+  was in it — restoring that snapshot gave you a working login against an empty
+  database, which reads as a successful restore. Now `state/env/<service>.env`
+  leaves with `data/<service>/`, and the snapshot names each file it skipped in
+  its `.backup-complete` marker. `state/secrets/` is unaffected: its names are
+  control-plane roles, not services. Back a service up with the per-service
+  procedure or a full-home archive — see `docs/backup-restore.md`.
+
 - **OpenCode requires a password by default; `OPENCODE_AUTH` is gone.** That
   flag tracked the `assistantDirect` access toggle, so OpenCode authenticated
   only while its port was published — meaning the default install ran it with
@@ -24,7 +82,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **Breaking for host-local clients.** The assistant port
   (`127.0.0.1:3810`) previously answered without a credential on a default
   install. Anything pointed at it directly now gets `401` until it picks up the
-  key from `private/secrets/op_opencode_password` (or the host dashboard). The
+  key from `state/secrets/op_opencode_password` (or the host dashboard). The
   UI, the guardian and the portals are unaffected — they attach it server-side.
 
   Emptying that secret is still how an operator runs OpenCode without auth;

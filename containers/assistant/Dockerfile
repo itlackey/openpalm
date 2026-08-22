@@ -15,7 +15,7 @@
 # shipped in this image invokes them — OpenCode is the runtime the assistant
 # actually drives — so they were dropped (IMG-1/IMG-3, 0.13.0). Either is
 # available on request via the `install-optional-tool` akm skill
-# (packages/skeleton/knowledge/skills/install-optional-tool/), which installs
+# (packages/skeleton/system/skills/install-optional-tool/), which installs
 # into the `assistant-persistent` volume at /opt/persistent so the install
 # survives container recreation.
 # ──────────────────────────────────────────────────────────────────────────────

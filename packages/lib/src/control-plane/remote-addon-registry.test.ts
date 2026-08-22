@@ -22,7 +22,7 @@ import {
   BUILTIN_ADDON_ENV_SCHEMAS,
   ADDON_ENV_RECREATE_SCOPE,
 } from "./addon-env-schemas.js";
-import { isDelegatedSecretName } from "./secrets-files.js";
+import { isAgentReadableSecretName } from "./secrets-files.js";
 import { ensureHomeDirs, remoteServeConfigDir, remoteTunnelStateDir } from "./home.js";
 import { listAvailableAddonIds } from "./addons.js";
 
@@ -125,9 +125,9 @@ describe("remote addon env schema", () => {
   });
 });
 
-describe("TS_AUTHKEY is a delegated secret", () => {
-  it("routes to the private (non-stash) secrets dir, not the assistant-visible one", () => {
-    expect(isDelegatedSecretName("ts_authkey")).toBe(true);
+describe("TS_AUTHKEY is not agent-readable", () => {
+  it("routes to the state (non-stash) secrets dir, not the assistant-visible one", () => {
+    expect(isAgentReadableSecretName("ts_authkey")).toBe(false);
   });
 });
 

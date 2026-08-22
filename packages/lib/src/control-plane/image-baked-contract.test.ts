@@ -167,8 +167,9 @@ describe('nothing is mounted over the image-baked artifact paths', () => {
         .filter((line) => line.startsWith('- '))
         .filter((line) => {
           // Short-form mount: "- <source>:<target>[:<mode>]". The target is the
-          // second colon-separated field.
-          const target = line.replace(/^-\s*/, '').split(':')[1];
+          // second colon-separated field, once interpolations are out of the
+          // way — the guarded `${OP_HOME:?}` sources carry a colon of their own.
+          const target = line.replace(/^-\s*/, '').replace(/\$\{[^}]*\}/g, '').split(':')[1];
           return target !== undefined && BAKED_ARTIFACT_TARGETS.includes(target);
         });
 

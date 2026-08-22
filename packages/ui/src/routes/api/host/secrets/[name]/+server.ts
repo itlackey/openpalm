@@ -1,6 +1,7 @@
 /**
- * Per-file access to the assistant secrets dir (/stash/secrets =
- * OP_HOME/knowledge/secrets), used by the Secrets admin tab as a plain file editor.
+ * Per-file access to the secret files, used by the Secrets admin tab as a plain
+ * file editor. The directory is resolved from the NAME (OP_HOME/state/secrets
+ * by default, OP_HOME/knowledge/secrets for the agent-readable names).
  *
  *   GET    /api/host/secrets/<name> — read the raw file contents { name, value }
  *   PUT    /api/host/secrets/<name> — write raw contents (body { value })

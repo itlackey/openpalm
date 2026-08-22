@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomHex } from './crypto.js';
 import { parseEnvFile, quoteEnvValue } from './env.js';
 import { writeFileAtomic } from './fs-atomic.js';
-import { privateDir } from './home.js';
+import { stateEnvDir } from './home.js';
 
 /**
  * The upstream-required keys Paperclip reads from `process.env` only (no
@@ -21,7 +21,7 @@ export const PAPERCLIP_ENV_KEYS: ReadonlySet<string> = new Set([
 const LEGACY_PAPERCLIP_SIGNING_KEY = 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET';
 
 export function paperclipEnvFile(homeDir: string): string {
-	return join(privateDir(homeDir), 'env', 'paperclip.env');
+	return join(stateEnvDir(homeDir), 'paperclip.env');
 }
 
 /**
@@ -41,7 +41,7 @@ export function paperclipEnvFile(homeDir: string): string {
  */
 export function preparePaperclipAddon(homeDir: string, opts: { enabled?: boolean } = {}): void {
 	const enabled = opts.enabled ?? true;
-	const envDir = join(privateDir(homeDir), 'env');
+	const envDir = stateEnvDir(homeDir);
 	const envPath = paperclipEnvFile(homeDir);
 	// `mode` on create closes the window where the dir exists as 0755; the
 	// chmod is the repair path, since mkdirSync ignores mode on an existing dir.

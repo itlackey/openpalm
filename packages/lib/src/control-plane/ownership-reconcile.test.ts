@@ -67,7 +67,6 @@ describe('ownership canary paths', () => {
       join(homeDir, 'state'),
        join(homeDir, 'config'),
        join(homeDir, 'knowledge'),
-       join(homeDir, 'private'),
        join(homeDir, 'workspace'),
       join(homeDir, 'data', 'assistant'),
       join(homeDir, 'data', 'guardian'),
@@ -80,8 +79,9 @@ describe('ownership canary paths', () => {
   test('repair paths cover the user-owned bind-mount roots', () => {
     const state = makeState();
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'knowledge'));
-    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'private'));
+    // state/ covers the credentials too, now that private/ has folded into it.
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'state'));
+    expect(ownershipRepairPaths(state)).not.toContain(join(homeDir, 'private'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'workspace'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'assistant'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'guardian'));

@@ -72,7 +72,7 @@ User OpenCode global config comes separately from `config/assistant/` at
 Persistent mounts include the assistant home, purgeable cache, AKM config and
 data, the knowledge stash, and the shared workspace. The assistant can read
 `knowledge/secrets/auth.json` for provider auth but has no tree mount of
-`private/`; only the named UI/OpenCode server secret files needed by its server
+`state/secrets/`; only the named UI/OpenCode server secret files needed by its server
 processes are granted.
 
 ## Guardian
@@ -100,8 +100,9 @@ moderator. If an escalated message cannot be classified, Guardian fails closed
 and blocks it. An operator must explicitly set
 `GUARDIAN_CONTENT_VALIDATION=0` to opt out.
 
-Managed moderation instructions come from `system/guardian/` at
-`/etc/opencode`; user model selection is separate in `config/guardian/`.
+Managed moderation instructions come from `system/guardian/`, mounted read-only
+and republished into the moderator's `/etc/opencode` at boot; user model
+selection is separate in `config/guardian/`.
 Guardian receives provider `auth.json` through a narrow Compose secret and does
 not mount the full `knowledge/` tree.
 
@@ -150,7 +151,7 @@ operations remain host CLI or admin UI actions.
     voice.compose.cdi.yml       # conditional — CDI-only NVIDIA fallback
   config/stack/custom.compose.yml
   state/stack.env
-  private/secrets/
+  state/secrets/
   knowledge/secrets/auth.json
   knowledge/env/user.env
 ```
@@ -165,7 +166,7 @@ lifecycle reconcile. The single user overlay is seeded once. `state/stack.env`
 is the sole non-secret Compose env file.
 
 Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets live in
-`private/secrets/`. Only provider `auth.json` remains under
+`state/secrets/`. Only provider `auth.json` remains under
 `knowledge/secrets/`, where the assistant can use it.
 
 Docker Compose performs normal `${VAR}` substitution from `state/stack.env`.

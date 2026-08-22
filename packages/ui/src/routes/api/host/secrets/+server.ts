@@ -1,7 +1,8 @@
 /**
- * GET /api/host/secrets — list the files in the assistant secrets dir (/stash/secrets
- * = OP_HOME/knowledge/secrets). Returns names + byte sizes only, never values.
- * Per-file read/write/delete is handled by /api/host/secrets/[name].
+ * GET /api/host/secrets — list the secret files, name-routed: OP_HOME/state/
+ * secrets by default, plus the agent-readable OP_HOME/knowledge/secrets names
+ * (auth.json). Returns names + byte sizes only, never values. Per-file
+ * read/write/delete is handled by /api/host/secrets/[name].
  */
 import type { RequestHandler } from './$types';
 import { listSecretFiles } from '@openpalm/lib';

@@ -28,18 +28,16 @@ paperclip:
   ports:
     - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
   volumes:
-    - ${OP_HOME}/data/paperclip:/paperclip
-    - ${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro
-    - ${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro
-    - ${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode
-    - ${OP_HOME}/config/paperclip/akm:/etc/akm
-    - ${OP_HOME}/knowledge:/stash
-    - ${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets
-    - ${OP_HOME}/knowledge/paperclip/env:/stash/env
-    - ${OP_HOME}/data/paperclip-akm/cache:/opt/akm/cache
-    - ${OP_HOME}/data/paperclip-akm/data:/opt/akm/data
+    - ${OP_HOME:?}/data/paperclip:/paperclip
+    - ${OP_HOME:?}/config/paperclip/opencode:/paperclip/.config/opencode:ro
+    - ${OP_HOME:?}/system/paperclip:/opt/openpalm/paperclip:ro
+    - ${OP_HOME:?}/cache/paperclip-opencode/runtime:/etc/opencode
+    - ${OP_HOME:?}/config/paperclip/akm:/etc/akm
+    - ${OP_HOME:?}/knowledge:/stash
+    - ${OP_HOME:?}/data/paperclip-akm/cache:/opt/akm/cache
+    - ${OP_HOME:?}/data/paperclip-akm/data:/opt/akm/data
   env_file:
-    - ${OP_HOME}/private/env/paperclip.env
+    - ${OP_HOME:?}/state/env/paperclip.env
   environment:
     XDG_CONFIG_HOME: /paperclip/.config
     OPENCODE_CONFIG_DIR: /etc/opencode
@@ -141,18 +139,19 @@ The container joins only `addon_net`. It cannot address the assistant or
 Guardian. Operators configure agents through Paperclip's supported upstream
 interfaces; OpenPalm does not give Paperclip an assistant credential.
 
-Paperclip does receive the shared `knowledge/` tree at `/stash`. Nested bind
-mounts replace the two sensitive canonical subdirectories:
+Paperclip receives the shared `knowledge/` tree at `/stash`, exactly as the
+assistant does. It used to receive two nested overmounts on `/stash/env` and
+`/stash/secrets` pointing at empty per-service directories — a boundary held up
+by hiding one mount behind another, which the tree-name-equals-mount rule
+forbids. Secret routing is default-deny into `state/secrets/` now, so nothing
+agent-private is left under `knowledge/` for those overmounts to hide, and they
+are gone.
 
-- `knowledge/paperclip/secrets/` is what Paperclip sees at `/stash/secrets`;
-- `knowledge/paperclip/env/` is what Paperclip sees at `/stash/env`.
-
-Consequently, assistant provider auth under `knowledge/secrets/` and the
-assistant's `knowledge/env/user.env` are obscured inside Paperclip. The complete
-`private/` tree remains unmounted. Other shared knowledge is intentionally
-available to Paperclip agents. Values placed under `knowledge/paperclip/` are
-agent-readable by design and must not be treated as delegated OpenPalm service
-credentials.
+Everything in `knowledge/` is therefore readable by every agent that gets
+`/stash` — the assistant and Paperclip alike — and must not be treated as
+delegated OpenPalm service credentials. `state/secrets/` and `state/env/` remain
+unmounted. Granting an addon a narrower view is a `:ro` mount plus an AKM bundle
+entry, not an overmount.
 
 The pinned `opencode_local` adapter inherits the Paperclip server's complete
 environment when it spawns OpenCode. The managed `bin/opencode` launcher
@@ -174,10 +173,10 @@ model requires an upstream isolated-agent runtime or a separate container.
 The pinned upstream image requires `BETTER_AUTH_SECRET` and
 `PAPERCLIP_AGENT_JWT_SECRET` as environment variables and does not
 offer `*_FILE` alternatives. Before generic enablement,
-`preparePaperclipAddon()` creates exactly one private file:
+`preparePaperclipAddon()` creates exactly one delegated-credential file:
 
 ```text
-$OP_HOME/private/env/paperclip.env
+$OP_HOME/state/env/paperclip.env
 ```
 
 The directory is `0700` and the file is `0600`. Existing values are preserved;
@@ -185,29 +184,27 @@ unknown keys fail closed. The Compose secret audit grants a narrow exception
 only for this service and path, and resolved secret values must exactly match
 the hardened file.
 
-The file is not under `knowledge/`, is never mounted into the assistant, and is
-included in OpenPalm lifecycle safety backups through the existing `private/`
-backup contract.
+The file is not under `knowledge/` and is never mounted into the assistant. It
+is *excluded* from OpenPalm lifecycle safety backups, with `data/paperclip`:
+a service's data and its credentials are one restore unit, and restoring
+`BETTER_AUTH_SECRET` without the database it authenticates would give a working
+login against empty data. Each snapshot names the file in its
+`.backup-complete` marker; back it up with the database, per § Persistence.
 
-AKM env and secret assets are a separate trust class. Operators place values
-that Paperclip agents are allowed to use under:
-
-```text
-$OP_HOME/knowledge/paperclip/env/
-$OP_HOME/knowledge/paperclip/secrets/
-```
-
-They are mounted only into the Paperclip canonical `/stash/env` and
-`/stash/secrets` paths (and remain visible to the assistant through its broader
-`/stash` mount). They never replace or duplicate Paperclip's server
-authentication secrets in `private/env/paperclip.env`.
+AKM env and secret assets are a separate trust class. Values that Paperclip
+agents are allowed to use go in the shared stash's own asset directories
+(`knowledge/env/`, `knowledge/secrets/`), which every `/stash` holder can read.
+They never replace or duplicate Paperclip's server authentication secrets in
+`state/env/paperclip.env`.
 
 ## Persistence
 
 All Paperclip instance state, including its embedded database, is stored under
 `$OP_HOME/data/paperclip`. Normal addon disable does not remove it. As with all
-service-owned `data/`, OpenPalm lifecycle safety backups exclude it; operators
-must use Paperclip's own backup/export facilities for application data.
+service-owned `data/`, OpenPalm lifecycle safety backups exclude it — and
+`state/env/paperclip.env` leaves with it, so the pair is never half-restored.
+Operators must use Paperclip's own backup/export facilities for application
+data, and archive that env file alongside them.
 
 Paperclip's AKM state is isolated from the assistant:
 
@@ -215,8 +212,6 @@ Paperclip's AKM state is isolated from the assistant:
   included in lifecycle safety backups;
 - `system/paperclip/` is release-managed, read-only in the container, and
   refreshed on reconcile;
-- `knowledge/paperclip/` is user-owned and included in lifecycle safety
-  backups;
 - `data/paperclip-akm/cache/` and `data/paperclip-akm/data/` hold AKM runtime
   state and are excluded with other service data;
 - `cache/paperclip-opencode/runtime/` contains only regenerable OpenCode runtime

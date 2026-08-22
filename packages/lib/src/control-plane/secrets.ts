@@ -12,7 +12,6 @@ import {
   ensureSecret,
   listSecretNames,
   readSecret,
-  resolveSecretsDir,
   writeSecret,
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
@@ -105,7 +104,6 @@ export function readStackSecretEnv(homeDir: string): Record<string, string> {
 
 export function writeStackSecretEnv(state: ControlPlaneState, updates: Record<string, string>): void {
   if (Object.keys(updates).length === 0) return;
-  resolveSecretsDir(state.homeDir);
   for (const [envKey, value] of Object.entries(updates)) {
     if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
     writeSecret(state.homeDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
@@ -374,7 +372,6 @@ export function patchSecretsEnvFile(
   // Route secret patches to their canonical file-secret tree by name. Inlined
   // here so no fake ControlPlaneState is needed.
   if (Object.keys(secretPatches).length > 0) {
-    resolveSecretsDir(homeDir);
     for (const [envKey, value] of Object.entries(secretPatches)) {
       if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
       writeSecret(homeDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);

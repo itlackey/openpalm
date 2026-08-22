@@ -21,7 +21,7 @@ Compose-first path is to grant the same named secret to Guardian through a
 
 ## Example
 
-Create `~/.openpalm/private/secrets/portal_community_secret` with mode `0600`,
+Create `~/.openpalm/state/secrets/portal_community_secret` with mode `0600`,
 then add this to `~/.openpalm/config/stack/custom.compose.yml`:
 
 ```yaml
@@ -49,7 +49,7 @@ services:
 
 secrets:
   portal_community_secret:
-    file: ${OP_HOME}/private/secrets/portal_community_secret
+    file: ${OP_HOME}/state/secrets/portal_community_secret
 ```
 
 Enable the Guardian-only gateway profile and reconcile the stack:

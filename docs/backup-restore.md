@@ -11,8 +11,7 @@ regenerable caches.
 |---|---|
 | `config/` | User-owned configuration and `config/stack/custom.compose.yml` |
 | `system/` | Managed Compose and OpenCode configuration |
-| `state/` | `stack.env`, enabled addons, setup state, and app records |
-| `private/` | Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets |
+| `state/` | `stack.env`, enabled addons, setup state, app records, and the delegated UI/Guardian/API/portal/bot/OpenCode-server secrets (`state/secrets/`, `state/env/`) |
 | `knowledge/` | AKM stash, tasks, user env, and provider `auth.json` |
 | `data/` | Durable service state and lifecycle backups |
 | `workspace/` | Shared assistant work area |
@@ -31,7 +30,7 @@ normal. See the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ## Full Backup
 
-This captures the complete home, including `private/` and `cache/`:
+This captures the complete home, including `state/secrets/` and `cache/`:
 
 ```bash
 tar -czf "openpalm-backup-$(date +%Y%m%d).tar.gz" -C "$HOME" .openpalm
@@ -49,15 +48,31 @@ If `OP_HOME` points elsewhere, archive that directory instead. If
 `OP_BACKUP_DIR` points outside `OP_HOME`, archive it separately if you also want
 OpenPalm's lifecycle snapshots.
 
-Treat every backup as sensitive: it contains `private/secrets/` and
+Treat every backup as sensitive: it contains `state/secrets/` and
 `knowledge/secrets/auth.json`.
 
 ## Lifecycle Backups
 
 OpenPalm creates safety snapshots before destructive lifecycle operations.
-Those snapshots include top-level user, managed, state, knowledge, workspace,
-and `private/` content. They exclude `data/` and `cache/` to avoid copying large
+Those snapshots include top-level user, managed, state, knowledge, and
+workspace content. They exclude `data/` and `cache/` to avoid copying large
 runtime state and regenerable caches.
+
+A service's data and its credentials are one restore unit, so a snapshot takes
+both or neither: because `data/<service>/` is excluded, `state/env/<service>.env`
+is excluded with it. Restoring a service's login secret without its database
+would give you a working login against empty data and read as a successful
+restore. Each snapshot lists the files it skipped in its `.backup-complete`
+marker:
+
+```bash
+cat ~/.openpalm/data/backups/<timestamp>/.backup-complete
+```
+
+Back those services up with the full-home archive above, or with the
+per-service procedure in
+[Environment and Mounts](technical/environment-and-mounts.md) — either way,
+take the data and the credentials together.
 
 Lifecycle snapshots are not a replacement for a full service-data backup.
 
@@ -116,7 +131,7 @@ shell's earlier `--project-name` argument.
 | File or directory | Purpose |
 |---|---|
 | `state/stack.env` | Sole non-secret Compose env file |
-| `private/secrets/` | Delegated runtime credentials |
+| `state/secrets/` | Delegated runtime credentials |
 | `knowledge/secrets/auth.json` | Assistant-readable OpenCode provider auth |
 | `knowledge/env/user.env` | AKM user env loaded on demand |
 | `system/stack/` | Managed Compose files |

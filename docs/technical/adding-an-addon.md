@@ -65,7 +65,7 @@ whole stack, and a migrated or restored home never gets the file at all.
 the header comment of `services.compose.yml` — the existing exceptions (ollama
 as an LLM provider, tunnel as an ingress path) are the bar.
 
-**Secrets.** Named Compose secrets under `private/secrets/`, exposed as
+**Secrets.** Named Compose secrets under `state/secrets/`, exposed as
 `*_FILE`. If a third-party image can only read a credential from `process.env`,
 that is an exception requiring an audited entry in `secret-audit.ts` and a
 matching carve-out in `core-principles.md` — the code and the invariant land in

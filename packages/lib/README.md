@@ -13,7 +13,7 @@ The package ships TypeScript source and requires Bun.
 - managed Compose files in `system/stack/`
 - one user overlay at `config/stack/custom.compose.yml`
 - one non-secret Compose env file at `state/stack.env`
-- delegated service credentials in `private/secrets/`
+- delegated service credentials in `state/secrets/`
 - assistant-readable provider auth at `knowledge/secrets/auth.json`
 - AKM user env and tasks under `knowledge/`
 - durable service data under `data/`
@@ -31,7 +31,7 @@ itself.
 - Validate Compose and secret-grant boundaries before mutation
 - Install, update, rollback, backup, and recovery workflows
 - Enable/disable first-party addons and select hardware profiles
-- Route delegated secrets to `private/secrets/`
+- Route delegated secrets to `state/secrets/`
 - Manage OpenCode provider `auth.json`
 - Parse AKM task files and expose automation state to host consumers
 - Provide host UI asset, supervisor, endpoint, and release helpers

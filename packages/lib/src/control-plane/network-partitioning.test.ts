@@ -275,10 +275,10 @@ describe("opencode_server_password compose plumbing — always attached, never r
     const secrets = (coreDoc.services?.assistant?.secrets ?? []) as string[];
     expect(secrets).toContain("opencode_server_password");
 
-    // §G1: op_opencode_password is a delegated secret — private/secrets/, not
+    // §G1: op_opencode_password is a delegated secret — state/secrets/, not
     // knowledge/secrets/ (bind-mounted wholesale into the assistant).
     expect(coreDoc.secrets?.opencode_server_password?.file).toBe(
-      "${OP_HOME}/private/secrets/op_opencode_password",
+      "${OP_HOME:?}/state/secrets/op_opencode_password",
     );
   });
 
@@ -292,10 +292,10 @@ describe("opencode_server_password compose plumbing — always attached, never r
     // Each managed compose file must stand alone for `docker compose config` —
     // the top-level secret declaration must exist in portals.compose.yml too,
     // not only in core.compose.yml.
-    // §G1: op_opencode_password is a delegated secret — private/secrets/, not
+    // §G1: op_opencode_password is a delegated secret — state/secrets/, not
     // knowledge/secrets/ (bind-mounted wholesale into the assistant).
     expect(portalsDoc.secrets?.opencode_server_password?.file).toBe(
-      "${OP_HOME}/private/secrets/op_opencode_password",
+      "${OP_HOME:?}/state/secrets/op_opencode_password",
     );
   });
 });

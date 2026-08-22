@@ -240,22 +240,22 @@ EOF
 
 	# G1: op_ui_login_password / op_opencode_password are DELEGATED secrets
 	# (consumed only by the guardian/portals and this service's own server
-	# process, never by the assistant agent) — seeded under private/secrets/,
+	# process, never by the assistant agent) — seeded under state/secrets/,
 	# NOT knowledge/secrets/ (bind-mounted wholesale into the assistant at
 	# /stash).
-	private_secrets_dir="$DEV_ROOT/private/secrets"
-	mkdir -p "$private_secrets_dir"
-	chmod 700 "$private_secrets_dir"
-	if [[ ! -f "$private_secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
-		printf '%s\n' 'dev-admin-token' >"$private_secrets_dir/op_ui_login_password"
-		chmod 600 "$private_secrets_dir/op_ui_login_password"
+	state_secrets_dir="$DEV_ROOT/state/secrets"
+	mkdir -p "$state_secrets_dir"
+	chmod 700 "$state_secrets_dir"
+	if [[ ! -f "$state_secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
+		printf '%s\n' 'dev-admin-token' >"$state_secrets_dir/op_ui_login_password"
+		chmod 600 "$state_secrets_dir/op_ui_login_password"
 	fi
 	# A REAL value, not an empty file: OpenCode requires a password in every
 	# configuration now, and the assistant entrypoint refuses to start without
 	# one. "Empty = auth off" is no longer a posture.
-	if [[ ! -f "$private_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
-		printf '%s\n' 'dev-opencode-password' >"$private_secrets_dir/op_opencode_password"
-		chmod 600 "$private_secrets_dir/op_opencode_password"
+	if [[ ! -f "$state_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
+		printf '%s\n' 'dev-opencode-password' >"$state_secrets_dir/op_opencode_password"
+		chmod 600 "$state_secrets_dir/op_opencode_password"
 	fi
 fi
 
@@ -317,14 +317,14 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 fi
 
 # G1: all of these are DELEGATED secrets (guardian/portal-only) — seeded
-# under private/secrets/, not knowledge/secrets/.
-private_secrets_dir="$DEV_ROOT/private/secrets"
-mkdir -p "$private_secrets_dir"
-chmod 700 "$private_secrets_dir"
+# under state/secrets/, not knowledge/secrets/.
+state_secrets_dir="$DEV_ROOT/state/secrets"
+mkdir -p "$state_secrets_dir"
+chmod 700 "$state_secrets_dir"
 for secret_name in portal_api_secret op_api_key portal_discord_secret portal_slack_secret; do
-	if [[ ! -f "$private_secrets_dir/$secret_name" || $force -eq 1 ]]; then
-		openssl rand -hex 16 >"$private_secrets_dir/$secret_name"
-		chmod 600 "$private_secrets_dir/$secret_name"
+	if [[ ! -f "$state_secrets_dir/$secret_name" || $force -eq 1 ]]; then
+		openssl rand -hex 16 >"$state_secrets_dir/$secret_name"
+		chmod 600 "$state_secrets_dir/$secret_name"
 	fi
 done
 

@@ -9,7 +9,7 @@ import { assertRootInstallAllowed } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { repairRootOwnedBindMounts, repairManagedNamedVolumes, resolveRepairIdentity } from './volume-ownership.js';
-import { resolvePrivateSecretsDir, resolveSecretsDir } from './secrets-files.js';
+import { resolveSecretsDir, resolveStateSecretsDir } from './secrets-files.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('lib:ownership-reconcile');
@@ -43,7 +43,6 @@ export function ownershipRepairPaths(
     `${state.homeDir}/state`,
     state.configDir,
     `${state.homeDir}/knowledge`,
-    `${state.homeDir}/private`,
     state.workspaceDir,
     `${state.dataDir}/assistant`,
     `${state.dataDir}/guardian`,
@@ -279,7 +278,7 @@ export async function reconcileHostOwnership(
     }
     if (bindMountsOk) {
       resolveSecretsDir(homeDir);
-      resolvePrivateSecretsDir(homeDir);
+      resolveStateSecretsDir(homeDir);
     }
     // Only record "repaired for this uid" when every repair actually
     // succeeded (R9-F2/X15): both helpers swallow docker-chown failures in

@@ -79,7 +79,7 @@ services:
           echo "en_US.UTF-8 already present at $$target"
         fi
     volumes:
-      - ${OP_HOME}/data/paperclip:/paperclip
+      - ${OP_HOME:?}/data/paperclip:/paperclip
     networks: [addon_net]
 
   paperclip:
@@ -104,7 +104,7 @@ services:
     ports:
       - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
     volumes:
-      - ${OP_HOME}/data/paperclip:/paperclip
+      - ${OP_HOME:?}/data/paperclip:/paperclip
       # The en_US.UTF-8 alias the paperclip-locale one-shot materialized, at
       # glibc's default lookup path so initdb resolves it with no environment.
       #
@@ -116,23 +116,25 @@ services:
       # "File exists", and `depends_on: service_completed_successfully` stops
       # paperclip from ever starting. Only the CONTAINER side needs the exact
       # locale name; glibc never sees the host path.
-      - ${OP_HOME}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro
+      - ${OP_HOME:?}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro
       # User settings, read-only managed bootstrap, and a mutable regenerable
       # runtime config. OpenCode may install exact-pinned plugin dependencies,
       # but it never writes into lifecycle-owned system/.
-      - ${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro
-      - ${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro
-      - ${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode
-      - ${OP_HOME}/config/paperclip/akm:/etc/akm
-      # Paperclip shares ordinary knowledge, but its nested mounts obscure the
-      # assistant's canonical /stash/secrets and /stash/env directories.
-      - ${OP_HOME}/knowledge:/stash
-      - ${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets
-      - ${OP_HOME}/knowledge/paperclip/env:/stash/env
-      - ${OP_HOME}/data/paperclip-akm/cache:/opt/akm/cache
-      - ${OP_HOME}/data/paperclip-akm/data:/opt/akm/data
+      - ${OP_HOME:?}/config/paperclip/opencode:/paperclip/.config/opencode:ro
+      - ${OP_HOME:?}/system/paperclip:/opt/openpalm/paperclip:ro
+      - ${OP_HOME:?}/cache/paperclip-opencode/runtime:/etc/opencode
+      - ${OP_HOME:?}/config/paperclip/akm:/etc/akm
+      # Paperclip shares the assistant's knowledge stash as-is. It used to
+      # overmount /stash/secrets and /stash/env with empty per-service dirs —
+      # a boundary held up by hiding one mount behind another, which is exactly
+      # what the tree-name-equals-mount rule forbids. Nothing agent-private
+      # lives under knowledge/ any more (secret routing is default-deny into
+      # state/secrets/), so the overmounts guarded nothing and are gone.
+      - ${OP_HOME:?}/knowledge:/stash
+      - ${OP_HOME:?}/data/paperclip-akm/cache:/opt/akm/cache
+      - ${OP_HOME:?}/data/paperclip-akm/data:/opt/akm/data
     env_file:
-      - ${OP_HOME}/private/env/paperclip.env
+      - ${OP_HOME:?}/state/env/paperclip.env
     # HOST/PORT/SERVE_UI/PAPERCLIP_HOME/PAPERCLIP_CONFIG are baked upstream with
     # these exact values and are purely operational, so they are not restated
     # here. The two below ARE restated even though upstream also sets them:
@@ -192,7 +194,7 @@ services:
       # write — incl. on OrbStack, which preserves real UIDs (issue #452).
       HOME: /home/ollama
     volumes:
-      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
+      - ${OP_HOME:?}/data/ollama:/home/ollama/.ollama
     # Per-service exception: the assistant reaches ollama as its LLM provider over
     # ollama:11434, so ollama needs assistant_net reachability (S.6b / D3(b)).
     networks: [assistant_net]
@@ -226,7 +228,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
+      - ${OP_HOME:?}/data/ollama:/home/ollama/.ollama
     networks:
       assistant_net:
         aliases: [ollama]
@@ -258,7 +260,7 @@ services:
       HOME: /home/ollama
       HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
     volumes:
-      - ${OP_HOME}/data/ollama:/home/ollama/.ollama
+      - ${OP_HOME:?}/data/ollama:/home/ollama/.ollama
     networks:
       assistant_net:
         aliases: [ollama]
@@ -303,7 +305,7 @@ services:
     ports:
       - "127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/data/voice/models:/models
+      - ${OP_HOME:?}/data/voice/models:/models
     # Segmented off the assistant trust network: voice is reached only by the UI
     # host over its published loopback port (127.0.0.1:8880), never in-container by
     # the assistant, so it needs no assistant reachability (S.6b / D3(b)).
@@ -346,7 +348,7 @@ services:
     ports:
       - "127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/data/voice/models:/models
+      - ${OP_HOME:?}/data/voice/models:/models
     # Segmented off the assistant trust network (S.6b / D3(b)); reached only by the
     # UI host over the published loopback port 127.0.0.1:8880.
     networks:
@@ -388,7 +390,7 @@ services:
     ports:
       - "127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880"
     volumes:
-      - ${OP_HOME}/data/voice/models:/models
+      - ${OP_HOME:?}/data/voice/models:/models
     # Segmented off the assistant trust network (S.6b / D3(b)); reached only by the
     # UI host over the published loopback port 127.0.0.1:8880.
     networks:
@@ -534,8 +536,8 @@ services:
       # from the release skeleton on every update; a generated config kept
       # there would be deleted by the next update, taking the directory
       # containerboot watches with it (see remoteServeConfigDir in home.ts).
-      - ${OP_HOME}/state/remote:/config
-      - ${OP_HOME}/data/tunnel:/var/lib/tailscale
+      - ${OP_HOME:?}/state/remote:/config
+      - ${OP_HOME:?}/data/tunnel:/var/lib/tailscale
     secrets: [ts_authkey]
     # Reaches BOTH possible targets — the per-service trust-boundary exception
     # explained at the top of this file, restated here: assistant_net to dial
@@ -577,9 +579,10 @@ services:
       start_period: 60s
 
 secrets:
-  # `ts_authkey` is a DELEGATED secret (packages/lib/src/control-plane/
-  # secrets-files.ts DELEGATED_SECRET_NAMES) — it lives under private/secrets/,
-  # NOT knowledge/secrets/, because it is a tailnet JOIN credential: anything
+  # `ts_authkey` lives under state/secrets/, NOT knowledge/secrets/ — the
+  # default for every name that is not on the agent-readable allowlist
+  # (packages/lib/src/control-plane/secrets-files.ts), and the right place for
+  # it on its own merits: it is a tailnet JOIN credential, so anything
   # that can read it can enroll an arbitrary device onto the operator's own
   # tailnet, which reaches every other device the operator has signed in
   # there, not just this assistant. It must stay out of the assistant-visible
@@ -589,4 +592,4 @@ secrets:
   # given invocation — same reasoning as opencode_server_password in
   # portals.compose.yml.
   ts_authkey:
-    file: ${OP_HOME}/private/secrets/ts_authkey
+    file: ${OP_HOME:?}/state/secrets/ts_authkey

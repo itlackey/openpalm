@@ -114,11 +114,11 @@ Beyond the Compose files above, a complete install also generates:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/system/assistant/` | Managed assistant OpenCode config mounted at `/etc/opencode` |
-| `~/.openpalm/system/guardian/` | Managed Guardian OpenCode config mounted at `/etc/opencode` |
+| `~/.openpalm/system/guardian/` | Managed Guardian OpenCode config, mounted read-only and republished into the moderator's `/etc/opencode` at boot |
 | `~/.openpalm/config/assistant/` | User OpenCode global config for the assistant |
 | `~/.openpalm/config/guardian/` | User Guardian model config |
 | `~/.openpalm/config/akm/` | AKM configuration |
-| `~/.openpalm/private/secrets/` | UI, Guardian, API, portal, bot, and OpenCode-server secrets |
+| `~/.openpalm/state/secrets/` | UI, Guardian, API, portal, bot, and OpenCode-server secrets |
 | `~/.openpalm/knowledge/secrets/auth.json` | Assistant-readable OpenCode provider credentials |
 | `~/.openpalm/knowledge/env/user.env` | AKM user env, loaded on demand rather than by Compose or the assistant entrypoint |
 | `~/.openpalm/knowledge/tasks/` | AKM scheduled task files |

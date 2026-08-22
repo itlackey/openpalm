@@ -19,7 +19,8 @@
  *    to the primary openpalm bundle (and only when unset, mirroring
  *    persistAkmConfig). NEVER sets `defaultWriteTarget`.
  *  - Every write is a loadable akm 0.9.0 config: configVersion stamped,
- *    retired 0.8 keys stripped, primary /stash bundle present.
+ *    retired 0.8 keys stripped, primary /stash bundle and the read-only
+ *    /system-stash bundle present.
  *  - Atomic 0600 writes.
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
  */
@@ -27,11 +28,17 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "./fs-atomic.js";
-import { PRIMARY_BUNDLE_ID, stripRetiredAkmKeys } from "./setup.js";
+import { PRIMARY_BUNDLE_ID, SYSTEM_BUNDLE_ID, stripRetiredAkmKeys } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 
 /** Bundle id added to the OpenPalm/container config (points at /host-stash). */
 export const HOST_SOURCE_NAME = "host-akm";
+
+/**
+ * The release-shipped skills bundle entry, defined once so every writer of the
+ * assistant's akm config agrees byte-for-byte and none of them churns the file.
+ */
+const SYSTEM_BUNDLE = { path: "/system-stash", writable: false, enabled: true } as const;
 
 /** A filesystem bundle entry as akm >= 0.9.0 persists it in config.bundles. */
 type FilesystemBundleEntry = {
@@ -116,8 +123,8 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
   assertNoDefaultEscalation(updated, config);
   // akm 0.9.0 refuses to load a config without configVersion "0.9.0" or with
   // retired 0.8 keys, and a config whose ONLY bundle is host-akm has lost the
-  // primary /stash bundle. Normalize the write so the file is always loadable
-  // (mirrors persistAkmConfig in setup.ts).
+  // primary /stash bundle and the read-only system bundle. Normalize the write
+  // so the file is always loadable (mirrors persistAkmConfig in setup.ts).
   stripRetiredAkmKeys(updated);
   updated.configVersion = "0.9.0";
   const bundles = updated.bundles as Record<string, unknown>;
@@ -126,8 +133,66 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
     path: "/stash",
     writable: true,
   };
+  bundles[SYSTEM_BUNDLE_ID] = {
+    ...((bundles[SYSTEM_BUNDLE_ID] as Record<string, unknown> | undefined) ?? {}),
+    ...SYSTEM_BUNDLE,
+  };
   if (typeof updated.defaultBundle !== "string") updated.defaultBundle = PRIMARY_BUNDLE_ID;
   writeFileAtomic(configPath, JSON.stringify(updated, null, 2), 0o600);
+}
+
+/**
+ * Register the release-shipped skills bundle in an EXISTING assistant akm
+ * config. Returns whether the file changed.
+ *
+ * The two writers that pin it (`persistAkmConfig`, `addHostStashToOpenpalmConfig`)
+ * run at setup and install; neither runs on an upgrade. Without this, a home
+ * that upgrades into the `knowledge/skills/` → `system/skills/` move gets the
+ * `:ro` `/system-stash` mount but no bundle entry pointing at it — akm never
+ * walks the directory, and the shipped skills the migration just removed from
+ * the stash are gone from the assistant entirely. Swept on the lifecycle pass,
+ * beside the retired-key strip, for the same "an upgraded install heals itself"
+ * reason.
+ *
+ * Deliberately narrow, like its neighbour: it upserts one bundle by id and
+ * writes only when that actually changed. It never touches `defaultBundle`,
+ * `defaultWriteTarget`, or any other entry.
+ */
+export function ensureSystemBundle(state: ControlPlaneState): boolean {
+  const configPath = openpalmConfigPath(state);
+  if (!existsSync(configPath)) return false;
+  let config: AkmConfigObject;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(configPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    config = parsed as AkmConfigObject;
+  } catch {
+    // Unparseable: leave it alone, same as stripRetiredKeysAt. akm reports the
+    // parse error clearly on its own and rewriting would destroy the operator's
+    // file.
+    return false;
+  }
+  // Compare the ENTRY, not the file bytes: the writers here disagree about a
+  // trailing newline, so a byte comparison would make this and
+  // stripRetiredKeysAt rewrite the file past each other on every lifecycle pass.
+  const bundles =
+    config.bundles && typeof config.bundles === "object" && !Array.isArray(config.bundles)
+      ? (config.bundles as Record<string, unknown>)
+      : {};
+  const current = bundles[SYSTEM_BUNDLE_ID];
+  if (
+    current &&
+    typeof current === "object" &&
+    (current as Record<string, unknown>).path === SYSTEM_BUNDLE.path &&
+    (current as Record<string, unknown>).writable === SYSTEM_BUNDLE.writable &&
+    (current as Record<string, unknown>).enabled === SYSTEM_BUNDLE.enabled
+  ) {
+    return false;
+  }
+  const updated = upsertBundle(config, SYSTEM_BUNDLE_ID, SYSTEM_BUNDLE);
+  assertNoDefaultEscalation(updated, config);
+  writeFileAtomic(configPath, `${JSON.stringify(updated, null, 2)}\n`, 0o600);
+  return true;
 }
 
 /**

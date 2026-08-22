@@ -224,7 +224,7 @@ loopback admin listener. The latter remains valid at
 `http://127.0.0.1:3831/admin/principals` and reads its bearer token from:
 
 ```text
-~/.openpalm/private/secrets/op_guardian_admin_token
+~/.openpalm/state/secrets/op_guardian_admin_token
 ```
 
 Never proxy port `3831`.

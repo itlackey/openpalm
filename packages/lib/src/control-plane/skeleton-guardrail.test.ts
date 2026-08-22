@@ -17,10 +17,10 @@ const SKELETON_DIR = join(REPO_ROOT, "packages", "skeleton");
 // Allowed top-level dirs in the skeleton — mirrors the OP_HOME runtime layout
 const ALLOWED_SOURCE_DIRS = new Set([
   "config",     // seed files for config/ (assistant, guardian, stack/, akm/)
-  "knowledge",      // knowledge source assets: skills/, env/, secrets/, tasks/
+  "knowledge",      // knowledge source assets: env/, secrets/, tasks/
   "data",       // empty service dirs (.gitkeep)
   "workspace",  // empty workspace dir (.gitkeep)
-  "system",     // managed tree: compose stack (system/stack)
+  "system",     // managed tree: compose stack (system/stack) + skills (system/skills)
 ]);
 
 // ── Top-level structure ───────────────────────────────────────────────
@@ -110,8 +110,9 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "paperclip", "opencode", "opencode.json"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "system", "paperclip", "opencode.json"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "config", "paperclip", "akm"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "knowledge", "paperclip", "env"))).toBe(true);
-    expect(existsSync(join(SKELETON_DIR, "knowledge", "paperclip", "secrets"))).toBe(true);
+    // Paperclip shares the assistant's stash as-is: no per-service overlay
+    // dirs, because the /stash/{env,secrets} overmounts they backed are gone.
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "paperclip"))).toBe(false);
     expect(existsSync(join(SKELETON_DIR, "data", "paperclip-akm", "cache"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "data", "paperclip-akm", "data"))).toBe(true);
   });
@@ -248,8 +249,12 @@ describe("skeleton: no runtime registry", () => {
 // ── knowledge/ subdirectory ───────────────────────────────────────────────
 
 describe("skeleton: knowledge/ structure", () => {
-  test("knowledge/skills/ exists with config-diagnostics skill", () => {
-    expect(existsSync(join(SKELETON_DIR, "knowledge", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
+  // Release-shipped skills are MANAGED assets: they live in system/, which
+  // overwriteSystemTree refreshes wholesale, so a skill fix reaches an existing
+  // home. Under knowledge/ they were seeded once and then frozen forever.
+  test("shipped skills live in system/skills/, not the stash", () => {
+    expect(existsSync(join(SKELETON_DIR, "system", "skills", "config-diagnostics", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "skills"))).toBe(false);
   });
 
   test("knowledge/env/ exists with user.env seed", () => {

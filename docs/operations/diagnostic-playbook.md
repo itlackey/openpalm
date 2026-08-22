@@ -20,7 +20,7 @@ UI authentication uses an `op_session` cookie. Log in through
 `/api/auth/login`, then reuse the cookie jar:
 
 ```bash
-password="$(< "${OP_HOME:-$HOME/.openpalm}/private/secrets/op_ui_login_password")"
+password="$(< "${OP_HOME:-$HOME/.openpalm}/state/secrets/op_ui_login_password")"
 jq -nc --arg password "$password" '{password: $password}' \
   | curl -sS -c cookies.txt -X POST http://127.0.0.1:3880/api/auth/login \
       -H 'content-type: application/json' \
@@ -32,7 +32,7 @@ intentionally returns `404`.
 
 Guardian's `http://127.0.0.1:3831/admin/principals` is a separate server. It
 remains valid and uses the bearer token from
-`private/secrets/op_guardian_admin_token`, not the UI session cookie.
+`state/secrets/op_guardian_admin_token`, not the UI session cookie.
 
 ## Route Map
 
@@ -135,7 +135,7 @@ Check that:
 - the file list uses managed `system/stack/` files plus `config/stack/custom.compose.yml`
 - `state/stack.env` is the only `--env-file`
 - raw Compose received every active `--profile`
-- delegated secrets resolve under `private/secrets/`
+- delegated secrets resolve under `state/secrets/`
 - provider `auth.json` remains under `knowledge/secrets/`
 
 ## Practical Order

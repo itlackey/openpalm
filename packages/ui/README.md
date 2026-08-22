@@ -76,13 +76,13 @@ Open <http://localhost:3880/> for the isolated root script. Its login password
 is stored at:
 
 ```text
-.dev/private/secrets/op_ui_login_password
+.dev/state/secrets/op_ui_login_password
 ```
 
 Read it on Unix without printing an extra newline:
 
 ```bash
-tr -d '\n' < .dev/private/secrets/op_ui_login_password
+tr -d '\n' < .dev/state/secrets/op_ui_login_password
 ```
 
 The isolated `OP_HOME` keeps generated config, state, private credentials,
@@ -116,7 +116,7 @@ issues the `op_session` cookie with `HttpOnly`, `SameSite=Lax`, path `/`, and
 The production password file is:
 
 ```text
-${OP_HOME}/private/secrets/op_ui_login_password
+${OP_HOME}/state/secrets/op_ui_login_password
 ```
 
 There is no browser bearer-token fallback and no `localStorage` admin token.

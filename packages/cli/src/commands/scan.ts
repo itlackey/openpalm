@@ -61,8 +61,8 @@ export default defineCommand({
       }
 
       for (const name of listSecretNames(resolveOpenPalmHome())) {
-        // secretPath (not a bare resolveSecretsDir join) — delegated secrets
-        // (§G1) resolve under private/secrets/, not knowledge/secrets/.
+        // secretPath (not a bare resolveSecretsDir join) — secrets resolve
+        // under state/secrets/ by default, not knowledge/secrets/ (§G1).
         const path = secretPath(resolveOpenPalmHome(), name);
         if (!existsSync(path)) continue;
         results.push({

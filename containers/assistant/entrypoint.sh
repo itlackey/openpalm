@@ -250,7 +250,7 @@ start_ui() {
     ui_login_password="$(cat "${OP_UI_LOGIN_PASSWORD_FILE}")"
   fi
   if [ -z "$ui_login_password" ]; then
-    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed private/secrets/op_ui_login_password) to fix." >&2
+    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed state/secrets/op_ui_login_password) to fix." >&2
   fi
 
   echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
