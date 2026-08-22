@@ -23,10 +23,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   backup first, copy, verify the copy, only then delete, and leave BOTH files
   in place with a loud warning when the two locations disagree.
 
-  **`config/stack/custom.compose.yml` is not rewritten.** If your overlay names
-  `${OP_HOME}/private/secrets/...` or `${OP_HOME}/private/env/...`, repoint it
-  at `state/` yourself; the migration never touches the user overlay, by
-  design.
+  **`config/stack/custom.compose.yml` is not rewritten.** It is your file, and
+  a migration that edits an operator's overlay is a migration that can break a
+  deployment it does not understand — so this one deliberately leaves it alone.
+  If your overlay names `${OP_HOME}/private/secrets/...` or
+  `${OP_HOME}/private/env/...`, repoint it at `state/` yourself before starting
+  the stack; nothing else will, and the mount will resolve to a path the
+  migration has already emptied.
+
+- **Secret routing is default-deny, and the agent-readable tree is an allowlist
+  of one.** Which tree a secret landed in used to be decided by a
+  hand-maintained list of names to keep OUT of `knowledge/secrets/` — the tree
+  bind-mounted wholesale into the assistant at `/stash` and reachable by the
+  agent's own bash tool. A name nobody remembered to add therefore defaulted
+  into the readable tree, which is how `op_session_signing_key`, the HMAC key
+  mixed into every host-admin session cookie, became something the assistant —
+  or anything that prompt-injects it — could read and forge sessions with. The
+  rule is inverted now: `auth.json` alone is agent-readable (OpenCode's
+  provider credentials, and the only `knowledge/secrets` path any managed
+  compose file names), and every other name, including every name nobody has
+  thought of yet, resolves to `state/secrets/`. A name forgotten under the new
+  rule costs nothing — it stays private.
 
 - **Shipped skills moved to `system/skills/` and became updatable.** They used
   to be seeded once into `knowledge/skills/` and then frozen: a skill bugfix in
@@ -46,8 +63,32 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Paperclip agents may use in the stash's own `env/` and `secrets/`, which
   every `/stash` holder can read.
 
+- **Every mount and secret source in the managed compose files now names
+  `${OP_HOME:?}`.** They were a bare `${OP_HOME}/...`, so any hand-run
+  `docker compose` that missed `--env-file` interpolated the variable to
+  nothing and rewrote every source to a root-anchored path (`/data/assistant`,
+  `/knowledge`, `/state/env/paperclip.env`). Docker creates those root-owned on
+  the host without complaint, so the stack came up looking healthy against a
+  brand-new empty home while the operator's real one sat untouched — the worst
+  shape a mistake can take, because nothing reports it. This is the guard the
+  `assistant`/`guardian`/`portal` image tags already carried, applied to the
+  paths: Compose now refuses to render and names the variable it is missing.
+
 - **Home schema 9 → 10.** One migration covers the `private/` relocation and
-  the retired Paperclip overlay dirs.
+  the retired Paperclip overlay dirs. It runs by itself — from install and
+  update, from every CLI command that drives Compose, and from the admin UI at
+  boot; there is no `openpalm migrate` to invoke, and a rerun over an
+  already-migrated home is a no-op.
+
+  **The bump is one-way**, as 8 → 9 was: nothing migrates a home back down.
+  Once `state/schema-version` reads `10` a 0.12.x binary finds a version at or
+  above its own, skips its migrations entirely, and then seeds managed compose
+  files that still name `${OP_HOME}/private/secrets/...` for credentials that
+  now live under `state/`. Restoring a pre-upgrade archive is the only way
+  back, which is why the first step of the
+  **[0.12.x → 0.13.0 upgrade guide](docs/operations/upgrade-0.12-to-0.13.md)**
+  is taking one. Start there — it covers the ordered procedure, the
+  `custom.compose.yml` edit you must make yourself, verification, and rollback.
 
 - **The Guardian's managed moderator config is now read-only at its source.**
   `system/guardian/` mounts `:ro` at `/opt/openpalm/guardian-config` and the
@@ -91,9 +132,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the container starts with a warning rather than refusing to boot.
 
 - **Home schema 8 → 9.** A migration sweeps the retired `OPENCODE_AUTH` row
-  from `state/stack.env`. **The bump is one-way**: older binaries are refused
-  on write paths, deliberately — their credential resolver honours that key and
-  would attach nothing against an authenticated assistant.
+  from `state/stack.env`. **The bump is one-way, and nothing enforces it**:
+  there is no downgrade guard. An older binary pointed at a migrated home is
+  not refused — `runHomeMigrations` only returns early on
+  `recorded >= HOME_SCHEMA_VERSION` — so it silently skips its own migrations,
+  seeds managed compose files naming the pre-migration paths, and, because its
+  credential resolver still honours `OPENCODE_AUTH`, attaches nothing against
+  an authenticated assistant. Going back means restoring a full backup of the
+  home, not downgrading the binary.
 
 ### Fixed
 

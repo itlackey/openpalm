@@ -17,11 +17,17 @@ const savedImageVersions = {
   guardian: process.env.OP_GUARDIAN_VERSION,
   portal: process.env.OP_PORTAL_VERSION,
 };
+const savedOpHome = process.env.OP_HOME;
 
 beforeAll(() => {
   process.env.OP_ASSISTANT_VERSION = 'test';
   process.env.OP_GUARDIAN_VERSION = 'test';
   process.env.OP_PORTAL_VERSION = 'test';
+  // The managed files interpolate `${OP_HOME:?}` on every mount and secret
+  // source, so compose refuses to render without it. Production supplies it
+  // from state/stack.env; these tests only need the variable to resolve, not
+  // the directory to exist.
+  process.env.OP_HOME = '/tmp/openpalm-compose-contract-home';
 });
 
 afterAll(() => {
@@ -30,6 +36,8 @@ afterAll(() => {
     if (value === undefined) delete process.env[envKey];
     else process.env[envKey] = value;
   }
+  if (savedOpHome === undefined) delete process.env.OP_HOME;
+  else process.env.OP_HOME = savedOpHome;
 });
 
 /** Every shipped stack compose file (core, portals, services, voice overlays) — excludes README.md. */

@@ -329,10 +329,15 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // ordering guaranteed because applyHome runs migrations first.
   { since: 7, run: migrateChatAddonRemoval },
   // OpenCode's auth no longer tracks publication, so OPENCODE_AUTH is a
-  // stale row on every upgraded home. The bump to 9 also matters on its own:
-  // an older binary's credential resolver honours that key, so pointed at
-  // always-authenticated containers it would attach no credential and 401 —
-  // the downgrade guard refuses its write paths at this version.
+  // stale row on every upgraded home. Note what the bump does NOT buy: there
+  // is no downgrade guard. `runHomeMigrations` only returns early on
+  // `recorded >= HOME_SCHEMA_VERSION`, and nothing else consumes
+  // `readHomeSchemaVersion` to enforce anything — so an older binary pointed
+  // at a migrated home is not refused. It silently skips its own migrations,
+  // then seeds managed compose files naming the pre-migration paths, and its
+  // credential resolver still honours OPENCODE_AUTH, so it attaches nothing
+  // against always-authenticated containers and 401s. The recovery is a
+  // restore, not a version check.
   { since: 8, run: migrateRetiredOpencodeAuth },
 ];
 

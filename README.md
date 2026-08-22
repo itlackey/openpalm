@@ -185,6 +185,7 @@ For the full walkthrough, see [How It Works](docs/how-it-works.md). For security
 | [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
 | [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
 | [Community Portals](docs/portals/community-portals.md) | Build your own guardian-facing portal adapter |
+| [Upgrade 0.12.x → 0.13.0](docs/operations/upgrade-0.12-to-0.13.md) | `private/` folds into `state/`, and the OpenCode password becomes mandatory |
 | [Upgrade 0.10.x → 0.11.0](docs/operations/upgrade-0.10-to-0.11.md) | Historical: migrating a pre-0.11 install |
 | [Full docs index](docs/README.md) | Everything else |
 

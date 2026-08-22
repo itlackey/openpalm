@@ -43,6 +43,7 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 
 | Document | Description |
 |---|---|
+| [upgrade-0.12-to-0.13.md](operations/upgrade-0.12-to-0.13.md) | **Start here to upgrade from 0.12.x** — the one-way schema 9→10 bump, `private/` → `state/`, the `custom.compose.yml` edit you must make yourself, verification and rollback |
 | [upgrade-0.10-to-0.11.md](operations/upgrade-0.10-to-0.11.md) | **Start here to upgrade from 0.10.x** — ordered procedure, old→new file/env/port mapping, troubleshooting |
 | [secrets-env-migration.md](operations/secrets-env-migration.md) | Detailed secrets/env file-move reference (also covers 0.11.0 beta layouts) |
 

@@ -62,12 +62,36 @@ smoke_copy_skeleton_version() {
 #
 # Writes the pre-split legacy artifacts a real 0.12.x install had:
 #   knowledge/env/stack.env  — the stack env before it moved to state/
-#   knowledge/secrets/*      — delegated secrets before §G1 moved them to state/secrets/
+#   knowledge/secrets/*      — delegated secrets before §G1 moved them out
+#   private/{secrets,env}/*  — where §G1 put them, before 0.13 folded private/
+#                              into state/
+#   knowledge/paperclip/*    — the retired /stash/{env,secrets} overlay dirs
+#   knowledge/skills/*       — stash copies of release-shipped skills, from the
+#                              era before they moved to system/skills/
 # and removes any schema-version record, so the home reads as version 0.
 #
 # Usage: smoke_seed_legacy_install_state <home>
+
+# Secret names seeded in each legacy location. The two sets are DISJOINT on
+# purpose: a name present in both with different content is a conflict the
+# relocation deliberately refuses to resolve (it leaves both files and warns),
+# and no real home has one credential in two places. Both states are real —
+# §G1's name set grew across releases, so a home can carry pre-G1 leftovers in
+# knowledge/secrets alongside already-relocated ones in private/secrets.
+SMOKE_KNOWLEDGE_SECRETS=(op_guardian_admin_token op_api_key discord_bot_token op_ui_login_password)
+SMOKE_PRIVATE_SECRETS=(op_guardian_mcp_token op_session_signing_key op_opencode_password portal_discord_secret)
+
+# The two stash skills: one left exactly as the release shipped it, one the
+# operator edited. Copied from the working tree's system/skills so "identical"
+# is guaranteed byte-identical to what THIS build ships, which is the only
+# thing the sweep compares against.
+SMOKE_PRISTINE_SKILL=config-diagnostics
+SMOKE_EDITED_SKILL=notify
+SMOKE_SKILL_EDIT_MARKER='<!-- operator edit: upgrade-path smoke -->'
+
 smoke_seed_legacy_install_state() {
   local home="$1"
+  local name
 
   rm -f "${home}/state/schema-version"
 
@@ -84,10 +108,42 @@ EOF
   # knowledge tree.
   mkdir -p "${home}/knowledge/secrets"
   chmod 700 "${home}/knowledge/secrets"
-  for name in op_guardian_admin_token op_api_key discord_bot_token op_ui_login_password; do
+  for name in "${SMOKE_KNOWLEDGE_SECRETS[@]}"; do
     printf 'legacy-%s-value\n' "$name" >"${home}/knowledge/secrets/${name}"
     chmod 600 "${home}/knowledge/secrets/${name}"
   done
+
+  # Where §G1 left credentials on a 0.12.x home: private/, the eighth top-level
+  # tree 0.13 folds into state/. Every `secrets:`/`file:` source in the managed
+  # compose files points at the new path, so a credential left here (or arriving
+  # empty) is a stack that will not boot.
+  mkdir -p "${home}/private/secrets" "${home}/private/env"
+  chmod 700 "${home}/private/secrets" "${home}/private/env"
+  for name in "${SMOKE_PRIVATE_SECRETS[@]}"; do
+    printf 'private-%s-value\n' "$name" >"${home}/private/secrets/${name}"
+    chmod 600 "${home}/private/secrets/${name}"
+  done
+  # Paperclip's generated env. BETTER_AUTH_SECRET is the value that must survive
+  # verbatim: regenerating it invalidates every Paperclip session.
+  cat >"${home}/private/env/paperclip.env" <<'EOF'
+BETTER_AUTH_SECRET=private-paperclip-better-auth
+PAPERCLIP_AGENT_JWT_SECRET=private-paperclip-agent-jwt
+EOF
+  chmod 600 "${home}/private/env/paperclip.env"
+
+  # The always-empty overlay dirs the retired /stash/env + /stash/secrets
+  # overmounts pointed at.
+  mkdir -p "${home}/knowledge/paperclip/env" "${home}/knowledge/paperclip/secrets"
+
+  # Shipped skills as this era seeded them — into the stash, where nothing ever
+  # updated them. The sweep must drop the untouched copy (it is served from the
+  # managed system/skills bundle now) and keep the edited one, which is the
+  # operator's content and the one thing this must never delete.
+  mkdir -p "${home}/knowledge/skills"
+  rm -rf "${home}/knowledge/skills/${SMOKE_PRISTINE_SKILL}" "${home}/knowledge/skills/${SMOKE_EDITED_SKILL}"
+  cp -r "${ROOT_DIR}/packages/skeleton/system/skills/${SMOKE_PRISTINE_SKILL}" "${home}/knowledge/skills/"
+  cp -r "${ROOT_DIR}/packages/skeleton/system/skills/${SMOKE_EDITED_SKILL}" "${home}/knowledge/skills/"
+  printf '%s\n' "$SMOKE_SKILL_EDIT_MARKER" >>"${home}/knowledge/skills/${SMOKE_EDITED_SKILL}/SKILL.md"
 }
 
 SMOKE_ROOT="${OP_UPGRADE_SMOKE_HOME:-${ROOT_DIR}/.upgrade-smoke}"
@@ -155,12 +211,18 @@ for version in "${VERSIONS[@]}"; do
   had_system="no"; [ -d "${home}/system" ] && had_system="yes"
   had_cache="no";  [ -d "${home}/cache" ]  && had_cache="yes"
 
-  # The upgrade itself: exactly what a real `openpalm` run does to the layout.
+  # The upgrade itself: the three layout steps a real `openpalm` run performs,
+  # in lifecycle.ts's order (applyHome). applyHomeSeed is part of the upgrade,
+  # not a decoration — the shipped-skill sweep is deliberately NOT a
+  # schema-gated migration, because it can only compare against system/skills
+  # once the seed has written it, so migrations alone would test half the move.
   if ! OP_HOME="$home" bun -e "
     import { ensureHomeDirs } from './packages/lib/src/index.ts';
     import { runHomeMigrations } from './packages/lib/src/control-plane/home-schema.ts';
+    import { applyHomeSeed } from './packages/lib/src/control-plane/ui-assets.ts';
     ensureHomeDirs();
     runHomeMigrations(process.env.OP_HOME);
+    await applyHomeSeed(process.env.OP_HOME);
   " 2>"${SMOKE_ROOT}/upgrade-${version}.err"; then
     fail "${version}: upgrade threw — $(tail -1 "${SMOKE_ROOT}/upgrade-${version}.err")"
     continue
@@ -202,7 +264,7 @@ for version in "${VERSIONS[@]}"; do
   # §G1: delegated secrets must leave the assistant-reachable knowledge tree.
   # Leaving one behind is a live credential exposure, so assert BOTH ends.
   moved_all="yes"; left_behind=""
-  for name in op_guardian_admin_token op_api_key discord_bot_token op_ui_login_password; do
+  for name in "${SMOKE_KNOWLEDGE_SECRETS[@]}"; do
     [ -f "${home}/state/secrets/${name}" ] || moved_all="no"
     [ -f "${home}/knowledge/secrets/${name}" ] && left_behind="${left_behind} ${name}"
   done
@@ -210,6 +272,61 @@ for version in "${VERSIONS[@]}"; do
     pass "${version}: delegated secrets relocated to state/secrets/ (none left in knowledge/)"
   else
     fail "${version}: secrets migration incomplete (missing from state/secrets: ${moved_all}; still in knowledge:${left_behind:-none})"
+  fi
+
+  # 0.13 layout: private/ folds into state/. Assert the CONTENT, not just the
+  # path — every managed compose file now reads these credentials from the new
+  # location, so one that arrives empty or truncated is a stack that will not
+  # boot and a credential that is gone.
+  private_bad=""
+  for name in "${SMOKE_PRIVATE_SECRETS[@]}"; do
+    if [ "$(cat "${home}/state/secrets/${name}" 2>/dev/null)" != "private-${name}-value" ]; then
+      private_bad="${private_bad} ${name}"
+    fi
+    [ -e "${home}/private/secrets/${name}" ] && private_bad="${private_bad} ${name}(still-in-private)"
+  done
+  if ! grep -q '^BETTER_AUTH_SECRET=private-paperclip-better-auth$' "${home}/state/env/paperclip.env" 2>/dev/null; then
+    private_bad="${private_bad} env/paperclip.env"
+  fi
+  if [ -z "$private_bad" ]; then
+    pass "${version}: private/{secrets,env} folded into state/ with contents intact"
+  else
+    fail "${version}: private/ relocation lost or stranded:${private_bad}"
+  fi
+
+  # The tree itself must be gone, or OP_HOME still has eight top-level trees and
+  # the operator has two places to look for a credential.
+  if [ -e "${home}/private" ]; then
+    fail "${version}: private/ still exists after upgrade ($(ls -A "${home}/private" 2>/dev/null | tr '\n' ' '))"
+  else
+    pass "${version}: private/ removed"
+  fi
+
+  # The retired /stash/env + /stash/secrets overlay dirs.
+  if [ -e "${home}/knowledge/paperclip" ]; then
+    fail "${version}: knowledge/paperclip/ still exists after upgrade"
+  else
+    pass "${version}: knowledge/paperclip/ removed"
+  fi
+
+  # Shipped skills moved to system/skills. The stash copy of an UNTOUCHED one
+  # is now a duplicate akm indexes twice, so it goes; an EDITED one is the
+  # operator's own content, and deleting it is silent data loss. This pair is
+  # the highest-value assertion here — the failure mode has no error message.
+  if [ -e "${home}/knowledge/skills/${SMOKE_PRISTINE_SKILL}" ]; then
+    fail "${version}: unmodified knowledge/skills/${SMOKE_PRISTINE_SKILL} survived — it shadows the system/skills bundle and is indexed twice"
+  else
+    pass "${version}: unmodified stash copy of ${SMOKE_PRISTINE_SKILL} dropped (served from system/skills now)"
+  fi
+  if [ -f "${home}/system/skills/${SMOKE_PRISTINE_SKILL}/SKILL.md" ]; then
+    pass "${version}: ${SMOKE_PRISTINE_SKILL} is present in the managed system/skills bundle"
+  else
+    fail "${version}: system/skills/${SMOKE_PRISTINE_SKILL} missing — the stash copy was removed with no replacement"
+  fi
+  if grep -qF "$SMOKE_SKILL_EDIT_MARKER" "${home}/knowledge/skills/${SMOKE_EDITED_SKILL}/SKILL.md" 2>/dev/null; then
+    pass "${version}: operator-modified ${SMOKE_EDITED_SKILL} kept, edit intact"
+  else
+    fail "${version}: operator-modified knowledge/skills/${SMOKE_EDITED_SKILL} was DELETED or overwritten — silent loss of the operator's own content"
   fi
 
   # Nothing the operator owned may be destroyed by an upgrade.
