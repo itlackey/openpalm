@@ -132,7 +132,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
   waitForReady: vi.fn(async () => true),
   seedLegacyServedUiRuntimeConfig: vi.fn(),
-  applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
+  applyHomeAssets: vi.fn(async () => {}),
   // The journal both the quit-guard and the completion-notifier read.
   createState: vi.fn(() => ({ dataDir: '/home/user/.openpalm/data' })),
   resolveDeployJournalPath: vi.fn((state: { dataDir: string }) => `${state.dataDir}/setup/deploy-journal.json`),

@@ -213,11 +213,12 @@ export async function materializeEmbeddedSkeleton(
  * Seed OP_HOME's managed system/ tree from the embedded skeleton, falling
  * back to local resolution (repo checkout / OPENPALM_SKELETON_DIR /
  * OPENPALM_REPO_ROOT) when no skeleton was compiled in.
- * Thin wrapper around {@link materializeEmbeddedSkeleton} + applyHomeSeed
- * shared by `install.ts` (pre-wizard seed), `update.ts` (the whole upgrade
- * runs as the callback) and `ui-server.ts` (spawnUiChild's skeleton seed
- * before every spawn — the materialization's version stamp is what keeps
- * repeat calls at the same version cheap).
+ * Thin wrapper around {@link materializeEmbeddedSkeleton} + whatever the caller
+ * applies to the home: `install.ts` passes the pre-wizard `applyHomeSeed`,
+ * `update.ts` runs the whole upgrade as the callback, and `ui-server.ts` passes
+ * lib's `applyHomeAssets` (spawnUiChild's pre-spawn refresh — the
+ * materialization's version stamp is what keeps repeat calls at the same
+ * version cheap).
  *
  * Returns the persistent materialized skeleton dir (for callers that need to
  * hand it to a child process), or null when the local-resolution fallback
@@ -226,19 +227,19 @@ export async function materializeEmbeddedSkeleton(
  * flowing to child processes untouched.
  */
 export async function seedSkeletonFromEmbedded(
-  applyHomeSeed: (homeDir: string) => Promise<unknown>,
+  applyToHome: (homeDir: string) => Promise<unknown>,
   homeDir: string,
   dataDir: string,
 ): Promise<string | null> {
   const skeletonDir = await materializeEmbeddedSkeleton(dataDir);
   if (!skeletonDir) {
-    await applyHomeSeed(homeDir);
+    await applyToHome(homeDir);
     return null;
   }
   const previous = process.env.OPENPALM_SKELETON_DIR;
   try {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
-    await applyHomeSeed(homeDir);
+    await applyToHome(homeDir);
   } finally {
     if (previous === undefined) delete process.env.OPENPALM_SKELETON_DIR;
     else process.env.OPENPALM_SKELETON_DIR = previous;

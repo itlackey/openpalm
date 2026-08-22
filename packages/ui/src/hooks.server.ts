@@ -133,9 +133,13 @@ function loadProcessEnv(): void {
 // anything reads the home, so the request path can simply trust the disk.
 migrateHome();
 loadProcessEnv();
-// OpenCode's web UI, at an origin root, behind this app's login. Started here
-// because every launch mode loads this module — see workspace-listener.ts for
-// why it needs an origin of its own rather than a path on this one.
+// OpenCode's web UI, at an origin root, behind this app's login. Called from
+// every launch mode because every launch mode loads this module, and a no-op
+// outside the assistant container (OP_UI_SERVED_IN_CONTAINER=1) — compose
+// publishes that container's workspace port onto the host, so a host-side bind
+// here is the same listener twice and stops the container from starting. See
+// workspace-listener.ts for that and for why it needs an origin of its own
+// rather than a path on this one.
 startWorkspaceListener();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.

@@ -28,7 +28,7 @@ import {
   resolveUiListenEnv,
   resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
-  applyHomeSeed,
+  applyHomeAssets,
   createState,
   readDeployJournal,
   resolveDeployJournalPath,
@@ -341,21 +341,30 @@ function resolveBundledSkeletonDir(): string | null {
  * The CLI supervisor already does this before every spawn
  * (seedSkeletonFromEmbedded in packages/cli/src/lib/ui-server.ts); this is the
  * Electron half, sourcing the same tree from extraResources instead of an
- * embedded archive. applyHomeSeed overwrites the managed tree and leaves user
+ * embedded archive. applyHomeAssets overwrites the managed tree and leaves user
  * data alone, which is what keeps repeat launches at the same version cheap.
+ *
+ * It is applyHomeAssets and NOT the bare applyHomeSeed because writing
+ * `system/skills/` is only half of shipping a skill: the assistant reads that
+ * tree through a `:ro` /system-stash mount that its akm config must name, and
+ * the entry is pinned only by setup and install. A desktop app updates itself
+ * without ever running either, so the seed-only call left every upgraded home
+ * with the skills mounted and unindexed. applyHomeAssets is lib's own pairing
+ * of the two; this harness does not get to decide what "apply the release's
+ * assets" means.
  *
  * Nonfatal: a failure here must not stop the app from starting, since the
  * previous release's tree is still serviceable.
  */
-async function seedBundledSkeleton(homeDir: string): Promise<void> {
+async function seedBundledSkeleton(): Promise<void> {
   const skeletonDir = resolveBundledSkeletonDir();
   if (!skeletonDir) return;
   const previous = process.env.OPENPALM_SKELETON_DIR;
   try {
-    // applyHomeSeed resolves its source through the same lib resolver the child
-    // uses; point it at the bundled copy for the duration of the call.
+    // applyHomeAssets resolves its source through the same lib resolver the
+    // child uses; point it at the bundled copy for the duration of the call.
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
-    await applyHomeSeed(homeDir);
+    await applyHomeAssets(createState());
   } catch (err) {
     console.warn(
       'Bundled skeleton seed failed (non-fatal):',
@@ -461,16 +470,25 @@ async function startUIServer(): Promise<boolean> {
   const dataDir = resolveDataDir();
 
   // Ensure the runtime dir tree exists so the harness can write its pid file and
-  // the UI child can boot. The harness does NOT seed or apply OP_HOME — that is
-  // the UI's job (install/update → applyHome): overwrite the managed system/ tree
-  // and seed the user/data trees once. Serving the UI never mutates OP_HOME, so
-  // the harness only ensures dirs here. The UI child locates the bundled skeleton
-  // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
+  // the UI child can boot. Beyond what applyHomeAssets refreshes just below, the
+  // harness does NOT apply OP_HOME — reconciling secrets, addon state, image
+  // versions and the remote serve config is the UI's job (install/update →
+  // applyHome), which does it under the install lock behind a backup and a
+  // rollback snapshot.
+  //
+  // A launch is therefore not read-only, and the exception is deliberate: past
+  // the managed `system/` tree, applyHomeAssets also heals the two akm configs
+  // that tree is inert without (`config/akm/config.json`,
+  // `config/paperclip/akm/config.json`). Those are operator-owned files written
+  // outside the install lock and without applyHome's backup — accepted because
+  // each write is atomic, only-on-change, and confined to the keys the shipped
+  // mounts require. The UI child locates the bundled skeleton via
+  // OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
 
   // Refresh the managed system/ tree from THIS app version's bundled skeleton,
   // so an updated shell never serves the previous release's managed files.
-  await seedBundledSkeleton(homeDir);
+  await seedBundledSkeleton();
 
   // NOTE: home migrations are deliberately NOT run here. Anything that mutates
   // control-plane state or runs a migration belongs to the UI control plane.

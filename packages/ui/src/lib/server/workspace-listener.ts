@@ -32,13 +32,46 @@
  * holds the server password keeps working exactly as it does against OpenCode
  * directly.
  *
- * ## Why it starts here
+ * ## Why it starts here, and why only the container lane binds it
  *
  * `hooks.server.ts` is loaded once by every launch mode — the assistant
  * container's co-process, `openpalm app`, `openpalm admin`, and Electron — so
- * starting from there needs no change to any of the four spawn paths. A bind
- * failure is logged and swallowed rather than taking the UI down with it — the
- * workspace is an enhancement, the UI is the product.
+ * starting from there needs no change to any of the four spawn paths. But the
+ * same build in two lanes at once wants the same port twice: core.compose.yml
+ * publishes `${OP_WORKSPACE_PORT:-3820}` from the container onto the UI's own
+ * interface, so on a desktop install — the recommended one — the host process
+ * and Docker both claim 3820 and Docker is the one that loses: `failed to bind
+ * host port 0.0.0.0:3820`, and the assistant container does not start at all.
+ *
+ * The container lane wins because it is the only lane that can serve everyone.
+ * Both lanes proxy to the same upstream — `getAssistantOpencodeTarget()` is
+ * env/stack-derived, so there is no host-only OpenCode for a host listener to
+ * serve instead — and the container's published mapping already answers the
+ * host browser at the very `localhost:3820` the host lane would have bound,
+ * while the reverse does not hold: a host-side socket is invisible to the phone
+ * on the LAN, which reaches only what compose publishes. So on a default
+ * install the host lane is strictly a duplicate, and it duplicates by taking
+ * the port the container needs.
+ *
+ * One supported configuration is narrowed rather than duplicated, and is worth
+ * naming: `OP_UI_BIND_ADDRESS` set to a concrete address publishes
+ * `${OP_UI_BIND_ADDRESS}:3820` and NOTHING on loopback, while the admin/desktop
+ * UI child always binds `HOST=127.0.0.1`. Those two sockets did not collide, so
+ * the host lane used to answer the desktop window's own
+ * `http://127.0.0.1:3820`; now nothing does. That is a real capability lost —
+ * accepted because the workspace is still served on the address the operator
+ * chose to publish, and because the alternative is a host lane holding a port
+ * the container may need on the very next `openpalm update`. `/advanced` probes
+ * the advertised address before framing it, so the loopback case degrades to a
+ * notice rather than a blank frame.
+ *
+ * A host process with no container running therefore serves no workspace, and
+ * that is right rather than a gap: no assistant container means no OpenCode
+ * upstream to proxy to. `/advanced` probes the advertised address before it
+ * frames it (see embeddable.ts) and says so honestly instead of blanking.
+ *
+ * A bind failure is logged and swallowed rather than taking the UI down with
+ * it — the workspace is an enhancement, the UI is the product.
  */
 import {
   createServer,
@@ -311,17 +344,22 @@ let started = false;
  * a browser cannot disagree.
  *
  * The interface is `HOST`: adapter-node's own bind variable, so this listener
- * lands on exactly the interface the UI itself is on, in every launch mode,
- * with no second knob to keep in sync. That distinction matters most in the
- * container, where the UI child is always started `HOST=0.0.0.0` because
- * Docker's published mapping cannot reach a container-loopback socket —
- * whether that mapping is exposed to the LAN is `OP_UI_BIND_ADDRESS`, a
- * separate fact, and the one computeOpencodeWorkspace() advertises.
+ * lands on exactly the interface the UI itself is on, with no second knob to
+ * keep in sync. Only the container lane gets here (see the module docblock),
+ * and there the UI child is always started `HOST=0.0.0.0` because Docker's
+ * published mapping cannot reach a container-loopback socket — whether that
+ * mapping is exposed to the LAN is `OP_UI_BIND_ADDRESS`, a separate fact, and
+ * the one computeOpencodeWorkspace() advertises.
  *
  * Returns the server so a caller that needs the bound address can read it
  * (the tests do); production callers ignore it.
  */
 export function startWorkspaceListener(): Server | undefined {
+  // The container lane owns this port; every other lane stands down. See the
+  // module docblock. `OP_UI_SERVED_IN_CONTAINER` is set only by the assistant
+  // entrypoint, the same marker the session cookie and the mDNS responder
+  // already split on, so no new flag is needed to tell the lanes apart.
+  if (process.env.OP_UI_SERVED_IN_CONTAINER !== '1') return undefined;
   if (started) return undefined;
   started = true;
 

@@ -159,6 +159,39 @@ async function reconcileCore(
 }
 
 /**
+ * Bring an OP_HOME's RELEASE-SHIPPED assets to this build: overwrite the managed
+ * `system/` tree, seed the user/data trees once, and heal the akm configs that
+ * tree is inert without.
+ *
+ * Split out of {@link applyHome} because this is exactly what a plain LAUNCH is
+ * allowed to do, and the harnesses were doing less. Electron's
+ * `seedBundledSkeleton` and the CLI supervisor both refresh the managed tree
+ * before spawning the UI so an updated shell never serves the previous
+ * release's managed files — but they called `applyHomeSeed` alone, which writes
+ * `system/skills/` while leaving the assistant's akm config with no bundle
+ * pointing at the `:ro` /system-stash mount it lands on. Only install/update
+ * reach `applyHome`, and a desktop app updates itself without ever running one,
+ * so on every upgraded desktop home the shipped skills were mounted, unindexed,
+ * and shadowed by the stale stash copies — the exact failure `ensureSystemBundle`
+ * was written for, never reached by the path that needed it.
+ *
+ * What deliberately stays behind in `applyHome`: secrets, addon state, image
+ * versions and the `remote` serve config. Those reconcile RUNTIME state, and
+ * `applyHome` runs them under the install lock behind a durable backup and a
+ * rollback snapshot — a launch holds none of those.
+ */
+export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
+	await applyHomeSeed(state.homeDir);
+	// An upgrade can leave the assistant's akm config carrying keys the newer
+	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
+	stripRetiredAkmConfigKeys(state);
+	// Same "an upgraded install heals itself" sweep for the release-shipped
+	// skills bundle: only setup and install pin it, so without this an upgraded
+	// home gets the :ro /system-stash mount with nothing configured to read it.
+	ensureSystemBundle(state);
+}
+
+/**
  * Bring an OP_HOME's assets to the running platform version — the "apply" half
  * of the single install==update path (constitution §1, §3, §4).
  *
@@ -166,8 +199,9 @@ async function reconcileCore(
  * Every step is idempotent:
  *   • ensureHomeDirs        — create the OP_HOME directory layout
  *   • ensureSecrets         — generate any missing service secrets
- *   • applyHomeSeed       — overwrite the managed system/ tree wholesale +
- *                             seed the user/data trees once (skip-existing)
+ *   • applyHomeAssets       — overwrite the managed system/ tree wholesale +
+ *                             seed the user/data trees once (skip-existing) +
+ *                             heal the akm configs that tree depends on
  *   • reconcileRemoteAccess — regenerate the `remote` addon's serve config
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *
@@ -183,7 +217,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// state and reporting a completed install as unconfigured.
 	runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
-	await applyHomeSeed(state.homeDir);
+	await applyHomeAssets(state);
 	// Make the `remote` addon's generated serve config match its persisted state
 	// on every install/update, and pin OP_REMOTE_HOSTNAME while doing it. This
 	// has to happen HERE, in the one function that owns OP_HOME's assets, and
@@ -210,13 +244,6 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	}
 	pruneRemovedAddonState(state.homeDir);
 	ensureVersionDefaults(state);
-	// An upgrade can leave the assistant's akm config carrying keys the newer
-	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
-	stripRetiredAkmConfigKeys(state);
-	// Same "an upgraded install heals itself" sweep for the release-shipped
-	// skills bundle: only setup and install pin it, so without this an upgraded
-	// home gets the :ro /system-stash mount with nothing configured to read it.
-	ensureSystemBundle(state);
 	ensureOpenCodeConfig();
 	ensureOpenCodeSystemConfig();
 }

@@ -142,14 +142,23 @@ The workspace is a second listener inside the UI process
 It proxies the assistant's OpenCode 1:1 at an origin ROOT, which is what
 OpenCode's web UI requires — its SPA resolves `/assets` and `/api` against
 `location.origin` and has no base-path option, so it cannot be served under a
-path on the UI's origin. Access is the SAME login as the UI: it checks the
-`op_session` cookie (host-scoped, so the browser already sends it to this port)
-and attaches OpenCode's own Basic credential upstream, server-side. A request
-that brings its own `Authorization` header is proxied verbatim, so external
-OpenCode clients holding the server password are unaffected. It is published on
-the UI's interface because it is only useful where the UI is, and container-side
+path on the UI's origin. Access is the SAME login as the UI: it checks that
+surface's session cookie (host-scoped, so the browser already sends it to this
+port) and attaches OpenCode's own Basic credential upstream, server-side. A
+request that brings its own `Authorization` header is proxied verbatim, so
+external OpenCode clients holding the server password are unaffected. It is
+published on the UI's interface because it is only useful where the UI is, and
 it binds `HOST` — the UI child's own `0.0.0.0` — so Docker's published mapping
 can reach it.
+
+Only the assistant container's UI co-process binds it
+(`OP_UI_SERVED_IN_CONTAINER=1`). The same build also runs host-side (`openpalm
+app`/`admin`, Electron), and since compose publishes this port onto the host, a
+host-side bind would claim the port Docker needs and stop the assistant
+container from starting at all — while serving nothing the published mapping
+does not already serve, including for a phone on the LAN. A host process with no
+stack running therefore has no workspace, which is correct: there is no OpenCode
+behind it to proxy.
 
 The image bakes the candidate-local `@openpalm/ui` build. The entrypoint
 supervises the baked UI and performs no runtime package install. Skeleton assets

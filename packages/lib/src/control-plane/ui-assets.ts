@@ -5,10 +5,12 @@
  * runtime download path: it was the GitHub host-assets release transport, and
  * it has been deleted along with backup/rollback/restart-on-update.
  */
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeVersion } from './versioning.js';
+import { SEEDED_SKILL_FILE_HASHES } from './seeded-skill-hashes.js';
 import { resolveDataDir } from './home.js';
 import { overwriteSystemTree } from './core-assets.js';
 import { createLogger } from '../logger.js';
@@ -70,44 +72,101 @@ export function readSkeletonVersion(homeDir: string): string | null {
 }
 function writeSkeletonVersion(homeDir: string, version: string): void { writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`); }
 
-/** Every regular file under `root`, as paths relative to it, sorted. */
-function listFilesRelative(root: string): string[] {
+/**
+ * Every regular file under `root`, as paths relative to it, sorted — or null
+ * when the tree holds an entry that is neither a directory nor a regular file.
+ *
+ * `readdirSync(withFileTypes)` reports on the entry itself, not its target, so
+ * a symlink is neither `isDirectory()` nor `isFile()`. Skipping those would
+ * make them invisible to the only caller, which asks "is everything here
+ * ours?" and deletes the tree when the answer is yes — so they are reported as
+ * the unreadable content they are instead.
+ */
+function listFilesRelative(root: string): string[] | null {
   const files: string[] = [];
-  const walk = (dir: string): void => {
+  const walk = (dir: string): boolean => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.isFile()) files.push(relative(root, path));
+      if (entry.isDirectory()) {
+        if (!walk(path)) return false;
+        continue;
+      }
+      if (!entry.isFile()) return false;
+      files.push(relative(root, path));
     }
+    return true;
   };
-  walk(root);
-  return files.sort();
+  return walk(root) ? files.sort() : null;
 }
 
-/** Same file list, same bytes. */
-function treesIdentical(a: string, b: string): boolean {
-  const left = listFilesRelative(a);
-  const right = listFilesRelative(b);
-  if (left.length !== right.length || left.some((rel, i) => rel !== right[i])) return false;
-  return left.every((rel) => readFileSync(join(a, rel)).equals(readFileSync(join(b, rel))));
+function sha256File(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
 /**
- * Drop stash copies of shipped skills that are byte-identical to the ones just
- * refreshed into `system/skills/`.
+ * Whether every file in the stash copy of `name` is content OpenPalm shipped at
+ * that path — i.e. nothing here is the operator's.
+ *
+ * A file passes if it matches what THIS build ships at the same skill-relative
+ * path, or any content a previous release shipped there
+ * ({@link SEEDED_SKILL_FILE_HASHES}). Unknown content or an unknown path fails
+ * immediately, which is what makes an operator's edit — or a file of their own
+ * dropped into a shipped skill's directory — hold the whole tree back.
+ *
+ * It fails closed on anything it cannot read as a file, because the caller
+ * deletes the directory on a `true`: an unlistable entry (a symlink above all —
+ * whose target must not be followed and must not be removed) and a listing with
+ * no files in it at all (a bare directory, a tree of empty ones) both mean the
+ * question was never actually answered. `.every()` over an empty list is
+ * vacuously true, so that case has to be rejected here rather than left to it.
+ */
+function isPristineSeededSkill(shippedSkill: string, stashSkill: string, name: string): boolean {
+  const files = listFilesRelative(stashSkill);
+  if (files === null || files.length === 0) return false;
+  return files.every((rel) => {
+    const digest = sha256File(join(stashSkill, rel));
+    const current = join(shippedSkill, rel);
+    // statSync, not existsSync: a path the stash holds a file at can be a
+    // DIRECTORY in this build's tree, and reading that as a file throws EISDIR
+    // out of the whole lifecycle apply.
+    if (statSync(current, { throwIfNoEntry: false })?.isFile() && sha256File(current) === digest) return true;
+    // The manifest is keyed from knowledge/skills, so include the skill name.
+    // POSIX separators there; readdir gives platform ones.
+    return (SEEDED_SKILL_FILE_HASHES[`${name}/${rel.split(sep).join('/')}`] ?? []).includes(digest);
+  });
+}
+
+/**
+ * Drop stash copies of shipped skills the operator never touched.
  *
  * The release-shipped skills used to be seeded into `knowledge/skills/`. They
  * live in the managed tree now, which is what gives them an update channel —
- * but an identical copy left behind in the stash is indexed by akm twice, once
- * from the primary bundle and once from the `:ro` system bundle.
+ * but a copy left behind in the stash is indexed by akm from the primary bundle
+ * as well, and the stash copy is the one `akm show skills/<name>` resolves to.
+ * So a leftover does not merely duplicate the shipped skill, it SHADOWS it, and
+ * the update channel the move existed to create never reaches the assistant.
  *
- * This runs here, not as a schema-gated migration, because this is the one
- * point where `system/skills/` is guaranteed to hold exactly what this release
- * ships: `overwriteSystemTree` has just written it. It removes only trees
- * byte-identical to the shipped ones, so a second pass finds nothing left to
- * remove and it needs no version gate. Anything that differs is the operator's
- * own — it stays and shadows the shipped copy, and is named in a warning so
- * the duplicate is visible rather than silent.
+ * This ran on "byte-identical to what this build ships", which was only ever
+ * true of a home this build seeded. Shipped content changed between 0.12.x and
+ * 0.13.0, so on every upgraded home all three names differed, all three were
+ * kept, and all three shadowed — the move worked on fresh installs only. The
+ * test is now "every file is content OpenPalm is known to have shipped at that
+ * path", against this build plus the frozen record of earlier ones, which
+ * answers the question that was actually being asked.
+ *
+ * The hard rule is unchanged and is what the per-file check protects: content
+ * matching no release's bytes at that path is NEVER deleted. Anything that
+ * fails the test stays, still shadowing the shipped copy, and is named in a
+ * warning so the duplicate is visible rather than silent — that case remains
+ * the operator's to resolve. The one edit the rule cannot see is one that
+ * reproduces an earlier release's file exactly (pinning a stash copy back to
+ * the 0.12 text, say): it is indistinguishable from never having touched it,
+ * and is dropped as pristine.
+ *
+ * It runs here, not as a schema-gated migration, because this is the one point
+ * where `system/skills/` is guaranteed to hold exactly what this release ships:
+ * `overwriteSystemTree` has just written it. Removal is idempotent, so a second
+ * pass finds nothing left to remove and it needs no version gate.
  */
 function pruneDuplicateShippedSkills(homeDir: string): void {
   const shipped = join(homeDir, 'system', 'skills');
@@ -120,7 +179,7 @@ function pruneDuplicateShippedSkills(homeDir: string): void {
     if (!entry.isDirectory()) continue;
     const mine = join(stash, entry.name);
     if (!existsSync(mine)) continue;
-    if (!treesIdentical(join(shipped, entry.name), mine)) {
+    if (!isPristineSeededSkill(join(shipped, entry.name), mine, entry.name)) {
       kept.push(entry.name);
       continue;
     }

@@ -212,7 +212,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
   seedLegacyServedUiRuntimeConfig: vi.fn(),
-  applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
+  applyHomeAssets: vi.fn(async () => {}),
   ensureHomeDirs: vi.fn(),
   checkDocker: vi.fn(),
   checkDockerCompose: vi.fn(),
@@ -293,7 +293,10 @@ vi.mock('@openpalm/lib', () => ({
   // pre-existing before-quit test (which never touches deploy state) keeps
   // exercising the plain-quit path unchanged; individual tests override
   // readDeployJournal's return value.
-  createState: vi.fn(() => ({ dataDir: '/home/user/.openpalm/data' })),
+  // homeDir as well as dataDir: the launch-seed test below pins WHICH home the
+  // release assets are applied to, and a state carrying only dataDir gave it
+  // nothing to assert on.
+  createState: vi.fn(() => ({ homeDir: '/home/user/.openpalm', dataDir: '/home/user/.openpalm/data' })),
   resolveDeployJournalPath: vi.fn((state: { dataDir: string }) => `${state.dataDir}/setup/deploy-journal.json`),
   readDeployJournal: vi.fn(() => ({
     deploying: false,
@@ -1021,14 +1024,24 @@ describe('desktop bootstrap', () => {
   // serve the PREVIOUS release's managed system/ tree — stale Compose files and
   // managed instructions — until the user happened to run a lifecycle apply.
   // This is the Electron half of what the CLI supervisor does before every spawn.
-  it('reseeds OP_HOME from the bundled skeleton before spawning the UI', async () => {
+  //
+  // applyHomeAssets, not the bare applyHomeSeed it used to call: the seed writes
+  // system/skills/ but the assistant only reads that tree through an akm bundle
+  // entry install/update pin, and a desktop app updates itself without running
+  // either. The seed-only call left every upgraded home with the shipped skills
+  // mounted and unindexed, so pinning the whole-assets call is the regression.
+  it('applies the bundled release assets to OP_HOME before spawning the UI', async () => {
     const { spawn } = await import('node:child_process');
-    const seedOrder = vi.mocked(lib.applyHomeSeed).mock.invocationCallOrder;
+    const seedOrder = vi.mocked(lib.applyHomeAssets).mock.invocationCallOrder;
     const spawnOrder = vi.mocked(spawn).mock.invocationCallOrder;
 
-    expect(lib.applyHomeSeed).toHaveBeenCalled();
-    expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]).toEqual(['/home/user/.openpalm']);
-    // Seeded BEFORE the child starts, or the child reads the old tree.
+    // The HOME is the point — assert the state names it, not merely that some
+    // createState() result was passed (every result is deep-equal, so that
+    // compare passed on any of them).
+    expect(lib.applyHomeAssets).toHaveBeenCalledWith(
+      expect.objectContaining({ homeDir: '/home/user/.openpalm' }),
+    );
+    // Applied BEFORE the child starts, or the child reads the old tree.
     expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
   });
 });

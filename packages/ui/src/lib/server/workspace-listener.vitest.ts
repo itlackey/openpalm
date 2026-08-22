@@ -33,6 +33,16 @@ let upstreamUrl = '';
 let upstream: Server;
 let listener: Server | undefined;
 let workspaceOrigin = '';
+/**
+ * The session cookie name for the lane that binds this listener. Read from the
+ * module that owns it rather than spelled out here: the container surface uses
+ * `op_session_assistant`, and a test that hardcoded the host surface's
+ * `op_session` would be proving the credential rule for a lane this listener no
+ * longer runs in.
+ */
+let sessionCookie = '';
+/** The container marker as this file found it, restored in afterAll. */
+let originalContainerMarker: string | undefined;
 
 /** Every request the fake upstream saw, in order. */
 const seen: { url: string; method: string; headers: IncomingMessage['headers']; body: string }[] = [];
@@ -83,13 +93,30 @@ beforeAll(async () => {
 
   process.env.OP_WORKSPACE_PORT = String(port);
   process.env.HOST = '127.0.0.1';
+  // The assistant container's co-process is the lane that binds this listener,
+  // so the proxy behaviour below is only reachable with that marker set — the
+  // same one the entrypoint sets. The host lane's stand-down is asserted on its
+  // own further down. Restored in afterAll: process.env outlives module resets
+  // between test files, and a stray marker would move the next file's cookie
+  // name and admin detection under it.
+  originalContainerMarker = process.env.OP_UI_SERVED_IN_CONTAINER;
+  process.env.OP_UI_SERVED_IN_CONTAINER = '1';
   const { startWorkspaceListener } = await import('./workspace-listener.js');
-  listener = startWorkspaceListener();
-  await new Promise((resolve) => listener?.once('listening', resolve));
+  // Imported after the marker is set: session-cookie.js resolves the name once,
+  // at import time, exactly as it does in a real process.
+  sessionCookie = (await import('./session-cookie.js')).SESSION_COOKIE_NAME;
+  const server = startWorkspaceListener();
+  // Fail loudly rather than waiting out the hook timeout on a listener that
+  // declined to start.
+  if (!server) throw new Error('the workspace listener did not start in the container lane');
+  listener = server;
+  await new Promise((resolve) => server.once('listening', resolve));
   workspaceOrigin = `http://127.0.0.1:${port}`;
 });
 
 afterAll(async () => {
+  if (originalContainerMarker === undefined) delete process.env.OP_UI_SERVED_IN_CONTAINER;
+  else process.env.OP_UI_SERVED_IN_CONTAINER = originalContainerMarker;
   // closeAllConnections first, and never await close() alone: the streaming and
   // upgrade tests deliberately leave sockets open on both servers, and a plain
   // close() waits for every one of them to end on its own.
@@ -111,7 +138,7 @@ afterEach(() => {
   respond = DEFAULT_RESPOND;
 });
 
-const asSession = (token: string) => ({ cookie: `op_session=${token}` });
+const asSession = (token: string) => ({ cookie: `${sessionCookie}=${token}` });
 
 describe('the OpenPalm session is the credential', () => {
   test('a signed-in browser reaches OpenCode with nothing else attached', async () => {
@@ -133,7 +160,7 @@ describe('the OpenPalm session is the credential', () => {
 
   test('the OpenPalm cookie stops here — it means nothing to OpenCode', async () => {
     await fetch(`${workspaceOrigin}/`, {
-      headers: { cookie: `op_session=${VALID_SESSION}; other=keep` },
+      headers: { cookie: `${sessionCookie}=${VALID_SESSION}; other=keep` },
     });
 
     expect(seen[0]?.headers.cookie).toBeUndefined();
@@ -156,7 +183,7 @@ describe('the OpenPalm session is the credential', () => {
 
   test('the session is read out of a cookie header carrying other cookies too', async () => {
     const res = await fetch(`${workspaceOrigin}/`, {
-      headers: { cookie: `theme=dark; op_session=${VALID_SESSION}; tz=utc` },
+      headers: { cookie: `theme=dark; ${sessionCookie}=${VALID_SESSION}; tz=utc` },
     });
 
     expect(res.status).toBe(200);
@@ -173,7 +200,7 @@ describe('OpenCode is not reachable here without one', () => {
   });
 
   test('a forged or expired session is refused', async () => {
-    for (const cookie of ['op_session=forged', 'op_session=', 'unrelated=1']) {
+    for (const cookie of [`${sessionCookie}=forged`, `${sessionCookie}=`, 'unrelated=1']) {
       const res = await fetch(`${workspaceOrigin}/`, { headers: { cookie } });
       expect(res.status, cookie).toBe(401);
     }
@@ -386,7 +413,7 @@ describe('protocol upgrades tunnel too — OpenCode’s terminal is a WebSocket'
     upstream.on('upgrade', onUpgrade);
     const received = await upgradeRequest(
       '/api/pty',
-      { cookie: `op_session=${VALID_SESSION}` },
+      { cookie: `${sessionCookie}=${VALID_SESSION}` },
       { sendOnUpgrade: 'ping', until: (r) => r.includes('echo:ping') },
     );
 
@@ -454,6 +481,26 @@ describe('a client that hangs up takes nothing down with it', () => {
       await expect(res.text()).resolves.toContain('not responding');
     } finally {
       upstreamUrl = live;
+    }
+  });
+});
+
+describe('only the assistant container binds the port', () => {
+  test('the host lane stands down instead of taking the port compose publishes', async () => {
+    // The desktop install runs this same build host-side while core.compose.yml
+    // publishes ${OP_WORKSPACE_PORT} from the container onto the host. Two
+    // binds means Docker cannot publish and the assistant never starts, so the
+    // host lane must not open a socket at all.
+    const marker = process.env.OP_UI_SERVED_IN_CONTAINER;
+    vi.resetModules();
+    delete process.env.OP_UI_SERVED_IN_CONTAINER;
+    try {
+      const hostLane = await import('./workspace-listener.js');
+      expect(hostLane.startWorkspaceListener()).toBeUndefined();
+    } finally {
+      if (marker === undefined) delete process.env.OP_UI_SERVED_IN_CONTAINER;
+      else process.env.OP_UI_SERVED_IN_CONTAINER = marker;
+      vi.resetModules();
     }
   });
 });

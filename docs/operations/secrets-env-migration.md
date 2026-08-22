@@ -66,8 +66,10 @@ layout move:
   overmounts they backed are gone;
 - release-shipped skills moved from `knowledge/skills/` to `system/skills/`,
   which is refreshed wholesale on update, so a shipped skill finally has a fix
-  channel. A copy under `knowledge/skills/` that is byte-identical to what the
-  release ships is removed; a modified copy is kept as yours and logged;
+  channel. A copy under `knowledge/skills/` is removed when every file in it is
+  content OpenPalm is known to have shipped at that path — this release's or any
+  earlier release's; a copy holding anything unrecognised is kept as yours,
+  shadows the managed copy, and is logged;
 - the retired `private/` tree is merged into `state/`: delegated credentials
   move to `state/secrets/` and the audited env file to `state/env/`;
 - the internal secret API defaults to `state/secrets/`, while

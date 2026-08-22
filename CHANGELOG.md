@@ -51,9 +51,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wholesale on every update, so they now have a fix channel. The assistant
   reads them as a read-only AKM bundle (`system/skills` mounted `:ro` at
   `/system-stash`, `writable: false`). Seeding removes a copy under
-  `knowledge/skills/` only when it is byte-identical to what the release ships,
-  so akm does not index it twice; a modified copy stays as yours, shadows the
-  shipped one, and is named in a warning.
+  `knowledge/skills/` when every file in it is content OpenPalm is known to have
+  shipped at that path — this release's or any earlier one's — so an upgraded
+  home stops shadowing the managed copy without anyone diffing trees by hand. A
+  file that matches nothing — one you rewrote, or one of your own dropped into a
+  shipped skill's directory — holds the whole skill back: it stays as yours,
+  shadows the shipped one, and is named in a warning. The one edit the check
+  cannot see is one that reproduces an earlier release's file exactly, so if you
+  have pinned a shipped skill back to its 0.12 text on purpose, copy it under a
+  name of your own first.
 
 - **Paperclip no longer overmounts `/stash/env` and `/stash/secrets`.** Those
   two mounts hid the assistant's canonical AKM asset directories behind empty
@@ -143,6 +149,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The desktop app applies the release's shipped assets, config included.** It
+  called `applyHomeSeed` directly, so every launch refreshed the managed
+  `system/` tree while skipping the akm-config heals that hang off `applyHome` —
+  and a desktop install updates itself without ever running install or update,
+  so nothing else was going to run them. The shipped skills were mounted at
+  `:ro` `/system-stash` on every upgraded desktop home with no bundle entry
+  naming that mount, so akm never walked it and the assistant kept resolving the
+  stale `/stash` copies; a pre-0.9 akm config likewise stayed unrepaired. The
+  seed and the heals are now one lib call, `applyHomeAssets`, which is what the
+  launch path runs. Reconciling runtime state — secrets, addon state, image
+  versions, the `remote` serve config — stays in `applyHome`, under the install
+  lock and behind a backup.
 - **`/advanced` no longer renders a fake chat surface.** When the OpenCode
   workspace could not be reached it fell through to a partial duplicate of
   `/chat` — a composer, a message list, permission cards — under a heading

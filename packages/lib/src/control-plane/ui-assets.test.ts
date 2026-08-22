@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -106,6 +106,47 @@ describe('resolveUiBuildDir', () => {
   });
 });
 
+
+// Byte-exact content of a `knowledge/skills/install-optional-tool/tools.json`
+// an earlier release seeded. Reformatting this changes its hash and breaks the
+// upgrade test below; it is a fixture, not code.
+const PREVIOUSLY_SHIPPED_TOOLS_JSON = `{
+  "codex": {
+    "label": "Codex CLI",
+    "kind": "npm",
+    "package": "@openai/codex",
+    "version": "0.142.5",
+    "bin": "codex"
+  },
+  "claude": {
+    "label": "Claude Code",
+    "kind": "npm",
+    "package": "@anthropic-ai/claude-code",
+    "version": "2.1.220",
+    "bin": "claude"
+  },
+  "copilot": {
+    "label": "GitHub Copilot CLI",
+    "kind": "npm",
+    "package": "@github/copilot",
+    "version": "1.0.75",
+    "bin": "copilot"
+  },
+  "pi": {
+    "label": "Pi Coding Agent",
+    "kind": "npm",
+    "package": "@mariozechner/pi-coding-agent",
+    "version": "0.73.1",
+    "bin": "pi"
+  },
+  "gcloud": {
+    "label": "Google Cloud CLI",
+    "kind": "gcloud-sdk",
+    "bin": "gcloud"
+  }
+}
+`;
+
 describe('applyHomeSeed', () => {
   // NOTE: the "no local skeleton source resolves → throws" branch cannot be
   // exercised from a repo checkout: the source-relative fallback in
@@ -159,6 +200,127 @@ describe('applyHomeSeed', () => {
       await applyHomeSeed(home);
       expect(readFileSync(join(home, 'knowledge', 'skills', 'config-diagnostics', 'SKILL.md'), 'utf8')).toBe('my edits\n');
       expect(readFileSync(join(home, 'knowledge', 'skills', 'mine', 'SKILL.md'), 'utf8')).toBe('mine\n');
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // The 0.13.0 defect. This prune compared against what THIS build ships, so it
+  // only ever matched a home this build had seeded. An UPGRADED home holds the
+  // content of whichever release seeded it, so nothing matched, every shipped
+  // skill was kept, and the stale copies went on shadowing the system/skills
+  // bundle the move existed to serve them from. The bytes below are a real
+  // previously-shipped `install-optional-tool/tools.json` and are load-bearing:
+  // they must hash to an entry in SEEDED_SKILL_FILE_HASHES.
+  test('drops a stash skill an EARLIER release seeded, whose content this build no longer ships', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-old-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-old-'));
+    const shippedSkill = join(skeletonSrc, 'system', 'skills', 'install-optional-tool');
+    mkdirSync(shippedSkill, { recursive: true });
+    writeFileSync(join(shippedSkill, 'tools.json'), '{ "something": "this build ships" }\n');
+    const stashSkill = join(home, 'knowledge', 'skills', 'install-optional-tool');
+    mkdirSync(stashSkill, { recursive: true });
+    writeFileSync(join(stashSkill, 'tools.json'), PREVIOUSLY_SHIPPED_TOOLS_JSON);
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(existsSync(stashSkill)).toBe(false);
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // Per FILE, and conjunctive: one recognised file does not license removing the
+  // directory it sits in. This is the shape of a real edited skill — the seeded
+  // tools.json untouched, the prose rewritten — and it must survive intact.
+  test('keeps a whole skill when any one file in it is the operator\'s', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-mixed-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-mixed-'));
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'install-optional-tool'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'install-optional-tool', 'SKILL.md'), 'shipped\n');
+    const stashSkill = join(home, 'knowledge', 'skills', 'install-optional-tool');
+    mkdirSync(stashSkill, { recursive: true });
+    writeFileSync(join(stashSkill, 'tools.json'), PREVIOUSLY_SHIPPED_TOOLS_JSON);
+    writeFileSync(join(stashSkill, 'SKILL.md'), 'my rewrite\n');
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(readFileSync(join(stashSkill, 'SKILL.md'), 'utf8')).toBe('my rewrite\n');
+      expect(existsSync(join(stashSkill, 'tools.json'))).toBe(true);
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // The check deletes the directory on a `true`, so every shape it cannot read
+  // as content has to answer `false`. A symlink is neither isFile() nor
+  // isDirectory() to readdir, and a file-less tree lists nothing at all — both
+  // used to leave `.every()` iterating an empty list, which is vacuously true,
+  // and the operator's directory was removed on the strength of nothing having
+  // been compared.
+  test('keeps a stash skill holding a symlink, and never follows it', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-link-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-link-'));
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'install-optional-tool'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'install-optional-tool', 'SKILL.md'), 'shipped\n');
+    const target = join(home, 'my-skill.md');
+    writeFileSync(target, 'mine\n');
+    const stashSkill = join(home, 'knowledge', 'skills', 'install-optional-tool');
+    mkdirSync(stashSkill, { recursive: true });
+    symlinkSync(target, join(stashSkill, 'SKILL.md'));
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(existsSync(join(stashSkill, 'SKILL.md'))).toBe(true);
+      expect(readFileSync(target, 'utf8')).toBe('mine\n');
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps a stash skill that holds no files at all', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-bare-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-bare-'));
+    mkdirSync(join(skeletonSrc, 'system', 'skills', 'config-diagnostics'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'system', 'skills', 'config-diagnostics', 'SKILL.md'), 'shipped\n');
+    const stashSkill = join(home, 'knowledge', 'skills', 'config-diagnostics');
+    mkdirSync(join(stashSkill, 'references'), { recursive: true });
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(existsSync(join(stashSkill, 'references'))).toBe(true);
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // The shipped side is read only after the stash side names the path, so this
+  // build shipping a DIRECTORY where the stash holds a file used to throw an
+  // uncaught EISDIR out of applyHomeSeed — aborting install/update, not just
+  // this sweep.
+  test('survives a stash file at a path this build ships as a directory', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-skills-eisdir-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-skills-eisdir-'));
+    const shippedSkill = join(skeletonSrc, 'system', 'skills', 'notify');
+    mkdirSync(join(shippedSkill, 'examples'), { recursive: true });
+    writeFileSync(join(shippedSkill, 'examples', 'usage.md'), 'shipped\n');
+    const stashSkill = join(home, 'knowledge', 'skills', 'notify');
+    mkdirSync(stashSkill, { recursive: true });
+    writeFileSync(join(stashSkill, 'examples'), 'my notes\n');
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+      expect(readFileSync(join(stashSkill, 'examples'), 'utf8')).toBe('my notes\n');
     } finally {
       rmSync(skeletonSrc, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });

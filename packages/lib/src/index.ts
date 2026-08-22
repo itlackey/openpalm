@@ -343,6 +343,7 @@ export {
 
 export {
   createState,
+  applyHomeAssets,
   initializeStateSecrets,
   applyInstall,
   applyUpdate,

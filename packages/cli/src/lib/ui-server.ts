@@ -10,7 +10,7 @@ import { join, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
-  applyHomeSeed,
+  applyHomeAssets,
   isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck, checkPortAvailable,
   resolveHostUiPort, resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
@@ -187,11 +187,17 @@ async function spawnUiChild(
   const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state);
   // Materialize the embedded skeleton (managed system/ tree) before spawning.
   // Stackless (not-yet-installed) homes get the materialization WITHOUT the
-  // seed: nothing to re-seed yet, but the wizard the child serves is about to
+  // apply: nothing to re-apply yet, but the wizard the child serves is about to
   // install, and its performSetup needs a skeleton source inside the child.
+  //
+  // applyHomeAssets and not the bare applyHomeSeed, for the same reason the
+  // Electron harness uses it (see lib's applyHomeAssets): writing
+  // `system/skills/` is half of shipping a skill, and the akm config that makes
+  // the `:ro` /system-stash mount readable is pinned only by install/update. A
+  // launch that seeds without the heal leaves the skills mounted and unindexed.
   const skeletonDir = stacklessApp
     ? await materializeEmbeddedSkeleton(state.dataDir)
-    : await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.dataDir);
+    : await seedSkeletonFromEmbedded(() => applyHomeAssets(state), homeDir, state.dataDir);
 
   // Materialize the embedded UI build into data/ui BEFORE spawning, matching
   // the Electron harness's own bundled-build resolution. A no-op once data/ui

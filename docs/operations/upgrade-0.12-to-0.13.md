@@ -482,7 +482,7 @@ again afterwards.
 | `knowledge/secrets/<delegated>` | `state/secrets/` | the primary move — UI login, Guardian tokens, portal and bot secrets; originals deleted |
 | `knowledge/env/stack.env` + `state/stack.state.env` | `state/stack.env` | merged, state over knowledge; **both originals deleted** |
 | `knowledge/secrets/auth.json` | unchanged | the only agent-readable secret; routing is default-deny now |
-| `knowledge/skills/<shipped>` | `system/skills/` | shipped skills are managed and updatable now, mounted `:ro` at `/system-stash` — but **your 0.12.x copies are kept and shadow them**, see below |
+| `knowledge/skills/<shipped>` | `system/skills/` | shipped skills are managed and updatable now, mounted `:ro` at `/system-stash`; a copy whose every file is release-shipped content is removed, **one holding anything else is kept and shadows the managed copy**, see below |
 | `config/{assistant,guardian}/opencode.jsonc`, `knowledge/tasks/{health-check,update-containers,validate-config}.yml` | *(deleted)* | section 2 — no modification check |
 | `OPENCODE_ENABLE_SSH`, ten `OP_TTS_*`/`OP_STT_*` keys | *(deleted from `state/stack.env`)* | section 2 — stripped on every reconcile, no modification check; the SSH publish has no replacement |
 | host port `3800` = OpenCode API | host port `3810` | published host ports move — see below |
@@ -498,36 +498,43 @@ home, where `private/` and Paperclip both did not exist.
 Credential moves are copy → read back → verify → delete, never the other way
 round, and a rerun is a clean no-op. Beyond that:
 
-- **Both shipped skills are kept on every 0.12.x home, edited or not.**
-  `pruneDuplicateShippedSkills` removes a stash copy only when it is
-  byte-identical to what *this* release just wrote into `system/skills/`. The
-  0.12.x seed was `skipExisting`, so your copies are frozen at the 0.12 content —
-  and both `config-diagnostics/SKILL.md` and `notify/SKILL.md` differ between
-  `platform-0.12.52` and the current skeleton, `config-diagnostics` the more
-  heavily of the two (43 insertions / 54 deletions, against notify's 8 / 5). So
-  both are kept, both shadow `system/skills/`, and the log line *"Kept locally
-  modified copies of shipped skills"* names them whether or not you touched them
-  — it is not evidence of an edit. Which is exactly why you have to review
-  **both** before removing either: the log tells you nothing about which one you
-  actually changed, and `config-diagnostics` is the one whose shipped content
-  moved furthest. Diff the same two trees you are about to delete:
+- **A recognised shipped skill is cleared for you; anything else is kept.**
+  `pruneDuplicateShippedSkills` removes a stash copy when every file in it is
+  content OpenPalm is known to have shipped at that path — this release's, or
+  any earlier release's. Your 0.12.x copies are frozen at the 0.12 content
+  (the seed was `skipExisting`), and both `config-diagnostics/SKILL.md` and
+  `notify/SKILL.md` changed between `platform-0.12.52` and this release, so a
+  test against *this* release's bytes alone would have kept every one of them.
+  Matching the earlier content too is what lets an untouched 0.12.x home stop
+  shadowing `system/skills/` on its own.
+
+  Edit one file in a skill — or drop a file of your own into its directory —
+  and that skill is kept whole. The test is *unrecognised*, not *edited*, and
+  the two come apart in both directions. A file matching no release is kept
+  whether or not you wrote it — content from a branch that no longer exists, or
+  a hand-restored backup, reads the same as your own work and is treated as
+  yours. And an edit that reproduces an earlier release's file *exactly* — you
+  disliked the 0.13 version of a shipped skill and pinned the stash copy back to
+  its 0.12 text — is indistinguishable from never having touched it, and is
+  removed. If you have deliberately pinned a shipped skill to an older version,
+  copy it under a name of your own before upgrading; that is the one case this
+  check cannot see. The log line *"Kept locally modified copies of shipped
+  skills"* names every skill holding something unrecognised, so it is worth
+  reading: those still shadow `system/skills/`, and resolving that is yours.
+  Diff before you decide:
 
   ```bash
-  for s in notify config-diagnostics; do
+  for s in $(ls "$OP_HOME/knowledge/skills" 2>/dev/null); do
     echo "--- $s ---"
-    diff -r "$OP_HOME/knowledge/skills/$s" "$OP_HOME/system/skills/$s"
+    diff -r "$OP_HOME/knowledge/skills/$s" "$OP_HOME/system/skills/$s" 2>/dev/null
   done
   ```
 
-  Every 0.12.x home shows differences for both, because the shipped content
-  changed between `platform-0.12.52` and this release. Read them, decide whether
-  anything in the left-hand side is yours, and only then:
+  Then remove only what you agree is not yours, e.g.:
 
   ```bash
-  rm -rf "$OP_HOME/knowledge/skills/notify" "$OP_HOME/knowledge/skills/config-diagnostics"
+  rm -rf "$OP_HOME/knowledge/skills/notify"
   ```
-
-  Removing one and keeping the other is fine — they are independent.
 
   `gws-setup` shipped in 0.12.x and is retired: it is not in `system/skills/` at
   all, so the sweep never inspects it. It stays, and it is now yours.
