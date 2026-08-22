@@ -1048,7 +1048,7 @@ for tool in curl git node pnpm claude codex opencode bun akm; do
     || printf 'MISSING  %s\n' "$tool"
 done
 
-test "$(docker exec "$PAPERCLIP_CONTAINER" akm --version)" = 0.9.0
+test "$(docker exec "$PAPERCLIP_CONTAINER" akm --version)" = 0.9.1
 docker exec "$PAPERCLIP_CONTAINER" akm --format json -q info
 ```
 
