@@ -111,6 +111,23 @@ export default defineConfig(({ mode }) => {
             environment: "node",
             include: ["src/**/*.vitest.{js,ts}", "e2e/**/*.vitest.{js,ts}"],
             exclude: ["src/**/*.svelte.vitest.{js,ts}"],
+            // These suites load a route through a dynamic `import()` INSIDE the
+            // first test, so that test pays for compiling the route's whole
+            // module graph — SvelteKit server bits, $lib/server, @openpalm/lib.
+            // Alone that is fast; across the full run the workers compete and it
+            // routinely passes 5s, so vitest's default timeout failed whichever
+            // test happened to import first while every later test in the same
+            // file passed. That reads exactly like flake and was misdiagnosed as
+            // cross-file `process.env` leakage. It is not: the suite is green
+            // start to finish once the first import is allowed to finish.
+            // Raise the ceiling rather than pre-warming in a hook: `hookTimeout`
+            // is a separate budget, so moving the import into `beforeAll` only
+            // relocates the failure — which is exactly what happens to
+            // workspace-listener.vitest.ts, whose beforeAll starts the listener
+            // and blew its own 10s hook budget once the client project ran
+            // alongside this one. Both ceilings are raised for the same reason.
+            testTimeout: 30_000,
+            hookTimeout: 30_000,
             // Force a throwaway OP_HOME for every server test run.
             // See src/test-setup-isolation.ts for tripwire logic.
             setupFiles: ["./src/test-setup-isolation.ts"]
