@@ -27,7 +27,7 @@
 # Keep the model + @huggingface/transformers major in lockstep with akm-cli's
 # dependency (akm-cli 0.9.0 → @huggingface/transformers ^4.2.0).
 # ──────────────────────────────────────────────────────────────────────────────
-FROM node:22-trixie-slim AS fetch
+FROM node:24-trixie-slim AS fetch
 
 # Same major as akm-cli's @huggingface/transformers dependency (^4.2.0). If akm-cli
 # bumps the transformers.js major, bump this together and publish a new tag.

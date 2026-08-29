@@ -62,7 +62,7 @@ FROM ghcr.io/astral-sh/uv:0.12.3 AS uvsrc
 # comfortably under that ceiling even though the tree is far smaller now.
 # NOT --platform pinned: native deps (onnxruntime, the opencode binary) must
 # match the TARGET arch.
-FROM node:22-trixie-slim AS toolbuild
+FROM node:24-trixie-slim AS toolbuild
 WORKDIR /opt/openpalm/tools
 COPY containers/assistant/tools/package.json ./package.json
 # ONNXRUNTIME_NODE_INSTALL=skip stops onnxruntime-node's postinstall from
@@ -99,7 +99,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --omit=dev --no-fund --no-audit \
     && mv node_modules/@huggingface /split/g1/ \
     && mv node_modules/onnxruntime-node /split/g2/
 
-FROM node:22-trixie-slim
+FROM node:24-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.14
 
