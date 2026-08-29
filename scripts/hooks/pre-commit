@@ -3,8 +3,11 @@
 # Install via: ./scripts/install-hooks.sh
 #
 # Strategy: pattern-match staged additions for well-known API key formats.
-# This is a best-effort guard, not a substitute for secret scanning in CI.
-# The varlock-based scan was retired in #391 along with the schema files.
+# The varlock-based scan was retired in #391 along with the schema files, and
+# the CI grep that mirrored this hook was removed too: it matched bare hex64,
+# which is also the shape of a sha256, so committing a legitimate table of
+# content hashes failed the build. This hook is now the only such guard, and it
+# is best-effort by design — it reads staged text, not a secret store.
 
 set -e
 
@@ -16,7 +19,14 @@ set -e
 PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|(^|[^0-9a-f])[0-9a-f]{64}([^0-9a-f]|$))'
 
 # Filter out non-secret hex64 contexts (checksums, digests, archive sha256s).
-STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' | grep -viE 'sha256|sha_256|checksum|digest|\.tar\.gz' || true)
+# The word-based filter below only catches hex64 that SAYS what it is, so one
+# generated file is excluded by path: seeded-skill-hashes.ts is a closed table
+# of bare sha256 content hashes, and its own docblock tells you to regenerate
+# it. Excluding one known-generated path is narrower than loosening the pattern
+# for every file.
+STAGED=$(git diff --staged --unified=0 \
+    -- . ':(exclude)packages/lib/src/control-plane/seeded-skill-hashes.ts' \
+  | grep '^+' | grep -v '^+++' | grep -viE 'sha256|sha_256|checksum|digest|\.tar\.gz' || true)
 
 if [ -z "$STAGED" ]; then
   exit 0
