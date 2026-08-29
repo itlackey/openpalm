@@ -44,4 +44,3 @@ Notes:
 
 - `test-tier.sh` - tiers 1-5, from type checks through isolated stack integration
 - `dev-e2e-test.sh` - isolated current-layout stack smoke and Playwright flow
-- `install-hooks.sh` - git hook setup
