@@ -1,6 +1,6 @@
 # OP_HOME — Accepted Changes
 
-**Date:** 2026-08-08 · **Status:** approved, not implemented
+**Date:** 2026-08-08 · **Status:** implemented in 0.13.0
 **Evidence:** [`op-home-structure-issues-and-lessons.md`](op-home-structure-issues-and-lessons.md) (labels below refer to its catalog)
 
 ## The rule

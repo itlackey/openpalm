@@ -220,6 +220,48 @@ describe("retired skeleton files are removed from an upgraded home", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test("reports the files it actually deleted, not the candidate list", () => {
+    // This migration deletes without any modification check — unlike the skills
+    // sweep, it never asks whether the operator edited the file first. Its log
+    // line is therefore the ONLY record that something of theirs is gone, so it
+    // has to name what it removed. It used to log the static five-path array on
+    // every run, which told a operator who had customised
+    // config/assistant/opencode.jsonc nothing about whether theirs was among
+    // the four it skipped.
+    const home = mkdtempSync(join(tmpdir(), "op-retired-log-"));
+    const warnings: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      // Exactly ONE of the five retired paths is present.
+      mkdirSync(join(home, "knowledge/tasks"), { recursive: true });
+      writeFileSync(join(home, "knowledge/tasks/health-check.yml"), "x\n");
+      mkdirSync(join(home, "state"), { recursive: true });
+      writeFileSync(join(home, "state", "stack.env"), "OP_SETUP_COMPLETE=true\n");
+
+      runHomeMigrations(home);
+
+      const line = warnings.find((w) => w.includes("Removed retired skeleton files"));
+      expect(line, "migration did not log a removal line").toBeTruthy();
+      const serialized = String(line);
+      expect(serialized).toContain("health-check.yml");
+      // The four that were never there must NOT be claimed as removed.
+      for (const absent of [
+        "config/assistant/opencode.jsonc",
+        "config/guardian/opencode.jsonc",
+        "update-containers.yml",
+        "validate-config.yml",
+      ]) {
+        expect(serialized).not.toContain(absent);
+      }
+    } finally {
+      console.error = originalError;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('v7 → v8: the removed chat addon', () => {

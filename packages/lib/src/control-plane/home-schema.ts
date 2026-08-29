@@ -161,20 +161,29 @@ function migrateRetiredSkeletonFiles(homeDir: string): boolean {
     "knowledge/tasks/update-containers.yml",
     "knowledge/tasks/validate-config.yml",
   ];
-  let removed = false;
+  // Log what was ACTUALLY deleted, not the candidate list. This migration is
+  // the one removal in the chain with no modification check — unlike the skills
+  // sweep it never compares a file against what the release shipped — so this
+  // line is the only record an operator gets of work that is now gone. Logging
+  // the static array named all five every time, including the four it skipped,
+  // which told someone who had customised `config/assistant/opencode.jsonc`
+  // nothing about whether theirs was among them.
+  const removed: string[] = [];
   for (const rel of retired) {
     const path = join(homeDir, rel);
     if (!existsSync(path)) continue;
     try {
       rmSync(path);
-      removed = true;
+      removed.push(rel);
     } catch {
       // Best-effort: a home we cannot clean is not a home we should refuse to
       // start. The stale file is inert config, not a blocker.
     }
   }
-  if (removed) logger.warn("Removed retired skeleton files from OP_HOME", { retired });
-  return removed;
+  if (removed.length > 0) {
+    logger.warn("Removed retired skeleton files from OP_HOME", { removed });
+  }
+  return removed.length > 0;
 }
 
 const SECRETS_DIR_MODE = 0o700;
