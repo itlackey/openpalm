@@ -18,6 +18,39 @@ export function isLoopback(value: string): boolean {
   return v === "127.0.0.1" || v === "localhost" || v === "::1";
 }
 
+/** Wildcard binds — these already answer on loopback as well as everything else. */
+function isWildcardBind(value: string): boolean {
+  const v = value.trim();
+  return v === "0.0.0.0" || v === "::" || v === "";
+}
+
+/**
+ * Does the workspace port need its own loopback publish?
+ *
+ * `core.compose.yml` publishes OpenCode's web UI on the UI's own interface,
+ * `${OP_UI_BIND_ADDRESS:-127.0.0.1}:3820`. Loopback and the wildcard both
+ * already answer 127.0.0.1. A CONCRETE address does not — so on a host bound
+ * to, say, 192.168.0.201, nothing listens on 127.0.0.1:3820 and the desktop
+ * window (whose page is on localhost) frames a dead address. LAN browsers are
+ * unaffected; only the local operator loses the workspace, on their own
+ * machine.
+ *
+ * True here means `workspace.compose.loopback.yml` is added to the compose
+ * file list, publishing the port a second time on 127.0.0.1. The rule, stated
+ * once: the configured bind address ADDS interfaces, it never subtracts
+ * loopback.
+ *
+ * The workspace cannot simply be advertised at the LAN address instead — it is
+ * authenticated by the session cookie, and cookies are scoped by host, not
+ * port, so it must be fronted on the same hostname as the page framing it
+ * (routes/(app)/advanced/embeddable.ts).
+ */
+export function needsWorkspaceLoopbackPublish(uiBindAddress: string | undefined): boolean {
+  const v = (uiBindAddress ?? "").trim();
+  if (v === "") return false;
+  return !isLoopback(v) && !isWildcardBind(v);
+}
+
 /**
  * What counts as "on" for a binary opt-in flag in stack.env or the process env.
  *

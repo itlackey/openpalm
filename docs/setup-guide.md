@@ -91,12 +91,16 @@ The installed stack has three ownership layers:
 
 - Managed Compose files in `~/.openpalm/system/stack/`. `core.compose.yml`,
   `services.compose.yml`, and `portals.compose.yml` are the three every deploy
-  uses. The directory also ships three conditional voice overlays that are
-  not part of every deploy: `voice.compose.lan.yml` (applied when
-  `OP_VOICE_LAN_ACCESS=true`), and `voice.compose.rootless.yml` /
+  uses. The directory also ships five conditional overlays that are not part of
+  every deploy: `voice.compose.lan.yml` (applied when
+  `OP_VOICE_LAN_ACCESS=true`), `voice.compose.rootless.yml` /
   `voice.compose.cdi.yml` (hardware fallbacks the voice bring-up flow selects
-  automatically for rootless Docker or CDI-only NVIDIA hosts) — six managed
-  files ship in total, not three.
+  automatically for rootless Docker or CDI-only NVIDIA hosts),
+  `guardian.compose.api.yml` (the OpenAI-compatible edge's only host publish,
+  applied when `guardianOpenaiApi` or the `api` addon is on), and
+  `workspace.compose.loopback.yml` (applied when `OP_UI_BIND_ADDRESS` is a
+  concrete address, so OpenCode's web UI still answers on `127.0.0.1`) — eight
+  managed files ship in total, not three.
 - User overlay: `~/.openpalm/config/stack/custom.compose.yml`
 - App-owned runtime record and sole Compose env file:
   `~/.openpalm/state/stack.env`

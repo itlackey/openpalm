@@ -149,6 +149,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **OpenCode's web UI stays reachable on `127.0.0.1` when the UI is bound to a
+  concrete address.** `core.compose.yml` publishes the workspace on the UI's own
+  interface, which covers loopback for the default (`127.0.0.1`) and the
+  wildcard (`0.0.0.0`) but not for a specific one: set `OP_UI_BIND_ADDRESS` to a
+  LAN IP and nothing answered `127.0.0.1:3820`, so the desktop window — whose
+  page is on `localhost` — framed a dead address and showed its not-reachable
+  notice, while LAN browsers were fine. Only the local operator lost the
+  workspace, on their own machine.
+
+  A new conditional overlay, `workspace.compose.loopback.yml`, publishes the
+  port a second time on loopback, and `discoverStackOverlays` applies it exactly
+  when the bind is concrete. The rule it encodes: the configured bind address
+  ADDS interfaces, it never subtracts loopback. The LAN publish is untouched,
+  because the workspace is authenticated by the session cookie and cookies are
+  scoped by host rather than port — it has to stay fronted on the same hostname
+  as the page framing it. Docker remains the single owner of the port; the host
+  UI process binding it as well is what collided in the first place.
+
 - **The desktop app applies the release's shipped assets, config included.** It
   called `applyHomeSeed` directly, so every launch refreshed the managed
   `system/` tree while skipping the akm-config heals that hang off `applyHome` —

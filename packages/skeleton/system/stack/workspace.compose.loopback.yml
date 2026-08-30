@@ -1,0 +1,43 @@
+# Workspace loopback overlay — keeps OpenCode's web UI reachable at
+# 127.0.0.1 when the UI is bound to a concrete LAN address.
+#
+# Included only when OP_UI_BIND_ADDRESS is a concrete, non-loopback,
+# non-wildcard address, checked by discoverStackOverlays
+# (packages/lib/src/control-plane/config-persistence.ts) via
+# needsWorkspaceLoopbackPublish (packages/lib/src/control-plane/
+# bind-warning.ts). Same double-gate as every other conditional overlay
+# here: the condition must hold AND the file must actually be seeded.
+#
+# ── The bug this closes ────────────────────────────────────────────────
+# core.compose.yml publishes the workspace on the UI's own interface:
+#
+#   "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_WORKSPACE_PORT:-3820}:..."
+#
+# With the default (127.0.0.1) or the wildcard (0.0.0.0) that already
+# covers loopback. With a CONCRETE address — say 192.168.0.201 — it does
+# not: nothing answers 127.0.0.1:3820, and the desktop window, whose page
+# is on localhost, frames a dead address and shows its not-reachable
+# notice. The LAN address keeps working; only the local operator loses the
+# workspace, on their own machine.
+#
+# ── Why a second publish rather than moving the first ──────────────────
+# The workspace must be fronted on the SAME hostname as the UI, because
+# the session cookie authenticates it and cookies are scoped by host, not
+# port (see routes/(app)/advanced/embeddable.ts). So the LAN publish has
+# to stay exactly as it is for LAN browsers; loopback is an ADDITION for
+# the local one. The rule this encodes, in one line: the configured bind
+# address adds interfaces, it never subtracts loopback.
+#
+# ── Why not have the host UI process bind it instead ───────────────────
+# It used to, unconditionally, and that is what collided: the container
+# publishes 3820 too, so on a desktop install both claimed it and the
+# assistant could not start (EADDRINUSE). Docker stays the single owner of
+# this port in every configuration. A second publish is free; a second
+# *server* is the bug we removed.
+#
+# Compose merges `ports` by appending, and the two entries here differ in
+# host IP, so this adds a mapping rather than replacing one.
+services:
+  assistant:
+    ports:
+      - "127.0.0.1:${OP_WORKSPACE_PORT:-3820}:${OP_WORKSPACE_PORT:-3820}"

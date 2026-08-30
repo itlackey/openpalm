@@ -22,6 +22,7 @@ import {
 } from './access-toggles.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { writeSecret } from './secrets-files.js';
+import { needsWorkspaceLoopbackPublish } from './bind-warning.js';
 import { isVoiceLanAccessEnabled } from './voice-host-probes.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
@@ -544,6 +545,19 @@ export function discoverStackOverlays(homeDir: string): string[] {
   if (isOpenaiEdgePublished(homeDir)) {
     const apiPublish = composeFilePath(homeDir, 'guardian.compose.api.yml');
     if (existsSync(apiPublish)) files.push(apiPublish);
+  }
+
+  // Workspace loopback publish: only when OP_UI_BIND_ADDRESS is a CONCRETE
+  // address. core.compose.yml publishes the workspace on the UI's own
+  // interface, which covers 127.0.0.1 for the default and the wildcard but not
+  // for a specific LAN IP — leaving the desktop window, whose page is on
+  // localhost, framing an address nothing answers. Same double-gate and the
+  // same shared-file-list reasoning as the two overlays above: the port has to
+  // be published identically by every compose invocation, or a plain
+  // `openpalm start` would recreate the assistant without it.
+  if (needsWorkspaceLoopbackPublish(parseEnvFile(stackEnvFile(homeDir)).OP_UI_BIND_ADDRESS)) {
+    const workspaceLoopback = composeFilePath(homeDir, 'workspace.compose.loopback.yml');
+    if (existsSync(workspaceLoopback)) files.push(workspaceLoopback);
   }
 
   // User custom overlay lives in the config/ tree (not system/stack).
