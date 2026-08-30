@@ -299,6 +299,7 @@ export {
   hostAkmConfigPath,
   importHostAkmConfig,
   ensureSystemBundle,
+  reconcileDuplicateBundles,
   stripRetiredAkmConfigKeys,
 } from "./control-plane/akm-sources.js";
 export type { HostAkmConfigStatus } from "./control-plane/akm-sources.js";

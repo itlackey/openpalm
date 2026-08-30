@@ -14,10 +14,17 @@
  * `profiles.*` + `defaults.llm`/`defaults.agent` keys.
  *
  * Invariants (enforced + unit-tested):
- *  - Only ever upserts a NAMED bundle entry (idempotent upsert by id).
+ *  - Only ever upserts a NAMED bundle entry (idempotent upsert by id), except
+ *    `reconcileDuplicateBundles`, which also REMOVES entries that duplicate the
+ *    primary's directory.
  *  - NEVER makes `host-akm` the default: `defaultBundle` is only ever pinned
  *    to the primary openpalm bundle (and only when unset, mirroring
- *    persistAkmConfig). NEVER sets `defaultWriteTarget`.
+ *    persistAkmConfig). NEVER sets `defaultWriteTarget` — with ONE narrow
+ *    exception: `reconcileDuplicateBundles` repoints either key at
+ *    PRIMARY_BUNDLE_ID when it names an entry that sweep is removing, because
+ *    the alternative is a config naming a bundle that no longer exists. See
+ *    assertDefaultsOnlyRepointedToPrimary. Every other writer keeps the
+ *    unconditional guard (assertNoDefaultEscalation).
  *  - Every write is a loadable akm 0.9.0 config: configVersion stamped,
  *    retired 0.8 keys stripped, primary /stash bundle and the read-only
  *    /system-stash bundle present.
@@ -27,6 +34,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { join as joinPosix, normalize as normalizePosix } from "node:path/posix";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { PRIMARY_BUNDLE_ID, SYSTEM_BUNDLE_ID, stripRetiredAkmKeys } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
@@ -191,6 +199,241 @@ export function ensureSystemBundle(state: ControlPlaneState): boolean {
   }
   const updated = upsertBundle(config, SYSTEM_BUNDLE_ID, SYSTEM_BUNDLE);
   assertNoDefaultEscalation(updated, config);
+  writeFileAtomic(configPath, `${JSON.stringify(updated, null, 2)}\n`, 0o600);
+  return true;
+}
+
+/**
+ * The `root` of a bundle entry's single component, `"."` when it declares none,
+ * or null when the entry's `components` map is not one akm would accept.
+ *
+ * akm requires EXACTLY one component per bundle (`bundleComponentConfig`
+ * refuses the whole config otherwise), so anything else is a config the pinned
+ * CLI will not load — resolving a content root out of it would be guesswork.
+ */
+function bundleComponentRoot(entry: Record<string, unknown>): string | null {
+  const components = entry.components;
+  if (components === undefined) return ".";
+  if (!components || typeof components !== "object" || Array.isArray(components)) return null;
+  const values = Object.values(components as Record<string, unknown>);
+  if (values.length !== 1) return null;
+  const component = values[0];
+  if (!component || typeof component !== "object" || Array.isArray(component)) return null;
+  const root = (component as Record<string, unknown>).root;
+  if (root === undefined) return ".";
+  if (typeof root !== "string" || root.trim() === "") return null;
+  return root.trim();
+}
+
+/**
+ * The directory a bundle entry actually contributes, compared the way a
+ * duplicate-detector must: lexically normalized, with `.`/`..` segments,
+ * duplicate separators and trailing slashes collapsed, so `/stash`, `/stash/`,
+ * `/stash//` and `/stash/./` are one directory.
+ *
+ * It is the entry's `path` JOINED WITH ITS COMPONENT ROOT, not the bare `path`.
+ * That is what akm enumerates: both `taskRoots` (the migration that fails) and
+ * `primaryBundlePath` resolve a bundle's content root as
+ * `resolve(entry.path, component.root ?? ".")`. Two entries can share
+ * `path: "/stash"` and still be genuinely different roots — one at `/stash` and
+ * one at `/stash/docs` — and those are NOT the collision that blocks the
+ * migration. Comparing the bare `path` would delete the second one.
+ *
+ * POSIX semantics deliberately, on every host. These are CONTAINER mount points
+ * (/stash, /system-stash, /host-stash) written into a config the container
+ * consumes; this control-plane code runs on the HOST, which may be Windows,
+ * where `node:path`'s platform-dependent normalize turns "/stash/" into
+ * "\stash\" and leaves the trailing separator our strip does not match — so the
+ * tolerant spellings above would silently stop collapsing there.
+ *
+ * We also deliberately do NOT resolve symlinks: on the host those container
+ * paths do not exist at all, so a realpath() would either throw or hand back
+ * the input unchanged — a symlink check that cannot run on the machine doing
+ * the checking. A lexical comparison always runs, and it is the comparison that
+ * matches the failure being fixed: the duplicate akm synthesizes for
+ * AKM_BUNDLE_DIR is the same string as the primary's path.
+ *
+ * Returns null for anything that is not a usable path, so a malformed entry is
+ * never treated as a duplicate of anything.
+ */
+function normalizeBundlePath(entry: Record<string, unknown>): string | null {
+  const value = entry.path;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const root = bundleComponentRoot(entry);
+  if (root === null) return null;
+  const normalized = normalizePosix(root === "." ? trimmed : joinPosix(trimmed, root));
+  // normalize() keeps a trailing separator ("/stash/./" → "/stash/"); drop it,
+  // but never turn root itself into the empty string.
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+}
+
+/**
+ * The NARROW exception to {@link assertNoDefaultEscalation}, for the one writer
+ * that has to be allowed to move the default.
+ *
+ * `reconcileDuplicateBundles` removes bundle entries by id, and on the shape
+ * this exists to fix, `defaultBundle` NAMES one of the entries being removed
+ * ("stash"). Leaving it pointing at an id that no longer exists would be
+ * strictly worse than the duplicate we came to clean up, so the default must
+ * move with it.
+ *
+ * Being honest about why this is not the escalation the guard exists to stop:
+ * the removed entry and PRIMARY_BUNDLE_ID point at the SAME directory (that is
+ * the entire criterion for removing it), so repointing changes only which id
+ * names the default — not which directory an untargeted write lands in. Any
+ * other movement of these two keys still throws, and the other writers keep the
+ * unconditional guard.
+ */
+function assertDefaultsOnlyRepointedToPrimary(
+  config: AkmConfigObject,
+  before: AkmConfigObject,
+  removedIds: readonly string[],
+): void {
+  for (const key of ["defaultBundle", "defaultWriteTarget"] as const) {
+    const from = before[key];
+    const to = config[key];
+    if (to === from) continue;
+    if (typeof from === "string" && removedIds.includes(from) && to === PRIMARY_BUNDLE_ID) continue;
+    throw new Error(`akm-sources: refusing to change ${key}.`);
+  }
+}
+
+/**
+ * Remove any OTHER bundle entry that points at the SAME directory as the
+ * primary bundle, keeping PRIMARY_BUNDLE_ID. Returns whether the file changed.
+ *
+ * The failure: akm synthesizes a bundle for AKM_BUNDLE_DIR when no configured
+ * bundle matches that path, and names it `stash`. Once that entry is persisted
+ * next to OpenPalm's own `openpalm` entry — same /stash directory, two ids —
+ * every durable-state migration enumerates each task file under /stash twice
+ * and refuses to run:
+ *
+ *   {"ok": false, "error": "duplicate task migration file path: /stash/tasks/akm-improve.yml"}
+ *
+ * The entrypoint catches the exit 70 and boots anyway ("akm commands may fail
+ * until it succeeds"), so the stack looks healthy while akm's migration is
+ * permanently blocked — it fails identically on every subsequent boot, and
+ * nothing surfaces it. Swept on the lifecycle pass, beside the retired-key
+ * strip and the system-bundle upsert, for the same "an install heals itself"
+ * reason: this file is written once at setup/install and then left alone by
+ * OpenPalm, so a config that drifts has nothing else that would heal it.
+ *
+ * Two things DO rewrite it after install, and neither heals this: akm itself,
+ * which persists the synthesized `stash` entry (that is the bug's own
+ * mechanism, and why `openpalm-system` carries a `components.main.adapter`
+ * block no OpenPalm writer emits), and the AKM settings PATCH route, which
+ * pins the primary entry but preserves the rest of the map verbatim.
+ *
+ * REACH, honestly: this is not a chokepoint on the boot that actually fails.
+ * `applyHomeAssets` runs on install/update, on desktop launch, and on the CLI
+ * supervisor's non-stackless spawn — but NOT on a plain `openpalm start` /
+ * `restart`, which brings the stack up without writing OP_HOME assets by
+ * deliberate policy (cli-state.ts: "no self-healing on a plain command"). On a
+ * headless install the heal therefore lands on the next install/update or
+ * UI-supervisor spawn, not necessarily before the next failing boot. That is
+ * the same reach the two neighbouring sweeps already have.
+ *
+ * OpenPalm keeps its OWN id. Renaming the primary to `stash` would hand the
+ * bundle id akm happens to synthesize authority over the one tree a backup
+ * captures as user data; the duplicate is what goes.
+ *
+ * Deliberately narrow, like its neighbours: it removes entries whose CONTENT
+ * ROOT collides with the primary's, folds any field they carried and the
+ * primary lacks onto the primary, and repoints only a default that named one
+ * of them. It touches no other entry and no other key, and it is a no-op (no
+ * write, returns false) when there is no duplicate — this runs on every
+ * lifecycle pass against a file the operator owns.
+ */
+export function reconcileDuplicateBundles(state: ControlPlaneState): boolean {
+  const configPath = openpalmConfigPath(state);
+  if (!existsSync(configPath)) return false;
+  let config: AkmConfigObject;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(configPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    config = parsed as AkmConfigObject;
+  } catch {
+    // Unparseable: leave it alone, same as its neighbours. akm reports the parse
+    // error clearly on its own and rewriting would destroy the operator's file.
+    return false;
+  }
+  const bundles =
+    config.bundles && typeof config.bundles === "object" && !Array.isArray(config.bundles)
+      ? (config.bundles as Record<string, unknown>)
+      : {};
+  const primaryEntry = bundles[PRIMARY_BUNDLE_ID];
+  const primary =
+    primaryEntry && typeof primaryEntry === "object" && !Array.isArray(primaryEntry)
+      ? (primaryEntry as Record<string, unknown>)
+      : null;
+  // No primary entry (or no usable content root on it) — there is nothing to be
+  // a duplicate OF, and creating it belongs to install, not to this sweep.
+  // `enabled: false` counts as "nothing to be a duplicate of" for the same
+  // reason it does below: akm never enumerates a disabled bundle, so no other
+  // entry can be a second enumeration of this one.
+  if (!primary || primary.enabled === false) return false;
+  const primaryPath = normalizeBundlePath(primary);
+  if (!primaryPath) return false;
+
+  // Compare the ENTRIES, not the file bytes: this shares the file with
+  // stripRetiredKeysAt and ensureSystemBundle, and a byte comparison would make
+  // them rewrite past each other on every lifecycle pass.
+  const duplicates = Object.keys(bundles).filter((id) => {
+    if (id === PRIMARY_BUNDLE_ID) return false;
+    const entry = bundles[id];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    // A disabled bundle cannot be causing this: taskRoots opens with
+    // `if (bundle.enabled === false) continue`, so it never contributes the
+    // second enumeration of /stash/tasks/*.yml that blocks the migration. akm
+    // documents the flag as opting a bundle out "without deleting it" — an
+    // operator asked to keep-but-park it, and this sweep is not the thing that
+    // overrules that.
+    if ((entry as Record<string, unknown>).enabled === false) return false;
+    return normalizeBundlePath(entry as Record<string, unknown>) === primaryPath;
+  });
+  if (duplicates.length === 0) return false;
+
+  // Carry the removed entries' configuration onto the survivor instead of
+  // dropping it. On the live shape the `stash` entry holds
+  // `components: {main: {adapter: "akm"}}` and `openpalm` holds none, so a bare
+  // delete would take /stash from a DECLARED adapter to auto-detection — and
+  // akm probes websiteSnapshot/agentSkills/claude/opencode/dotenv/akmWorkflow/
+  // akmTask/llmWiki all AHEAD of `akm`, while taskRoots skips any root whose
+  // adapter is not `akm`/`akm-task`. Detection happens to still land on `akm`
+  // today, so a bare delete would trade a loud failure for a silent skip the
+  // first time the stash grew a `<dir>/SKILL.md` package. `registryId` would go
+  // the same way. Only fields the primary does NOT already have are adopted,
+  // and never the three OpenPalm owns on this entry (`path`, `writable`,
+  // `enabled`) — a duplicate must not be able to flip the primary's routing.
+  const nextBundles = { ...bundles };
+  const survivor: Record<string, unknown> = { ...primary };
+  for (const id of duplicates) {
+    for (const [key, value] of Object.entries(bundles[id] as Record<string, unknown>)) {
+      if (key === "path" || key === "writable" || key === "enabled") continue;
+      if (key in survivor) continue;
+      survivor[key] = value;
+      // `components` also carries the content ROOT, and the survivor keeps the
+      // PRIMARY's `path` — so a root that was written relative to a different
+      // spelling of the same directory (`{path: "/", root: "stash"}` beside
+      // `{path: "/stash"}`) would move the survivor off the very directory that
+      // made these two duplicates. Adopt only what leaves the root where it was.
+      if (normalizeBundlePath(survivor) !== primaryPath) delete survivor[key];
+    }
+    delete nextBundles[id];
+  }
+  nextBundles[PRIMARY_BUNDLE_ID] = survivor;
+  const updated: AkmConfigObject = { ...config, bundles: nextBundles };
+  // A default naming a bundle we just removed has to move to the primary — see
+  // assertDefaultsOnlyRepointedToPrimary for why that is not an escalation.
+  if (typeof config.defaultBundle === "string" && duplicates.includes(config.defaultBundle)) {
+    updated.defaultBundle = PRIMARY_BUNDLE_ID;
+  }
+  if (typeof config.defaultWriteTarget === "string" && duplicates.includes(config.defaultWriteTarget)) {
+    updated.defaultWriteTarget = PRIMARY_BUNDLE_ID;
+  }
+  assertDefaultsOnlyRepointedToPrimary(updated, config, duplicates);
   writeFileAtomic(configPath, `${JSON.stringify(updated, null, 2)}\n`, 0o600);
   return true;
 }

@@ -6,6 +6,7 @@ import {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
   ensureSystemBundle,
+  reconcileDuplicateBundles,
   stripRetiredAkmConfigKeys,
   importHostAkmConfig,
   detectHostAkmConfig,
@@ -166,6 +167,251 @@ describe("ensureSystemBundle (upgrade heals a config written before system/skill
   it("leaves an absent config absent — install owns creation, not this sweep", () => {
     expect(ensureSystemBundle(state)).toBe(false);
     expect(existsSync(opConfigPath)).toBe(false);
+  });
+});
+
+describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migration)", () => {
+  /** The shape observed on a real running instance, verbatim. */
+  const liveShape = () => ({
+    configVersion: "0.9.0",
+    engines: { default: { kind: "llm" } },
+    bundles: {
+      stash: { path: "/stash", writable: true, components: { main: { adapter: "akm" } } },
+      "host-stash": { path: "/host-stash", registryId: "/host-stash" },
+      "openpalm-system": { path: "/system-stash", writable: false, enabled: true },
+      openpalm: { path: "/stash", writable: true },
+    },
+    defaultBundle: "stash",
+  });
+
+  it("collapses the live shape to a single openpalm bundle and moves the default with it", () => {
+    // Without this, `akm migrate apply` exits 70 on EVERY boot with
+    // `duplicate task migration file path: /stash/tasks/akm-improve.yml`.
+    writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
+    expect(Object.keys(bundles).sort()).toEqual(["host-stash", "openpalm", "openpalm-system"]);
+    // The removed entry's DECLARED adapter comes with it. Dropping it would put
+    // /stash back on auto-detection, and akm probes eight other adapters ahead
+    // of `akm` while taskRoots skips any root that is not `akm`/`akm-task` — a
+    // loud failure traded for a silent skip.
+    expect(bundles.openpalm).toEqual({
+      path: "/stash",
+      writable: true,
+      components: { main: { adapter: "akm" } },
+    });
+    // The default named the entry we removed — leaving it would name a bundle
+    // that no longer exists, strictly worse than the duplicate.
+    expect(cfg.defaultBundle).toBe("openpalm");
+    // Everything else is untouched.
+    expect(cfg.engines).toEqual({ default: { kind: "llm" } });
+    expect(cfg.configVersion).toBe("0.9.0");
+  });
+
+  it("never removes the host or system bundles — different directories", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        stash: { path: "/stash", writable: true },
+        [HOST_SOURCE_NAME]: { path: "/host-stash", writable: true, enabled: true },
+        "openpalm-system": { path: "/system-stash", writable: false, enabled: true },
+      },
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+
+    const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm", "openpalm-system"]);
+    expect(bundles[HOST_SOURCE_NAME]).toEqual({ path: "/host-stash", writable: true, enabled: true });
+    expect(bundles["openpalm-system"]).toEqual({ path: "/system-stash", writable: false, enabled: true });
+  });
+
+  it("keeps a bundle whose COMPONENT ROOT makes it a different directory", () => {
+    // akm resolves a bundle's content root as resolve(path, component.root ?? ".")
+    // — both taskRoots and primaryBundlePath. `path: "/stash"` + root "docs" is
+    // /stash/docs: a genuinely different root, never the collision that blocks
+    // the migration. Comparing the bare `path` would delete it.
+    const raw = `${JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        docs: { path: "/stash", components: { docs: { root: "docs" } } },
+      },
+    }, null, 2)}\n`;
+    writeFileSync(opConfigPath, raw);
+
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
+  });
+
+  it("still collapses two entries whose component roots resolve to the same directory", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true, components: { main: { root: "docs" } } },
+        stash: { path: "/stash/docs", writable: true },
+      },
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(Object.keys(readJson(opConfigPath).bundles as Record<string, unknown>)).toEqual(["openpalm"]);
+  });
+
+  it("leaves a bundle an operator parked with `enabled: false` alone", () => {
+    // taskRoots opens with `if (bundle.enabled === false) continue`, so a
+    // disabled bundle never contributes the second enumeration that causes the
+    // failure. akm documents the flag as opting out "without deleting it".
+    const raw = `${JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        archived: { path: "/stash", enabled: false, components: { m: { adapter: "akm-task" } } },
+      },
+    }, null, 2)}\n`;
+    writeFileSync(opConfigPath, raw);
+
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
+  });
+
+  it("does nothing when the PRIMARY itself is parked — akm enumerates neither", () => {
+    const raw = `${JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true, enabled: false },
+        stash: { path: "/stash", writable: true },
+      },
+    }, null, 2)}\n`;
+    writeFileSync(opConfigPath, raw);
+
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
+  });
+
+  it("never lets a removed duplicate flip the primary's path, writability or enablement", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        stash: { path: "/stash/", writable: false, registryId: "/stash" },
+      },
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
+    // registryId is adopted; `writable: false` is NOT.
+    expect(bundles.openpalm).toEqual({ path: "/stash", writable: true, registryId: "/stash" });
+  });
+
+  it("never adopts a component root that would move the survivor off its own directory", () => {
+    // Both resolve to /stash, so they ARE duplicates — but the removed entry's
+    // root is relative to "/", and the survivor keeps the primary's "/stash".
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        stash: { path: "/", writable: true, components: { m: { root: "stash" } }, registryId: "r" },
+      },
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
+    // registryId is adopted; the relocating components block is not.
+    expect(bundles.openpalm).toEqual({ path: "/stash", writable: true, registryId: "r" });
+  });
+
+  it("counts path spellings that differ only by trailing slash, `//` or `/./`", () => {
+    for (const spelling of ["/stash/", "/stash//", "/stash/./", "/stash/sub/../", "  /stash  "]) {
+      writeFileSync(opConfigPath, JSON.stringify({
+        bundles: { openpalm: { path: "/stash", writable: true }, stash: { path: spelling } },
+      }, null, 2));
+      expect(reconcileDuplicateBundles(state)).toBe(true);
+      const bundles = readJson(opConfigPath).bundles as Record<string, unknown>;
+      expect(Object.keys(bundles)).toEqual(["openpalm"]);
+    }
+  });
+
+  it("repoints defaultWriteTarget when it names a removed bundle", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: { openpalm: { path: "/stash", writable: true }, stash: { path: "/stash", writable: true } },
+      defaultBundle: "openpalm",
+      defaultWriteTarget: "stash",
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    expect(cfg.defaultBundle).toBe("openpalm");
+    expect(cfg.defaultWriteTarget).toBe("openpalm");
+  });
+
+  it("leaves a default that names a SURVIVING bundle exactly where it is", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        stash: { path: "/stash", writable: true },
+        [HOST_SOURCE_NAME]: { path: "/host-stash", writable: true },
+      },
+      defaultBundle: HOST_SOURCE_NAME,
+    }, null, 2));
+
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    // Not our business to "fix" — the guard only permits moving a default that
+    // named a bundle this sweep removed.
+    expect(readJson(opConfigPath).defaultBundle).toBe(HOST_SOURCE_NAME);
+  });
+
+  it("is a no-op returning false when no bundle duplicates the primary — byte-identical file", () => {
+    const raw = `${JSON.stringify({
+      configVersion: "0.9.0",
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        [HOST_SOURCE_NAME]: { path: "/host-stash", writable: true },
+        "openpalm-system": { path: "/system-stash", writable: false, enabled: true },
+      },
+      defaultBundle: "openpalm",
+    }, null, 2)}\n`;
+    writeFileSync(opConfigPath, raw);
+
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
+  });
+
+  it("is a no-op on a second run — no rewrite on every boot", () => {
+    writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    const after = readFileSync(opConfigPath, "utf-8");
+
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
+    // The neighbouring sweeps must not fight it back the other way — all three
+    // run on every lifecycle pass against this one file.
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(ensureSystemBundle(state)).toBe(false);
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
+  });
+
+  it("leaves an unparseable config alone rather than destroying it", () => {
+    writeFileSync(opConfigPath, "{ not json");
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe("{ not json");
+  });
+
+  it("does nothing when there is no primary bundle to be a duplicate of", () => {
+    const raw = `${JSON.stringify({ bundles: { stash: { path: "/stash" }, other: { path: "/stash" } } }, null, 2)}\n`;
+    writeFileSync(opConfigPath, raw);
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
+  });
+
+  it("is a no-op when there is no config yet", () => {
+    rmSync(opConfigPath, { force: true });
+    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(existsSync(opConfigPath)).toBe(false);
+  });
+
+  it("writes mode 0600", () => {
+    writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
+    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(statSync(opConfigPath).mode & 0o777).toBe(0o600);
   });
 });
 

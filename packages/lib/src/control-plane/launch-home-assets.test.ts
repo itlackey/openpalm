@@ -30,12 +30,12 @@ afterEach(() => {
 });
 
 /** A home mid-upgrade: managed tree from the previous release, real config. */
-function upgradedHome(bundles: Record<string, unknown>): string {
+function upgradedHome(bundles: Record<string, unknown>, defaultBundle = "openpalm"): string {
   const homeDir = mkdtempSync(join(tmpdir(), "openpalm-launch-assets-"));
   mkdirSync(join(homeDir, "config", "akm"), { recursive: true });
   writeFileSync(
     join(homeDir, "config", "akm", "config.json"),
-    `${JSON.stringify({ configVersion: "0.9.0", bundles, defaultBundle: "openpalm" }, null, 2)}\n`,
+    `${JSON.stringify({ configVersion: "0.9.0", bundles, defaultBundle }, null, 2)}\n`,
   );
   return homeDir;
 }
@@ -64,6 +64,45 @@ describe("applyHomeAssets (what a launch, not an install, applies)", () => {
       expect(cfg.bundles.openpalm).toEqual({ path: "/stash", writable: true, enabled: true });
       expect(cfg.bundles["host-akm"]).toEqual({ path: "/host-stash", writable: true, enabled: true });
       expect(cfg.defaultBundle).toBe("openpalm");
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test("collapses the two bundle ids pointing at /stash that block akm's migration", async () => {
+    // Verbatim from the real running instance: akm synthesized a `stash` bundle
+    // for AKM_BUNDLE_DIR beside OpenPalm's own `openpalm`, and made it the
+    // default. `akm migrate apply` then exits 70 on every boot with
+    // `duplicate task migration file path: /stash/tasks/akm-improve.yml`.
+    const homeDir = upgradedHome(
+      {
+        stash: { path: "/stash", writable: true, components: { main: { adapter: "akm" } } },
+        "host-akm": { path: "/host-stash", writable: true, enabled: true },
+        "openpalm-system": { path: "/system-stash", writable: false, enabled: true },
+        openpalm: { path: "/stash", writable: true },
+      },
+      "stash",
+    );
+    process.env.OP_HOME = homeDir;
+    try {
+      await applyHomeAssets(createState());
+
+      const cfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
+      expect(Object.keys(cfg.bundles).sort()).toEqual(["host-akm", "openpalm", "openpalm-system"]);
+      // The declared adapter moves onto the survivor rather than being dropped:
+      // taskRoots skips any root whose adapter is not `akm`/`akm-task`, so
+      // losing it would trade the loud failure for a silent skip.
+      expect(cfg.bundles.openpalm).toEqual({
+        path: "/stash",
+        writable: true,
+        components: { main: { adapter: "akm" } },
+      });
+      // The default named the removed id; it has to move with it, or the config
+      // names a bundle that no longer exists.
+      expect(cfg.defaultBundle).toBe("openpalm");
+      // The other mounts are different directories and survive the sweep.
+      expect(cfg.bundles["host-akm"]).toEqual({ path: "/host-stash", writable: true, enabled: true });
+      expect(cfg.bundles["openpalm-system"]).toEqual({ path: "/system-stash", writable: false, enabled: true });
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }

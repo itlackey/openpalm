@@ -48,7 +48,7 @@ import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } fro
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
-import { ensureSystemBundle, stripRetiredAkmConfigKeys } from './akm-sources.js';
+import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -185,6 +185,12 @@ export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
 	// An upgrade can leave the assistant's akm config carrying keys the newer
 	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
 	stripRetiredAkmConfigKeys(state);
+	// Two bundle ids pointing at /stash make akm refuse every durable-state
+	// migration ("duplicate task migration file path"), silently, on every boot.
+	// Ordering among these three is presentational: each re-reads the config
+	// from disk and they share no state, so the end result is the same whichever
+	// runs first.
+	reconcileDuplicateBundles(state);
 	// Same "an upgraded install heals itself" sweep for the release-shipped
 	// skills bundle: only setup and install pin it, so without this an upgraded
 	// home gets the :ro /system-stash mount with nothing configured to read it.
