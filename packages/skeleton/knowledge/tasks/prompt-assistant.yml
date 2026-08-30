@@ -1,15 +1,15 @@
-version: 2
-schedule: '0 8 * * *'
-enabled: false
+version: 4
+name: prompt-assistant
 description: Example scheduled prompt sent to the OpenAI-compatible API
 tags:
   - openpalm
   - example
-timeoutMs: 60000
-command:
-  - sh
-  - -c
-  - >-
-    curl -fsS -X POST 'http://replace-me/v1/chat/completions' -H 'Content-Type:
-    application/json' -d
-    '{"model":"default","messages":[{"role":"user","content":"Good morning. Give me a brief summary of system health and any open tasks."}]}'
+timeout: 60000
+run: >-
+  curl -fsS -X POST 'http://replace-me/v1/chat/completions' -H 'Content-Type:
+  application/json' -d
+  '{"model":"default","messages":[{"role":"user","content":"Good morning. Give me a brief summary of system health and any open tasks."}]}'
+shell: sh
+schedule:
+  - cron: '0 8 * * *'
+    enabled: false

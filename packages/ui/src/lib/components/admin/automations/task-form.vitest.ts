@@ -195,13 +195,15 @@ describe('YAML round-trip preserves unknown keys', () => {
     expect(form.unknownKeys).toHaveProperty('another_custom', 42);
   });
 
-  test('known fields are NOT in unknownKeys', () => {
+  test('keys the form itself writes are NOT in unknownKeys', () => {
     const form = yamlToFormData('my-task.yml', rawYaml);
     expect(form.unknownKeys).not.toHaveProperty('schedule');
     expect(form.unknownKeys).not.toHaveProperty('command');
     expect(form.unknownKeys).not.toHaveProperty('enabled');
-    expect(form.unknownKeys).not.toHaveProperty('tags');
     expect(form.unknownKeys).not.toHaveProperty('timeoutMs');
+    // `tags` is a legal v4 top-level key the form does not edit, so it passes
+    // through rather than being consumed and dropped on save.
+    expect(form.unknownKeys).toHaveProperty('tags', ['maintenance']);
   });
 
   test('formDataToYaml re-emits unknown keys', () => {
@@ -223,7 +225,103 @@ describe('YAML round-trip preserves unknown keys', () => {
     expect(doc).toHaveProperty('my_custom_key', 'some value');
     expect(doc).toHaveProperty('another_custom', 42);
     expect(doc.description).toBe('Updated description');
-    expect(doc.enabled).toBe(false);
+    // v4 carries on/off on the schedule entry — there is no top-level
+    // `enabled:`, and re-attaching one makes akm reject the whole task set.
+    expect(doc.enabled).toBeUndefined();
+    expect(doc.schedule).toEqual([{ cron: '0 9 * * *', enabled: false }]);
+  });
+});
+
+// ── the grammar akm actually accepts ──────────────────────────────────────
+
+/**
+ * akm 0.9.4 validates the ENTIRE desired task set before it mutates the
+ * scheduler, so a file it cannot read stops cron registration for every task
+ * on the box. That makes the drawer's output shape load-bearing well beyond
+ * the one task being saved, and it is why these assert on exact keys.
+ */
+describe('task source v4 output', () => {
+  test('a new task declares version 4 — an absent version is a v4 parse failure', () => {
+    const form = newFormData();
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.version).toBe(4);
+    // The retired v2 spellings must not appear: neither is a v4 top-level key.
+    expect(doc).not.toHaveProperty('command');
+    expect(doc).not.toHaveProperty('enabled');
+  });
+
+  test('a command task writes run/shell, not an argv array', () => {
+    const form = newFormData();
+    form.commandShell = 'akm health';
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.run).toBe('akm health');
+    expect(doc.shell).toBe('sh');
+  });
+
+  test('a prompt task writes uses: akm/command with the body under with.content', () => {
+    const form = newFormData();
+    form.actionKind = 'prompt';
+    form.promptBody = 'Summarize my day';
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.uses).toBe('akm/command');
+    expect(doc.with).toEqual({ content: 'Summarize my day' });
+    expect(doc).not.toHaveProperty('prompt');
+  });
+
+  test('reading a v4 file back recovers its real payload, not the echo-hello default', () => {
+    const v4 = [
+      'version: 4',
+      'description: Consolidate memories',
+      'run: akm improve --skip-if-locked',
+      'shell: sh',
+      'timeout: 3600000',
+      'schedule:',
+      "  - cron: '0 3 * * *'",
+      '    enabled: false',
+    ].join('\n');
+
+    const form = yamlToFormData('akm-improve.yml', v4);
+    expect(form.actionKind).toBe('command');
+    expect(form.commandShell).toBe('akm improve --skip-if-locked');
+    expect(form.schedule).toBe('0 3 * * *');
+    expect(form.enabled).toBe(false);
+
+    // And saving it unchanged does not corrupt it.
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.run).toBe('akm improve --skip-if-locked');
+    expect(doc.timeout).toBe(3600000);
+    expect(doc.schedule).toEqual([{ cron: '0 3 * * *', enabled: false }]);
+  });
+
+  test('a v4 prompt file round-trips through uses/with', () => {
+    const v4 = [
+      'version: 4',
+      'uses: akm/command',
+      'with:',
+      '  content: Good morning',
+      "schedule: '0 8 * * *'",
+    ].join('\n');
+
+    const form = yamlToFormData('briefing.yml', v4);
+    expect(form.actionKind).toBe('prompt');
+    expect(form.promptBody).toBe('Good morning');
+    expect(form.enabled).toBe(true);
+
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.with).toEqual({ content: 'Good morning' });
+  });
+
+  test('editing a v2 file upgrades it to v4 and keeps its off state', () => {
+    const v2 = ['version: 2', "schedule: '0 9 * * *'", 'enabled: false', 'command: [sh, -c, echo hi]'].join('\n');
+
+    const form = yamlToFormData('legacy.yml', v2);
+    expect(form.commandShell).toBe('echo hi');
+    expect(form.enabled).toBe(false);
+
+    const doc = parseYaml(formDataToYaml(form)) as Record<string, unknown>;
+    expect(doc.version).toBe(4);
+    expect(doc.run).toBe('echo hi');
+    expect(doc.schedule).toEqual([{ cron: '0 9 * * *', enabled: false }]);
   });
 });
 

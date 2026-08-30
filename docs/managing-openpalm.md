@@ -126,40 +126,86 @@ Assistant automations are AKM YAML task files under
 `knowledge/tasks/`. The assistant entrypoint starts BusyBox `crond`, runs
 `akm task sync` at boot, and re-syncs every 60 seconds.
 
-Task files are strict version-2 YAML and must begin with `version: 2`. Task
-targets are limited to `command`, `prompt`, or `workflow`.
+Task files must begin with `version: 4` — akm task source v4, the one grammar
+akm reads natively. Get this wrong and you do not just break your own task:
+akm validates every file in `knowledge/tasks/` before it touches the scheduler,
+so a single file it cannot read stops cron registration for *all* of them.
+A file with no `version:` key at all fails the same way.
+
+A task names its work with either `run:` (a shell command) or `uses:` (an akm
+asset), and schedules it with `schedule:`.
 
 ### Prompt Task
 
+`uses: akm/command` sends `with.content` to the assistant.
+
 ```yaml
-version: 2
-schedule: "0 9 * * *"
-enabled: true
+version: 4
 description: Daily briefing
-prompt: Summarize my priorities for today.
+uses: akm/command
+with:
+  content: Summarize my priorities for today.
+schedule: "0 9 * * *"
 ```
 
 ### Command Task
 
+`run:` is a **shell string**, not an argv array, interpreted by the shell named
+in `shell:` (`sh` if omitted).
+
 ```yaml
-version: 2
-schedule: "0 4 * * 0"
-enabled: true
+version: 4
 description: Check the AKM store
-command: ["akm", "health"]
+run: akm health
+shell: sh
+schedule: "0 4 * * 0"
 ```
 
 ### Workflow Task
 
 ```yaml
-version: 2
-schedule: "0 8 * * 1"
-enabled: true
+version: 4
 description: Weekly review
-workflow: workflows/weekly-review
-params:
-  audience: owner
+uses: workflows/weekly-review
+schedule: "0 8 * * 1"
 ```
+
+`with:` is legal *only* on `uses: akm/command` — akm rejects it on any other
+target. A workflow, `commands/<name>`, or `scripts/<name>` target takes
+arguments through typed `inputs:` declared on the task and bound per schedule
+entry (`schedule[i].inputs`) instead.
+
+### Turning a task off
+
+v4 has no top-level `enabled:`. It is a key on a schedule entry, which means a
+task you want installed but not running uses the list form of `schedule:`:
+
+```yaml
+version: 4
+description: Weekly review
+uses: workflows/weekly-review
+schedule:
+  - cron: "0 8 * * 1"
+    enabled: false
+```
+
+`schedule:` may also be omitted entirely — the task is then installed and
+manual-only, runnable from the Automations tab but never on a timer.
+
+Other keys a task may carry: `name`, `description`, `when_to_use`, `tags`,
+`timeout` (milliseconds, or a duration string like `"20m"`), `env`, `engine`,
+`model`, `agent`, `inference`, `tools`, `inputs`, `output`, `redact`,
+`maxSteps`, `maxRetries`, and — with `run:` only — `shell` and
+`working-directory`. Anything outside that set is rejected, and some carry
+their own placement rules (`output:` only on a command target, `with:` only on
+`uses: akm/command`). `akm task sync` names the offending path and line.
+
+Upgrading from a pre-0.13.0 home: the four task files OpenPalm ships are
+rewritten to v4 for you, with your old copy kept alongside as
+`<name>.yml.pre-v4`. Tasks you wrote yourself are left exactly as they are —
+akm still reads `version: 2` and `version: 3` files by converting them in
+memory and warning, and `akm migrate apply` rewrites them permanently when it
+can.
 
 Task commands execute inside the assistant container. They cannot run host
 lifecycle commands such as `openpalm update`, `openpalm status`, or

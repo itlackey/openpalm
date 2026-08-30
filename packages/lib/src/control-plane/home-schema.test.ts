@@ -5,7 +5,15 @@
  * is mentioned somewhere.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -422,12 +430,105 @@ describe('schema 9 → 10: the OP_HOME layout change', () => {
   // The stash-skill dedup is NOT a migration: it needs the shipped tree to
   // compare against, so it runs from applyHomeSeed (see ui-assets.test.ts).
 
-  test('a home with none of the retired trees reports no change but still stamps 10', () => {
+  test('a home with none of the retired trees reports no change but is still stamped current', () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
     writeHomeSchemaVersion(homeDir, 9);
 
     expect(runHomeMigrations(homeDir)).toBe(false);
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+});
+
+// ── schema 10 → 11: the retired tasks the `since: 6` sweep can never reach ────
+
+describe('schema 10 → 11: the versionless retired task files', () => {
+  /**
+   * A home stamped 10 — every home upgraded during 0.13.0 development — still
+   * carrying the files the `since: 6` sweep would have taken, because
+   * `migration.since >= recorded` never lets that entry run here.
+   */
+  function seedV10Home(): void {
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
+    mkdirSync(join(homeDir, 'knowledge', 'tasks'), { recursive: true });
+    for (const name of ['health-check.yml', 'update-containers.yml', 'validate-config.yml']) {
+      // Byte-for-byte the shape the retired skeleton shipped: NO `version:` key,
+      // which is exactly what akm 0.9.4 refuses to parse.
+      writeFileSync(
+        join(homeDir, 'knowledge', 'tasks', name),
+        "schedule: '0 3 * * *'\nenabled: false\ntimeoutMs: 10000\ncommand:\n  - sh\n  - -c\n  - openpalm status\n",
+      );
+    }
+    mkdirSync(join(homeDir, 'config', 'assistant'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'assistant', 'opencode.jsonc'), '{"plugin":[]}\n');
+    writeHomeSchemaVersion(homeDir, 10);
+  }
+
+  const tasks = () => readdirSync(join(homeDir, 'knowledge', 'tasks')).sort();
+
+  test('the three versionless files go, and the home is stamped current', () => {
+    seedV10Home();
+    // A shipped task that akm still accepts must survive.
+    writeFileSync(join(homeDir, 'knowledge', 'tasks', 'akm-improve.yml'), 'version: 4\nname: improve\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(tasks()).toEqual(['akm-improve.yml']);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('the opencode.jsonc pair is deliberately NOT re-swept on a home stamped 10', () => {
+    // Only the task files break anything (they take down akm's whole scheduler
+    // sync). These two are stale, not broken, and they live in the tree the
+    // operator owns and edits — so this entry does not blind-delete there.
+    seedV10Home();
+
+    runHomeMigrations(homeDir);
+
+    expect(readFileSync(join(homeDir, 'config', 'assistant', 'opencode.jsonc'), 'utf8')).toBe(
+      '{"plugin":[]}\n',
+    );
+  });
+
+  test("an operator's own task file is untouched", () => {
+    seedV10Home();
+    writeFileSync(join(homeDir, 'knowledge', 'tasks', 'wiki-ingestion.yml'), 'version: 2\nname: wiki\n');
+
+    runHomeMigrations(homeDir);
+
+    expect(readFileSync(join(homeDir, 'knowledge', 'tasks', 'wiki-ingestion.yml'), 'utf8')).toBe(
+      'version: 2\nname: wiki\n',
+    );
+    expect(tasks()).toEqual(['wiki-ingestion.yml']);
+  });
+
+  test("an operator's own task AT one of the three retired names is deleted too", () => {
+    // Pinning the collision, not endorsing it: the sweep matches on filename
+    // with no modification check, so a task the operator wrote at one of these
+    // three names goes with the retired seed. Nothing on disk distinguishes
+    // the two, and leaving a versionless file behind stops cron for the whole
+    // box — so this is the deliberate trade, and the upgrade guide warns about
+    // it for beta homes as well as 0.12.x ones.
+    seedV10Home();
+    writeFileSync(join(homeDir, 'knowledge', 'tasks', 'health-check.yml'), 'version: 2\nname: mine\n');
+
+    runHomeMigrations(homeDir);
+
+    expect(tasks()).toEqual([]);
+  });
+
+  test('re-running removes nothing and reports no change', () => {
+    seedV10Home();
+    writeFileSync(join(homeDir, 'knowledge', 'tasks', 'wiki-ingestion.yml'), 'version: 2\nname: wiki\n');
+    runHomeMigrations(homeDir);
+    const afterFirst = tasks();
+
+    // The gate stops the second call outright.
+    expect(runHomeMigrations(homeDir)).toBe(false);
+    // And the sweep itself is a no-op when re-armed against an already-clean home.
+    writeHomeSchemaVersion(homeDir, 10);
+    expect(runHomeMigrations(homeDir)).toBe(false);
+    expect(tasks()).toEqual(afterFirst);
   });
 });

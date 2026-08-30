@@ -30,7 +30,7 @@ therefore returns `0`, and `runHomeMigrations` replays the entire chain — ever
 entry in `MIGRATIONS`, not just the newest one. Sections 2 and 3 exist because
 of that.
 
-**The bump to `HOME_SCHEMA_VERSION = 10` is one-way, and nothing enforces it.**
+**The bump to `HOME_SCHEMA_VERSION = 11` is one-way, and nothing enforces it.**
 There is no downgrade guard. `runHomeMigrations` does exactly one version check
 — `if (recorded >= HOME_SCHEMA_VERSION) return false` — and no other consumer of
 `readHomeSchemaVersion` enforces anything. Point a 0.12.x binary at a migrated
@@ -495,6 +495,30 @@ If you ran a 0.13.0 beta, add `private/secrets/` → `state/secrets/`,
 `knowledge/paperclip/{env,secrets}` — none of which apply to a released 0.12.x
 home, where `private/` and Paperclip both did not exist.
 
+Two more apply to a beta home specifically, and both concern
+`knowledge/tasks/`:
+
+- **`knowledge/tasks/{health-check,update-containers,validate-config}.yml` are
+  deleted from beta homes too.** Section 2 describes that sweep for 0.12.x
+  homes; a second pass now runs on homes already stamped 7 through 10, which
+  the first could never reach. Those files carry no `version:` key at all, and
+  one of them stops akm's scheduler sync for *every* task on the box, so they
+  cannot stay. There is still no modification check: if you created a task at
+  one of those three filenames through the Automations tab, it is deleted as
+  well. Rename it before upgrading, or copy it out with the rescue loop in
+  section 2.
+- **The four shipped task files are rewritten to akm task source v4.** Your
+  copies are frozen at the `version: 2` documents your first install seeded
+  (`knowledge/tasks/` is a `skipExisting` seed), and akm 0.9.4 cannot read
+  them. Each is renamed to `<name>.yml.pre-v4` and the current version is
+  seeded in its place, so nothing is lost and no edit of yours is deleted —
+  but any change you made to `akm-improve.yml`,
+  `assistant-daily-briefing.yml`, `prompt-assistant.yml`, or
+  `session-maintenance.yml` is in the `.pre-v4` file, not in the live one.
+  Re-apply it in the v4 grammar (see *Automations* in
+  `docs/managing-openpalm.md`) and delete the `.pre-v4` copy. Tasks you wrote
+  yourself are never touched.
+
 Credential moves are copy → read back → verify → delete, never the other way
 round, and a rerun is a clean no-op. Beyond that:
 
@@ -661,7 +685,7 @@ and restarting the `assistant` container.
 The migration leaves its evidence on disk. Check that first:
 
 ```bash
-cat "$OP_HOME/state/schema-version"          # 10
+cat "$OP_HOME/state/schema-version"          # 11
 ls "$OP_HOME/state/secrets"                  # the delegated credentials
 ls "$OP_HOME/knowledge/secrets"              # auth.json, plus anything you put here yourself
 ls "$OP_HOME/system/skills"                  # the shipped skills
@@ -887,7 +911,7 @@ very next command — including `openpalm stop`.
   `.skeleton-version` and the managed `system/` tree — and nothing else.
   Credentials do not move back. See section 8.
 - Hand-copying `state/secrets/` back into `knowledge/secrets/` leaves
-  `state/schema-version` at `10`, so nothing re-runs and the two trees drift from
+  `state/schema-version` at `11`, so nothing re-runs and the two trees drift from
   then on.
 
 Restore the whole archive, or stay on 0.13.0 and fix forward.

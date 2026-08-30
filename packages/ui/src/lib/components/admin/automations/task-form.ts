@@ -1,9 +1,19 @@
 /**
  * Schedule presets and YAML round-trip helpers for the task drawer form.
  *
+ * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.4
+ * accepts as its own. This matters more than it looks: akm validates the ENTIRE
+ * desired task set before it mutates the scheduler, so a single file it cannot
+ * parse stops cron registration for every task on the box, not just that one.
+ * A document with no `version:` routes into the v4 parser and fails there, so
+ * "just omit it" is not a neutral choice.
+ *
  * Round-trip contract: unknown YAML keys in a task file are preserved because
- * we parse the full YAML document, update only known fields, and re-stringify
- * the entire document (including unknown keys).
+ * we parse the full YAML document, update only the fields the form owns, and
+ * re-stringify the whole thing. CONSUMED_KEYS below is therefore exactly the
+ * keys the form writes plus the retired v2 spellings, which must be consumed
+ * rather than passed through — `enabled:` and `command:` are not v4 top-level
+ * keys, and re-attaching them to a v4 document makes akm reject the set.
  */
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
@@ -174,6 +184,48 @@ export interface TaskFormData {
   unknownKeys: Record<string, unknown>;
 }
 
+/**
+ * Keys `formDataToYaml` writes itself, plus the retired v2 spellings it must
+ * swallow. Everything else — `name`, `tags`, `env`, `agent`, `timeout`,
+ * `inputs`, … — is a legal v4 top-level key the form does not edit, so it
+ * passes through untouched.
+ */
+const CONSUMED_KEYS = new Set([
+  // written by formDataToYaml
+  'version', 'schedule', 'description', 'run', 'shell', 'uses', 'with',
+  // retired v2/v3 spellings: not v4 top-level keys, so they cannot survive
+  'enabled', 'timeoutMs', 'command', 'prompt', 'profile', 'workflow', 'params',
+  'on_failure', 'timezone',
+]);
+
+/** The cron and on/off state a v4 `schedule:` carries, in either of its forms. */
+function readSchedule(value: unknown): { cron: string; enabled: boolean } | null {
+  if (typeof value === 'string') {
+    return value.trim() ? { cron: value.trim(), enabled: true } : null;
+  }
+  if (!Array.isArray(value)) return null;
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const { cron, enabled } = entry as Record<string, unknown>;
+    if (typeof cron !== 'string' || !cron.trim()) continue;
+    return { cron: cron.trim(), enabled: enabled !== false };
+  }
+  return null;
+}
+
+/**
+ * A v2 `command:` back to the shell string it came from. Older versions of this
+ * form wrote `[sh, -c, <shell>]`, so unwrapping that exact shape is the inverse
+ * of what it stored rather than a guess; any other argv joins on spaces.
+ */
+function readLegacyCommand(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value) || value.length === 0) return 'echo hello';
+  const argv = value.map(String);
+  if (argv.length === 3 && argv[1] === '-c') return argv[2] ?? '';
+  return argv.join(' ');
+}
+
 /** Parse a task YAML string into form data, preserving unknown keys. */
 export function yamlToFormData(fileName: string, content: string): TaskFormData {
   let doc: Record<string, unknown> = {};
@@ -186,31 +238,37 @@ export function yamlToFormData(fileName: string, content: string): TaskFormData 
     // Silently fall through to defaults for unparseable YAML
   }
 
-  const knownKeys = new Set([
-    'schedule', 'enabled', 'description', 'tags', 'timeoutMs',
-    'command', 'prompt', 'profile', 'workflow', 'params',
-    'on_failure', 'timezone',
-  ]);
   const unknownKeys: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(doc)) {
-    if (!knownKeys.has(k)) unknownKeys[k] = v;
+    if (!CONSUMED_KEYS.has(k)) unknownKeys[k] = v;
   }
 
-  const schedule = typeof doc.schedule === 'string' ? doc.schedule.trim() : '0 9 * * *';
+  const binding = readSchedule(doc.schedule);
 
   let actionKind: 'command' | 'prompt' | 'workflow' = 'command';
   let commandShell = 'echo hello';
   let promptBody = '';
   let workflowRef = '';
 
-  if (doc.command !== undefined) {
+  if (typeof doc.run === 'string' && doc.run.trim()) {
     actionKind = 'command';
-    const cmd = Array.isArray(doc.command)
-      ? doc.command.map(String)
-      : typeof doc.command === 'string'
-        ? [doc.command]
-        : ['echo', 'hello'];
-    commandShell = cmd.join(' ');
+    commandShell = doc.run.trim();
+  } else if (typeof doc.uses === 'string' && doc.uses.trim()) {
+    const uses = doc.uses.trim();
+    const withBlock =
+      doc.with && typeof doc.with === 'object' && !Array.isArray(doc.with)
+        ? (doc.with as Record<string, unknown>)
+        : {};
+    if (uses === 'akm/command') {
+      actionKind = 'prompt';
+      promptBody = typeof withBlock.content === 'string' ? withBlock.content : '';
+    } else {
+      actionKind = 'workflow';
+      workflowRef = uses;
+    }
+  } else if (doc.command !== undefined) {
+    actionKind = 'command';
+    commandShell = readLegacyCommand(doc.command);
   } else if (doc.prompt !== undefined) {
     actionKind = 'prompt';
     promptBody = typeof doc.prompt === 'string' ? doc.prompt : '';
@@ -225,8 +283,11 @@ export function yamlToFormData(fileName: string, content: string): TaskFormData 
     fileName,
     name,
     description: typeof doc.description === 'string' ? doc.description : '',
-    enabled: doc.enabled !== false,
-    schedule,
+    // v4 has no top-level `enabled:`; it lives on the schedule entry. So a
+    // top-level one is unambiguously the v2 spelling, and it wins — v2 pairs it
+    // with the string schedule form, whose entry can only ever read `true`.
+    enabled: typeof doc.enabled === 'boolean' ? doc.enabled : (binding?.enabled ?? true),
+    schedule: binding?.cron ?? '0 9 * * *',
     actionKind,
     commandShell,
     promptBody,
@@ -238,23 +299,26 @@ export function yamlToFormData(fileName: string, content: string): TaskFormData 
 
 /** Serialize form data back to a YAML string, preserving unknown keys. */
 export function formDataToYaml(form: TaskFormData): string {
-  const doc: Record<string, unknown> = {
-    schedule: form.schedule,
-    enabled: form.enabled,
-  };
+  const doc: Record<string, unknown> = { version: 4 };
   if (form.description.trim()) {
     doc.description = form.description.trim();
   }
 
   if (form.actionKind === 'command') {
-    // Store as sh -c <shell> so it's a proper argv array
-    const trimmed = form.commandShell.trim();
-    doc.command = trimmed ? ['sh', '-c', trimmed] : ['sh', '-c', 'echo hello'];
+    // `run:` is a shell string, not argv — the shell named below is the one
+    // that interprets it, so no `sh -c` wrapper is needed or wanted.
+    doc.run = form.commandShell.trim() || 'echo hello';
+    doc.shell = 'sh';
   } else if (form.actionKind === 'prompt') {
-    doc.prompt = form.promptBody.trim() || 'inline';
+    doc.uses = 'akm/command';
+    doc.with = { content: form.promptBody.trim() || 'inline' };
   } else {
-    doc.workflow = form.workflowRef.trim();
+    doc.uses = form.workflowRef.trim();
   }
+
+  // Always the list form: it is the only one that can carry `enabled`, which
+  // v4 has no top-level spelling for.
+  doc.schedule = [{ cron: form.schedule, enabled: form.enabled }];
 
   // Re-attach any unknown keys the user had in the original file
   for (const [k, v] of Object.entries(form.unknownKeys)) {

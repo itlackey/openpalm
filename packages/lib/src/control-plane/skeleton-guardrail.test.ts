@@ -9,7 +9,9 @@
 import { describe, test, expect } from "bun:test";
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { VERSION_DEFAULTS } from "./versions.js";
+import { loadMarkdownTasks, TASK_SOURCE_V4_VERSION } from "./markdown-task.js";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const SKELETON_DIR = join(REPO_ROOT, "packages", "skeleton");
@@ -267,6 +269,48 @@ describe("skeleton: knowledge/ structure", () => {
 
   test("knowledge/tasks/ exists", () => {
     expect(existsSync(join(SKELETON_DIR, "knowledge", "tasks"))).toBe(true);
+  });
+
+  /**
+   * The shipped task files, through the two readers that actually matter.
+   *
+   * Neither half is redundant. akm validates the whole desired task set before
+   * touching the scheduler, so one file it cannot version stops cron for every
+   * task on the box — hence the `version: 4` assertion, akm 0.9.4's only
+   * standing grammar. And OpenPalm's own reader is what the Automations tab and
+   * the Run-now gate use, so a file akm accepts but `loadMarkdownTasks` drops
+   * is an installed, cron-registered task the operator cannot see or trigger.
+   *
+   * This pair exists because a conversion of these four files to v4 passed the
+   * entire suite while emptying the tab: every other test writes its own
+   * fixture (scheduler.vitest.ts, setup.test.ts) or greps for a substring
+   * (addons.test.ts), and nothing read the shipped files at all.
+   */
+  describe("shipped task files", () => {
+    const TASKS_DIR = join(SKELETON_DIR, "knowledge", "tasks");
+    const taskFiles = readdirSync(TASKS_DIR).filter((f) => f.endsWith(".yml"));
+
+    test("at least one task ships", () => {
+      expect(taskFiles.length).toBeGreaterThan(0);
+    });
+
+    for (const file of taskFiles) {
+      test(`${file} declares the task source version akm reads`, () => {
+        const doc = parseYaml(readFileSync(join(TASKS_DIR, file), "utf8"));
+        expect(doc.version).toBe(TASK_SOURCE_V4_VERSION);
+      });
+    }
+
+    test("every shipped task is readable by the Automations tab's own parser", () => {
+      const parsed = loadMarkdownTasks(join(SKELETON_DIR, "knowledge"));
+      expect(parsed.map((t) => t.id).sort()).toEqual(
+        taskFiles.map((f) => f.replace(/\.yml$/, "")).sort(),
+      );
+      // Every one carries a cron the tab can render, and the disabled ones
+      // still read as disabled — v4 moved `enabled` onto the schedule entry.
+      for (const task of parsed) expect(task.schedule).not.toBe("");
+      expect(parsed.filter((t) => t.enabled).map((t) => t.id)).toEqual(["akm-improve"]);
+    });
   });
 });
 

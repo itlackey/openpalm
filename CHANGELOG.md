@@ -80,14 +80,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `assistant`/`guardian`/`portal` image tags already carried, applied to the
   paths: Compose now refuses to render and names the variable it is missing.
 
-- **Home schema 9 → 10.** One migration covers the `private/` relocation and
-  the retired Paperclip overlay dirs. It runs by itself — from install and
+- **Task files are akm task source v4 now, and the four shipped ones were
+  rewritten.** akm 0.9.4 reads `version: 4` as its own grammar and everything
+  older through an in-memory conversion shim — and it validates the ENTIRE
+  desired task set before it mutates the scheduler, so a single file it cannot
+  convert stops cron registration for every task on the box, including yours.
+  All four shipped tasks were exactly that file: their `command:` was a YAML
+  argv array, which `akm migrate apply` refuses to turn into a shell string
+  (`argv-array-has-no-portable-shell-string`), and that migrator is
+  all-or-nothing too — so nothing self-healed and the whole scheduler stayed
+  dead. They now use `run:`/`shell:` and `uses: akm/command` + `with:`, and
+  the three disabled ones use the list form of `schedule:` because v4 has no
+  top-level `enabled:`.
+
+  **Your own tasks are not touched.** akm still reads `version: 2` and
+  `version: 3` files, converting them in memory and warning; `akm migrate
+  apply` rewrites them permanently when it can. But an existing home's copies
+  of the four SHIPPED files are frozen at the v2 documents its first install
+  seeded (`knowledge/tasks/` is a `skipExisting` seed, the same one-time-copy
+  problem the `knowledge/skills/` move describes above), so those four are
+  renamed to `<name>.yml.pre-v4` and reseeded. Nothing is deleted — if you had
+  edited one, your version is in the `.pre-v4` file and needs re-applying in
+  the v4 grammar.
+
+  The Automations tab reads and writes v4 to match. Its writer previously
+  emitted a document with no `version:` key at all, which routes into the v4
+  parser and fails there, so creating a task from the tab re-broke cron for
+  every task; editing a v4 file replaced its payload with `echo hello`. The
+  task-file format is documented in
+  **[Managing OpenPalm](docs/managing-openpalm.md)** under *Automations*.
+
+- **Home schema 9 → 11.** One migration covers the `private/` relocation and
+  the retired Paperclip overlay dirs. A second, at 11, deletes
+  `knowledge/tasks/{health-check,update-containers,validate-config}.yml` a
+  second time — the sweep that retired them only reaches homes stamped 6 or
+  below, so every home upgraded during 0.13.0 development still carried all
+  three. They declare no `version:` at all, which is fatal to akm's whole
+  scheduler sync, not just to themselves. **That sweep matches on filename with
+  no modification check**: a task you wrote at one of those three names is
+  deleted too, so rename it first. Both run by themselves — from install and
   update, from every CLI command that drives Compose, and from the admin UI at
   boot; there is no `openpalm migrate` to invoke, and a rerun over an
   already-migrated home is a no-op.
 
   **The bump is one-way**, as 8 → 9 was: nothing migrates a home back down.
-  Once `state/schema-version` reads `10` a 0.12.x binary finds a version at or
+  Once `state/schema-version` reads `11` a 0.12.x binary finds a version at or
   above its own, skips its migrations entirely, and then seeds managed compose
   files that still name `${OP_HOME}/private/secrets/...` for credentials that
   now live under `state/`. Restoring a pre-upgrade archive is the only way
@@ -479,9 +516,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     alias) in the entrypoint sync loop, the host automation runner, and docs.
   - **Refs use the 0.9 `[bundle//]conceptId` grammar** — the user env is
     `env/user` (was `env:user`), loaded via `akm env run user -- <cmd>`.
-  - **Shipped task files are strict version-2 YAML** (`version: 2`); the
-    `akm-improve` automation drops the removed `--auto-accept` flag and gains
-    `--skip-if-locked`.
+  - **Shipped task files are akm task source v4** (`version: 4` — see the
+    task-format entry above); the `akm-improve` automation drops the removed
+    `--auto-accept` flag and gains `--skip-if-locked`.
   - **The assistant entrypoint now runs `akm migrate status` / `akm migrate
     apply` at boot** — akm 0.9.0 no longer auto-migrates durable state on open,
     so a pre-existing 0.8 installation is cut over by the crash-resumable

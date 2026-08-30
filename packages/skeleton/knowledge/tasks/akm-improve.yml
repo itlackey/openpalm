@@ -1,14 +1,10 @@
-version: 2
-schedule: '0 3 * * *'
-enabled: true
+version: 4
+name: akm-improve
 description: Run akm improve to consolidate memories, run inference, and update graph extraction
 tags:
   - openpalm
   - akm
-timeoutMs: 3600000
-command:
-  - akm
-  - improve
-  - --skip-if-locked
-  - --timeout-ms
-  - '3600000'
+timeout: 3600000
+run: akm improve --skip-if-locked --timeout-ms 3600000
+shell: sh
+schedule: '0 3 * * *'

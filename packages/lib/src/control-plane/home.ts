@@ -168,7 +168,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 10;
+export const HOME_SCHEMA_VERSION = 11;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {

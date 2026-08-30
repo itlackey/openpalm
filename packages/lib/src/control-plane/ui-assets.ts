@@ -5,8 +5,9 @@
  * runtime download path: it was the GitHub host-assets release transport, and
  * it has been deleted along with backup/rollback/restart-on-update.
  */
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { parse as parseYaml } from 'yaml';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeVersion } from './versioning.js';
@@ -196,6 +197,72 @@ function pruneDuplicateShippedSkills(homeDir: string): void {
   try { rmdirSync(stash); } catch { /* non-empty */ }
 }
 
+/** Suffix that takes a task file out of akm's `tasks/*.yml` glob, and ours. */
+const PRE_V4_TASK_SUFFIX = '.pre-v4';
+
+/**
+ * Move aside seeded task files that predate akm task source v4, so the seed
+ * below can write this release's version over the gap.
+ *
+ * `knowledge/tasks/` is seeded with skipExisting=true, which makes the shipped
+ * task files a ONE-TIME copy: the four this release rewrote as `version: 4` sit
+ * on every existing home as the `version: 2` documents they were installed as,
+ * and no amount of upgrading replaces them. That is not merely stale. akm 0.9.4
+ * validates the ENTIRE desired task set before it mutates the scheduler, so one
+ * file it cannot read stops cron registration for every task on the box —
+ * including the operator's own — and `akm migrate apply` cannot dig the home
+ * out either, being all-or-nothing itself and blocked on these exact files
+ * (`argv-array-has-no-portable-shell-string`, which is why they had to be
+ * converted by hand rather than by the migrator).
+ *
+ * RENAMED, not deleted, and that is the whole design. Telling a pristine seed
+ * from an operator's edit of one would need a frozen record of every byte
+ * OpenPalm ever shipped at these paths (the {@link SEEDED_SKILL_FILE_HASHES}
+ * treatment), and getting that answer wrong in the safe direction — keep the
+ * file, warn — leaves their scheduler dead. Setting it aside needs no such
+ * record: an edited file is preserved in full at a name the operator can see
+ * and rename back, a pristine one leaves an inert copy of content they never
+ * chose, and cron comes back either way.
+ *
+ * Only the names THIS build ships are considered, so a task the operator wrote
+ * is never touched — including a v2 one, which akm still reads through its
+ * conversion shim.
+ */
+function retirePreV4SeededTasks(source: string, homeDir: string): void {
+  const shipped = join(source, 'knowledge', 'tasks');
+  const installed = join(homeDir, 'knowledge', 'tasks');
+  if (!existsSync(shipped) || !existsSync(installed)) return;
+
+  const retired: string[] = [];
+  for (const entry of readdirSync(shipped, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
+    const mine = join(installed, entry.name);
+    if (statSync(mine, { throwIfNoEntry: false })?.isFile() !== true) continue;
+    if (declaresTaskSourceV4(mine)) continue;
+    try {
+      renameSync(mine, `${mine}${PRE_V4_TASK_SUFFIX}`);
+      retired.push(entry.name);
+    } catch { /* best-effort: a home we cannot clean is not one we refuse to start */ }
+  }
+  if (retired.length > 0) {
+    logger.warn(
+      `Set aside pre-v4 copies of shipped task files as *${PRE_V4_TASK_SUFFIX} and reseeded them; akm 0.9.4 could not read them, which stopped cron registration for every task`,
+      { retired },
+    );
+  }
+}
+
+/** Whether a task file declares the one source version akm 0.9.4 reads natively. */
+function declaresTaskSourceV4(path: string): boolean {
+  try {
+    const doc = parseYaml(readFileSync(path, 'utf8'));
+    return !!doc && typeof doc === 'object' && !Array.isArray(doc) && (doc as { version?: unknown }).version === 4;
+  } catch {
+    // Unparseable is not v4, and akm will reject it too — set it aside.
+    return false;
+  }
+}
+
 /**
  * Seed OP_HOME's managed system/ tree (+ any other skeleton files) from a
  * local skeleton source — an Electron extraResources copy, a repo checkout,
@@ -223,6 +290,9 @@ export async function applyHomeSeed(homeDir: string): Promise<{ updated: string[
   // left here (knowledge/env/user.env, knowledge/secrets/, config/, data/,
   // workspace/ — genuinely user-owned or user-populated).
   pruneDuplicateShippedSkills(homeDir);
+  // Before the seed, not after: the seed skips a path that already exists, so
+  // the stale file has to be out of the way for the current one to land.
+  retirePreV4SeededTasks(source, homeDir);
   copyTree(source, homeDir, true);
   try {
     const version = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;

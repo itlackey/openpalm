@@ -12,4 +12,4 @@ Activation is recorded in `state/stack.env` as `OP_ENABLED_ADDONS`. OpenPalm res
 
 User custom services and overlays belong in `config/stack/custom.compose.yml`.
 
-Automation tasks are AKM-owned stash files under `knowledge/tasks/`. OpenPalm does not track task enablement in a registry; AKM reads each task file's own `enabled` state.
+Automation tasks are AKM-owned stash files under `knowledge/tasks/`. OpenPalm does not track task enablement in a registry; AKM reads each task file's own state. In task source v4 that state is per schedule entry — `schedule[i].enabled` — not a top-level `enabled:` key, so a task installed but switched off is written with the list form of `schedule:`.

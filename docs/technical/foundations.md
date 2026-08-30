@@ -157,8 +157,11 @@ produce an allow/flag/block verdict.
 
 The assistant entrypoint starts BusyBox `crond`, runs `akm task sync` at boot,
 and repeats the sync every 60 seconds. Task files live in
-`knowledge/tasks/*.yml`; supported targets are `command`, `prompt`, and
-`workflow`.
+`knowledge/tasks/*.yml` and are akm task source v4 (`version: 4`); a target is
+either `run:` (a shell string) or `uses:` (`akm/command` for a prompt, or a
+`workflows/`, `commands/`, or `scripts/` ref). akm validates the whole desired
+set before mutating the scheduler, so one unreadable file stops cron
+registration for every task.
 
 It has no separate service, network port, Docker socket, admin token, or admin
 API role. Cron gets only a managed allowlist of AKM/OpenCode environment values.

@@ -206,6 +206,41 @@ describe('applyHomeSeed', () => {
     }
   });
 
+  test('reseeds a pre-v4 shipped task file, keeping the old one, and never touches the operator\'s', async () => {
+    const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-tasks-'));
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-home-tasks-'));
+    mkdirSync(join(skeletonSrc, 'knowledge', 'tasks'), { recursive: true });
+    writeFileSync(join(skeletonSrc, 'knowledge', 'tasks', 'akm-improve.yml'), 'version: 4\nrun: akm improve\n');
+    // The home an earlier release seeded: the shipped file frozen at v2, plus a
+    // task of the operator's own that akm still reads through its shim.
+    mkdirSync(join(home, 'knowledge', 'tasks'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'tasks', 'akm-improve.yml'), 'version: 2\ncommand: [akm, improve]\n');
+    writeFileSync(join(home, 'knowledge', 'tasks', 'wiki-ingestion.yml'), 'version: 2\ncommand: [wiki]\n');
+    try {
+      delete process.env.OPENPALM_REPO_ROOT;
+      process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
+      await applyHomeSeed(home);
+
+      const tasks = join(home, 'knowledge', 'tasks');
+      expect(readFileSync(join(tasks, 'akm-improve.yml'), 'utf8')).toBe('version: 4\nrun: akm improve\n');
+      // Nothing is deleted: the old copy is set aside under a name outside
+      // akm's `tasks/*.yml` glob, so it cannot take the scheduler down again.
+      expect(readFileSync(join(tasks, 'akm-improve.yml.pre-v4'), 'utf8')).toBe('version: 2\ncommand: [akm, improve]\n');
+      // A name this build does not ship is never considered, whatever version
+      // it declares.
+      expect(readFileSync(join(tasks, 'wiki-ingestion.yml'), 'utf8')).toBe('version: 2\ncommand: [wiki]\n');
+      expect(existsSync(join(tasks, 'wiki-ingestion.yml.pre-v4'))).toBe(false);
+
+      // Idempotent: the reseeded file is v4, so a second pass finds nothing and
+      // does not clobber the set-aside copy with the file it just wrote.
+      await applyHomeSeed(home);
+      expect(readFileSync(join(tasks, 'akm-improve.yml.pre-v4'), 'utf8')).toBe('version: 2\ncommand: [akm, improve]\n');
+    } finally {
+      rmSync(skeletonSrc, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   // The 0.13.0 defect. This prune compared against what THIS build ships, so it
   // only ever matched a home this build had seeded. An UPGRADED home holds the
   // content of whichever release seeded it, so nothing matched, every shipped

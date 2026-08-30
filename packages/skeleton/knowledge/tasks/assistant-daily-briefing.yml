@@ -1,11 +1,15 @@
-version: 2
-schedule: '0 8 * * *'
-enabled: false
+version: 4
+name: assistant-daily-briefing
 description: Ask the assistant for a daily system health summary
 tags:
   - openpalm
   - assistant
-timeoutMs: 120000
-prompt: >-
-  Good morning. Give me a brief summary of system health, any recent
-  errors in the audit log, and open tasks.
+timeout: 120000
+uses: akm/command
+with:
+  content: >-
+    Good morning. Give me a brief summary of system health, any recent
+    errors in the audit log, and open tasks.
+schedule:
+  - cron: '0 8 * * *'
+    enabled: false

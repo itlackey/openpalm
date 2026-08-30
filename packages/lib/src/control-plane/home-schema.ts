@@ -122,14 +122,43 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
   return true;
 }
 
+/** The task files d9bc7ee4 deleted from the skeleton. Swept twice — see below. */
+const RETIRED_TASK_FILES = [
+  "knowledge/tasks/health-check.yml",
+  "knowledge/tasks/update-containers.yml",
+  "knowledge/tasks/validate-config.yml",
+] as const;
+
 /**
- * Migrations that bring a home up FROM the version in `since`.
+ * Delete the paths that are present, and report the ones that actually went.
  *
- * Array order is the run order and is independent of `since`. The first two
- * rewrite the pre-consolidation knowledge file, so they must precede the
- * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
- * env and writes the app-owned record, so it must follow it.
+ * Log what was ACTUALLY deleted, not the candidate list. This is the one
+ * removal in the chain with no modification check — unlike the skills sweep it
+ * never compares a file against what the release shipped — so this line is the
+ * only record an operator gets of work that is now gone. Logging the static
+ * array named all five every time, including the four it skipped, which told
+ * someone who had customised `config/assistant/opencode.jsonc` nothing about
+ * whether theirs was among them.
  */
+function removeRetiredFiles(homeDir: string, retired: readonly string[]): boolean {
+  const removed: string[] = [];
+  for (const rel of retired) {
+    const path = join(homeDir, rel);
+    if (!existsSync(path)) continue;
+    try {
+      rmSync(path);
+      removed.push(rel);
+    } catch {
+      // Best-effort: a home we cannot clean is not a home we should refuse to
+      // start. The stale file is inert config, not a blocker.
+    }
+  }
+  if (removed.length > 0) {
+    logger.warn("Removed retired skeleton files from OP_HOME", { removed });
+  }
+  return removed.length > 0;
+}
+
 /**
  * Delete skeleton files a release moved or retired.
  *
@@ -154,36 +183,40 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
  * an operator's own edits to live files are untouched.
  */
 function migrateRetiredSkeletonFiles(homeDir: string): boolean {
-  const retired = [
+  return removeRetiredFiles(homeDir, [
     "config/assistant/opencode.jsonc",
     "config/guardian/opencode.jsonc",
-    "knowledge/tasks/health-check.yml",
-    "knowledge/tasks/update-containers.yml",
-    "knowledge/tasks/validate-config.yml",
-  ];
-  // Log what was ACTUALLY deleted, not the candidate list. This migration is
-  // the one removal in the chain with no modification check — unlike the skills
-  // sweep it never compares a file against what the release shipped — so this
-  // line is the only record an operator gets of work that is now gone. Logging
-  // the static array named all five every time, including the four it skipped,
-  // which told someone who had customised `config/assistant/opencode.jsonc`
-  // nothing about whether theirs was among them.
-  const removed: string[] = [];
-  for (const rel of retired) {
-    const path = join(homeDir, rel);
-    if (!existsSync(path)) continue;
-    try {
-      rmSync(path);
-      removed.push(rel);
-    } catch {
-      // Best-effort: a home we cannot clean is not a home we should refuse to
-      // start. The stale file is inert config, not a blocker.
-    }
-  }
-  if (removed.length > 0) {
-    logger.warn("Removed retired skeleton files from OP_HOME", { removed });
-  }
-  return removed.length > 0;
+    ...RETIRED_TASK_FILES,
+  ]);
+}
+
+/**
+ * The retired TASK files again, for the homes the sweep above never reached.
+ *
+ * `since: 6` was right on the day it was written and wrong a release later. The
+ * loop runs an entry only when `migration.since >= recorded`, so that sweep
+ * covers homes at 6 and below and nothing else. Every home upgraded during
+ * 0.13.0 development is stamped 10, has therefore never run it, and still
+ * carries all five files — confirmed on a real install.
+ *
+ * Left behind, these three are not merely untidy. They carry no `version:` key
+ * at all, and akm 0.9.4 validates the ENTIRE desired task source set before it
+ * mutates the scheduler: one file it cannot version rejects the set, so no cron
+ * registration happens for ANY task, including the operator's own. `akm migrate
+ * apply` does not rescue this — it is all-or-nothing too, and refuses to convert
+ * anything while a blocker remains. So nothing self-heals; the files have to go.
+ *
+ * Only the task files are re-swept. The two `opencode.jsonc` files are a weaker
+ * case and this entry deliberately does not make it: they break nothing, they
+ * are merely stale, and they sit in the tree the operator owns and edits —
+ * OpenCode's USER config directory, where `.jsonc` is a first-class spelling
+ * beside the `opencode.json` the skeleton now ships. A blind second delete
+ * there also lands on homes where the `since: 6` sweep already removed the
+ * shipped copy, so a file at that path now is one someone put back. Homes at 6
+ * and below still get the pair from that sweep, which is unchanged.
+ */
+function migrateRetiredTaskFiles(homeDir: string): boolean {
+  return removeRetiredFiles(homeDir, RETIRED_TASK_FILES);
 }
 
 const SECRETS_DIR_MODE = 0o700;
@@ -291,6 +324,14 @@ function migrateOpHomeLayout(homeDir: string): boolean {
   return changed;
 }
 
+/**
+ * Migrations that bring a home up FROM the version in `since`.
+ *
+ * Array order is the run order and is independent of `since`. The first two
+ * rewrite the pre-consolidation knowledge file, so they must precede the
+ * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
+ * env and writes the app-owned record, so it must follow it.
+ */
 const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // Layout: private/ → state/, plus the skeleton tree this release retired.
   // FIRST on purpose — see the docblock for why the credential move has to
@@ -348,6 +389,10 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // against always-authenticated containers and 401s. The recovery is a
   // restore, not a version check.
   { since: 8, run: migrateRetiredOpencodeAuth },
+  // The three versionless task files, for homes already stamped 7 or higher —
+  // which the `since: 6` entry above cannot reach. Cron registration is dead on
+  // every one of them until these are gone; see the docblock.
+  { since: 10, run: migrateRetiredTaskFiles },
 ];
 
 /**
