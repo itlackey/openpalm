@@ -15,7 +15,7 @@ Remote connection -> exact OpenCode or Guardian URL
 ```
 
 - The assistant is the one always-on core container. It runs OpenCode, the
-  non-admin UI child, BusyBox cron, and AKM-backed assistant tools. It has no
+  non-admin UI child, `supercronic`, and AKM-backed assistant tools. It has no
   Docker socket, admin credential, or path to the admin process.
 - Guardian is profile-gated ingress, not a core container. It authenticates
   principals and enforces ownership, rate, event-filtering, and moderation

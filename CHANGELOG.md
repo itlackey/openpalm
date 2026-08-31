@@ -7,9 +7,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.13.0] - 2026-08-22
+## [0.13.0] - 2026-08-31
 
 ### Changed
+
+- **akm boot outcomes are machine-readable, so a dead scheduler stops looking
+  healthy.** akm failures during assistant startup are deliberately non-fatal —
+  a migration hiccup must never block the assistant from starting (#474) — but
+  they were only ever stderr warnings that no health surface read. The result:
+  `akm migrate apply` failed with exit 70 on every boot for an entire release
+  cycle while the container healthcheck stayed green and nothing was ever
+  scheduled. The entrypoint now records each akm boot step (`migrate`,
+  `task-sync`, `health`, `supercronic`) to `/tmp/openpalm-akm-boot.status`,
+  rewritten from scratch each boot so it describes only the current one. The
+  admin AKM stats surface reads it and reports a degraded boot, on both the
+  available and unavailable paths — a boot broken badly enough that akm itself
+  cannot answer is exactly when the record matters most. The rootless smoke
+  fails CI on a degraded marker, or on an akm warning in the assistant's logs
+  since `StartedAt`. Container health is deliberately NOT gated on this:
+  degraded-but-up remains the correct state; invisible was the bug.
 
 - **`OP_HOME` is seven trees, not eight: `private/` folds into `state/`.**
   `private/` existed to say "app-owned and not agent-readable", which is what

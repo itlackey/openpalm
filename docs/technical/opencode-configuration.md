@@ -66,7 +66,7 @@ OpenCode server and arbitrary tool subprocesses do not inherit every user
 secret.
 
 The assistant starts in `/work`, has no Docker socket or admin credential, and
-cannot initiate stack operations. BusyBox `crond` is started alongside OpenCode.
+cannot initiate stack operations. `supercronic` is started alongside OpenCode.
 
 ## Local UI Pass-Through
 

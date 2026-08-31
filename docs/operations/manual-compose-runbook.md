@@ -61,13 +61,16 @@ Voice and Ollama use hardware-specific profiles, for example
 
 ## Shell Helper
 
-`$OP_HOME/openpalm.sh` (and `openpalm.ps1`) already evaluate the conditional
-overlay gates exactly as the control plane does, including the workspace
-loopback publish and the bind-address cases behind the OpenAI-compatible edge.
-Prefer it. The function below is a convenience for a shell you are already in;
-it matches only the literal string `true` and covers only the two conditional
-overlays in the Runtime Inputs table, so treat the shipped helper — not this
-one — as the definition of which overlays apply.
+`$OP_HOME/openpalm.sh` (and `openpalm.ps1`) apply NO conditional overlays —
+they assemble the base list only (core/services/portals plus your custom
+overlay). See their headers and issue #628: deriving that decision in shell
+meant a second implementation of it, which diverged from the control plane in
+ways that published host ports the app leaves closed, so it was removed rather
+than shipped. The function below covers two of the three conditional overlays
+and matches only the literal string `true`. The control plane
+(`discoverStackOverlays`) is the definition of which overlays apply; anything
+outside it, including both of these, is an approximation you are responsible
+for checking.
 
 For Bash or Zsh:
 

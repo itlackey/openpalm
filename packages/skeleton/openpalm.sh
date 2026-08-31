@@ -23,7 +23,7 @@
 # shell, reading a dotenv file whose values have several legal spellings. The
 # attempt diverged from the app in ~30 ways, most of them publishing a host
 # port the app leaves closed, so it was removed rather than shipped. See
-# docs/operations/upgrade-hardening-plan.md.
+# issue #628.
 #
 # Usage:
 #   ./openpalm.sh up            Start the stack (detached)

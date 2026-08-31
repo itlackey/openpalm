@@ -1,7 +1,7 @@
 # OpenPalm Assistant Container
 
 The assistant image is OpenPalm's only always-on core container. It runs
-OpenCode, the non-admin OpenPalm UI, and BusyBox cron for AKM tasks.
+OpenCode, the non-admin OpenPalm UI, and `supercronic` for AKM tasks.
 
 It has no Docker socket, host admin credential, or network path to the host
 admin process. It cannot run stack lifecycle operations.
@@ -10,7 +10,7 @@ admin process. It cannot run stack lifecycle operations.
 
 - OpenCode on container port `4096`
 - Image-baked `@openpalm/ui` on container port `3000`
-- BusyBox `crond`
+- `supercronic`
 - `akm migrate status` (and, when pending, the crash-resumable `akm migrate
   apply`) at boot — akm 0.9 no longer auto-migrates its database on open
 - `akm task sync` at boot and every 60 seconds

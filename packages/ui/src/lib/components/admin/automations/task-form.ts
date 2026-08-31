@@ -2,9 +2,9 @@
  * Schedule presets and YAML round-trip helpers for the task drawer form.
  *
  * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.5
- * accepts as its own. This matters more than it looks: akm validates the ENTIRE
- * desired task set before it mutates the scheduler, so a single file it cannot
- * parse is excluded from the sync and costs only its own schedule.
+ * accepts as its own. This matters more than it looks: akm excludes a source it
+ * cannot parse from the sync and reconciles the rest, so a single file the form
+ * writes wrong costs that task its schedule.
  * A document with no `version:` routes into the v4 parser and fails there, so
  * "just omit it" is not a neutral choice.
  *
@@ -13,7 +13,7 @@
  * re-stringify the whole thing. CONSUMED_KEYS below is therefore exactly the
  * keys the form writes plus the retired v2 spellings, which must be consumed
  * rather than passed through — `enabled:` and `command:` are not v4 top-level
- * keys, and re-attaching them to a v4 document makes akm reject the set.
+ * keys, and re-attaching them to a v4 document makes akm reject that file.
  */
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 

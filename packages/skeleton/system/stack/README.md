@@ -26,7 +26,7 @@ $OP_HOME/config/stack/custom.compose.yml
 ## Core and Addons
 
 The assistant is the only always-on container. It runs OpenCode, the image-baked
-OpenPalm UI, and BusyBox cron for AKM tasks.
+OpenPalm UI, and `supercronic` for AKM tasks.
 
 Guardian is not core. It is deployed by a Guardian-ingress addon profile
 (`addon.api`, `addon.discord`, `addon.slack`, `addon.gateway`) or by the bare
@@ -97,8 +97,10 @@ docker compose \
 
 Those four files are the unconditional list. For each conditional overlay whose
 setting is on (see the Files table above), add `-f
-"$OP_HOME/system/stack/<overlay>"` before the `custom.compose.yml` line —
-`openpalm.sh` and `openpalm.ps1` evaluate the same gates and do it for you.
+"$OP_HOME/system/stack/<overlay>"` before the `custom.compose.yml` line. You
+must do this yourself: `openpalm.sh` and `openpalm.ps1` apply no conditional
+overlays (see their headers), and the `openpalm` CLI and admin UI resolve them
+for you.
 Leaving one out recreates the container without what the overlay carries: no
 host port at all for the compatible API (the overlay publishes
 `${OP_API_BIND_ADDRESS}:3821`, which the guardianOpenaiApi toggle sets to

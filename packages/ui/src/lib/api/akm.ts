@@ -181,8 +181,15 @@ export async function fetchAkmHealth(): Promise<AkmHealth> {
   return (await res.json()) as AkmHealth;
 }
 
+type AkmBoot = {
+  degraded: boolean;
+  steps: Array<{ step: string; exit: number; detail: string | null }>;
+} | null;
+
 export type AkmKnowledgeStats =
-  | { available: false; reason?: string }
+  // `boot` is on BOTH variants deliberately: a boot broken badly enough that
+  // akm itself cannot answer is exactly when the boot record matters most.
+  | { available: false; reason?: string; boot: AkmBoot }
   | {
       available: true;
       version: string | null;
@@ -190,10 +197,7 @@ export type AkmKnowledgeStats =
         status: 'pass' | 'warn' | 'unknown';
         advisories: string[];
       };
-      boot: {
-        degraded: boolean;
-        steps: Array<{ step: string; exit: number; detail: string | null }>;
-      } | null;
+      boot: AkmBoot;
       index: {
         entryCount: number | null;
         lastBuiltAt: string | null;

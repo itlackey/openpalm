@@ -51,7 +51,7 @@ OpenPalm has three deliberate extension points:
 
 1. Compose addons, including custom services in `config/stack/custom.compose.yml`.
 2. Standard OpenCode configuration, tools, plugins, skills, and agents.
-3. AKM task files under `knowledge/tasks/`, executed by `crond` in the assistant.
+3. AKM task files under `knowledge/tasks/`, executed by `supercronic` in the assistant.
 
 Portal-style addons are a specialized Compose addon and must use Guardian
 ingress. New host orchestration behavior belongs in `@openpalm/lib`, not in a

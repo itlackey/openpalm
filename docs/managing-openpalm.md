@@ -201,12 +201,18 @@ Other keys a task may carry: `name`, `description`, `when_to_use`, `tags`,
 their own placement rules (`output:` only on a command target, `with:` only on
 `uses: akm/command`). `akm task sync` names the offending path and line.
 
-Upgrading from a pre-0.13.0 home: the four task files OpenPalm ships are
-rewritten to v4 for you, with your old copy kept alongside as
-`<name>.yml.pre-v4`. Tasks you wrote yourself are left exactly as they are —
-akm still reads `version: 2` and `version: 3` files by converting them in
-memory and warning, and `akm migrate apply` rewrites them permanently when it
-can.
+Upgrading from a pre-0.13.0 home: the task files OpenPalm ships are rewritten
+to v4 for you, with your old copy kept alongside as `<name>.yml.pre-v4` — three
+of the four on a home upgraded from a released 0.12.x, since
+`session-maintenance.yml` is new in 0.13.0 and has nothing to displace. Tasks
+you wrote yourself are left exactly as they are: akm reads a declared
+`version: 2` or `version: 3` file by converting it in memory and warning, and
+`akm migrate apply` rewrites it permanently when the conversion is
+deterministic. Two cases are not converted — a file with no `version:` key at
+all (read as a malformed v4 document) and a v2 shape whose meaning would change
+under v4, such as a `command:` argv array. Either way only that file is
+affected: `akm task sync` excludes it, names it in the run's failures, and
+reconciles every other task.
 
 Task commands execute inside the assistant container. They cannot run host
 lifecycle commands such as `openpalm update`, `openpalm status`, or

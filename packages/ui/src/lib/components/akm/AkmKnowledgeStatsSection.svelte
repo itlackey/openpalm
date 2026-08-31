@@ -67,6 +67,11 @@
 	{:else if !stats.available}
 		<div class="stats-unavailable">
 			<p>{stats.reason ?? 'The akm CLI is not reachable from the admin host.'}</p>
+			<!-- A boot broken badly enough that akm cannot answer is exactly when the
+			     boot record is the only thing that explains why. -->
+			{#if stats.boot?.degraded}
+				<p class="section-note">Assistant boot degraded — {stats.boot.steps.map((entry) => `${entry.step} exit ${entry.exit}`).join(', ')}</p>
+			{/if}
 		</div>
 	{:else}
 		<div class="stats-status">

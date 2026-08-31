@@ -169,7 +169,7 @@ flowchart LR
   Portals[Discord and Slack portals] -->|principal Basic auth /oc| Guardian
   Clients[Guardian direct, API, or MCP clients] -->|issued credentials| Guardian
   Guardian -->|native OpenCode upstream| Assistant
-  Assistant --> AKM[AKM knowledge and BusyBox cron]
+  Assistant --> AKM[AKM knowledge and supercronic]
 ```
 
 Guardian mediates portal and Guardian-facing protocols. It is not inserted into the supported direct Assistant or UI paths.
