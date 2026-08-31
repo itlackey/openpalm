@@ -14,13 +14,13 @@ function looksMissing(stderr: string, exitCode: number): boolean {
   return exitCode === 127 || /executable file not found|no such file|not found/i.test(stderr);
 }
 
-export async function runAssistantAkmCommand(
+export async function runAssistantCommand(
   state: ControlPlaneState,
-  args: string[],
+  command: string[],
   timeoutMs: number,
   options: { allowExitCodes?: number[] } = {},
 ): Promise<AssistantAkmCommandResult> {
-  const result = await composeExec('assistant', ['akm', ...args], {
+  const result = await composeExec('assistant', command, {
     ...buildComposeOptions(state),
     timeoutMs,
   });
@@ -33,4 +33,13 @@ export async function runAssistantAkmCommand(
     exitCode: result.code,
     missing: looksMissing(result.stderr, result.code),
   };
+}
+
+export function runAssistantAkmCommand(
+  state: ControlPlaneState,
+  args: string[],
+  timeoutMs: number,
+  options: { allowExitCodes?: number[] } = {},
+): Promise<AssistantAkmCommandResult> {
+  return runAssistantCommand(state, ['akm', ...args], timeoutMs, options);
 }

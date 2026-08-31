@@ -206,4 +206,41 @@ if [[ "$health_ok" != "1" ]]; then
   exit 1
 fi
 
+# Countermeasure 1 (docs/operations/upgrade-hardening-plan.md): akm/cron boot
+# failures are deliberately non-fatal to the container (#474), so the healthcheck
+# above stays green through them. Gate on the boot output instead — this is the
+# only place the assistant is still up, since cleanup() tears it down on EXIT.
+echo "Checking assistant boot output for akm degradation..."
+assistant_ctr="${COMPOSE_PROJECT_NAME}-assistant-1"
+# --since MUST be the container's StartedAt, never a duration: a duration spans
+# restarts, which already made pre-restart errors look like this boot's once.
+boot_logs=$(docker logs --since "$(docker inspect --format '{{.State.StartedAt}}' "$assistant_ctr")" "$assistant_ctr" 2>&1 || true)
+# `background akm task sync failed` is the 60s re-sync loop, not the boot path;
+# --since spans the whole uptime, so exclude it to keep this gate pointed at boot.
+akm_failures=$(printf '%s\n' "$boot_logs" \
+  | grep -vE 'background akm task sync failed' \
+  | grep -E 'warning: akm|migrate apply failed|task sync failed|supercronic (not found|exited immediately)' || true)
+if [[ -n "$akm_failures" ]]; then
+  echo "Assistant boot reported akm/scheduler failures:" >&2
+  printf '%s\n' "$akm_failures" >&2
+  exit 1
+fi
+
+# The entrypoint's machine-readable boot marker, when the image under test writes
+# one. Degraded = any nonzero step, except `health`, where 4 (health warn) is
+# also acceptable. A missing marker means an older image — skip, do not fail.
+boot_status=$(docker exec "$assistant_ctr" cat /tmp/openpalm-akm-boot.status 2>/dev/null || true)
+if [[ -z "$boot_status" ]]; then
+  echo "No /tmp/openpalm-akm-boot.status in this image — skipping the marker assertion."
+else
+  degraded=$(printf '%s\n' "$boot_status" | awk '$2 != 0 && !($1 == "health" && $2 == 4)')
+  if [[ -n "$degraded" ]]; then
+    echo "Assistant akm boot marker reports degraded steps:" >&2
+    printf '%s\n' "$degraded" >&2
+    exit 1
+  fi
+  echo "akm boot marker clean:"
+  printf '%s\n' "$boot_status"
+fi
+
 echo "Rootless ownership smoke passed for assistant+guardian stack."

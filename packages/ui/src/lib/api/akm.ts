@@ -190,6 +190,10 @@ export type AkmKnowledgeStats =
         status: 'pass' | 'warn' | 'unknown';
         advisories: string[];
       };
+      boot: {
+        degraded: boolean;
+        steps: Array<{ step: string; exit: number; detail: string | null }>;
+      } | null;
       index: {
         entryCount: number | null;
         lastBuiltAt: string | null;

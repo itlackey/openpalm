@@ -69,6 +69,7 @@ describe('GET /api/host/akm/stats', () => {
         status: 'warn',
         advisories: ['Semantic search needs attention.'],
       },
+      boot: null,
       index: {
         entryCount: 42,
         lastBuiltAt: '2026-06-10T12:00:00.000Z',

@@ -71,6 +71,9 @@
 	{:else}
 		<div class="stats-status">
 			<span class={`stats-badge ${stats.health.status === 'warn' ? 'stats-badge-warn' : stats.health.status === 'unknown' ? 'stats-badge-unknown' : ''}`}>{healthLabel(stats.health.status)}</span>
+			{#if stats.boot?.degraded}
+				<p class="section-note">Assistant boot degraded — {stats.boot.steps.map((entry) => `${entry.step} exit ${entry.exit}`).join(', ')}</p>
+			{/if}
 			{#if stats.health.advisories.length > 0}
 				<ul class="stats-advisories">
 					{#each stats.health.advisories as advisory (advisory)}

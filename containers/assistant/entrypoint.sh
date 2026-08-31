@@ -389,6 +389,45 @@ run_akm_command() {
   env HOME="${HOME:-/home/opencode}" "$@"
 }
 
+# ── akm boot status marker ──────────────────────────────────────────────────
+# Every akm/cron failure below is deliberately non-fatal (#474: a migration
+# hiccup must never block the assistant from starting) — and until this file
+# existed, that also made it INVISIBLE: `akm migrate apply` failed with exit 70
+# on every boot for a full release cycle while the healthcheck stayed green,
+# because the only trace was a stderr warning no health surface reads. This
+# records what actually happened so a degraded-but-up assistant can be
+# reported. Degraded is a correct state; unreported is the bug.
+#
+# One line per step, "<step> <exit> [detail]", in boot order (migrate,
+# task-sync, health, supercronic); a step that never ran is simply absent. It
+# lives in /tmp so it describes THIS boot only and never persists.
+AKM_BOOT_STATUS_FILE="/tmp/openpalm-akm-boot.status"
+
+reset_akm_boot_status() {
+  # Truncate once, before the first record, so a restart cannot inherit the
+  # previous boot's lines.
+  : > "$AKM_BOOT_STATUS_FILE" 2>/dev/null || true
+}
+
+record_akm_boot_status() {
+  # Observation only: a scratch-file write must never be able to fail the boot
+  # that the failures it records are themselves forbidden from failing. The
+  # whole body is wrapped so a failing redirection's own `bash:` diagnostic is
+  # suppressed too — `>> file 2>/dev/null` does not do that, because the
+  # redirections are applied left to right and the first one aborts first.
+  local step="$1" code="$2" detail="${3:-}"
+  {
+    # A step recorded twice in one boot (task-sync runs on the migrate path and
+    # again at cron setup) keeps only the LATER record: it is the newer truth,
+    # and the contract is one line per step.
+    if [ -s "$AKM_BOOT_STATUS_FILE" ]; then
+      grep -v "^$step " "$AKM_BOOT_STATUS_FILE" > "$AKM_BOOT_STATUS_FILE.tmp" || true
+      mv "$AKM_BOOT_STATUS_FILE.tmp" "$AKM_BOOT_STATUS_FILE"
+    fi
+    printf '%s %s%s\n' "$step" "$code" "${detail:+ $detail}" >> "$AKM_BOOT_STATUS_FILE"
+  } 2>/dev/null || true
+}
+
 run_akm_migration_check() {
   # akm >= 0.9.0 no longer auto-migrates on open: ordinary commands fail
   # closed against an un-migrated durable schema and the explicit,
@@ -406,6 +445,7 @@ run_akm_migration_check() {
   echo "entrypoint: checking akm durable-state migration (akm migrate status)..." >&2
   if run_akm_command akm migrate status >&2; then
     echo "entrypoint: akm migration state is current" >&2
+    record_akm_boot_status migrate 0 current
   else
     # A pending 0.8 → 0.9 cutover (or an interrupted apply) — run the
     # crash-resumable apply. OpenPalm writes the 0.9-shape config itself, so
@@ -416,14 +456,25 @@ run_akm_migration_check() {
     local rc=0
     run_akm_command akm migrate apply >&2 || rc=$?
     if [ "$rc" != "0" ]; then
+      # Reset before the retry: `|| rc=$?` only assigns when the command FAILS,
+      # so without this a failed first attempt followed by a successful retry
+      # would leave rc holding the first attempt's code — reporting a migrated,
+      # working akm as a failure.
+      rc=0
       run_akm_command akm migrate apply >&2 || rc=$?
     fi
     if [ "$rc" = "0" ]; then
       echo "entrypoint: akm migrate apply complete" >&2
-      run_akm_command akm task sync --rebind >&2 \
-        || echo "warning: akm task sync --rebind failed after migration; continuing" >&2
+      record_akm_boot_status migrate 0 applied
+      local rebind_rc=0
+      run_akm_command akm task sync --rebind >&2 || rebind_rc=$?
+      if [ "$rebind_rc" != "0" ]; then
+        echo "warning: akm task sync --rebind failed after migration; continuing" >&2
+      fi
+      record_akm_boot_status task-sync "$rebind_rc"
     else
       echo "warning: akm migrate apply failed (exit $rc); akm commands may fail until it succeeds — continuing startup" >&2
+      record_akm_boot_status migrate "$rc" apply-failed
     fi
   fi
 
@@ -431,6 +482,7 @@ run_akm_migration_check() {
   # boot without blocking startup.
   local hrc=0
   run_akm_command akm health >&2 || hrc=$?
+  record_akm_boot_status health "$hrc"
   if [ "$hrc" = "0" ] || [ "$hrc" = "4" ]; then
     echo "entrypoint: akm health check complete (exit $hrc)" >&2
   else
@@ -608,9 +660,12 @@ CRONTAB_SHIM
   # Sync automation tasks from the akm bundle into cron, then start cron.
   local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm task sync --rebind >&2; then
+    local sync_rc=0
+    run_akm_command akm task sync --rebind >&2 || sync_rc=$?
+    if [ "$sync_rc" != "0" ]; then
       echo "warning: initial akm task sync failed; continuing startup" >&2
     fi
+    record_akm_boot_status task-sync "$sync_rc"
   fi
 
   rm -f "$crontab_file"
@@ -620,10 +675,27 @@ CRONTAB_SHIM
   # rewrites the same file in place and -inotify picks it up.
   if command -v supercronic >/dev/null 2>&1; then
     supercronic -inotify "$spool_dir/$(id -un)" &
+    local supercronic_pid=$!
+    # `$?` after `&` is the fork status and is structurally always 0, so it
+    # observes nothing. supercronic exits within milliseconds on an unparsable
+    # or missing spool file — check it is still alive, otherwise a dead
+    # scheduler gets recorded as running, which is the exact invisible
+    # degradation this marker exists to catch.
+    sleep 1
+    if kill -0 "$supercronic_pid" 2>/dev/null; then
+      record_akm_boot_status supercronic 0 running
+    else
+      echo "warning: supercronic exited immediately; scheduled automations will not run" >&2
+      record_akm_boot_status supercronic 1 exited
+    fi
   else
     echo "warning: supercronic not found; scheduled automations will not run" >&2
+    record_akm_boot_status supercronic 127 missing
   fi
 
+  # The background re-sync loop below deliberately records NOTHING: the marker
+  # is a record of THIS BOOT, and a rolling status would let a later success
+  # overwrite the boot failure this exists to catch.
   # Background re-sync loop: picks up task file changes without restart
   (
     while true; do
@@ -668,6 +740,7 @@ start_opencode() {
 ensure_home_layout
 maybe_prepare_nss_wrapper
 seed_default_agents_md
+reset_akm_boot_status
 run_akm_migration_check
 persist_akm_bundle_dir_fallback
 start_cron_and_sync_tasks
