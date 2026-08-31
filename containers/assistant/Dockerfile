@@ -289,6 +289,13 @@ RUN mkdir -p /opt/openpalm/local-artifacts \
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
+# Operator remedy for akm's deliberate state.db schema cutover (`akm health`
+# exit 78 / boot marker `health 78 state-upgrade-pending`). Baked beside the
+# exact akm-cli it drives so the two can never drift; boot only points here,
+# it never runs this (see run_akm_migration_check).
+COPY containers/assistant/akm-state-upgrade.sh /usr/local/bin/openpalm-akm-state-upgrade
+RUN chmod +x /usr/local/bin/openpalm-akm-state-upgrade
+
 WORKDIR /work
 
 # Point Bun's user-writable paths at the opencode user's home, under

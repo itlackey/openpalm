@@ -208,7 +208,10 @@ of the four on a home upgraded from a released 0.12.x, since
 you wrote yourself are left exactly as they are: akm reads a declared
 `version: 2` or `version: 3` file by converting it in memory and warning, and
 `akm migrate apply` rewrites it permanently when the conversion is
-deterministic. Two cases are not converted — a file with no `version:` key at
+deterministic. The assistant's boot check records this pending state honestly
+— `migrate 0 ready operator-apply-pending` in its boot marker, with a log line
+pointing here — but by design never runs the apply for you: your files stay as
+written until you convert them. Two cases are not converted — a file with no `version:` key at
 all (read as a malformed v4 document) and a v2 shape whose meaning would change
 under v4, such as a `command:` argv array. Either way only that file is
 affected: `akm task sync` excludes it, names it in the run's failures, and
@@ -284,6 +287,30 @@ configuration rather than falling back to the cached images, so a partial or
 mixed-version stack is never left behind. An installed stack continues running
 offline; only the update itself needs the network. See
 [System Requirements → Network requirements](system-requirements.md#network-requirements).
+
+### akm's state database cutover after an update
+
+An update that bumps the bundled akm can leave akm's state database
+(`data/akm/data/state.db` — events, proposals, task history, improve ledgers,
+workflow runs) one deliberate step behind: akm never applies a migration it
+classifies as destructive during an ordinary open. When that happens the
+assistant boots degraded — `akm health` exits 78, the boot marker
+(`/tmp/openpalm-akm-boot.status` inside the assistant) records
+`health 78 state-upgrade-pending`, and the boot log names the fix. Tasks,
+search, and chat keep working; the state.db surfaces above are down until you
+run the cutover:
+
+```bash
+docker compose -p <project> exec assistant openpalm-akm-state-upgrade
+```
+
+This drives akm's own machinery directly (never `akm upgrade`, which is the
+package self-updater and cannot run in the image-baked container): a verified
+sibling safety copy — `state.db.pre-<migration>.<timestamp>.<uuid>.bak` — is
+written first, then the pending migrations apply. It is idempotent and fully
+offline; `{"upgraded":false}` means there was nothing to do. Boot never runs
+this for you: applying a destructive migration stays an explicit operator
+action, the same rule that keeps your task files unrewritten at boot.
 
 ### Desktop app updates
 

@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`openpalm-akm-state-upgrade` — a working remedy for akm's deliberate
+  state.db cutover, and a boot marker that names it.** akm never applies a
+  state.db migration it classifies `historical-destructive` (0.9.6/0.9.7 ship one:
+  `018-drop-dead-lane-schema`) during an ordinary open: `akm health` exits 78
+  on every boot and every state.db surface — events, proposals, task history,
+  improve ledgers, workflow runs — fails to open until the cutover runs. The
+  remedy akm's own error names, `akm upgrade --force`, is the package
+  SELF-UPDATER and cannot work inside the container: it needs GitHub egress,
+  runs `npm install -g akm-cli@latest` (forbidden by the image-baked model and
+  EACCES for the container user anyway), and only reaches the state.db step
+  after that install succeeds — verified against the 0.9.6 sources, byte-
+  identical in 0.9.7, which expose the state step
+  (`upgradeHistoricalStateDatabase`) to the self-updater alone. The image now bakes a helper that drives that machinery directly:
+  a verified sibling safety copy first (`VACUUM INTO` + `quick_check` + ledger
+  check), then the pending migrations; idempotent and fully offline, rehearsed
+  end-to-end on the built image. Boot recognizes the refusal in `akm health`'s
+  output, records `health 78 state-upgrade-pending` in the boot marker, and
+  logs the helper's name — and deliberately never runs it: akm reserves this
+  migration class for explicit intent, and a boot that granted that intent
+  automatically would extend it to every future destructive migration an image
+  bump ships. Operator docs cover the upgrade-time symptom and the remedy,
+  including a fallback invocation for 0.13.0 images that predate the helper.
+
+### Fixed
+
+- **Boot no longer misreports a pending task-file migration as "current".**
+  `akm migrate status` (akm-cli 0.9.6/0.9.7) exits 0 for both of its clean plan
+  states — "current" and "ready", where ready means operator task files that
+  `akm migrate apply` would convert to task source v4 — and only a "blocked"
+  plan exits 1. The assistant entrypoint read exit 0 as "migration state is
+  current", so a home with an operator-authored `version: 2` task recorded
+  `migrate 0 current` in the boot marker on every boot while akm itself warned
+  "run `akm migrate apply`" on every read of that file — the marker
+  contradicted the logs forever. The entrypoint now parses the plan's `status`
+  field and records the truth, `migrate 0 ready operator-apply-pending`, with
+  a boot log line naming the remedy. Deliberately unchanged: boot still never
+  runs `akm migrate apply` over a "ready" plan. By that point the only
+  convertible files left are operator-authored (`retirePreV4SeededTasks`
+  already rewrote the shipped set during the upgrade), and the docs promise
+  those files are never rewritten behind the operator's back — converting them
+  stays an explicit operator action (`akm migrate apply`, or editing the file
+  to `version: 4`).
+
 ## [0.13.0] - 2026-08-31
 
 ### Changed
