@@ -34,6 +34,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The host akm import now rewrites loopback endpoints for the container.**
+  `config/akm/config.json` is container-view by contract: the setup wizard
+  rewrites a loopback provider URL to `host.docker.internal` at the moment it
+  persists one (W10), and the host-side akm runner translates that hostname
+  back to loopback when it reads the same file. The manual host-config import
+  (`importHostAkmConfig`, the providers "use my local configuration" flow) was
+  the one writer that skipped the rewrite: a host LM Studio/Ollama engine or
+  embedding endpoint spelled `http://localhost:1234/...` was persisted
+  verbatim, loaded fine — so the import's load-validation kept it — and then
+  every LLM call dialed the assistant container's own loopback instead of the
+  host, failing with a connection error nothing attributed to the import. The
+  import now applies the same loopback → `host.docker.internal` rewrite to the
+  host's values before the merge (host values only — an endpoint the operator
+  set in the assistant's own config is never touched), which is
+  container-reachable on Linux, macOS, and Windows alike because
+  core.compose.yml ships `host.docker.internal:host-gateway` on the assistant
+  unconditionally.
+
 - **Boot no longer misreports a pending task-file migration as "current".**
   `akm migrate status` (akm-cli 0.9.6/0.9.7) exits 0 for both of its clean plan
   states — "current" and "ready", where ready means operator task files that

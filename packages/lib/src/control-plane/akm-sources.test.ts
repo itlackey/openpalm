@@ -537,6 +537,58 @@ describe("importHostAkmConfig (manual host akm import)", () => {
     expect(readFileSync(hostCfg(), "utf-8")).toBe(original);
   });
 
+  it("rewrites loopback endpoints to host.docker.internal — the persisted file is container-view (W10)", () => {
+    // The real report: a host LM Studio config imported verbatim. It loaded
+    // fine, so validation kept it — and every LLM call then dialed the
+    // assistant container's OWN loopback instead of the host.
+    seedHost({
+      engines: {
+        lmstudio: { kind: "llm", endpoint: "http://localhost:1234/v1/chat/completions", model: "qwen" },
+        dotted: { kind: "llm", endpoint: "https://127.0.0.1:8443/v1", model: "m" },
+        v6: { kind: "llm", endpoint: "http://[::1]:11434/api", model: "m" },
+      },
+      embedding: { endpoint: "http://localhost:1234/v1/embeddings", model: "nomic", dimension: 768 },
+    });
+    writeFileSync(opConfigPath, "{}");
+
+    const { imported } = importHostAkmConfig(state, hostCfg());
+
+    expect(imported).toEqual(expect.arrayContaining(["engines", "embedding"]));
+    const cfg = readJson(opConfigPath);
+    const engines = cfg.engines as Record<string, Record<string, unknown>>;
+    expect(engines.lmstudio.endpoint).toBe("http://host.docker.internal:1234/v1/chat/completions");
+    expect(engines.dotted.endpoint).toBe("https://host.docker.internal:8443/v1");
+    expect(engines.v6.endpoint).toBe("http://host.docker.internal:11434/api");
+    // Non-URL strings are never touched.
+    expect(engines.lmstudio.model).toBe("qwen");
+    expect((cfg.embedding as Record<string, unknown>).endpoint).toBe(
+      "http://host.docker.internal:1234/v1/embeddings",
+    );
+  });
+
+  it("leaves non-loopback endpoints and the operator's own values alone", () => {
+    seedHost({
+      engines: {
+        lan: { kind: "llm", endpoint: "http://192.168.1.50:1234/v1", model: "m" },
+        remote: { kind: "llm", endpoint: "https://api.openai.com/v1", model: "m" },
+      },
+    });
+    // A loopback endpoint the operator set in the ASSISTANT's own config
+    // (e.g. an in-container sidecar) is theirs: the import must not rewrite
+    // anything it was not asked to add.
+    writeFileSync(opConfigPath, JSON.stringify({
+      configVersion: "0.9.0",
+      engines: { sidecar: { kind: "llm", endpoint: "http://localhost:8080/v1", model: "m" } },
+    }, null, 2));
+
+    importHostAkmConfig(state, hostCfg());
+
+    const engines = readJson(opConfigPath).engines as Record<string, Record<string, unknown>>;
+    expect(engines.lan.endpoint).toBe("http://192.168.1.50:1234/v1");
+    expect(engines.remote.endpoint).toBe("https://api.openai.com/v1");
+    expect(engines.sidecar.endpoint).toBe("http://localhost:8080/v1");
+  });
+
   it("imports nothing when the host config is absent", () => {
     writeFileSync(opConfigPath, "{}");
     expect(importHostAkmConfig(state, hostCfg()).imported).toEqual([]);

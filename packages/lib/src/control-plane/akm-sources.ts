@@ -521,7 +521,51 @@ function stripRetiredKeysAt(configPath: string): boolean {
 }
 
 /**
+ * W10, applied to the host-config import: `config/akm/config.json` is
+ * CONTAINER-VIEW by contract. The setup wizard already rewrites loopback
+ * provider URLs to `host.docker.internal` at the exact point they are
+ * persisted for container consumption (ui setup/payload.ts,
+ * toContainerReachableUrl — same regex), and akm-user-env.ts translates that
+ * hostname BACK to loopback whenever a HOST-side akm process reads this same
+ * file. The host's own ~/.config/akm/config.json is host-view: a local
+ * LM Studio/Ollama engine or embedding endpoint is spelled
+ * `http://localhost:1234/...`, and inside the assistant container that
+ * loopback is the container itself. Importing it verbatim produced a config
+ * that LOADED fine — so the import route's load-validation kept it — and
+ * then failed every LLM call at use time with a connection error nothing
+ * attributed to the import. core.compose.yml ships
+ * `host.docker.internal:host-gateway` on the assistant unconditionally, so
+ * the rewrite is container-reachable on Linux, macOS, and Windows alike.
+ *
+ * Deep walk over every string leaf, mirroring akm-user-env.ts's
+ * rewriteHostDockerInternalDeep (the exact reverse direction) for the same
+ * reason it gives: any endpoint-shaped field — present or added later, in
+ * any engine — gets the fix without this code tracking akm's config schema.
+ * Safe because only strings that BEGIN with a loopback http(s) origin are
+ * touched; engine names, model ids, and genuinely remote URLs never match.
+ */
+const LOOPBACK_HOST_RE = /^(https?:\/\/)(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?=[:/]|$)/i;
+
+function toContainerReachableDeep<T>(value: T): T {
+  if (typeof value === "string")
+    return value.replace(LOOPBACK_HOST_RE, "$1host.docker.internal") as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => toContainerReachableDeep(v)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = toContainerReachableDeep(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
  * Copy the host's akm engine/embedding configuration into the assistant's.
+ *
+ * Loopback endpoints are rewritten to `host.docker.internal` on the way in —
+ * host values only, never anything the operator already set here (see
+ * {@link toContainerReachableDeep}).
  *
  * MANUAL ONLY. Nothing calls this on install, on upgrade, or as a side effect
  * of any toggle — it runs when an operator explicitly asks for it, the same
@@ -554,6 +598,10 @@ export function importHostAkmConfig(
 ): { imported: string[] } {
   const host = readHostConfigBestEffort(hostConfigPath);
   if (!host) return { imported: [] };
+  // Container-view translation BEFORE the merge, host values only — see
+  // toContainerReachableDeep. The read stays strictly read-only: the walk
+  // builds a rewritten copy and never touches the host's file.
+  const hostView = toContainerReachableDeep(host);
 
   const opPath = openpalmConfigPath(state);
   const op = readConfigTolerant(opPath);
@@ -568,9 +616,9 @@ export function importHostAkmConfig(
   // engines (akm 0.9.0 config-schema EnginesSchema).
   const opEngines = isObj(op.engines) ? (op.engines as Record<string, unknown>) : {};
   let engines = opEngines;
-  if (isObj(host.engines)) {
+  if (isObj(hostView.engines)) {
     // host first, existing last → existing wins; only host-only engine names are added.
-    const merged: Record<string, unknown> = { ...(host.engines as Record<string, unknown>), ...opEngines };
+    const merged: Record<string, unknown> = { ...(hostView.engines as Record<string, unknown>), ...opEngines };
     if (Object.keys(merged).length > Object.keys(opEngines).length) {
       engines = merged;
       imported.push("engines");
@@ -579,7 +627,7 @@ export function importHostAkmConfig(
 
   // defaults.engine / defaults.llmEngine / defaults.improveStrategy — only
   // adopt a host selection when OpenPalm has none.
-  const hostDefaults = isObj(host.defaults) ? (host.defaults as Record<string, unknown>) : {};
+  const hostDefaults = isObj(hostView.defaults) ? (hostView.defaults as Record<string, unknown>) : {};
   const opDefaults = isObj(op.defaults) ? { ...(op.defaults as Record<string, unknown>) } : {};
   for (const key of ["engine", "llmEngine", "improveStrategy"] as const) {
     if (typeof hostDefaults[key] === "string" && typeof opDefaults[key] !== "string") {
@@ -589,7 +637,7 @@ export function importHostAkmConfig(
   }
 
   // improve.strategies — additive by strategy name.
-  const hostImprove = isObj(host.improve) ? (host.improve as Record<string, unknown>) : {};
+  const hostImprove = isObj(hostView.improve) ? (hostView.improve as Record<string, unknown>) : {};
   const opImprove = isObj(op.improve) ? { ...(op.improve as Record<string, unknown>) } : {};
   let improveChanged = false;
   if (isObj(hostImprove.strategies)) {
@@ -605,9 +653,9 @@ export function importHostAkmConfig(
   // Top-level embedding connection. Per-field additive: existing OpenPalm
   // fields win; host fills only missing fields.
   let embedding: Record<string, unknown> | undefined;
-  if (isObj(host.embedding)) {
+  if (isObj(hostView.embedding)) {
     const existing = isObj(op.embedding) ? (op.embedding as Record<string, unknown>) : {};
-    const merged: Record<string, unknown> = { ...(host.embedding as Record<string, unknown>), ...existing };
+    const merged: Record<string, unknown> = { ...(hostView.embedding as Record<string, unknown>), ...existing };
     if (Object.keys(merged).length > Object.keys(existing).length) {
       embedding = merged;
       imported.push("embedding");
