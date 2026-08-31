@@ -200,11 +200,14 @@ function migrateRetiredSkeletonFiles(homeDir: string): boolean {
  * carries all five files — confirmed on a real install.
  *
  * Left behind, these three are not merely untidy. They carry no `version:` key
- * at all, and akm 0.9.4 validates the ENTIRE desired task source set before it
- * mutates the scheduler: one file it cannot version rejects the set, so no cron
- * registration happens for ANY task, including the operator's own. `akm migrate
- * apply` does not rescue this — it is all-or-nothing too, and refuses to convert
- * anything while a blocker remains. So nothing self-heals; the files have to go.
+ * at all, so akm reads each as a malformed task source v4 document — a
+ * version-less file never reaches the v2/v3 conversion shim — and excludes it
+ * from every sync. Under akm 0.9.5 that costs only their own schedules (sync
+ * reconciles every source that compiled), so this is no longer the
+ * cron-stopping emergency the 0.9.4-era note here described. They still have
+ * to go, for a different reason: OpenPalm's own reader does not check
+ * `version:`, so the Automations tab lists all three as real automations —
+ * including an enabled weekly `openpalm update` — that can never run.
  *
  * Only the task files are re-swept. The two `opencode.jsonc` files are a weaker
  * case and this entry deliberately does not make it: they break nothing, they

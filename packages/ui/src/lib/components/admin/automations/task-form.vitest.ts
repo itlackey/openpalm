@@ -235,8 +235,8 @@ describe('YAML round-trip preserves unknown keys', () => {
 // ── the grammar akm actually accepts ──────────────────────────────────────
 
 /**
- * akm 0.9.4 validates the ENTIRE desired task set before it mutates the
- * scheduler, so a file it cannot read stops cron registration for every task
+ * akm 0.9.5 excludes a source it cannot read from the
+ * scheduler sync and reconciles the rest, so a bad file costs only its own task
  * on the box. That makes the drawer's output shape load-bearing well beyond
  * the one task being saved, and it is why these assert on exact keys.
  */

@@ -24,14 +24,16 @@
 #
 # Bumping the model: change the ARGs below, publish a NEW tag (e.g. v2), and update
 # the ASSISTANT_MODELS_IMAGE default in containers/assistant/Dockerfile to match.
-# Keep the model + @huggingface/transformers major in lockstep with akm-cli's
-# dependency (akm-cli 0.9.0 → @huggingface/transformers ^4.2.0).
+# Keep the model + @huggingface/transformers version in lockstep with akm-cli's
+# dependency (akm-cli 0.9.5 → @huggingface/transformers 4.2.0, an exact pin).
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:22-trixie-slim AS fetch
 
-# Same major as akm-cli's @huggingface/transformers dependency (^4.2.0). If akm-cli
-# bumps the transformers.js major, bump this together and publish a new tag.
-ARG TRANSFORMERS_VERSION=^4.2.0
+# The exact version akm-cli pins as its @huggingface/transformers dependency. The
+# assistant runtime loads akm-cli's own copy, so anything but that exact version
+# here bakes a cache the runtime may not read. If akm-cli bumps the pin, bump this
+# together and publish a new tag.
+ARG TRANSFORMERS_VERSION=4.2.0
 # akm's default local embedding model (akm-cli dist/llm/embedders/local.js).
 ARG EMBEDDER_MODEL=Xenova/bge-small-en-v1.5
 

@@ -61,6 +61,14 @@ Voice and Ollama use hardware-specific profiles, for example
 
 ## Shell Helper
 
+`$OP_HOME/openpalm.sh` (and `openpalm.ps1`) already evaluate the conditional
+overlay gates exactly as the control plane does, including the workspace
+loopback publish and the bind-address cases behind the OpenAI-compatible edge.
+Prefer it. The function below is a convenience for a shell you are already in;
+it matches only the literal string `true` and covers only the two conditional
+overlays in the Runtime Inputs table, so treat the shipped helper — not this
+one — as the definition of which overlays apply.
+
 For Bash or Zsh:
 
 ```bash

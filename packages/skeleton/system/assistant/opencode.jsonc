@@ -36,7 +36,7 @@
   // #488 — the PRIMARY LAN mDNS advertisement mechanism is now the HOST
   // control-plane responder (packages/lib/src/control-plane/mdns-responder.ts,
   // started from the host UI process's hooks.server.ts). It is gated by
-  // OP_BIND_ADDRESS (guardian) / OP_ASSISTANT_BIND_ADDRESS (assistant) and
+  // OP_GUARDIAN_BIND_ADDRESS (guardian) / OP_ASSISTANT_BIND_ADDRESS (assistant) and
   // reaches the real LAN — this in-container OpenCode block cannot (see the
   // reachability gap below). See docs/technical/network-partitioning-d5a.md.
   //

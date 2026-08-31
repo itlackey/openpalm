@@ -1,6 +1,6 @@
 # Managing the OpenPalm Stack
 
-Stack management instructions for the assistant. See @system.md for the
+Stack management instructions for the assistant. See @core.md for the
 canonical memory, tool, and secret guidance.
 
 ## Behavior

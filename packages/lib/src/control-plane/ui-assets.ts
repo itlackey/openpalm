@@ -206,27 +206,29 @@ const PRE_V4_TASK_SUFFIX = '.pre-v4';
  *
  * `knowledge/tasks/` is seeded with skipExisting=true, which makes the shipped
  * task files a ONE-TIME copy: the four this release rewrote as `version: 4` sit
- * on every existing home as the `version: 2` documents they were installed as,
- * and no amount of upgrading replaces them. That is not merely stale. akm 0.9.4
- * validates the ENTIRE desired task set before it mutates the scheduler, so one
- * file it cannot read stops cron registration for every task on the box —
- * including the operator's own — and `akm migrate apply` cannot dig the home
- * out either, being all-or-nothing itself and blocked on these exact files
- * (`argv-array-has-no-portable-shell-string`, which is why they had to be
- * converted by hand rather than by the migrator).
+ * on every existing home as the documents they were installed as, and no amount
+ * of upgrading replaces them. That is not merely stale. A released 0.12.x home's
+ * copies declare no `version:` key at all, which never reaches the in-memory
+ * shim akm 0.9.5 uses for a declared v2 or v3 — they are read as malformed v4
+ * documents and fail there, so `akm task sync` excludes them and the automations
+ * this release ships never register. Declaring a version would not rescue them
+ * either: their `command:` is a YAML argv array, which the shim's planners also
+ * refuse (`argv-array-has-no-portable-shell-string`), and `akm migrate apply` is
+ * all-or-nothing and blocked on those same files — which is why they had to be
+ * converted by hand rather than by the migrator.
  *
  * RENAMED, not deleted, and that is the whole design. Telling a pristine seed
  * from an operator's edit of one would need a frozen record of every byte
  * OpenPalm ever shipped at these paths (the {@link SEEDED_SKILL_FILE_HASHES}
  * treatment), and getting that answer wrong in the safe direction — keep the
- * file, warn — leaves their scheduler dead. Setting it aside needs no such
- * record: an edited file is preserved in full at a name the operator can see
- * and rename back, a pristine one leaves an inert copy of content they never
- * chose, and cron comes back either way.
+ * file, warn — leaves those automations unregistered. Setting it aside needs no
+ * such record: an edited file is preserved in full at a name the operator can
+ * see and rename back, a pristine one leaves an inert copy of content they
+ * never chose, and the task registers either way.
  *
  * Only the names THIS build ships are considered, so a task the operator wrote
  * is never touched — including a v2 one, which akm still reads through its
- * conversion shim.
+ * conversion shim wherever the conversion is deterministic.
  */
 function retirePreV4SeededTasks(source: string, homeDir: string): void {
   const shipped = join(source, 'knowledge', 'tasks');
@@ -246,13 +248,13 @@ function retirePreV4SeededTasks(source: string, homeDir: string): void {
   }
   if (retired.length > 0) {
     logger.warn(
-      `Set aside pre-v4 copies of shipped task files as *${PRE_V4_TASK_SUFFIX} and reseeded them; akm 0.9.4 could not read them, which stopped cron registration for every task`,
+      `Set aside pre-v4 copies of shipped task files as *${PRE_V4_TASK_SUFFIX} and reseeded them; akm 0.9.5 could not read them, so each was excluded from the schedule`,
       { retired },
     );
   }
 }
 
-/** Whether a task file declares the one source version akm 0.9.4 reads natively. */
+/** Whether a task file declares the one source version akm 0.9.5 reads natively. */
 function declaresTaskSourceV4(path: string): boolean {
   try {
     const doc = parseYaml(readFileSync(path, 'utf8'));

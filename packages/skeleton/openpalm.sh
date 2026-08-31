@@ -9,6 +9,22 @@
 # refresh shipped assets or the UI build from GitHub the way `openpalm update`
 # does.
 #
+# LIMITATION — conditional compose overlays. This helper assembles only the
+# base file list (core/services/portals + your custom overlay). It does NOT
+# apply the three conditional overlays the app resolves from your settings:
+# guardian.compose.api.yml (publishes the OpenAI-compatible API port),
+# voice.compose.lan.yml (LAN voice), and workspace.compose.loopback.yml (the
+# workspace publish). If you have any of those settings on, bringing the stack
+# up with THIS script recreates those containers without them. Use the
+# `openpalm` CLI or the admin UI for normal operation, or pass the overlay
+# yourself: ./openpalm.sh compose -f system/stack/guardian.compose.api.yml up -d
+#
+# Deriving that decision here would mean a second implementation of it, in
+# shell, reading a dotenv file whose values have several legal spellings. The
+# attempt diverged from the app in ~30 ways, most of them publishing a host
+# port the app leaves closed, so it was removed rather than shipped. See
+# docs/operations/upgrade-hardening-plan.md.
+#
 # Usage:
 #   ./openpalm.sh up            Start the stack (detached)
 #   ./openpalm.sh down          Stop and remove the stack

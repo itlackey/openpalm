@@ -123,14 +123,15 @@ the IP URL keeps working.
 ## Automations
 
 Assistant automations are AKM YAML task files under
-`knowledge/tasks/`. The assistant entrypoint starts BusyBox `crond`, runs
+`knowledge/tasks/`. The assistant entrypoint starts `supercronic`, runs
 `akm task sync` at boot, and re-syncs every 60 seconds.
 
 Task files must begin with `version: 4` — akm task source v4, the one grammar
-akm reads natively. Get this wrong and you do not just break your own task:
-akm validates every file in `knowledge/tasks/` before it touches the scheduler,
-so a single file it cannot read stops cron registration for *all* of them.
-A file with no `version:` key at all fails the same way.
+akm reads natively. A file with no `version:` key at all is read as a malformed
+v4 document and fails outright; it never reaches the shim that converts an
+explicit `version: 2` or `version: 3`. The cost is that file's alone:
+`akm task sync` excludes the source it cannot read, names it in the run's
+failures, and reconciles every other file in `knowledge/tasks/`.
 
 A task names its work with either `run:` (a shell command) or `uses:` (an akm
 asset), and schedules it with `schedule:`.

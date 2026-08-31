@@ -90,7 +90,7 @@ The assistant is the one always-on core container. It provides:
 - OpenCode on container port `4096`
 - the image-baked non-admin `@openpalm/ui` on container port `3000`
 - AKM memory, skills, lessons, and knowledge through `/stash`
-- scheduled automation through BusyBox `crond` and `akm task sync`
+- scheduled automation through `supercronic` and `akm task sync`
 
 Principal mounts:
 
@@ -155,13 +155,14 @@ produce an allow/flag/block verdict.
 
 ## Scheduler
 
-The assistant entrypoint starts BusyBox `crond`, runs `akm task sync` at boot,
+The assistant entrypoint starts `supercronic`, runs `akm task sync` at boot,
 and repeats the sync every 60 seconds. Task files live in
 `knowledge/tasks/*.yml` and are akm task source v4 (`version: 4`); a target is
 either `run:` (a shell string) or `uses:` (`akm/command` for a prompt, or a
-`workflows/`, `commands/`, or `scripts/` ref). akm validates the whole desired
-set before mutating the scheduler, so one unreadable file stops cron
-registration for every task.
+`workflows/`, `commands/`, or `scripts/` ref). Failure is per-source: `akm task
+sync` excludes a file it cannot read, names it in the run's failures, and
+reconciles every source that compiled, so one unreadable file costs that task's
+schedule and no other's.
 
 It has no separate service, network port, Docker socket, admin token, or admin
 API role. Cron gets only a managed allowlist of AKM/OpenCode environment values.

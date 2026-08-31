@@ -20,6 +20,22 @@
   .\openpalm.ps1 status        # Show container status
   .\openpalm.ps1 logs api      # Follow logs (optionally for one service)
   .\openpalm.ps1 compose ...   # Run an arbitrary docker compose subcommand
+.NOTES
+LIMITATION - conditional compose overlays. This helper assembles only the base
+file list (core/services/portals plus your custom overlay). It does NOT apply
+the three conditional overlays the app resolves from your settings:
+guardian.compose.api.yml (publishes the OpenAI-compatible API port),
+voice.compose.lan.yml (LAN voice), and workspace.compose.loopback.yml (the
+workspace publish). If any of those settings are on, bringing the stack up with
+THIS script recreates those containers without them. Use the `openpalm` CLI or
+the admin UI for normal operation, or pass the overlay yourself:
+  ./openpalm.ps1 compose -f system/stack/guardian.compose.api.yml up -d
+
+Deriving that decision here would mean a second implementation of it, in
+PowerShell, reading a dotenv file whose values have several legal spellings.
+The attempt diverged from the app in ~30 ways, most of them publishing a host
+port the app leaves closed, so it was removed rather than shipped. See
+docs/operations/upgrade-hardening-plan.md.
 #>
 
 [CmdletBinding()]

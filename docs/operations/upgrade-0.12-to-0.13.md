@@ -146,8 +146,9 @@ The step-1 tarball is the only copy of either. Rescue both now.
 `migrateRetiredSkeletonFiles` (`home-schema.ts`, `since: 6`) `rmSync`s five fixed
 paths out of your home. Unlike the skills sweep in section 5, it does **not**
 compare them against what the release shipped — there is no modification check
-of any kind. Its log line prints the static list of five, not the ones it
-actually removed, so nothing tells you which of yours went.
+of any kind. An edit of yours at one of those paths is deleted exactly as a
+pristine seeded copy is, and this sweep deletes where section 5's `.pre-v4`
+sweep renames — nothing is set aside on disk.
 
 ```
 config/assistant/opencode.jsonc
@@ -495,32 +496,42 @@ If you ran a 0.13.0 beta, add `private/secrets/` → `state/secrets/`,
 `knowledge/paperclip/{env,secrets}` — none of which apply to a released 0.12.x
 home, where `private/` and Paperclip both did not exist.
 
-Two more apply to a beta home specifically, and both concern
+One more applies to a beta home specifically, and it concerns
 `knowledge/tasks/`:
 
 - **`knowledge/tasks/{health-check,update-containers,validate-config}.yml` are
   deleted from beta homes too.** Section 2 describes that sweep for 0.12.x
   homes; a second pass now runs on homes already stamped 7 through 10, which
   the first could never reach. Those files carry no `version:` key at all, and
-  one of them stops akm's scheduler sync for *every* task on the box, so they
-  cannot stay. There is still no modification check: if you created a task at
-  one of those three filenames through the Automations tab, it is deleted as
-  well. Rename it before upgrading, or copy it out with the rescue loop in
-  section 2.
-- **The four shipped task files are rewritten to akm task source v4.** Your
-  copies are frozen at the `version: 2` documents your first install seeded
-  (`knowledge/tasks/` is a `skipExisting` seed), and akm 0.9.4 cannot read
-  them. Each is renamed to `<name>.yml.pre-v4` and the current version is
-  seeded in its place, so nothing is lost and no edit of yours is deleted —
-  but any change you made to `akm-improve.yml`,
-  `assistant-daily-briefing.yml`, `prompt-assistant.yml`, or
-  `session-maintenance.yml` is in the `.pre-v4` file, not in the live one.
-  Re-apply it in the v4 grammar (see *Automations* in
-  `docs/managing-openpalm.md`) and delete the `.pre-v4` copy. Tasks you wrote
-  yourself are never touched.
+  OpenPalm's own task reader does not check `version`, so the Automations tab
+  lists them as real automations — one of them as an enabled weekly
+  `openpalm update`. They cannot stay. There is still no modification check: if
+  you created a task at one of those three filenames through the Automations
+  tab, it is deleted as well. Rename it before upgrading, or copy it out with
+  the rescue loop in section 2.
 
 Credential moves are copy → read back → verify → delete, never the other way
 round, and a rerun is a clean no-op. Beyond that:
+
+- **The shipped task files are rewritten to akm task source v4.** Your copies
+  are frozen at what your first install seeded; on a released 0.12.x home they
+  carry no `version:` key at all, which never reaches akm 0.9.5's in-memory
+  conversion shim — that shim takes a file only once it declares `version: 2`
+  or `version: 3`. A version-less file is read as a malformed v4 document and
+  fails outright. `knowledge/tasks/` is a `skipExisting` seed, so the current
+  documents can never be written over them — `retirePreV4SeededTasks`
+  (`ui-assets.ts`) therefore renames every
+  shipped-name copy that does not declare `version: 4` to `<name>.yml.pre-v4`
+  first, and the seed lands the current version in the gap. It is called from
+  `applyHomeSeed` with no version gate, so it runs on **every** home, a released
+  0.12.x one as much as a beta. Nothing is lost and no edit of yours is deleted
+  — but any change you made to `akm-improve.yml`,
+  `assistant-daily-briefing.yml` or `prompt-assistant.yml` is in the `.pre-v4`
+  file, not in the live one. (0.13.0 ships a fourth, `session-maintenance.yml`;
+  it is new, so a 0.12.x home has only those three.)
+  Re-apply it in the v4 grammar (see *Automations* in
+  `docs/managing-openpalm.md`) and delete the `.pre-v4` copy. Tasks you wrote
+  yourself are never touched — with one consequence worth knowing, below.
 
 - **A recognised shipped skill is cleared for you; anything else is kept.**
   `pruneDuplicateShippedSkills` removes a stash copy when every file in it is
@@ -588,6 +599,44 @@ round, and a rerun is a clean no-op. Beyond that:
 Every mount and secret source in the managed compose files now uses
 `${OP_HOME:?}`, so Compose fails loudly instead of resolving those paths against
 an empty `OP_HOME`.
+
+### Your own tasks are not rewritten, and some shapes stop running
+
+`retirePreV4SeededTasks` only considers the names this release ships, so a task
+you wrote is never renamed and never rewritten — the three retired filenames in
+section 2 aside, which are deleted by name. That is a guarantee about the file,
+not about whether it still runs.
+
+Usually it does. akm 0.9.5 reads a `version: 2` or `version: 3` task file by
+running the same deterministic planners `akm migrate apply` uses, converting it
+to v4 in memory and proceeding with a one-line deprecation warning on stderr.
+Your pre-v4 automations keep firing on their existing schedules, and nothing
+about them has to change on upgrade day.
+
+The exception is a file those planners cannot convert deterministically — a v2
+command with no single unambiguous v4 reading. A YAML argv array is one, having
+no portable shell string; so is any command whose quoting, shell operators, or
+command resolution would mean something else under v4's literal-argv semantics.
+akm refuses rather than guesses. That source is excluded from the reconcile and
+named in the run's failure list, and **that one task stops being scheduled**.
+Every source that did compile still reconciles, so the rest of your automations
+are unaffected.
+
+Check after the upgrade, with the project name from section 1:
+
+```bash
+docker compose -p <project> exec assistant akm task sync --dry-run --format json
+docker compose -p <project> exec assistant akm migrate status
+```
+
+`--dry-run` writes nothing, but it exits non-zero whenever the plan contains a
+removal — read the `failures` array, not the exit status. (The key is `failures`
+under `--dry-run`; a real `akm task sync` calls the same list `failed`.) An
+empty `failures` and a `migrate status` of `ready` is the clean result. A name
+in `failures` is a task of yours that is no longer scheduled: convert that file
+to `version: 4` — the grammar is under *Automations* in
+`docs/managing-openpalm.md` — or let
+`akm migrate apply` rewrite it where it can.
 
 ### Published host ports move, and it is not opt-out
 

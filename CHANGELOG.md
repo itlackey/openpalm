@@ -81,32 +81,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths: Compose now refuses to render and names the variable it is missing.
 
 - **Task files are akm task source v4 now, and the four shipped ones were
-  rewritten.** akm 0.9.4 reads `version: 4` as its own grammar and everything
-  older through an in-memory conversion shim — and it validates the ENTIRE
-  desired task set before it mutates the scheduler, so a single file it cannot
-  convert stops cron registration for every task on the box, including yours.
-  All four shipped tasks were exactly that file: their `command:` was a YAML
-  argv array, which `akm migrate apply` refuses to turn into a shell string
-  (`argv-array-has-no-portable-shell-string`), and that migrator is
-  all-or-nothing too — so nothing self-healed and the whole scheduler stayed
-  dead. They now use `run:`/`shell:` and `uses: akm/command` + `with:`, and
-  the three disabled ones use the list form of `schedule:` because v4 has no
-  top-level `enabled:`.
+  rewritten.** akm 0.9.5 reads `version: 4` as its own grammar. A file that
+  declares `version: 2` or `version: 3` reaches an in-memory conversion shim,
+  which handles only the shapes that convert deterministically: a YAML argv
+  array, shell quoting, shell operators, and shell command resolution each
+  change meaning under v4, and each is refused. A file that declares no `version:` at all
+  never reaches that shim — it is read as a malformed v4 document and fails
+  there. Either way `akm task sync` excludes the offending source, names it in
+  the run's `failed` list, and reconciles every source that did compile. A file
+  it cannot read costs you that task's schedule, not the box's.
+  All four shipped tasks failed at the earlier gate: they declared no
+  `version:` key. Declaring one would not have rescued them, because their
+  `command:` was a YAML argv array, which `akm migrate apply` also refuses to
+  turn into a shell string (`argv-array-has-no-portable-shell-string`) — and
+  that migrator is all-or-nothing, so nothing self-healed and the shipped
+  automations never ran. They now use `run:`/`shell:` and `uses: akm/command` +
+  `with:`, and the three disabled ones use the list form of `schedule:` because
+  v4 has no top-level `enabled:`.
 
-  **Your own tasks are not touched.** akm still reads `version: 2` and
-  `version: 3` files, converting them in memory and warning; `akm migrate
-  apply` rewrites them permanently when it can. But an existing home's copies
-  of the four SHIPPED files are frozen at the v2 documents its first install
-  seeded (`knowledge/tasks/` is a `skipExisting` seed, the same one-time-copy
-  problem the `knowledge/skills/` move describes above), so those four are
-  renamed to `<name>.yml.pre-v4` and reseeded. Nothing is deleted — if you had
-  edited one, your version is in the `.pre-v4` file and needs re-applying in
-  the v4 grammar.
+  **Your own tasks are not touched.** akm still reads a file that declares
+  `version: 2` or `version: 3`, converting it in memory and warning wherever
+  the conversion is deterministic; `akm migrate apply` rewrites them
+  permanently when it can. But an existing home's copies of the SHIPPED files
+  are frozen at the documents its first install seeded — version-less ones on a
+  home upgraded from a released 0.12.x
+  (`knowledge/tasks/` is a `skipExisting` seed, the same one-time-copy problem
+  the `knowledge/skills/` move describes above), so every name this build ships
+  that is still pre-v4 on disk is renamed to `<name>.yml.pre-v4` and reseeded —
+  three of the four there, since `session-maintenance.yml` is new here and has
+  nothing to displace. Nothing is
+  deleted — if you had edited one, your version is in the `.pre-v4` file and
+  needs re-applying in the v4 grammar.
 
   The Automations tab reads and writes v4 to match. Its writer previously
   emitted a document with no `version:` key at all, which routes into the v4
-  parser and fails there, so creating a task from the tab re-broke cron for
-  every task; editing a v4 file replaced its payload with `echo hello`. The
+  parser and fails there, so a task created from the tab never registered;
+  editing a v4 file replaced its payload with `echo hello`. The
   task-file format is documented in
   **[Managing OpenPalm](docs/managing-openpalm.md)** under *Automations*.
 
@@ -115,9 +125,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `knowledge/tasks/{health-check,update-containers,validate-config}.yml` a
   second time — the sweep that retired them only reaches homes stamped 6 or
   below, so every home upgraded during 0.13.0 development still carried all
-  three. They declare no `version:` at all, which is fatal to akm's whole
-  scheduler sync, not just to themselves. **That sweep matches on filename with
-  no modification check**: a task you wrote at one of those three names is
+  three. They declare no `version:` at all, so akm reads each as a malformed v4
+  document and excludes it from every sync — retired files that can only ever
+  fail, and that the Automations tab still lists as real automations because
+  OpenPalm's own task reader does not check `version:`. **That sweep matches on
+  filename with no modification check**: a task you wrote at one of those three names is
   deleted too, so rename it first. Both run by themselves — from install and
   update, from every CLI command that drives Compose, and from the admin UI at
   boot; there is no `openpalm migrate` to invoke, and a rerun over an
@@ -297,6 +309,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   path merged green unless a human remembered the checklist. They need no
   Docker and the browsers were already installed for the job. Tier 5 (live
   stack) is still uncovered.
+
+### Removed
+
+- **Secret scanning, from CI and from the pre-commit hook.** Its rule matched a
+  bare 64-character hex string, which is also exactly the shape of a sha256 —
+  so committing `seeded-skill-hashes.ts`, a generated table of 38 content
+  hashes whose own docblock instructs you to regenerate it, failed the build.
+  The CI step duplicated the hook's patterns while running where, by its own
+  comment, CI has no real secrets; the hook, the installer that existed only to
+  install it, and its line in `scripts/README.md` went with it. `scripts/hooks/`
+  is gone. Nothing scans for keys in CI, the build, or the hooks now.
 
 ### Added
 
@@ -494,12 +517,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **akm 0.9.0 + akm-opencode 0.9.0 (official releases).** The whole stack moves
-  to the akm 0.9.0 bundle/adapter release: `akm-cli` is exact-pinned to
-  **0.9.0** (assistant tools image + Paperclip bootstrap) and the OpenCode
-  plugin `akm-opencode` to **0.9.0** (assistant `opencode.jsonc` + Paperclip
-  manifest). 0.9.0 is a hard break from 0.8.x, and every OpenPalm surface that
-  speaks to akm was updated with it:
+- **akm 0.9.5 + akm-opencode 0.9.2202608290901.** The whole stack moves
+  to the akm 0.9.x bundle/adapter line: `akm-cli` is exact-pinned to
+  **0.9.5** (assistant tools image + Paperclip bootstrap) and the OpenCode
+  plugin `akm-opencode` to **0.9.2202608290901** (assistant `opencode.jsonc` +
+  Paperclip manifest). The 0.9.x line is a hard break from 0.8.x, and every
+  OpenPalm surface that speaks to akm was updated with it:
   - **Config is written in the 0.9.0 schema** — `configVersion: "0.9.0"`,
     `engines` + `defaults.llmEngine`/`defaults.engine` (replacing the retired
     `profiles.*` + `defaults.llm`/`defaults.agent`), and a `bundles` map +
@@ -634,11 +657,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   https page facing a plain-http assistant — the surface now offers the
   workspace as a top-level page, which is exempt from `X-Frame-Options`,
   `frame-src`, and mixed-content blocking and therefore works in deployments an
-  iframe cannot serve. The server advertises `opencodeWorkspace` (the published
-  assistant port plus whether that publish is loopback-only) and the browser
-  composes the address from the host it actually visited, so a LAN client is
-  never handed a loopback address that resolves to its own device. Absent when
-  OpenCode requires Basic auth, since neither a frame nor a tab can carry that
+  iframe cannot serve. The server advertises `opencodeWorkspace` as a port and
+  nothing more — `OP_WORKSPACE_PORT` (default `3820`), this install's own
+  workspace listener — and the browser composes host and scheme from the page
+  it actually visited, so a LAN client is never handed a loopback address that
+  resolves to its own device and an https page never gets a plain-http address
+  it may not load. Always-on Basic auth does not withhold it: that listener
+  checks the same `op_session` cookie every route does and attaches OpenCode's
+  password upstream, server-side, which is exactly why a tab with nothing to
+  type still reaches the workspace now that OpenCode always requires a
   credential.
 - **The published UI advertises PWA installation again.** `pwa:install` was
   filtered out whenever `OP_UI_NO_LOCAL_VOICE=1`, which is set for the assistant
@@ -953,7 +980,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   needed semver comparison now imports `compareComparableVersions` from the lib.
 - Further dead exports pruned from the published `@openpalm/lib` barrel:
   `syncAutomations` (host cron sync was replaced by the container's
-  `akm tasks sync` loop), `hostIdentityMatches`, and `formatForDisplay` (a
+  `akm task sync` loop), `hostIdentityMatches`, and `formatForDisplay` (a
   byte-for-byte alias of the still-exported `normalizeVersion`). The unused
   guardian tunable `GUARDIAN_SESSION_TTL_MS` (config `SESSION_TTL_MS`) is also
   retired — session/permission ownership is SQLite row-count evicted
@@ -1043,14 +1070,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that enables both addon profiles and a label backstop, so keep-then-rerun is
   clean for the `stack` and `portal-discord` targets.
 
-- **Bare `openpalm` health probe respects the auth posture** (PR #564 retest
-  P3-4): the assistant reachability probe sends no Basic auth, so when direct
-  Assistant auth is enabled (`OPENCODE_AUTH=true`) `/health` answers `401` — which
-  proves the container is up. The probe now treats a `401`/`403` as reachable
-  (like a `2xx`), so the bare command no longer runs `docker compose up -d` and
-  needlessly recreates a healthy stack. A `5xx` or a connection error still reads
-  as down.
-
 - **Pairing QR is `string | null` end-to-end with a text-code fallback** (PR
   #564 retest P3-3): the host UI pairing helper and `/connections` panel now type
   `qrSvg` as `string | null` (matching the route and spec) and render the text
@@ -1122,10 +1141,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   r3566888629, r3566889513): all host-UI forwarders (default/runtime endpoint,
   probe, chat proxy, host health, opencode http client) now default the Basic
   username to OpenCode's server default `opencode` instead of `openpalm`, so a
-  correct password no longer 401s a user-added remote-OpenCode connection; and
-  the synthesized Local Assistant endpoint reads `OPENCODE_AUTH` and the
-  password fresh from stack.env / the secret file, so enabling direct Assistant
-  auth takes effect without restarting the host UI.
+  correct password no longer 401s a user-added remote-OpenCode connection.
 
 - **Pairing principal IDs are collision-resistant and oversized labels are
   rejected** (PR #564 r3566891355, r3566891768): the device-principal id suffix
@@ -1187,21 +1203,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bun add ... --production` (the runtime it already uses), keeping the exact
   version pin and the `$prefix/node_modules/@openpalm/...` layout the final
   `bun run` depends on. (#518)
-- **The assistant's `/health` probe and its password export are now
-  consistent with `OPENCODE_AUTH`.** When direct Assistant auth is enabled
-  with the materialized `opencode_server_password` secret, the assistant enables
-  OpenCode Basic auth while its own healthcheck previously probed `/health`
-  unauthenticated — the probe always 401'd, the assistant never reported
-  healthy, and guardian's `depends_on: service_healthy` then blocked the
-  whole stack from deploying. The assistant entrypoint now only resolves and
-  exports `OPENCODE_SERVER_PASSWORD` when `OPENCODE_AUTH` is truthy (an
-  explicit `OPENCODE_SERVER_PASSWORD` env value is still never unset when
-  auth is off — no silent auth downgrade); the `core.compose.yml` and image
-  `HEALTHCHECK` probes now send Basic credentials (read from the same
-  mounted secret file) exactly when the container-side `OPENCODE_AUTH` is
-  truthy, and stay a plain probe otherwise. `OPENCODE_AUTH` remains off by
-  default — no behavior change for the default (loopback, no auth) posture.
-  (PR #564 P1-1/P1-2)
 
 ## [0.12.10] - 2026-06-17
 

@@ -1,10 +1,10 @@
 /**
  * Schedule presets and YAML round-trip helpers for the task drawer form.
  *
- * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.4
+ * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.5
  * accepts as its own. This matters more than it looks: akm validates the ENTIRE
  * desired task set before it mutates the scheduler, so a single file it cannot
- * parse stops cron registration for every task on the box, not just that one.
+ * parse is excluded from the sync and costs only its own schedule.
  * A document with no `version:` routes into the v4 parser and fails there, so
  * "just omit it" is not a neutral choice.
  *

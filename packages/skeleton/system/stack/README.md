@@ -11,6 +11,9 @@ reconcile may replace these files. User services and overrides belong only in
 | `core.compose.yml` | Always-on assistant service and shared networks |
 | `services.compose.yml` | Profile-gated services such as Voice and Ollama |
 | `portals.compose.yml` | Profile-gated Guardian, compatible API, Discord, and Slack |
+| `voice.compose.lan.yml` | Conditional — puts Voice on `assistant_net` when `OP_VOICE_LAN_ACCESS` is on |
+| `guardian.compose.api.yml` | Conditional — the compatible API's one host publish, when the `guardianOpenaiApi` toggle is on or the `api` addon is enabled |
+| `workspace.compose.loopback.yml` | Conditional — republishes the workspace on `127.0.0.1` when `OP_UI_BIND_ADDRESS` is a concrete address (not loopback, not the wildcard) |
 | `voice.compose.cdi.yml` | Managed Voice CUDA fallback for hosts using NVIDIA CDI |
 | `voice.compose.rootless.yml` | Managed Voice user override for rootless Docker |
 
@@ -37,7 +40,7 @@ targeting it).
 | Assistant UI | Always | `127.0.0.1:3800 -> 3000` |
 | Guardian direct ingress | Guardian profile | `127.0.0.1:3830 -> 3830` |
 | Guardian principal admin | Guardian profile | `127.0.0.1:3831 -> 3831` |
-| Compatible API | `guardian.compose.api.yml` overlay (guardianOpenaiApi toggle or `api` addon) | `127.0.0.1:3821 -> 8182`; no host port otherwise |
+| Compatible API | `guardian.compose.api.yml` overlay (guardianOpenaiApi toggle or `api` addon) | `${OP_API_BIND_ADDRESS}:3821 -> 8182` — `0.0.0.0` with the toggle on, `127.0.0.1` on the `api`-addon path; no host port otherwise |
 | Discord / Slack | Matching profile | No host port; outbound bot connections |
 | Voice | `addon.voice.*` | `127.0.0.1:8880 -> 8880` |
 | Ollama | `addon.ollama.*` | Internal model service |
@@ -91,6 +94,15 @@ docker compose \
   --profile guardian \
   up -d
 ```
+
+Those four files are the unconditional list. For each conditional overlay whose
+setting is on (see the Files table above), add `-f
+"$OP_HOME/system/stack/<overlay>"` before the `custom.compose.yml` line —
+`openpalm.sh` and `openpalm.ps1` evaluate the same gates and do it for you.
+Leaving one out recreates the container without what the overlay carries: no
+host port at all for the compatible API (the overlay publishes
+`${OP_API_BIND_ADDRESS}:3821`, which the guardianOpenaiApi toggle sets to
+`0.0.0.0`), no `assistant_net` for LAN voice, no loopback workspace port.
 
 See the
 [Manual Compose Runbook](../../../../docs/operations/manual-compose-runbook.md)

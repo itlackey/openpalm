@@ -454,7 +454,7 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     mkdirSync(join(homeDir, 'knowledge', 'tasks'), { recursive: true });
     for (const name of ['health-check.yml', 'update-containers.yml', 'validate-config.yml']) {
       // Byte-for-byte the shape the retired skeleton shipped: NO `version:` key,
-      // which is exactly what akm 0.9.4 refuses to parse.
+      // which is exactly what akm 0.9.5 refuses to parse.
       writeFileSync(
         join(homeDir, 'knowledge', 'tasks', name),
         "schedule: '0 3 * * *'\nenabled: false\ntimeoutMs: 10000\ncommand:\n  - sh\n  - -c\n  - openpalm status\n",
@@ -507,8 +507,8 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     // Pinning the collision, not endorsing it: the sweep matches on filename
     // with no modification check, so a task the operator wrote at one of these
     // three names goes with the retired seed. Nothing on disk distinguishes
-    // the two, and leaving a versionless file behind stops cron for the whole
-    // box — so this is the deliberate trade, and the upgrade guide warns about
+    // the two, and a versionless file left behind can never be scheduled at
+    // all — so this is the deliberate trade, and the upgrade guide warns about
     // it for beta homes as well as 0.12.x ones.
     seedV10Home();
     writeFileSync(join(homeDir, 'knowledge', 'tasks', 'health-check.yml'), 'version: 2\nname: mine\n');
