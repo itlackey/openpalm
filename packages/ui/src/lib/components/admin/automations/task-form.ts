@@ -1,7 +1,7 @@
 /**
  * Schedule presets and YAML round-trip helpers for the task drawer form.
  *
- * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.5
+ * The drawer reads and writes akm task source v4 — the one grammar akm 0.9.6
  * accepts as its own. This matters more than it looks: akm excludes a source it
  * cannot parse from the sync and reconciles the rest, so a single file the form
  * writes wrong costs that task its schedule.
