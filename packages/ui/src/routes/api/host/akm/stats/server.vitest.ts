@@ -115,6 +115,7 @@ describe('GET /api/host/akm/stats', () => {
   test('fails soft when akm stats are unavailable', async () => {
     vi.mocked(getAkmStats).mockResolvedValue({
       available: false,
+      boot: null,
       reason: 'The assistant AKM CLI is not available.',
     });
 
@@ -122,6 +123,7 @@ describe('GET /api/host/akm/stats', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
       available: false,
+      boot: null,
       reason: 'The assistant AKM CLI is not available.',
     });
   });
@@ -148,7 +150,7 @@ describe('GET /api/host/akm/stats', () => {
     // Fire two requests simultaneously before the CLI resolves.
     const [res1Promise, res2Promise] = [GET(makeEvent()), GET(makeEvent())];
 
-    resolveStats({ available: false, reason: 'deduped' });
+    resolveStats({ available: false, boot: null, reason: 'deduped' });
     const [res1, res2] = await Promise.all([res1Promise, res2Promise]);
 
     expect(res1.status).toBe(200);
