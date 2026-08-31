@@ -6,7 +6,6 @@ import {
   releaseInstallLock,
   teardownRenamedProject,
   classifyLocalInstall,
-  composeWaitTimeoutSec,
   markSetupComplete,
   readStackEnv,
   CORE_SERVICES,
@@ -85,7 +84,8 @@ export async function runStartAction(
     // Ownership repair can mutate bind mounts and state, so it belongs inside
     // the same orchestrator transaction as compose.
     const managedServices = services.length === 0 ? await buildManagedServices(state) : services;
-    const waitArgs = ['--wait', '--wait-timeout', String(composeWaitTimeoutSec())];
+    // `--wait` only: see applyStack in docker.ts for why no --wait-timeout.
+    const waitArgs = ['--wait'];
     await reconcileHostOwnership(state, { adoptHost: !!options.adoptHost, services: managedServices });
     if (services.length === 0) {
       // Project rename (#540): if OP_PROJECT_NAME changed since the stack

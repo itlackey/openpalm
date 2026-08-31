@@ -400,7 +400,6 @@ export {
   composeConfigServices,
   buildComposePreflightError,
   composeUpTimeoutMs,
-  composeWaitTimeoutSec,
   runComposeStreaming,
   composeDown,
   composeDownProject,

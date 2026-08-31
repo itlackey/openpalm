@@ -153,10 +153,10 @@ type InstallOptions = {
  * probes rather than a bespoke `docker info`/`docker compose version` check.
  * `ensureDockerReady` distinguishes "daemon stopped" from "socket permission
  * denied" (mapDockerError), tolerates a warning-only `docker info` exit
- * (checkDocker), and its Compose check enforces the `--wait`/`--wait-timeout`
- * version floor (checkDockerCompose / meetsComposeWaitFloor) that the final
- * deploy's `--wait-timeout` flag needs — a bare version-exists check would
- * pass a too-old Compose that then fails at the very end of the wizard.
+ * (checkDocker), and its Compose check enforces the `--wait` version floor
+ * (checkDockerCompose / meetsComposeWaitFloor) that the final deploy's
+ * `--wait` flag needs — a bare version-exists check would pass a too-old
+ * Compose that then fails at the very end of the wizard.
  */
 async function ensureDockerAndComposeReady(): Promise<void> {
 	const result = await ensureDockerReady();
