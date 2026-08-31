@@ -97,7 +97,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths: Compose now refuses to render and names the variable it is missing.
 
 - **Task files are akm task source v4 now, and the four shipped ones were
-  rewritten.** akm 0.9.6 reads `version: 4` as its own grammar. A file that
+  rewritten.** akm 0.9.7 reads `version: 4` as its own grammar. A file that
   declares `version: 2` or `version: 3` reaches an in-memory conversion shim,
   which handles only the shapes that convert deterministically: a YAML argv
   array, shell quoting, shell operators, and shell command resolution each
@@ -533,7 +533,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **akm 0.9.6 + akm-opencode 0.9.2202608290901.** The whole stack moves
+- **akm 0.9.7 + akm-opencode 0.9.2202608290901.** The whole stack moves
   to the akm 0.9.x bundle/adapter line: `akm-cli` is exact-pinned to
   **0.9.5** (assistant tools image + Paperclip bootstrap) and the OpenCode
   plugin `akm-opencode` to **0.9.2202608290901** (assistant `opencode.jsonc` +

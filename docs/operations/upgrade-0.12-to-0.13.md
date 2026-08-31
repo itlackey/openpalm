@@ -515,7 +515,7 @@ round, and a rerun is a clean no-op. Beyond that:
 
 - **The shipped task files are rewritten to akm task source v4.** Your copies
   are frozen at what your first install seeded; on a released 0.12.x home they
-  carry no `version:` key at all, which never reaches akm 0.9.6's in-memory
+  carry no `version:` key at all, which never reaches akm 0.9.7's in-memory
   conversion shim — that shim takes a file only once it declares `version: 2`
   or `version: 3`. A version-less file is read as a malformed v4 document and
   fails outright. `knowledge/tasks/` is a `skipExisting` seed, so the current
@@ -607,7 +607,7 @@ you wrote is never renamed and never rewritten — the three retired filenames i
 section 2 aside, which are deleted by name. That is a guarantee about the file,
 not about whether it still runs.
 
-Usually it does. akm 0.9.6 reads a `version: 2` or `version: 3` task file by
+Usually it does. akm 0.9.7 reads a `version: 2` or `version: 3` task file by
 running the same deterministic planners `akm migrate apply` uses, converting it
 to v4 in memory and proceeding with a one-line deprecation warning on stderr.
 Your pre-v4 automations keep firing on their existing schedules, and nothing

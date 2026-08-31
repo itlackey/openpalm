@@ -3,6 +3,6 @@
   "private": true,
   "dependencies": {
     "opencode-ai": "1.18.21",
-    "akm-cli": "0.9.6"
+    "akm-cli": "0.9.7"
   }
 }

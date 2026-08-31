@@ -113,7 +113,7 @@ load-validation tightens. Fixtures in an existing gated suite, not new
 machinery.
 
 ### 3. One pinned-akm integration job in CI, required on every pin bump
-**openpalm · medium — the highest-leverage single item**
+**openpalm · DONE — `scripts/akm-pin-integration-smoke.sh`, wired into CI quality-gates**
 
 A scripted version of the manual procedure that actually caught this cycle's
 bugs: exact-pin install under the image's Node version (so an engines floor
@@ -171,10 +171,16 @@ caught every bug this cycle; unit suites and health checks caught none.
    the image's base (`containers/assistant/Dockerfile:65`). Mismatch = stop.
 3. **Bump all lockstep surfaces together** — assistant tools, paperclip
    manifest, opencode.jsonc — and confirm paperclip-compose-contract passes.
-4. **Run the pinned-akm integration job** (countermeasure 3; by hand until it
-   exists in CI).
+4. **Run the pinned-akm integration job**: `./scripts/akm-pin-integration-smoke.sh`
+   (countermeasure 3, now automated and wired into CI's quality-gates).
 5. **Build the image and boot the real stack twice** — fresh OP_HOME and an
-   upgraded legacy fixture home.
+   upgraded legacy fixture home. Then **confirm the running `akm --version`
+   equals the new pin before reading any other result.** Building an image does
+   not mean the stack runs it: a home whose `OP_ASSISTANT_VERSION` names a
+   rollback generation (or any tag other than the one just built) boots the OLD
+   image, and every downstream check — clean boot logs, a clean marker, the
+   scheduler — then describes the version you were trying to replace. This
+   nearly published a 0.9.6 result as 0.9.7 verification.
 6. **Gate on boot logs, not health**: scan logs since
    `docker inspect --format '{{.State.StartedAt}}'` (plain `--since`
    spans restarts); fail on any akm warning line.

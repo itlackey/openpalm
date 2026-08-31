@@ -111,6 +111,15 @@ jobs:
       - name: Validate current rootless non-regression guardrails
         run: ./scripts/validate-rootless-guardrails.sh
 
+      # The pinned akm binary, installed under the assistant image's own node
+      # version and run against a real materialized OP_HOME. CI's entire akm
+      # coverage used to be `akm --version`, which is why the 0.9.1 -> 0.9.4
+      # bump shipped five cascading failures that only a live instance caught.
+      # Placed before the image builds: it needs no images, and an engines-floor
+      # mismatch should fail in seconds rather than after a full build.
+      - name: akm pin integration smoke
+        run: ./scripts/akm-pin-integration-smoke.sh
+
       # Build UI + assistant/guardian/portal images ONCE, then run all three
       # rootless smokes against the shared openpalm/*:dev images (each script
       # skips its own build via OP_ROOTLESS_SMOKE_SKIP_BUILD). Previously each

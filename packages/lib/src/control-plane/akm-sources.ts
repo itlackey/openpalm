@@ -326,7 +326,7 @@ function assertDefaultsOnlyRepointedToPrimary(
  * block no OpenPalm writer emits), and the AKM settings PATCH route, which
  * pins the primary entry but preserves the rest of the map verbatim.
  *
- * STATUS UNDER akm >= 0.9.6 — read this before deleting the sweep. akm 0.9.6
+ * STATUS UNDER akm >= 0.9.7 — read this before deleting the sweep. akm 0.9.7
  * fixed the root cause (akm#870) the same way this does: bundle identity is
  * the RESOLVED content root at both registration sites, so akm no longer mints
  * a second id for an already-configured directory, and `migrate` no longer
@@ -341,7 +341,7 @@ function assertDefaultsOnlyRepointedToPrimary(
  * removes the duplicate from a home that ran 0.9.1-0.9.5, and the only thing
  * that moves `defaultBundle`/`defaultWriteTarget` off an id akm synthesized and
  * OpenPalm does not own. It is now legacy cleanup rather than a guard against
- * active corruption — on a home that has only ever seen >= 0.9.6 it finds
+ * active corruption — on a home that has only ever seen >= 0.9.7 it finds
  * nothing and returns false. It also still covers the case where an akm older
  * than the container pin writes this file (a rollback, or a host akm run
  * against the same config), which is exactly how the duplicate got minted.

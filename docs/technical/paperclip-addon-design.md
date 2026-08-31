@@ -63,7 +63,7 @@ software. Upstream publishes no semver tag, so the digest is the pin and the
 AKM is added through standard OpenCode configuration rather than an image
 layer. Managed `system/paperclip/` contains:
 
-- exact dependencies `akm-opencode@0.9.2202608290901` and `akm-cli@0.9.6`;
+- exact dependencies `akm-opencode@0.9.2202608290901` and `akm-cli@0.9.7`;
 - `plugins/akm.ts`, which re-exports only the plugin function;
 - `bin/bun`, which sets `BUN_BE_BUN=1` and executes `opencode`, exposing the
   Bun runtime already embedded in Paperclip's OpenCode binary;

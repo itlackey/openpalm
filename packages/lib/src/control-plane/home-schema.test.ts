@@ -454,7 +454,7 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     mkdirSync(join(homeDir, 'knowledge', 'tasks'), { recursive: true });
     for (const name of ['health-check.yml', 'update-containers.yml', 'validate-config.yml']) {
       // Byte-for-byte the shape the retired skeleton shipped: NO `version:` key,
-      // which is exactly what akm 0.9.6 refuses to parse.
+      // which is exactly what akm 0.9.7 refuses to parse.
       writeFileSync(
         join(homeDir, 'knowledge', 'tasks', name),
         "schedule: '0 3 * * *'\nenabled: false\ntimeoutMs: 10000\ncommand:\n  - sh\n  - -c\n  - openpalm status\n",

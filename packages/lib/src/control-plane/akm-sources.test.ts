@@ -171,7 +171,7 @@ describe("ensureSystemBundle (upgrade heals a config written before system/skill
 });
 
 describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migration)", () => {
-  // akm >= 0.9.6 fixed the minting side of this (akm#870) and no longer throws
+  // akm >= 0.9.7 fixed the minting side of this (akm#870) and no longer throws
   // on an existing duplicate — but it does NOT rewrite the config, so every
   // home that ran 0.9.1-0.9.5 still carries the duplicate and a `defaultBundle`
   // naming an id akm synthesized. Verified against the shipped 0.9.6: `migrate

@@ -202,7 +202,7 @@ function migrateRetiredSkeletonFiles(homeDir: string): boolean {
  * Left behind, these three are not merely untidy. They carry no `version:` key
  * at all, so akm reads each as a malformed task source v4 document — a
  * version-less file never reaches the v2/v3 conversion shim — and excludes it
- * from every sync. Under akm 0.9.6 that costs only their own schedules (sync
+ * from every sync. Under akm 0.9.7 that costs only their own schedules (sync
  * reconciles every source that compiled), so this is no longer the
  * cron-stopping emergency the 0.9.4-era note here described. They still have
  * to go, for a different reason: OpenPalm's own reader does not check
