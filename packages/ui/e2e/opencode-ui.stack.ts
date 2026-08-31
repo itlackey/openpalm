@@ -16,13 +16,25 @@ const ASSISTANT_OPENCODE_URL = process.env.ASSISTANT_URL ?? `http://localhost:${
  * These hit the assistant and admin OpenCode instances directly on their localhost-bound
  * ports rather than going through the Svelte preview server.
  *
- * OpenCode auth is disabled by default — the host-only bind address (127.0.0.1)
- * provides the security boundary. No Basic auth headers are needed.
+ * OpenCode requires Basic auth on EVERY route since 0.13.0 (`OPENCODE_AUTH` is
+ * gone), so the loopback bind is no longer the only boundary and these probes
+ * must authenticate. `httpCredentials` covers both the browser context and the
+ * `request` fixture, so `page.goto` and the API calls are both covered.
+ *
+ * Note `health check endpoint responds` only asserts `status < 500`, which a
+ * 401 satisfies — it kept passing through the auth change and proved nothing.
  */
 
 test.describe('OpenCode Web UI', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
+
+	test.use({
+		httpCredentials: {
+			username: 'opencode',
+			password: process.env.OPENCODE_PASSWORD ?? ''
+		}
+	});
 
 
 	test('health check endpoint responds', async ({ request }) => {

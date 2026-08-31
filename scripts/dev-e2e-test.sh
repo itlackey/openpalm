@@ -244,9 +244,16 @@ done
 [[ $FAIL -eq 0 ]] || exit 1
 
 echo "=== Warm the assistant provider catalog ==="
+# OpenCode requires Basic auth on every route since 0.13.0 (OPENCODE_AUTH is
+# gone), so an unauthenticated probe here is a permanent 401 — it fails the
+# gate without ever reaching the provider catalog it means to warm.
+OPENCODE_PASSWORD="$(cat "${OP_E2E_HOME}/state/secrets/op_opencode_password" 2>/dev/null || true)"
+if [[ -z "$OPENCODE_PASSWORD" ]]; then
+  fail "op_opencode_password missing from the e2e home; cannot probe /provider"
+fi
 provider_ready=0
 for _ in $(seq 1 45); do
-  if curl -sf --max-time 2 "http://127.0.0.1:${ASSISTANT_PORT}/provider" >/dev/null 2>&1; then
+  if curl -sf --max-time 2 -u "opencode:${OPENCODE_PASSWORD}" "http://127.0.0.1:${ASSISTANT_PORT}/provider" >/dev/null 2>&1; then
     provider_ready=1
     break
   fi
@@ -261,8 +268,21 @@ else
 fi
 
 echo "=== Exercise live HTTP boundaries ==="
+# The assistant endpoint is OpenCode, which requires Basic auth on every route
+# since 0.13.0; the other two are OpenPalm's own /health and take no credential.
+if curl -sf -u "opencode:${OPENCODE_PASSWORD}" "http://127.0.0.1:${ASSISTANT_PORT}/health" >/dev/null; then
+  pass "http://127.0.0.1:${ASSISTANT_PORT}/health (authenticated)"
+else
+  fail "http://127.0.0.1:${ASSISTANT_PORT}/health (authenticated)"
+fi
+# And prove the credential is actually load-bearing rather than incidental.
+unauth_status="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${ASSISTANT_PORT}/health")"
+if [[ "$unauth_status" == 401 ]]; then
+  pass "assistant OpenCode rejects an unauthenticated probe (401)"
+else
+  fail "assistant OpenCode answered an unauthenticated probe with ${unauth_status}, expected 401"
+fi
 for endpoint in \
-  "http://127.0.0.1:${ASSISTANT_PORT}/health" \
   "http://127.0.0.1:${CONTAINER_UI_PORT}/health" \
   "http://127.0.0.1:${API_PORT}/health"; do
   if curl -sf "$endpoint" >/dev/null; then pass "$endpoint"; else fail "$endpoint"; fi
@@ -308,6 +328,7 @@ if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then
   ADMIN_URL="$ADMIN_URL" \
   ASSISTANT_URL="http://127.0.0.1:${ASSISTANT_PORT}" \
   OP_UI_LOGIN_PASSWORD="$UI_PASSWORD" \
+  OPENCODE_PASSWORD="$OPENCODE_PASSWORD" \
   PW_ENFORCE_NO_SKIP=1 \
   npm --prefix packages/ui run test:e2e
   pass "Playwright stack suite passed"
