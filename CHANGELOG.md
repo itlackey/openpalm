@@ -34,6 +34,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Preferred-model saves from the admin UI now persist — and clearing one
+  actually clears it.** Three defects in the `opencode.json` write path
+  (`packages/ui/src/lib/server/opencode/config.ts`), found together. First:
+  the admin UI co-process runs inside the assistant container, where the
+  entrypoint deliberately injects no `OP_HOME` — but `configPath()` resolved
+  `OP_HOME ?? ''` into a RELATIVE `config/assistant/opencode.json` against the
+  server's cwd, so a preferred-model save either errored outright or landed in
+  a phantom file the assistant never reads, while the best-effort live PATCH
+  made it look saved until the next restart dropped it. The path now falls
+  back to the container's real file, the read-write bind mount at
+  `~/.config/opencode/opencode.json`. Second: clearing a model never
+  persisted — `patchConfig` starts its merge from what is on disk, so a key
+  the caller deleted from its in-memory copy was resurrected by the spread;
+  removals are now explicit. Third: `setMainModel` round-tripped the full
+  `getCurrentConfig()`, whose fallback is OpenCode's live `/config`, so a save
+  against an unreadable disk file would have baked the entire runtime-merged
+  config into the operator's file; saves are now deltas merged over the disk
+  state.
+
 - **The host akm import now rewrites loopback endpoints for the container.**
   `config/akm/config.json` is container-view by contract: the setup wizard
   rewrites a loopback provider URL to `host.docker.internal` at the moment it

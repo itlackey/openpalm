@@ -1,12 +1,13 @@
 /**
  * OpenCode config read/write + small mutation helpers.
  *
- * Reads/writes `OP_HOME/config/assistant/opencode.json` directly because the
- * container mount is read-only and OpenCode's PATCH /config does not persist
- * to disk. We still call PATCH afterwards (best-effort) so the live process
- * picks up the change without a restart.
+ * Writes the operator's `opencode.json` directly, because OpenCode's
+ * PATCH /config mutates only the live process and persists nothing. We still
+ * call PATCH afterwards (best-effort) so the running assistant picks up the
+ * change without a restart.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { asRecord } from '../coercion.js';
 import { opencodeFetch } from './http.js';
@@ -22,8 +23,23 @@ export type RawConfig = JsonRecord & {
 };
 
 function configPath(): string {
-	const opHome = process.env.OP_HOME ?? '';
-	return join(opHome, 'config', 'assistant', 'opencode.json');
+	// This module serves two deployments of the same routes:
+	//  - HOST-SERVED surfaces (setup wizard, desktop shell) run with OP_HOME
+	//    set and no container mounts: the file is
+	//    `$OP_HOME/config/assistant/opencode.json`.
+	//  - The ADMIN UI co-process runs INSIDE the assistant container, where
+	//    the entrypoint deliberately injects no OP_HOME (no host path may leak
+	//    into the container). There the SAME file is the read-write bind mount
+	//    at `~/.config/opencode/opencode.json` (core.compose.yml mounts
+	//    `config/assistant` on `/home/opencode/.config/opencode`).
+	// The old `OP_HOME ?? ''` resolved to a RELATIVE `config/assistant/…`
+	// against the UI server's cwd in the container, so every preferred-model
+	// save either errored (missing cwd subdirs) or landed in a phantom file
+	// the assistant never reads, while the best-effort live PATCH made it look
+	// saved — until the next restart dropped it.
+	const opHome = process.env.OP_HOME;
+	if (opHome) return join(opHome, 'config', 'assistant', 'opencode.json');
+	return join(homedir(), '.config', 'opencode', 'opencode.json');
 }
 
 export async function getCurrentConfig(): Promise<RawConfig> {
@@ -36,7 +52,7 @@ export async function getCurrentConfig(): Promise<RawConfig> {
 	}
 }
 
-export async function patchConfig(config: RawConfig): Promise<RawConfig> {
+export async function patchConfig(config: RawConfig, removeKeys: readonly string[] = []): Promise<RawConfig> {
 	let existing: Record<string, unknown> = {};
 	try {
 		existing = JSON.parse(readFileSync(configPath(), 'utf-8'));
@@ -52,10 +68,17 @@ export async function patchConfig(config: RawConfig): Promise<RawConfig> {
 			...(config.provider as Record<string, unknown>),
 		};
 	}
+	// Deletions must be explicit: `merged` starts from what is ON DISK, so a
+	// key a caller removed from its own in-memory copy silently resurrects in
+	// the spread above (that is how "clear model" never actually cleared).
+	for (const key of removeKeys) {
+		delete (merged as Record<string, unknown>)[key];
+	}
 
 	writeFileSync(configPath(), `${JSON.stringify(merged, null, 2)}\n`);
 
-	// Also notify OpenCode to reload (best-effort)
+	// Also notify OpenCode to reload (best-effort). PATCH cannot express a
+	// removal, so an unset key reaches the live process on its next restart.
 	await opencodeFetch<RawConfig>('/config', {
 		method: 'PATCH',
 		body: JSON.stringify(config),
@@ -163,20 +186,24 @@ export async function registerProvider(
 	return { alreadyExists: false };
 }
 
-/** Set the main model (or small model) in opencode.json. */
+/**
+ * Set the main model (or small model) in opencode.json.
+ *
+ * Deliberately a DELTA, not a read-modify-write of getCurrentConfig():
+ * getCurrentConfig falls back to OpenCode's live /config when the disk file
+ * is unreadable, and persisting that snapshot would bake every runtime-merged
+ * value into the operator's file. patchConfig merges the delta over what is
+ * actually on disk.
+ */
 export async function setMainModel(
 	providerId: string,
 	modelId: string,
 	target: 'model' | 'small_model',
 ): Promise<void> {
-	const config = await getCurrentConfig();
-	config[target] = `${providerId}/${modelId}`;
-	await patchConfig(config);
+	await patchConfig({ [target]: `${providerId}/${modelId}` });
 }
 
 /** Clear the main model (or small model) in opencode.json. */
 export async function unsetMainModel(target: 'model' | 'small_model'): Promise<void> {
-	const config = await getCurrentConfig();
-	delete (config as Record<string, unknown>)[target];
-	await patchConfig(config);
+	await patchConfig({}, [target]);
 }
