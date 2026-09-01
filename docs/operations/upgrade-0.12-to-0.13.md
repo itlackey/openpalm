@@ -638,6 +638,49 @@ to `version: 4` — the grammar is under *Automations* in
 `docs/managing-openpalm.md` — or let
 `akm migrate apply` rewrite it where it can.
 
+### akm's state database waits for a deliberate cutover
+
+akm 0.9.7 ships one state.db migration it classifies `historical-destructive`
+(`018-drop-dead-lane-schema`: it drops two dead-lane cache tables and one
+retired column left behind by lanes the 0.9.0 refactor deleted), and it never
+applies that class during an ordinary managed open. On a home whose state.db
+predates it — any 0.12.x home with a used improve pipeline — every boot after
+this upgrade has `akm health` exit 78 with "Unable to open state.db: Refusing
+to apply historical destructive state migration…", and every state.db surface
+(events, proposals, task history, improve ledgers, workflow runs) fails to
+open until the cutover runs. Task files, search, and chat are unaffected. The
+boot marker records it as `health 78` on a 0.13.0 image, and as
+`health 78 state-upgrade-pending` from 0.13.1.
+
+Do not follow the advice inside akm's message. `akm upgrade` is the package
+self-updater: inside the container it needs GitHub egress, runs
+`npm install -g akm-cli@latest` — which the image-baked install forbids and
+the container user cannot write anyway — and only reaches the state.db step
+after that install succeeds. It cannot work here.
+
+Run the cutover deliberately instead, with the project name from section 1:
+
+```bash
+docker compose -p <project> exec assistant openpalm-akm-state-upgrade
+```
+
+That helper ships in images from 0.13.1. On a 0.13.0 image run the same step
+directly against the image's pinned akm:
+
+```bash
+docker compose -p <project> exec assistant node --input-type=module -e 'const m = await import("/opt/openpalm/tools/node_modules/akm-cli/dist/core/state-db.js"); console.log(JSON.stringify(m.upgradeHistoricalStateDatabase()))'
+```
+
+Either way it is akm's own machinery: a verified sibling safety copy is
+written first (`state.db.pre-018-drop-dead-lane-schema.<timestamp>.<uuid>.bak`
+— `VACUUM INTO`, then
+`PRAGMA quick_check` and a ledger check before anything mutates), then the
+pending migrations apply, 018 through the current end of the ledger. The
+command is idempotent — `{"upgraded":false}` means there was nothing to do —
+and fully offline. Verify afterwards:
+`docker compose -p <project> exec assistant akm health` exits 0 (or 4, a
+warning) and its first hard check reports `state-db-schema: pass`.
+
 ### Published host ports move, and it is not opt-out
 
 Nothing about this is opt-in and nothing warns you. `migrateLegacyDefaultPorts`
