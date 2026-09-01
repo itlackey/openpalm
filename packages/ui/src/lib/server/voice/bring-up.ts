@@ -55,7 +55,6 @@ import { translateDockerError } from '$lib/server/voice-errors.js';
 export const VOICE_ADDON = 'voice';
 // compose.yml advertises start_period: 180s. The health-wait must tolerate at
 // least that long on a cold-disk first launch (model download + warm-up).
-const VOICE_PROBE_TIMEOUT_MS = 180_000;
 const PORT_PROBE_TIMEOUT_MS = 750;
 
 // ── Background-pull job state ────────────────────────────────────────
@@ -394,10 +393,11 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
 		const result = await activateStack(
 			state,
 			{ kind: 'services', services },
-			// 180s matches the voice compose services' own start_period, so a
-			// cold-disk first launch (model download + warm-up) gets the same
-			// grace window the removed manual poll used.
-			{ healthTimeoutMs: VOICE_PROBE_TIMEOUT_MS },
+			// No health cap: `--wait` blocks until the voice services are healthy,
+			// bounded only by composeUpTimeoutMs(). A cold-disk first launch
+			// (multi-GB model download + warm-up) is exactly the case a fixed
+			// cap used to turn into a false "deploy failed".
+			{},
 			{
 				lock,
 				composeOptions: {
@@ -457,7 +457,7 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
 			? {}
 			: warming
 				? { detail: 'still warming up — refresh in a moment' }
-				: { detail: `did not become healthy within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` })
+				: { detail: 'did not become healthy' })
 	});
 
 	return { composeOk, healthy, warming, steps };

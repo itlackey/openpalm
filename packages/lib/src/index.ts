@@ -119,6 +119,7 @@ export {
   stateEnvDir,
   resolveBackupsDirFor,
   resolveCacheDir,
+  akmDataRoots,
   legacyKnowledgeStackEnvFile,
   legacyStateEnvFile,
 } from "./control-plane/home.js";
@@ -303,6 +304,15 @@ export {
   stripRetiredAkmConfigKeys,
 } from "./control-plane/akm-sources.js";
 export type { HostAkmConfigStatus } from "./control-plane/akm-sources.js";
+export {
+  convertWalDbsToDeleteJournal,
+  reconcileAkmDbJournalMode,
+} from "./control-plane/akm-db-journal.js";
+export type {
+  AkmDbJournalAction,
+  AkmDbJournalEntry,
+  AkmDbJournalSweepResult,
+} from "./control-plane/akm-db-journal.js";
 export type {
   HostAkmSharingStatus,
 } from "./control-plane/host-akm-sharing.js";
@@ -400,7 +410,6 @@ export {
   composeConfigServices,
   buildComposePreflightError,
   composeUpTimeoutMs,
-  composeWaitTimeoutSec,
   runComposeStreaming,
   composeDown,
   composeDownProject,

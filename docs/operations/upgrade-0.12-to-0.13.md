@@ -957,6 +957,49 @@ changed secret. Do not keep editing a partially migrated tree hoping it settles;
 if the conflict is not obvious, restore the archive and report it with every
 secret value redacted.
 
+### akm reports `database is locked` on every boot (macOS / Windows)
+
+The stack is up and healthy, but the assistant's akm boot status is degraded on
+every boot — the `health` step exits 78, `akm workflow list --active` fails, and
+the assistant's logs carry `database is locked` for `state.db` or `workflow.db`
+— while the same files open fine from the host.
+
+This is WAL residue meeting a correct new refusal. On macOS and Windows every
+bind mount crosses the VM file-sharing layer (virtiofs / gRPC-FUSE), where
+SQLite's WAL locking cannot work; akm >= 0.9.6 (the 0.13.0 pin) therefore opens
+its stores in DELETE journal mode there. But 0.12.x ran an older akm that used
+WAL over that same mount, and it can leave `-wal` sidecar files under
+`$OP_HOME/data/akm/data/` holding **months of un-checkpointed state** — a 4 KB
+`state.db` next to a 1.1 MB `state.db-wal` is this failure, not corruption.
+SQLite engages the WAL machinery for any database with a `-wal` sidecar before
+a client can ask for a different mode, so the in-container akm never gets to
+open the file at all.
+
+Releases after 0.13.0 heal this automatically: install, update and desktop
+launch checkpoint the residue from the host before the stack starts. On 0.13.0
+itself, fold the WAL back in by hand — from the **host**, where WAL works. The
+stack may stay up; the affected files are exactly the ones the container cannot
+hold open:
+
+```bash
+for db in "$OP_HOME"/data/akm/data/*.db; do
+  sqlite3 "$db" 'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;'
+done
+```
+
+Then restart the assistant (`docker compose -p <project> restart assistant`,
+project name from section 1) and re-check `akm migrate status` per section 5.
+macOS ships `sqlite3`; on Windows run the same loop with any sqlite3 build
+against `%OP_HOME%\data\akm\data\*.db`. The same command applies to the one
+shape the automatic heal deliberately skips: Docker Desktop **for Linux**,
+which is VM-mediated like macOS but indistinguishable from native Linux (where
+in-container WAL is legitimate and must not be touched) without asking Docker.
+
+**Never delete a `-wal` file to make the error go away.** The sidecar can hold
+the entire database — checkpointing folds it back into the `.db`; deletion
+destroys it. The checkpoint above leaves every row in place and removes the
+sidecars itself.
+
 ## 9. Rollback
 
 Restore the step-1 archive in full, to the same parent directory `OP_HOME` points

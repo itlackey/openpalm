@@ -274,16 +274,17 @@ export async function checkDocker(): Promise<DockerResult> {
 }
 
 /**
- * Minimum Docker Compose version that supports `--wait`/`--wait-timeout`
- * (`--wait-timeout` requires Compose v2.17.0) — §2.1 makes these the health gate for
- * every `compose up`, so an older CLI must fail the preflight instead of
- * silently rejecting the flag at runtime.
+ * Minimum Docker Compose version that supports `--wait` — §2.1 makes it the
+ * health gate for every `compose up`, so an older CLI must fail the preflight
+ * instead of silently rejecting the flag at runtime. The floor stays at 2.17
+ * (where `--wait-timeout` landed) even though that flag is no longer passed:
+ * it is a safe, long-since-ubiquitous floor and lowering it buys nothing.
  */
 const COMPOSE_WAIT_FLOOR = [2, 17, 0] as const;
 
 /**
  * Decide whether a `docker compose version` output (e.g. "Docker Compose
- * version v2.29.1") is new enough for `--wait`/`--wait-timeout`. An
+ * version v2.29.1") is new enough for `--wait`. An
  * unparsable string is treated as new enough — fail open on a version-string
  * format change rather than blocking every install.
  */
@@ -610,21 +611,6 @@ export function composeUpTimeoutMs(): number {
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return 30 * 60_000;
-}
-
-/**
- * Seconds budget for compose's OWN `--wait-timeout` (§2.1's single health
- * gate) — how long compose itself waits for every targeted service to become
- * healthy before `up` exits non-zero. Default 5 minutes, matching the
- * health-poll deadline this replaces (the deleted deploy.ts pollContainerHealth
- * loop) and comfortably above the voice addon's 180s start_period. Override
- * with OP_COMPOSE_WAIT_TIMEOUT_MS (ms).
- */
-export function composeWaitTimeoutSec(): number {
-  const raw = process.env.OP_COMPOSE_WAIT_TIMEOUT_MS?.trim();
-  const parsed = raw ? Number(raw) : NaN;
-  const ms = Number.isFinite(parsed) && parsed > 0 ? parsed : 5 * 60_000;
-  return Math.ceil(ms / 1000);
 }
 
 /**
@@ -977,13 +963,9 @@ export type ApplyStackResult = {
  *   which supports installs and local development without forcing a registry
  *   lookup for an image already present. `pull: "always"` first runs an explicit
  *   `compose pull` for the requested scope and only then runs `up --pull never`.
- * - `healthTimeoutMs` widens compose's own `--wait-timeout` beyond the default
- *   for a caller (e.g. the voice addon's slow cold boot) that tolerates a longer
- *   start.
  */
 export type ApplyStackOptions = {
   pull?: "always" | "missing";
-  healthTimeoutMs?: number;
 };
 
 /**
@@ -998,7 +980,7 @@ export type ApplyStackOptions = {
  * freshly pulled same-tag image (#450). Active profiles are always passed
  * (§4.3). Success = running AND healthy — `up -d --wait` IS the single health
  * gate (§2.1): compose blocks until every targeted service reaches
- * running+healthy or `--wait-timeout` elapses, so there is no separate
+ * running+healthy, so there is no separate
  * per-container poll loop; on failure ONE `compose ps --format json` call names
  * which services didn't come up.
  *
@@ -1029,10 +1011,6 @@ export async function applyStack(
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const base = buildComposeArgs(options, fileExists);
   const pullMode = applyOpts.pull ?? "missing";
-  const waitTimeoutSec = applyOpts.healthTimeoutMs
-    ? Math.max(1, Math.ceil(applyOpts.healthTimeoutMs / 1000))
-    : composeWaitTimeoutSec();
-
   const scopedServices = scope.kind === "service" ? [scope.service] : scope.kind === "services" ? scope.services : [];
 
   if (pullMode === "always") {
@@ -1062,7 +1040,19 @@ export async function applyStack(
   // `always` was completed transactionally above; never perform a second,
   // implicit pull while containers are being recreated.
   const upPullMode = pullMode === "always" ? "never" : "missing";
-  const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--wait-timeout", String(waitTimeoutSec), "--force-recreate"];
+  // NO `--wait-timeout`. It was a second, far tighter deadline layered under the
+  // outer composeUpTimeoutMs() process budget, and it broke updates outright:
+  // the shipped dependency chain is serialized on health gates
+  // (assistant start_period 30s -> guardian 180s -> discord 30s), so guardian
+  // alone could consume 180s of the fixed 300s cap before discord was created.
+  // `up` then exited non-zero, the deploy was declared failed, and the stack was
+  // rolled back and pinned to rollback- image tags — permanently, because the
+  // pin only clears on a SUCCESSFUL update (#639, #640). A slow start is not a
+  // failed deploy. `--wait` still blocks until every targeted service is
+  // running+healthy; composeUpTimeoutMs() (30 min, OP_COMPOSE_UP_TIMEOUT_MS)
+  // remains the bound that stops a genuinely hung start, and it is deliberately
+  // the ONLY one.
+  const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--force-recreate"];
   if (scope.kind === "service") {
     upArgs.push("--no-deps", scope.service);
   } else if (scope.kind === "services") {

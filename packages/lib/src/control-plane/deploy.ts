@@ -555,8 +555,7 @@ export async function runDeploy(
 				state,
 				{ kind: 'all' },
 				{
-					pull: isDevTag ? 'missing' : 'always',
-					healthTimeoutMs: 5 * 60_000
+					pull: isDevTag ? 'missing' : 'always'
 				},
 				{ lock }
 			);

@@ -23,7 +23,7 @@
  *     knowledge of table/column names required.
  *
  *  2. WAL **checkpoint** and **VACUUM** operate directly on the sqlite file
- *     via `bun:sqlite`. These are generic sqlite maintenance operations
+ *     via the shared SQLite driver seam (sqlite-driver.ts). These are generic sqlite maintenance operations
  *     (`PRAGMA wal_checkpoint`, `VACUUM`, `PRAGMA page_count`/`freelist_count`)
  *     that need no knowledge of OpenCode's table schema at all, so they carry
  *     no schema-assumption risk the way raw session deletion would.
@@ -35,24 +35,16 @@
  * stale subagent/child trees the incident report calls out, without
  * restricting subagent use going forward.
  */
-import { createRequire } from "node:module";
 import { join } from "node:path";
-import type { Database } from "bun:sqlite";
 import type { OpenCodeSession } from "./opencode-client.js";
-
-// `bun:sqlite` is a Bun built-in and this module only ever runs under the Bun
-// CLI. But it is re-exported from the @openpalm/lib barrel, which Node/Vitest
-// consumers (ui, electron) import — a static value import of `bun:sqlite` would
-// make the whole barrel unloadable under Node (ERR_MODULE_NOT_FOUND). Keep the
-// type import (erased at runtime) and resolve the constructor lazily, so
-// importing this module under Node never touches `bun:sqlite`; only actually
-// calling one of the DB functions (which happens under Bun) resolves it.
-const requireBun = createRequire(import.meta.url);
-let cachedDatabaseCtor: typeof Database | undefined;
-function loadDatabase(): typeof Database {
-  cachedDatabaseCtor ??= (requireBun("bun:sqlite") as typeof import("bun:sqlite")).Database;
-  return cachedDatabaseCtor;
-}
+// SQLite access goes through the shared lazy driver seam (sqlite-driver.ts),
+// which keeps the barrel importable under plain Node (no static `bun:sqlite`
+// import — see that module for the constraint) and adds a `node:sqlite`
+// fallback, so the DB functions below also work from Electron main / Node
+// >= 22. On a runtime with neither driver they throw: every caller here
+// needs a real answer (sizes, a completed checkpoint), not a silent skip.
+import { requireSqliteOpen } from "./sqlite-driver.js";
+import type { SqliteConnection } from "./sqlite-driver.js";
 
 // ── Session retention (pure — no I/O) ───────────────────────────────────────
 
@@ -340,15 +332,14 @@ export interface DbSizeInfo {
   freeRatio: number;
 }
 
-function pragmaNumber(db: Database, pragma: string, column: string): number {
-  const row = db.query(`PRAGMA ${pragma};`).get() as Record<string, unknown> | null;
-  const value = row?.[column];
+function pragmaNumber(conn: SqliteConnection, pragma: string, column: string): number {
+  const value = conn.pragmaRow(pragma)?.[column];
   return typeof value === "number" ? value : 0;
 }
 
 /** Read page/freelist accounting from a sqlite file without locking it for writes. */
 export function getDbSizeInfo(dbPath: string): DbSizeInfo {
-  const db = new (loadDatabase())(dbPath, { readonly: true });
+  const db = requireSqliteOpen()(dbPath, { readonly: true });
   try {
     const pageCount = pragmaNumber(db, "page_count", "page_count");
     const pageSize = pragmaNumber(db, "page_size", "page_size");
@@ -377,7 +368,7 @@ export type WalCheckpointMode = "PASSIVE" | "FULL" | "RESTART" | "TRUNCATE";
  * as "the DB isn't the problem."
  */
 export function checkpointWal(dbPath: string, mode: WalCheckpointMode = "TRUNCATE"): void {
-  const db = new (loadDatabase())(dbPath);
+  const db = requireSqliteOpen()(dbPath);
   try {
     db.exec(`PRAGMA wal_checkpoint(${mode});`);
   } finally {
@@ -399,7 +390,7 @@ export function checkpointWal(dbPath: string, mode: WalCheckpointMode = "TRUNCAT
  * immediately after vacuuming, in the same connection/transaction scope.
  */
 export function vacuumDb(dbPath: string): void {
-  const db = new (loadDatabase())(dbPath);
+  const db = requireSqliteOpen()(dbPath);
   try {
     db.exec("VACUUM;");
     db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
