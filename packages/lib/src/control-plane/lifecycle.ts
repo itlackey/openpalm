@@ -49,6 +49,7 @@ import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
+import { reconcileAkmDbJournalMode } from './akm-db-journal.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -195,6 +196,17 @@ export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
 	// skills bundle: only setup and install pin it, so without this an upgraded
 	// home gets the :ro /system-stash mount with nothing configured to read it.
 	ensureSystemBundle(state);
+	// The fourth heal covers akm's DATA, not its config: on macOS/Windows the
+	// containers' bind mounts always cross a VM filesystem, where SQLite WAL
+	// cannot work, so akm >= 0.9.6 opens its stores in DELETE journal mode —
+	// but WAL residue left by an older akm (un-checkpointed `-wal` sidecars
+	// under data/akm/data/, holding potentially months of state) makes every
+	// in-container open fail "database is locked" on every boot. Only the host
+	// can checkpoint that WAL back in, and it must happen before the stack
+	// starts. No-op on Linux (native binds — in-container WAL is legitimate
+	// there) and on healthy homes; never throws (failures log and retry on the
+	// next pass).
+	reconcileAkmDbJournalMode(state);
 }
 
 /**
@@ -207,7 +219,8 @@ export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
  *   • ensureSecrets         — generate any missing service secrets
  *   • applyHomeAssets       — overwrite the managed system/ tree wholesale +
  *                             seed the user/data trees once (skip-existing) +
- *                             heal the akm configs that tree depends on
+ *                             heal the akm configs and SQLite journal modes
+ *                             that tree depends on
  *   • reconcileRemoteAccess — regenerate the `remote` addon's serve config
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *

@@ -7,6 +7,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **akm can open its SQLite stores again on a macOS/Windows home that ever ran
+  a pre-0.9.6 akm.** akm >= 0.9.6 correctly refuses WAL journal mode over the
+  VM file-sharing layer (virtiofs/gRPC-FUSE) that every Docker Desktop/OrbStack
+  bind mount crosses — but a home carrying WAL residue from an older akm
+  (un-checkpointed `-wal` sidecars under `data/akm/data/`; observed live: a
+  4 KB `state.db` whose entire content sat in a 1.1 MB `state.db-wal`) made
+  SQLite engage the WAL machinery before akm could ask for DELETE mode, so
+  every in-container open failed `database is locked`: the boot health step
+  exited 78 on every boot and `akm workflow list --active` never answered,
+  while the host opened the same files fine. Home reconciliation
+  (install/update/desktop launch — `applyHomeAssets`) now sweeps the akm data
+  roots host-side, where WAL and POSIX locking work natively, and runs
+  `PRAGMA wal_checkpoint(TRUNCATE)` + `PRAGMA journal_mode=DELETE` on any
+  SQLite store carrying WAL residue — checkpoint first, so no `-wal` content
+  is ever discarded; orphaned `-wal` files are reported and never deleted.
+  No-op on native Linux, where in-container WAL is legitimate and possibly
+  live. Operators stuck on 0.13.0 have a manual command in
+  `docs/operations/upgrade-0.12-to-0.13.md` §8.
+
 ## [0.13.0] - 2026-08-31
 
 ### Changed

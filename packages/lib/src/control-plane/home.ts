@@ -308,6 +308,18 @@ export function resolveRollbackDir(): string {
   return `${resolveDataDir()}/rollback`;
 }
 
+/**
+ * The akm durable-data roots — one per akm-bearing service, each bind-mounted
+ * into its container at /opt/akm/data (core.compose.yml, services.compose.yml).
+ * Every SQLite store akm owns lives under one of these. Defined ONCE, consumed
+ * by BOTH {@link ensureHomeDirs} (creation) and the WAL-residue sweep
+ * (akm-db-journal.ts), so a new akm-bearing service cannot be added to the
+ * tree without also being swept.
+ */
+export function akmDataRoots(home: string): string[] {
+  return [`${home}/data/akm/data`, `${home}/data/paperclip-akm/data`];
+}
+
 // ── Directory Setup ──────────────────────────────────────────────────
 
 /**
@@ -359,11 +371,10 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/paperclip/.config/opencode`, // nested read-only user-config mountpoint
     `${home}/data/tunnel`,         // remote addon: persistent tailnet node identity (see remoteTunnelStateDir)
     `${home}/data/akm/cache`,      // akm cache
-    `${home}/data/akm/data`,       // akm durable data
+    ...akmDataRoots(home),         // akm durable data (assistant + Paperclip; also WAL-swept, see akmDataRoots)
     `${home}/data/akm/data/state`, // akm task-scheduler state (AKM_STATE_DIR, akm >= 0.9.0)
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/paperclip-akm/cache`, // Paperclip AKM cache
-    `${home}/data/paperclip-akm/data`, // Paperclip AKM durable data
     `${home}/data/paperclip-akm/data/state`, // Paperclip AKM scheduler state
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)

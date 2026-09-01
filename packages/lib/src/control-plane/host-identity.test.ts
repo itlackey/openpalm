@@ -21,24 +21,27 @@ describe('describeHostRuntime (Docker Desktop seam)', () => {
   const setPlatform = (value: NodeJS.Platform) =>
     Object.defineProperty(process, 'platform', { value, configurable: true });
 
-  test('native Linux is host-uid authoritative', () => {
+  test('native Linux is host-uid authoritative with native bind mounts', () => {
     setPlatform('linux');
     const runtime = describeHostRuntime();
     expect(runtime.hostUidAuthoritative).toBe(true);
+    expect(runtime.bindMountsCrossVmFilesystem).toBe(false);
     expect(runtime.id).toBe('linux-native');
   });
 
-  test('macOS (Docker Desktop VM) is not host-uid authoritative', () => {
+  test('macOS (Docker Desktop VM) is not host-uid authoritative and bind mounts cross the VM', () => {
     setPlatform('darwin');
     const runtime = describeHostRuntime();
     expect(runtime.hostUidAuthoritative).toBe(false);
+    expect(runtime.bindMountsCrossVmFilesystem).toBe(true);
     expect(runtime.id).toContain('darwin');
   });
 
-  test('Windows (Docker Desktop VM) is not host-uid authoritative', () => {
+  test('Windows (Docker Desktop VM) is not host-uid authoritative and bind mounts cross the VM', () => {
     setPlatform('win32');
     const runtime = describeHostRuntime();
     expect(runtime.hostUidAuthoritative).toBe(false);
+    expect(runtime.bindMountsCrossVmFilesystem).toBe(true);
     expect(runtime.id).toContain('win32');
   });
 });

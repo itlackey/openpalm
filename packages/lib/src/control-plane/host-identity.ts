@@ -30,6 +30,18 @@ export type HostRuntime = {
    * the VM's own uid namespace.
    */
   hostUidAuthoritative: boolean;
+  /**
+   * True on VM-mediated runtimes, where every bind mount crosses the VM
+   * file-sharing layer (virtiofs / gRPC-FUSE / 9p) and SQLite WAL journals —
+   * which need the `-shm` shared-memory index and POSIX locks — cannot work
+   * across the mount. The inverse of native Linux. Kept separate from
+   * `hostUidAuthoritative` (a uid statement) even though both currently derive
+   * from the same classification, so each consumer reads the fact it actually
+   * depends on — and a future refinement (e.g. detecting Docker Desktop *for
+   * Linux*) lands here once and reaches every consumer. Consumed by the akm
+   * WAL-residue sweep (akm-db-journal.ts).
+   */
+  bindMountsCrossVmFilesystem: boolean;
 };
 
 /**
@@ -43,9 +55,13 @@ export type HostRuntime = {
  */
 export function describeHostRuntime(): HostRuntime {
   if (process.platform === 'linux') {
-    return { id: 'linux-native', hostUidAuthoritative: true };
+    return { id: 'linux-native', hostUidAuthoritative: true, bindMountsCrossVmFilesystem: false };
   }
-  return { id: `vm-mediated-${process.platform}`, hostUidAuthoritative: false };
+  return {
+    id: `vm-mediated-${process.platform}`,
+    hostUidAuthoritative: false,
+    bindMountsCrossVmFilesystem: true
+  };
 }
 
 export function detectHostIdentity(homeDir: string): HostIdentity {
