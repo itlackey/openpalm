@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **#676 a deploy blocked by an unhealthy guardian now names guardian, not
+  just the container that never got created.** The `/health/ready` drift
+  gate that could once return a bare 503 is gone — 0.13's image-baked
+  guardian (`containers/guardian/entrypoint.sh`) dropped the npm-installed
+  guardian it lived in, and `handleHealthReady` has been an unconditional 200
+  ever since — so this is the other half of #676: diagnosability, not the
+  gate itself. The guardian healthcheck (`portals.compose.yml` and
+  `containers/guardian/Dockerfile`) now runs `curl --fail-with-body` instead
+  of `curl -sf`, so a non-2xx response body lands in Docker's health log
+  instead of being discarded. When a deploy then fails because a
+  `depends_on: condition: service_healthy` dependency (e.g. guardian) never
+  came up, `applyStack`'s post-`up` diagnosis now also inspects every
+  unhealthy container's last healthcheck output and, for a target service
+  entirely missing from `compose ps -a`, resolves its `depends_on` from the
+  merged compose config — so "container for service discord not found after
+  up" now also names guardian and its last readiness output, instead of
+  leaving the operator to guess which service actually failed.
+
 ### Changed
 
 - **#674 `openpalm update` is now two phases: make the CLI current, then

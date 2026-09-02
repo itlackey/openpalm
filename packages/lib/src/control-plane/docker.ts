@@ -1086,6 +1086,70 @@ export type ApplyStackOptions = {
 };
 
 /**
+ * #676: best-effort fetch of a container's last healthcheck output via
+ * `docker inspect --format '{{json .State.Health}}' <id>`. Used only from
+ * {@link applyStack}'s post-`up`-failure diagnosis, once per row `compose ps
+ * -a` reported as `unhealthy` — never on the hot success path. Any failure
+ * (docker unreachable, container gone, unexpected JSON shape) returns
+ * `undefined` and the caller falls back to today's plain templated reason;
+ * this never throws.
+ */
+async function fetchLastHealthcheckOutput(docker: DockerClient, containerId: string): Promise<string | undefined> {
+  if (!containerId) return undefined;
+  try {
+    const result = await docker.run(["inspect", "--format", "{{json .State.Health}}", containerId], {
+      timeoutMs: 10_000,
+    });
+    if (!result.ok || !result.stdout.trim()) return undefined;
+    const parsed = JSON.parse(result.stdout.trim()) as { Log?: { Output?: string; ExitCode?: number }[] };
+    const last = parsed.Log?.[parsed.Log.length - 1];
+    if (!last) return undefined;
+    const output = (last.Output ?? "").trim().replace(/\s+/g, " ");
+    if (output) return output.length > 300 ? `${output.slice(0, 299)}…` : output;
+    return typeof last.ExitCode === "number" ? `exit code ${last.ExitCode}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * #676: best-effort resolution of every service's `depends_on` names from the
+ * merged compose config (`compose config --format json`), so a target
+ * service missing entirely from `ps -a` — because Compose never created it,
+ * having refused to start a service gated on an unhealthy dependency — can
+ * name that dependency instead of only "not found". Compose normalizes
+ * `depends_on` to `{ [service]: { condition, ... } }` in `config` output, but
+ * the shorthand array form is handled too since nothing here depends on
+ * `config` having fully normalized it. Any failure returns `{}`.
+ */
+async function resolveComposeDependsOn(
+  docker: DockerClient,
+  base: string[],
+  envOverrides: Record<string, string> | undefined,
+): Promise<Record<string, string[]>> {
+  try {
+    const result = await docker.run([...base, "config", "--format", "json"], {
+      timeoutMs: 15_000,
+      env: envOverrides,
+    });
+    if (!result.ok || !result.stdout.trim()) return {};
+    const parsed = JSON.parse(result.stdout) as { services?: Record<string, { depends_on?: unknown }> };
+    const out: Record<string, string[]> = {};
+    for (const [svc, def] of Object.entries(parsed.services ?? {})) {
+      const dependsOn = def?.depends_on;
+      if (Array.isArray(dependsOn)) {
+        out[svc] = dependsOn.filter((d): d is string => typeof d === "string");
+      } else if (dependsOn && typeof dependsOn === "object") {
+        out[svc] = Object.keys(dependsOn as Record<string, unknown>);
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * The SINGLE Docker Compose driver for install/update/upgrade/pull (§4.3, plan 2.2).
  *
  * The default `--pull missing` path remains one `up` call. `pull: "always"`
@@ -1239,6 +1303,29 @@ export async function applyStack(
     // `rows.length === 0` branch above already surfaces into each per-service
     // reason too, so the underlying cause travels with it.
     const composeErrorLine = summarizeComposeStderr(upResult.stderr);
+
+    // #676: a target service's row can be missing from `ps -a` not because
+    // ITS container ever ran and failed, but because Compose never created it
+    // at all — a `depends_on: condition: service_healthy` dependency (e.g.
+    // guardian, gating discord/slack) sat unhealthy and blocked it. Reporting
+    // only "container for service discord not found after up" sent operators
+    // chasing the wrong service. Best-effort, only in this failure path: name
+    // every row `ps -a` already reported as unhealthy (target or not) with
+    // its last healthcheck output via one `docker inspect` each, and — only
+    // when a target row is actually missing — resolve `depends_on` from the
+    // merged compose config with one extra `compose config` call. Either
+    // step degrading (offline daemon, unexpected shape, …) just falls back to
+    // today's plain reason below; neither ever throws or manufactures a
+    // second failure.
+    const unhealthyDetail: Record<string, string> = {};
+    for (const r of rows) {
+      if (r.health !== "unhealthy") continue;
+      const detail = await fetchLastHealthcheckOutput(docker, r.id);
+      if (detail) unhealthyDetail[r.service] = detail;
+    }
+    const hasMissingTarget = targetServices.some((svc) => !rows.find((r) => r.service === svc));
+    const dependsOn = hasMissingTarget ? await resolveComposeDependsOn(docker, base, envOverrides) : {};
+
     for (const svc of targetServices) {
       const row = rows.find((r) => r.service === svc);
       if (isComposePsRowHealthy(row)) {
@@ -1251,7 +1338,23 @@ export async function applyStack(
           ? `container ${svc} is unhealthy`
           : `container ${svc} did not become healthy (state: ${row.state || "unknown"})`;
       const reasonWithCause = composeErrorLine ? `${rawReason}: ${composeErrorLine}` : rawReason;
-      failed.push({ service: svc, reason: mapDockerError(reasonWithCause).message });
+      const mapped = mapDockerError(reasonWithCause).message;
+
+      // Fold the #676 detail in AFTER mapDockerError, never before: its
+      // generic classifier treats any mention of "unhealthy" as one
+      // undifferentiated healthcheck_failed class and replaces the WHOLE
+      // message with fixed copy — feeding it the dependency/health detail
+      // would only get that detail thrown away right when it matters most.
+      let reason = mapped;
+      if (!row) {
+        const badDep = (dependsOn[svc] ?? []).find((d) => unhealthyDetail[d]);
+        if (badDep) {
+          reason = `${mapped}: it depends on ${badDep}, which is unhealthy (last healthcheck: ${unhealthyDetail[badDep]})`;
+        }
+      } else if (row.health === "unhealthy" && unhealthyDetail[svc]) {
+        reason = `${mapped} (last healthcheck: ${unhealthyDetail[svc]})`;
+      }
+      failed.push({ service: svc, reason });
     }
     return {
       ok: false,

@@ -104,7 +104,7 @@ EXPOSE 8080
 # path with no compose in front of it. healthcheck-parity.test.ts pins them
 # together so a future edit to one side alone fails CI instead of drifting.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
-  CMD curl -sf http://localhost:8080/health/ready || exit 1
+  CMD curl -s --fail-with-body http://localhost:8080/health/ready || exit 1
 
 USER bun
 

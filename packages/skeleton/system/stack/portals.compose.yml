@@ -234,7 +234,7 @@ services:
     # `docker run` with no compose in front of it. healthcheck-parity.test.ts
     # pins the two together.
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      test: ["CMD-SHELL", "curl -s --fail-with-body http://localhost:8080/health/ready || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

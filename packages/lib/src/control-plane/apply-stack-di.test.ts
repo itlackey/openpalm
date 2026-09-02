@@ -202,4 +202,171 @@ describe("applyStack", () => {
     expect(applied.failed[0]?.reason).not.toBe("Container proj-assistant-1 Recreate");
     expect(applied.error).not.toBe("Container proj-assistant-1 Recreate");
   });
+
+  // #676: a guardian whose readiness gate went unhealthy blocked Compose from
+  // ever CREATING discord (its `depends_on: condition: service_healthy`), so
+  // discord has no row at all in `ps -a`. The operator saw only "container
+  // for service discord not found after up" — true, but useless, since the
+  // real cause is guardian, a service they were not even trying to touch.
+  describe("#676: names the unhealthy dependency behind a missing container", () => {
+    test("missing target with an unhealthy dependency names it and includes the inspect output", async () => {
+      const docker = new FakeDocker((args) => {
+        if (args.includes("up")) return result(false, "");
+        if (args.includes("ps")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy", ID: "abc123" }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("inspect")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({
+              Log: [{ Output: '{"ok":false,"ready":false,"reason":"opencode proxy disabled"}', ExitCode: 1 }],
+            }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("config")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ services: { discord: { depends_on: { guardian: { condition: "service_healthy" } } } } }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        return result(true);
+      });
+
+      const applied = await applyStack(
+        { kind: "service", service: "discord" },
+        OPTIONS,
+        deps(docker),
+        { pull: "always" },
+      );
+
+      expect(applied.ok).toBe(false);
+      expect(applied.failed).toHaveLength(1);
+      expect(applied.failed[0]?.reason).toContain("container for service discord not found after up");
+      expect(applied.failed[0]?.reason).toContain("guardian");
+      expect(applied.failed[0]?.reason).toContain("opencode proxy disabled");
+    });
+
+    test("an unhealthy target's own reason includes its last healthcheck output", async () => {
+      const docker = new FakeDocker((args) => {
+        if (args.includes("up")) return result(false, "");
+        if (args.includes("ps")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy", ID: "abc123" }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("inspect")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({
+              Log: [{ Output: '{"ok":false,"ready":false,"reason":"opencode proxy disabled"}', ExitCode: 1 }],
+            }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        return result(true);
+      });
+
+      const applied = await applyStack(
+        { kind: "service", service: "guardian" },
+        OPTIONS,
+        deps(docker),
+        { pull: "always" },
+      );
+
+      expect(applied.ok).toBe(false);
+      expect(applied.failed).toHaveLength(1);
+      expect(applied.failed[0]?.reason).toContain("opencode proxy disabled");
+    });
+
+    test("falls back to today's wording when the inspect call fails", async () => {
+      const docker = new FakeDocker((args) => {
+        if (args.includes("up")) return result(false, "");
+        if (args.includes("ps")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy", ID: "abc123" }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("inspect")) return result(false, "Error: No such container: abc123");
+        if (args.includes("config")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ services: { discord: { depends_on: { guardian: { condition: "service_healthy" } } } } }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        return result(true);
+      });
+
+      const applied = await applyStack(
+        { kind: "service", service: "discord" },
+        OPTIONS,
+        deps(docker),
+        { pull: "always" },
+      );
+
+      expect(applied.ok).toBe(false);
+      expect(applied.failed).toEqual([
+        { service: "discord", reason: "container for service discord not found after up" },
+      ]);
+    });
+
+    test("resolves depends_on given in the shorthand array form", async () => {
+      const docker = new FakeDocker((args) => {
+        if (args.includes("up")) return result(false, "");
+        if (args.includes("ps")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy", ID: "abc123" }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("inspect")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ Log: [{ Output: '{"ok":false,"ready":false}', ExitCode: 1 }] }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        if (args.includes("config")) {
+          return {
+            ok: true,
+            stdout: JSON.stringify({ services: { discord: { depends_on: ["guardian"] } } }),
+            stderr: "",
+            code: 0,
+          };
+        }
+        return result(true);
+      });
+
+      const applied = await applyStack(
+        { kind: "service", service: "discord" },
+        OPTIONS,
+        deps(docker),
+        { pull: "always" },
+      );
+
+      expect(applied.ok).toBe(false);
+      expect(applied.failed[0]?.reason).toContain("guardian");
+      expect(applied.failed[0]?.reason).toContain('"ok":false');
+    });
+  });
 });
