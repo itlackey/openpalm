@@ -282,6 +282,31 @@ export class DesktopUpdater {
   private lastCheckAt: number | null = null;
   /** Token for the in-flight download, so dispose() can cancel it (review E3). */
   private downloadCancellation: CancellationTokenLike | null = null;
+  /**
+   * Set the first time THIS staged update's install has actually been handed
+   * to electron-updater, via EITHER `quitAndInstall()` or `installOnQuit()`;
+   * cleared when a new download starts. (#635)
+   *
+   * electron-updater's own re-entry guard (`BaseUpdater#quitAndInstallCalled`)
+   * is set unconditionally by `install()` before it even attempts the install,
+   * and on failure is reset back to `false` ONLY inside `quitAndInstall()`'s
+   * own wrapper — never when `install()` is called directly, which is exactly
+   * the path `installOnQuit()` uses (see its docblock). So once a silent
+   * install-on-quit has been attempted once, EVERY later call on EITHER path —
+   * for the rest of this process's life — is guaranteed to fail, and
+   * electron-updater itself only logs that as a quiet
+   * "install call ignored: quitAndInstallCalled is set to true" warning.
+   * Worse, `quitAndInstall()`'s own `app.quit()` fires Electron's real 'quit'
+   * lifecycle, which main.ts's before-quit handler reaches too — so a single
+   * user click on "Restart and update" was already making TWO raw calls into
+   * electron-updater (one via `quitAndInstall()`, one via the `installOnQuit()`
+   * that before-quit calls unconditionally afterward).
+   *
+   * This flag stops OUR code from ever making that doomed (or redundant)
+   * second call — a repeat attempt is refused right here, loudly, instead of
+   * silently retrying into a no-op.
+   */
+  private installAttempted = false;
   // Bound listener references, kept so dispose() can remove exactly these
   // from the shared singleton updater (review E6 — see dispose() below).
   private readonly onDownloadProgress: ((...args: unknown[]) => void) | null;
@@ -456,6 +481,8 @@ export class DesktopUpdater {
     }
 
     this.patch({ status: 'downloading', percent: 0, error: null });
+    // A fresh downloaded artifact gets a fresh, one-shot install budget (#635).
+    this.installAttempted = false;
     // Held so dispose() can cancel this download if the channel toggle
     // discards the instance mid-flight (review E3).
     this.downloadCancellation = this.deps.createCancellationToken?.() ?? null;
@@ -485,9 +512,24 @@ export class DesktopUpdater {
   /**
    * Install the staged update now. No-op unless a download completed — calling
    * quitAndInstall without one would quit the app and install nothing.
+   *
+   * At most once per downloaded update (#635): a repeat call — e.g. the
+   * `installOnQuit()` that main.ts's before-quit handler makes unconditionally
+   * once electron-updater's own `app.quit()` (fired below) reaches it — is
+   * refused here rather than making a second, doomed raw call into
+   * electron-updater. See `installAttempted`'s docblock.
    */
   quitAndInstall(): boolean {
     if (!this.state.supported || this.state.status !== 'downloaded') return false;
+    if (this.installAttempted) {
+      console.error(
+        '[updater] quitAndInstall() refused: an install was already attempted for this ' +
+          'staged update (#635 single-attempt guard) — electron-updater would silently ' +
+          'ignore a second call anyway.',
+      );
+      return false;
+    }
+    this.installAttempted = true;
     this.deps.updater.quitAndInstall(false, true);
     return true;
   }
@@ -504,9 +546,37 @@ export class DesktopUpdater {
    * non-silent, force-run-after).
    *
    * No-op (returns false) unless a download has actually completed.
+   *
+   * At most once per downloaded update (#635). Two distinct "already handled"
+   * cases share that budget with `quitAndInstall()`:
+   *  - Expected, benign: `quitAndInstall()` already installed this update and
+   *    its own `app.quit()` is what brought us to this before-quit call in the
+   *    first place. Nothing failed — refuse quietly instead of making a second
+   *    raw call electron-updater would ignore anyway.
+   *  - Genuine failure: an EARLIER `installOnQuit()` in this same process
+   *    already tried and failed. electron-updater's guard means a retry here
+   *    is guaranteed to fail too (see `installAttempted`'s docblock), so
+   *    refuse — loudly, since this is the only path a stuck-forever updater
+   *    would otherwise never be reported on.
    */
   installOnQuit(): boolean {
     if (!this.state.supported || this.state.status !== 'downloaded') return false;
-    return this.deps.updater.install(true, false);
+    if (this.installAttempted) return false;
+    this.installAttempted = true;
+    const launched = this.deps.updater.install(true, false);
+    if (!launched) {
+      // Loud and unconditional: this quit proceeds regardless (main.ts's
+      // before-quit handler calls app.exit(0) right after), so this is the
+      // only chance to record that the staged update was NOT applied — the
+      // app is about to relaunch on its OLD version, and (#635)
+      // electron-updater's own quitAndInstallCalled guard means no later
+      // attempt in this process can ever succeed either.
+      console.error(
+        '[updater] installOnQuit() failed to launch the update installer; the staged ' +
+          'update was NOT applied. This process cannot retry it — electron-updater\'s ' +
+          'quitAndInstallCalled guard is now permanently set for this run.',
+      );
+    }
+    return launched;
   }
 }
