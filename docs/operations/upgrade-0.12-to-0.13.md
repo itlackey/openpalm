@@ -596,6 +596,15 @@ round, and a rerun is a clean no-op. Beyond that:
   `knowledge/env/user.env`. Treat anything in the shared stash as readable by
   every enabled `/stash` holder, not just the assistant.
 
+- **A third-party credential consumed as an environment variable goes in
+  `knowledge/env/user.env`, not `stack.env` or a compose `environment:`
+  block.** The secret-boundary audit refuses secret-like keys in both places
+  and points at `<KEY>_FILE`, which is right for services that read file
+  secrets. akm engines do not: their `apiKey` must be a `$VAR` reference that
+  akm resolves from `process.env`, and `knowledge/env/user.env` is the file the
+  assistant entrypoint sources at startup (akm `env path env:user`), so it is
+  the one place such a value both passes the audit and reaches the tool.
+
 Every mount and secret source in the managed compose files now uses
 `${OP_HOME:?}`, so Compose fails loudly instead of resolving those paths against
 an empty `OP_HOME`.
