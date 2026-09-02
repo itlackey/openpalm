@@ -27,6 +27,33 @@ function isRootProcess(): boolean {
   return process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
 }
 
+/**
+ * Root-only assertions in this file silently ran ZERO assertions on every CI
+ * run: `if (!isRootProcess()) return;` no-ops on an unprivileged process, and
+ * ci.yml's `bun run test` has always run unprivileged (#653). That made these
+ * three tests decorative — they always "passed" by asserting nothing.
+ *
+ * The CI root lane (a `sudo -E env "PATH=$PATH" bun test` run — see
+ * scripts/cross-uid-smoke.sh's sibling CI step) sets OP_REQUIRE_ROOT_TESTS=1
+ * so a regression that lands the suite back on an unprivileged runner FAILS
+ * LOUDLY instead of quietly no-op'ing again. Every other (non-root) run of
+ * this file — the ordinary `bun run test` lane — leaves the var unset and
+ * keeps the original skip-on-non-root behavior.
+ */
+function requireRootOrSkip(): boolean {
+  if (isRootProcess()) return true;
+  if (process.env.OP_REQUIRE_ROOT_TESTS === "1") {
+    throw new Error(
+      "OP_REQUIRE_ROOT_TESTS=1 but this test process is not root " +
+        `(uid=${typeof process.getuid === "function" ? process.getuid() : "unavailable"}) — ` +
+        "the root-only mixed-identity assertions in this file cannot run. This file must be " +
+        'executed as root (e.g. `sudo -E env "PATH=$PATH" bun test --isolate ' +
+        "packages/lib/src/control-plane/config-persistence-operator-ids.test.ts`).",
+    );
+  }
+  return false;
+}
+
 beforeEach(() => {
   homeDir = mkdtempSync(join(tmpdir(), "openpalm-opids-persist-"));
   savedHome = process.env.OP_HOME;
@@ -50,7 +77,7 @@ function readStackEnvFile(): Record<string, string> {
 
 describe("writeSystemEnv — effective operator identity", () => {
   it("a non-root OP_GID pin plus a uid backfill passes the gate — the effective identity is non-root", () => {
-    if (!isRootProcess()) return;
+    if (!requireRootOrSkip()) return;
     delete process.env.OP_ALLOW_ROOT;
     // Home owned 4242:0 under a root process: resolveOperatorIds gives the
     // mixed {4242, 0}. Only OP_UID would be written (OP_GID is pinned), so
@@ -67,7 +94,7 @@ describe("writeSystemEnv — effective operator identity", () => {
   });
 
   it("does not warn 'containers will run as 0:0' when non-root pins cover the root axes", () => {
-    if (!isRootProcess()) return;
+    if (!requireRootOrSkip()) return;
     delete process.env.OP_ALLOW_ROOT;
     // Root-owned home + root process resolve {0, 0}, but both axes are pinned
     // non-root, so nothing root is written OR effective: no gate, no warning.
@@ -92,7 +119,7 @@ describe("writeSystemEnv — effective operator identity", () => {
   });
 
   it("still refuses to PERSIST a root identity without the opt-in", () => {
-    if (!isRootProcess()) return;
+    if (!requireRootOrSkip()) return;
     delete process.env.OP_ALLOW_ROOT;
     // No pins at all: both axes would be written from the root resolution.
     writeFileSync(join(homeDir, "state", "stack.env"), `OP_HOME=${homeDir}\n`);
