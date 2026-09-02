@@ -73,6 +73,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The AKM settings tab no longer writes an engine config akm 0.9.8 refuses.**
+  akm >= 0.9.8 fails closed at config load when `engines.<name>.extraParams`
+  carries a key that has a first-class field (`temperature`, `max_tokens`,
+  `enable_thinking`, `reasoning_effort`, in any spelling) — every akm command,
+  the boot check included, then exits 78 until the file is rewritten. The
+  tab's extraParams box is free-form JSON, so `buildLlmEnginePayload` now
+  lifts those keys onto the first-class fields exactly as akm's own
+  `migrate apply` does, drops one that merely duplicates the field, and
+  refuses one that disagrees with it instead of guessing.
 - **`openpalm update` from 0.12.x no longer silently drops the akm LLM
   engine (#645).** The retired `profiles.llm.*` block is translated into akm
   0.9 `engines.*` (endpoint, model, provider, and an env-var `apiKey`
