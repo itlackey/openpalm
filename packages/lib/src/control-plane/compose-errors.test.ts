@@ -150,14 +150,12 @@ describe("summarizeComposeStderr", () => {
         "(ea9aae3438a70024ae2d66c35b54d50d83d5af01db6be82ac8d880809f0bd6ed): " +
         "Bind for 127.0.0.1:39217 failed: port is already allocated",
     );
-    // mapDockerError still surfaces the real daemon line (raw passthrough via
-    // the docker_error fallback — this exact wording doesn't trip the
-    // `port_in_use` regex, whose port-number capture only looks AFTER the
-    // matched phrase, and here `39217` precedes it) instead of the masked
-    // `Container … Recreate` progress line #644 exists to guard against.
-    const mapped = mapDockerError(stderr);
-    expect(mapped.message).toContain("39217");
-    expect(mapped.message).toContain("port is already allocated");
+    // And mapDockerError classifies it: the daemon puts the port BEFORE the
+    // phrase in every real phrasing, which the old capture never handled.
+    expect(mapDockerError(stderr)).toEqual({
+      code: "port_in_use",
+      message: "Port 39217 is already in use by another program. Free it, then retry.",
+    });
   });
 
   // Regression (#644): a real `--force-recreate` reapply failed, and the
@@ -199,6 +197,17 @@ describe("mapDockerError", () => {
     expect(mapDockerError("Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3880 -> 0.0.0.0:0: listen tcp 0.0.0.0:3880: bind: address already in use")).toEqual({
       code: "port_in_use",
       message: "Port 3880 is already in use by another program. Free it, then retry.",
+    });
+  });
+
+  it("maps the newer daemon phrasing, port before the phrase, with a /tcp suffix", () => {
+    expect(mapDockerError(
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    )).toEqual({
+      code: "port_in_use",
+      message: "Port 3810 is already in use by another program. Free it, then retry.",
     });
   });
 

@@ -162,9 +162,14 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     };
   }
 
-  const portMatch = /(?:bind: address already in use|port is already allocated).*?([0-9]{2,5})\b/i.exec(stderr)
-    ?? /listen tcp[^:]*:([0-9]{2,5})\b/i.exec(stderr)
-    ?? /Ports are not available: .*?:([0-9]+)\b/i.exec(stderr);
+  // Every daemon phrasing puts the port BEFORE the phrase — `Bind for
+  // 127.0.0.1:3810 failed: port is already allocated`, `failed to bind host
+  // port 127.0.0.1:3810/tcp: address already in use`, `listen tcp
+  // 0.0.0.0:3880: bind: address already in use` — so take the line that
+  // carries the phrase and read the first `:<port>` on it (an IPv4 octet is
+  // never colon-prefixed, so this cannot pick up `127.0.0.1`).
+  const portLine = stderr.split(/\r?\n/).find((line) => /address already in use|port is already allocated/i.test(line));
+  const portMatch = portLine ? /:([0-9]{2,5})(?:\/(?:tcp|udp))?\b/.exec(portLine) : null;
   if (portMatch) {
     return {
       code: "port_in_use",
