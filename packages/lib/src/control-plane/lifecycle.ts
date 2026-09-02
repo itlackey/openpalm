@@ -18,7 +18,8 @@ import {
 	resolveRuntimeFiles,
 	writeRuntimeFiles,
 	discoverStackOverlays,
-	ensureComposeVolumeTargets
+	ensureComposeVolumeTargets,
+	ensureHostPortDefaults
 } from './config-persistence.js';
 import { ensureOpenCodeSystemConfig } from './core-assets.js';
 import { applyHomeSeed, readSkeletonVersion } from './ui-assets.js';
@@ -309,6 +310,15 @@ async function applyManagedFiles(
 	await runHomeMigrations(state.homeDir);
 	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
 	advanceManagedImageVersions(state, previousPlatformVersion);
+	// #660: a compose-published host port left ABSENT falls straight through
+	// to compose's own bare `${KEY:-default}` — the port migrations above only
+	// ever considered assistant/ui, so every other default (workspace, api,
+	// guardian, guardian-admin, paperclip, voice) was host-blind: two sibling
+	// installs could both land on the same default and collide. Runs on both
+	// install and update, and BEFORE applyHome/reconcileCore so the resolved
+	// value is what the stack actually activates with, not a value chosen
+	// after compose already tried (and failed) to bind the busy default.
+	await ensureHostPortDefaults(state);
 	await applyHome(state);
 	await reconcileCore(state, { activateServices });
 	return generation;

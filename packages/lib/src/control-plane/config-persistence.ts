@@ -11,8 +11,8 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { composeConfigJsonSync, checkDocker, resolveComposeProjectName, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
 import { parseEnabledAddons, parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
-import { probeInstallPorts, type InstallPortTarget } from './port-probe.js';
-import { readStackEnv } from './secrets.js';
+import { probeInstallPorts, HOST_PORT_DEFAULTS, type InstallPortTarget, type HostPortDefault } from './port-probe.js';
+import { readStackEnv, patchStateEnvFile } from './secrets.js';
 import {
   ACCESS_ENV_KEYS,
   hasStoredAccessIntent,
@@ -69,7 +69,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [legacyKnowledgeStackEnvFile(state.homeDir), legacyStateEnvFile(state.homeDir)].filter(existsSync);
 }
 
-/** Bounded forward scan (issue #658): how far past a busy default to look for a free port. */
+/** Bounded forward scan (issues #658, #660): how far past a busy default to look for a free port. */
 const DEFAULT_PORT_SCAN_RANGE = 20;
 
 /**
@@ -77,14 +77,20 @@ const DEFAULT_PORT_SCAN_RANGE = 20;
  * the SAME host-aware prober `openpalm doctor` and the install wizard trust
  * (port-probe.ts) rather than a second bind-probe implementation.
  *
- * Only ever called for a value a migration is about to WRITE AS A FALLBACK —
- * never for an operator's explicit port, which the caller carries through
- * untouched before this is reached. A port already published by THIS
- * install's own compose project reads as free (never a false conflict, via
- * `composeProject`); a genuinely occupied port is walked forward a bounded
- * range and the first free one wins. `reserved` excludes a port this same
- * migration run already assigned to a sibling service, so two defaults never
- * collide with each other.
+ * Only ever called for a value a migration (or {@link ensureHostPortDefaults})
+ * is about to WRITE AS A FALLBACK — never for an operator's explicit port,
+ * which the caller carries through untouched before this is reached. A port
+ * already published by THIS install's own compose project reads as free
+ * (never a false conflict, via `composeProject`); a genuinely occupied port is
+ * walked forward a bounded range and the first free one wins. `reserved`
+ * excludes a port this same run already assigned to (or otherwise reserved
+ * for) a sibling service, so two defaults never collide with each other.
+ *
+ * `composeProject` defaults to deriving from `homeDir` (the original,
+ * single-call-site behavior); a caller resolving several ports in the same
+ * run (like `ensureHostPortDefaults`) can pass one built once instead of
+ * re-deriving it — cheap either way (no docker call), but one source of truth
+ * for the run.
  */
 async function resolveDefaultPort(
   homeDir: string,
@@ -92,11 +98,11 @@ async function resolveDefaultPort(
   service: string,
   reserved: Set<number>,
   dockerAvailable: boolean,
-): Promise<number> {
-  const composeProject = {
+  composeProject: { name: string; workingDir: string } = {
     name: resolveComposeProjectName(readStackEnv(homeDir)),
     workingDir: stackDirFor(homeDir),
-  };
+  },
+): Promise<number> {
   const targets: InstallPortTarget[] = [];
   for (let offset = 0; offset <= DEFAULT_PORT_SCAN_RANGE; offset++) {
     targets.push({ port: candidate + offset, service, blocking: true });
@@ -109,6 +115,99 @@ async function resolveDefaultPort(
     { candidate, service },
   );
   return candidate;
+}
+
+/**
+ * Ensure every compose-published host port in {@link HOST_PORT_DEFAULTS} that
+ * is ABSENT from `state/stack.env` resolves to a port nothing else is using.
+ *
+ * Issue #660: `migrateLegacyDefaultPorts` and `migrateConsolidatedDefaultPorts`
+ * (above) only ever considered the assistant/ui pair — every OTHER
+ * compose-published port (workspace, api, guardian, guardian-admin,
+ * paperclip, voice) still falls straight through to compose's bare
+ * `${KEY:-default}` when unset, so two sibling installs that both leave (say)
+ * `OP_WORKSPACE_PORT` unset collide on 3820 with no migration to catch it —
+ * and a fresh install writes that same blind default via
+ * `generateFallbackSystemEnv`. This is the one place all eight keys are
+ * actually checked.
+ *
+ * An explicit operator value is NEVER touched — this only ever resolves a key
+ * that is absent or empty. Absence keeps meaning "follow the release
+ * default": when the default port is free (or already ours, via
+ * `portHeldByOurContainer` through `probeInstallPorts`), nothing is written.
+ * Only when the default is held by something else does a key get a
+ * replacement — the next free port within {@link DEFAULT_PORT_SCAN_RANGE},
+ * excluded from landing on any port this instance already uses (an explicit
+ * value) OR defaults to (every OTHER key in the list), so two of THIS
+ * instance's own ports can never collide with each other either. If nothing
+ * in range is free, the key is logged and left absent; the deploy's own
+ * classified port-conflict error surfaces the collision.
+ *
+ * Skipped entirely (logged once) when Docker is unreachable: ownership of a
+ * busy port cannot be attributed to "ours" without it, and treating every
+ * busy port as foreign during a Docker blip would needlessly bump ports on
+ * every update.
+ */
+export async function ensureHostPortDefaults(state: ControlPlaneState): Promise<void> {
+  const homeDir = state.homeDir;
+  const path = stackEnvFile(homeDir);
+  const parsed = existsSync(path) ? parseEnvContent(readFileSync(path, 'utf-8')) : {};
+
+  const explicitValues = new Map<string, number>();
+  const absent: HostPortDefault[] = [];
+  for (const def of HOST_PORT_DEFAULTS) {
+    const raw = parsed[def.key]?.trim();
+    const n = raw ? Number(raw) : Number.NaN;
+    if (raw && Number.isFinite(n) && n > 0) {
+      explicitValues.set(def.key, n);
+    } else {
+      absent.push(def);
+    }
+  }
+  if (absent.length === 0) return;
+
+  const dockerCheck = await checkDocker();
+  if (!dockerCheck.ok) {
+    logger.warn('Skipping host port default checks: Docker is unreachable', {
+      keys: absent.map((d) => d.key),
+    });
+    return;
+  }
+
+  const composeProject = {
+    name: resolveComposeProjectName(readStackEnv(homeDir)),
+    workingDir: stackDirFor(homeDir),
+  };
+
+  // Every port this instance already uses (an explicit value) or defaults to
+  // (every key in the list) is off-limits to a REPLACEMENT chosen for a
+  // DIFFERENT key.
+  const reserved = new Set<number>([
+    ...explicitValues.values(),
+    ...HOST_PORT_DEFAULTS.map((d) => d.default),
+  ]);
+
+  const updates: Record<string, string> = {};
+  for (const def of absent) {
+    // This key's own default is the candidate being probed, not a
+    // reservation against itself.
+    reserved.delete(def.default);
+    const port = await resolveDefaultPort(homeDir, def.default, def.service, reserved, true, composeProject);
+    reserved.add(def.default);
+    if (port === def.default) continue; // free (or ours) — absence still means "the default"
+    updates[def.key] = String(port);
+    reserved.add(port);
+    logger.warn(
+      `Default host port for ${def.service} (${def.key}) is in use by another program; persisting ${port} instead`,
+      // `envKey`, not `key` — the logger's own secret redaction treats any
+      // structured field literally named `key` as sensitive (isSensitiveEnvKey
+      // in logger.ts) and would mask the env var name here.
+      { envKey: def.key, default: def.default, port },
+    );
+  }
+
+  if (Object.keys(updates).length === 0) return;
+  patchStateEnvFile(homeDir, updates);
 }
 
 /**

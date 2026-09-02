@@ -117,6 +117,46 @@ function pickPort(...envNames: string[]): number | null {
 }
 
 /**
+ * One compose-published host port key and its release default.
+ *
+ * `default` matches the compose file's own `${KEY:-default}` fallback — grep
+ * `packages/skeleton/system/stack/*.yml` for the key to re-verify it. Every
+ * entry here is a port a fresh install can leave ABSENT from `state/stack.env`
+ * and still get a working stack: compose's own interpolation supplies the
+ * default. That is exactly the gap issue #660 found — nothing but assistant
+ * and ui was ever checked for a HOST-BLIND default two sibling installs could
+ * both fall onto (`migrateLegacyDefaultPorts` / `migrateConsolidatedDefaultPorts`,
+ * config-persistence.ts, only ever considered that pair). See
+ * `ensureHostPortDefaults` (config-persistence.ts), the one other place that
+ * reads this list.
+ */
+export interface HostPortDefault {
+  /** The stack.env key, e.g. `OP_WORKSPACE_PORT`. */
+  key: string;
+  /** The release default this key falls back to when absent. */
+  default: number;
+  /** Service name, for probe targets and log messages. */
+  service: string;
+}
+
+export const HOST_PORT_DEFAULTS: readonly HostPortDefault[] = [
+  { key: "OP_UI_PORT", default: STACK_DEFAULTS.ports.ui, service: "ui" },
+  { key: "OP_ASSISTANT_PORT", default: STACK_DEFAULTS.ports.assistant, service: "assistant" },
+  { key: "OP_WORKSPACE_PORT", default: STACK_DEFAULTS.ports.workspace, service: "workspace" },
+  { key: "OP_API_PORT", default: 3821, service: "api" },
+  { key: "OP_GUARDIAN_PORT", default: 3830, service: "guardian" },
+  { key: "OP_GUARDIAN_ADMIN_PORT", default: 3831, service: "guardian-admin" },
+  { key: "OP_PAPERCLIP_PORT", default: 3840, service: "paperclip" },
+  { key: "OP_VOICE_PORT_HOST", default: 8880, service: "voice" },
+];
+
+function hostPortDefault(key: string): number {
+  const found = HOST_PORT_DEFAULTS.find((d) => d.key === key);
+  if (!found) throw new Error(`No HOST_PORT_DEFAULTS entry for ${key}`);
+  return found.default;
+}
+
+/**
  * The install ports doctor probes, sourced from the same env vars the
  * install will publish (mirrors `packages/cli/src/commands/install.ts` and
  * the system-check route's `resolvePortsToCheck`). Guardian is intentionally
@@ -125,8 +165,8 @@ function pickPort(...envNames: string[]): number | null {
 export function resolveInstallPortTargets(): InstallPortTarget[] {
   return [
     { port: pickPort("OP_HOST_UI_PORT") ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
-    { port: pickPort("OP_UI_PORT") ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
-    { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
+    { port: pickPort("OP_UI_PORT") ?? hostPortDefault("OP_UI_PORT"), service: "ui", blocking: true },
+    { port: pickPort("OP_ASSISTANT_PORT") ?? hostPortDefault("OP_ASSISTANT_PORT"), service: "assistant", blocking: true },
     workspacePortTarget(process.env),
   ];
 }

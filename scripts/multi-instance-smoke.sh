@@ -12,7 +12,9 @@
 #
 #   1. B does not take a port A holds (checked against B's own recorded
 #      config AND against the live, actually-bound host ports of both
-#      running containers).
+#      running containers) — including OP_WORKSPACE_PORT (#660), which this
+#      fixture deliberately leaves unseeded on BOTH instances so the update
+#      itself has to resolve the collision against A's live default.
 #   2. B never adopts A's project name (nor the bare "openpalm" default —
 #      #650).
 #   3. An operator override hand-written into B's state/stack.env BETWEEN two
@@ -252,6 +254,26 @@ check_port OP_GUARDIAN_PORT "$B_GUARDIAN_PORT" "$A_GUARDIAN_PORT"
 check_port OP_GUARDIAN_ADMIN_PORT "$B_GUARDIAN_ADMIN_PORT" "$A_GUARDIAN_ADMIN_PORT"
 check_port OP_API_PORT "$B_API_PORT" "$A_API_PORT"
 
+# 3b. #660: OP_WORKSPACE_PORT is the one core.compose.yml port this fixture
+#     deliberately never seeds for EITHER instance (see smoke_write_stack_env)
+#     — the point of this lane is that the system resolves the collision on
+#     its own, not that the fixture avoids it. Neither instance's config has a
+#     fixed "expected" value the way the other ports do (openpalm update's
+#     ensureHostPortDefaults picks whatever is free), so this checks the
+#     EFFECTIVE value (the persisted key, or compose's own 3820 fallback when
+#     still absent) rather than reusing check_port. Before the fix this always
+#     failed: A holds 3820 live and B's OP_WORKSPACE_PORT stayed unset, so both
+#     effective values were 3820.
+a_workspace_effective=$(grep -E '^OP_WORKSPACE_PORT=' "${A_HOME}/state/stack.env" | tail -1 | cut -d= -f2-)
+a_workspace_effective="${a_workspace_effective:-3820}"
+b_workspace_effective=$(grep -E '^OP_WORKSPACE_PORT=' "${B_HOME}/state/stack.env" | tail -1 | cut -d= -f2-)
+b_workspace_effective="${b_workspace_effective:-3820}"
+if [[ "$b_workspace_effective" == "$a_workspace_effective" ]]; then
+  fail "instance B's effective workspace port (${b_workspace_effective}) collides with instance A's (${a_workspace_effective}) — the update did not resolve the unseeded OP_WORKSPACE_PORT default"
+else
+  pass "instance B's effective workspace port (${b_workspace_effective}) is distinct from instance A's (${a_workspace_effective})"
+fi
+
 # 4. Instance A stayed live and unaffected throughout B's update — the
 #    strongest proof that nothing about B's update reached across into A.
 a_status_after=$(docker inspect --format '{{.State.Health.Status}}' "${A_PROJECT}-assistant-1" 2>/dev/null || echo missing)
@@ -263,7 +285,10 @@ fi
 
 # 5. Live runtime cross-check: the two containers' actually-bound host ports
 #    (not just the config each recorded) never overlap. Config could agree by
-#    construction; this asks Docker what really got bound.
+#    construction; this asks Docker what really got bound. `docker port` lists
+#    every published mapping on the container, so this already covers the
+#    workspace port alongside assistant/ui — core.compose.yml publishes all
+#    three on the SAME assistant service (#660).
 a_ports=$(docker port "${A_PROJECT}-assistant-1" 2>/dev/null || true)
 b_ports=$(docker port "${B_PROJECT}-assistant-1" 2>/dev/null || true)
 overlap=$(comm -12 <(printf '%s\n' "$a_ports" | sort -u) <(printf '%s\n' "$b_ports" | sort -u) | sed '/^$/d')
