@@ -182,7 +182,7 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
  * OP_HOME's install the operator `docker compose stop`ped, or one that never
  * finished coming up) is invisible to a running-only `ps` — the collision
  * probe this feeds would then see "no project" and let the deploy's
- * `up --force-recreate --remove-orphans` adopt/clobber it.
+ * `up --force-recreate` adopt/clobber it.
  *
  * `-a` also means MULTIPLE containers under the same project name is no
  * longer a corner case: a stopped foreign leftover can sit right alongside
@@ -1107,10 +1107,19 @@ export type ApplyStackOptions = {
  *
  * `services` (plural) is the multi-service sibling of `service` — a named,
  * pre-resolved subset (e.g. every service in one addon profile) recreated
- * together with no `--remove-orphans`, exactly like the singular form. It
- * exists so a caller that owns a named group of services (e.g. the voice
- * addon's bring-up flow, or the manual pull button) can route through this
- * single driver instead of reimplementing its own up + health-wait.
+ * together, exactly like the singular form. It exists so a caller that owns
+ * a named group of services (e.g. the voice addon's bring-up flow, or the
+ * manual pull button) can route through this single driver instead of
+ * reimplementing its own up + health-wait.
+ *
+ * No scope, including `all`, ever passes `--remove-orphans` (#668): a
+ * container Compose calls an "orphan" here is only "not in the resolved
+ * profile set", which is equally true of a service disabled by a stale
+ * `OP_ENABLED_ADDONS` or one started by hand — neither is consent to delete
+ * it. Nothing in the managed lifecycle depends on this flag for cleanup
+ * (addon disable stops its own services explicitly); removing a disabled
+ * profile's containers stays the deliberate, manual `--remove-orphans` step
+ * documented in the compose runbook.
  *
  * Callers pass the resolved ComposeOptions so this function never builds them
  * itself — profiles are already resolved.
@@ -1169,13 +1178,12 @@ export async function applyStack(
   // running+healthy; composeUpTimeoutMs() (30 min, OP_COMPOSE_UP_TIMEOUT_MS)
   // remains the bound that stops a genuinely hung start, and it is deliberately
   // the ONLY one.
+  // No `--remove-orphans` on any scope (#668): see the doc comment above.
   const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--force-recreate"];
   if (scope.kind === "service") {
     upArgs.push("--no-deps", scope.service);
   } else if (scope.kind === "services") {
     upArgs.push("--no-deps", ...scope.services);
-  } else {
-    upArgs.push("--remove-orphans");
   }
 
   const upTimeout = pullMode === "always" ? composeUpTimeoutMs() : PULL_TIMEOUT_MS + composeUpTimeoutMs();

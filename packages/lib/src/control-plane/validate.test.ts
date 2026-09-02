@@ -105,3 +105,60 @@ describe('validateProposedState: akm engines advisory (issue #645)', () => {
     expect(result.warnings).toEqual([]);
   });
 });
+
+/**
+ * Tests for the missing-stack-env error (issue #671).
+ *
+ * A pre-0.13 home still has its stack env at the pre-consolidation
+ * location(s) — `knowledge/env/stack.env` and/or `state/stack.state.env` —
+ * because `migrateToSingleStackEnv` (home-schema.ts) has not run yet.
+ * `validate` used to report a bare "stack env file missing" for this,
+ * indistinguishable from a genuinely broken home. It must instead name the
+ * legacy file it found and the command (`openpalm update`) that migrates it.
+ */
+function bareHome(): { state: ControlPlaneState; home: string } {
+  const home = mkdtempSync(join(tmpdir(), 'validate-pre-013-'));
+  homes.push(home);
+  const state = {
+    homeDir: home,
+    configDir: join(home, 'config'),
+    stashDir: join(home, 'knowledge'),
+    workspaceDir: join(home, 'workspace'),
+    dataDir: join(home, 'data'),
+  } as unknown as ControlPlaneState;
+  return { state, home };
+}
+
+describe('validateProposedState: pre-0.13 layout detection (issue #671)', () => {
+  it('names the pre-0.13 layout and `openpalm update` when only the legacy knowledge/ stack env exists', async () => {
+    const { state, home } = bareHome();
+    mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.12.52\n');
+
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain(join(home, 'knowledge', 'env', 'stack.env'));
+    expect(result.errors[0]).toContain('pre-0.13');
+    expect(result.errors[0]).toContain('openpalm update');
+  });
+
+  it('names the legacy state/stack.state.env location too', async () => {
+    const { state, home } = bareHome();
+    mkdirSync(join(home, 'state'), { recursive: true });
+    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_ENABLED_ADDONS=\n');
+
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain(join(home, 'state', 'stack.state.env'));
+    expect(result.errors[0]).toContain('openpalm update');
+  });
+
+  it('falls back to the plain missing-file error when no stack env exists anywhere', async () => {
+    const { state, home } = bareHome();
+
+    const result = await validateProposedState(state);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual([`ERROR: stack env file missing at ${join(home, 'state', 'stack.env')}`]);
+  });
+});

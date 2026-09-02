@@ -5,6 +5,29 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`update`/`install` no longer delete a running service `--remove-orphans`
+  never had a reason to touch (#668).** The single Compose driver
+  (`applyStack`, `docker.ts`) dropped `--remove-orphans` from the full-stack
+  `up`, the only scope that ever passed it. A container Compose calls an
+  "orphan" there is only "not in the resolved profile set" — equally true of
+  a service running because `OP_ENABLED_ADDONS` drifted stale, or one an
+  operator started by hand, neither of which is consent to delete it.
+  Nothing in the managed lifecycle relied on the flag: disabling an addon
+  already stops its own services explicitly, and removing a disabled
+  profile's containers stays the manual, deliberate `--remove-orphans` step
+  the compose runbook documents.
+- **`openpalm validate` names the pre-0.13 layout instead of reporting a bare
+  "stack env file missing" (#671).** When `state/stack.env` is absent,
+  `validateProposedState` (`validate.ts`) now checks the pre-consolidation
+  locations (`knowledge/env/stack.env`, `state/stack.state.env`) and, if
+  either is present, names it and points at `openpalm update` — the command
+  that runs `migrateToSingleStackEnv` — instead of reading as a broken
+  config on a home that is simply waiting on its next upgrade.
+
 ## [0.13.1] - 2026-09-02
 
 ### Added

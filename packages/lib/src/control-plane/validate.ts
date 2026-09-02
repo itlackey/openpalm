@@ -8,7 +8,7 @@
  * function never shells out and never reads schemas.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { stateSecretsDir } from "./home.js";
+import { legacyKnowledgeStackEnvFile, legacyStateEnvFile, stateSecretsDir } from "./home.js";
 import { readSecret } from "./secrets-files.js";
 import { akmConfigPath, stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
@@ -39,7 +39,25 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
   const stackEnvFile = stackEnvPath(state);
 
   if (!existsSync(stackEnvFile)) {
-    errors.push(`ERROR: stack env file missing at ${stackEnvFile}`);
+    // #671: on a pre-0.13 home the stack env still lives at its old,
+    // pre-consolidation location(s) — `knowledge/env/stack.env` and/or the
+    // app-written `state/stack.state.env` — and `migrateToSingleStackEnv`
+    // (home-schema.ts) has simply not run yet. Reported bare, this reads as
+    // "your config is broken" to an operator running `validate` as the
+    // natural pre-upgrade check, exactly backwards from "this is normal,
+    // upgrade to fix it". Name the legacy file(s) found and the command that
+    // consolidates them, instead of only naming the absent target.
+    const legacyPaths = [legacyKnowledgeStackEnvFile(state.homeDir), legacyStateEnvFile(state.homeDir)].filter(
+      existsSync,
+    );
+    if (legacyPaths.length > 0) {
+      errors.push(
+        `ERROR: stack env not found at ${stackEnvFile}, but a pre-0.13 stack env exists at ${legacyPaths.join(" and ")}. ` +
+          "This home predates the state/ layout consolidation. Run `openpalm update` to migrate it.",
+      );
+    } else {
+      errors.push(`ERROR: stack env file missing at ${stackEnvFile}`);
+    }
     return { ok: false, errors, warnings };
   }
 

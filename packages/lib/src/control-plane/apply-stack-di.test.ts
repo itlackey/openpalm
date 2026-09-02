@@ -41,8 +41,23 @@ describe("applyStack", () => {
     expect(docker.calls).toHaveLength(3);
     expect(docker.calls[0]).toContain("pull");
     expect(docker.calls[1]).toContain("up");
-    expect(docker.calls[1]).toContain("--remove-orphans");
     expect(docker.calls[2]).toEqual(expect.arrayContaining(["config", "--services"]));
+  });
+
+  // #668: a container Compose calls an "orphan" is only "not in the
+  // resolved profile set" — equally true of a service running because
+  // OP_ENABLED_ADDONS drifted stale, or one started by hand. `--remove-orphans`
+  // must never be part of the automatic full-stack apply; removing a
+  // disabled addon's containers is a deliberate, manual step (compose
+  // runbook), not something `update`/`install` does on the operator's behalf.
+  test("never passes --remove-orphans, even for the full-stack scope", async () => {
+    const docker = new FakeDocker();
+
+    await applyStack({ kind: "all" }, OPTIONS, deps(docker), { pull: "always" });
+
+    for (const call of docker.calls) {
+      expect(call).not.toContain("--remove-orphans");
+    }
   });
 
   test("pulls and force-recreates only one service", async () => {
