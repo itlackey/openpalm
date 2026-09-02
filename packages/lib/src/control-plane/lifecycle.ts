@@ -409,7 +409,7 @@ export async function applyInstall(
 				// Skippable (like OP_SKIP_COMPOSE_PREFLIGHT) for tests and environments
 				// that manage ownership externally, since it shells out to docker.
 				if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
-					await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+					await reconcileHostOwnership(state, { services: await buildManagedServices(state), repair: 'always' });
 				}
 				generation = await applyManagedFiles(state, true);
 				ensureComposeVolumeTargets(state);
@@ -479,7 +479,7 @@ export async function performUpgrade(
 			state,
 			async () => {
 				if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
-					await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+					await reconcileHostOwnership(state, { services: await buildManagedServices(state), repair: 'always' });
 				}
 				generation = await applyManagedFiles(state, true);
 

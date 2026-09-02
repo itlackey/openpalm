@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
@@ -31,6 +31,24 @@ function overlapsRegenerableCachePath(homeDir: string, candidate: string): boole
     || cacheRoot.startsWith(`${resolved}${sep}`);
 }
 
+/**
+ * Existing `.system-previous-*` staging directories under `homeDir` — the
+ * retired copy `overwriteSystemTree` (core-assets.ts) renames the managed
+ * `system/` tree to mid-swap and normally removes afterward. Best-effort
+ * cleanup can leave one behind (a root-owned entry it could not unlink), and
+ * it is CLI-created state, ours to repair. Discovered by listing, not
+ * pattern-guessed, so a name that no longer exists is never returned.
+ */
+function discoverSystemPreviousStagingDirs(homeDir: string): string[] {
+  try {
+    return readdirSync(homeDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('.system-previous-'))
+      .map((entry) => join(homeDir, entry.name));
+  } catch {
+    return [];
+  }
+}
+
 export function ownershipRepairPaths(
   state: ControlPlaneState,
   discoveredMounts: HomeBindMountSource[] = discoverHomeBindMountSources(state),
@@ -49,6 +67,12 @@ export function ownershipRepairPaths(
     `${state.dataDir}/portal`,
     `${state.dataDir}/akm`,
     `${state.dataDir}/logs`,
+    // The CLI-managed tree an update renames and deletes (#641): a pre-0.13.1
+    // guardian's root-owned system/guardian/node_modules lives under here, and
+    // relying on system/guardian surfacing as a discovered compose bind mount
+    // only holds when the guardian profile is active.
+    `${state.homeDir}/system`,
+    ...discoverSystemPreviousStagingDirs(state.homeDir),
   ];
   return [...new Set([...base, ...deduped])];
 }
@@ -137,27 +161,44 @@ export function buildReconcileDecision(input: {
 //
 // The recursive ownership walk (deep bind-mount chown + named-volume chown of
 // multi-hundred-MB node_modules trees) is only warranted when the session uid
-// changed since we last repaired. Record the last-repaired session identity in a
-// tiny state file and skip the walk when it still matches.
+// changed, OR the set of paths a walk covers changed (a release can start
+// repairing paths an older marker never accounted for), since we last
+// repaired. Record the last-repaired session identity AND path set in a tiny
+// state file and skip the walk only when both still match.
 
 export function ownershipRepairMarkerFile(homeDir: string): string {
   return join(homeDir, 'state', 'ownership-repaired.json');
 }
 
-/** True when the recursive repair already ran for this exact session uid/gid. */
-export function ownershipRepairMarkerMatches(homeDir: string, ids: { uid: number; gid: number }): boolean {
+/** Deduped, sorted, homeDir-relative — so the marker is not host-path-specific. */
+function normalizeMarkerPaths(homeDir: string, paths: string[]): string[] {
+  return [...new Set(paths.map((path) => relative(homeDir, path)))].sort();
+}
+
+/** True when the recursive repair already ran for this exact session uid/gid AND path set. */
+export function ownershipRepairMarkerMatches(homeDir: string, ids: { uid: number; gid: number }, paths: string[]): boolean {
   try {
-    const parsed = JSON.parse(readFileSync(ownershipRepairMarkerFile(homeDir), 'utf8')) as { uid?: unknown; gid?: unknown };
-    return parsed.uid === ids.uid && parsed.gid === ids.gid;
+    const parsed = JSON.parse(readFileSync(ownershipRepairMarkerFile(homeDir), 'utf8')) as {
+      uid?: unknown;
+      gid?: unknown;
+      paths?: unknown;
+    };
+    // A marker written before R4.1 (uid/gid only, no paths) never matches —
+    // it cannot vouch for path sets it never recorded.
+    if (!Array.isArray(parsed.paths)) return false;
+    if (parsed.uid !== ids.uid || parsed.gid !== ids.gid) return false;
+    const recorded = JSON.stringify([...parsed.paths].sort());
+    return recorded === JSON.stringify(normalizeMarkerPaths(homeDir, paths));
   } catch {
     return false;
   }
 }
 
-export function writeOwnershipRepairMarker(homeDir: string, ids: { uid: number; gid: number }): void {
+export function writeOwnershipRepairMarker(homeDir: string, ids: { uid: number; gid: number }, paths: string[]): void {
   const file = ownershipRepairMarkerFile(homeDir);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileAtomic(file, `${JSON.stringify({ uid: ids.uid, gid: ids.gid })}\n`);
+  const body = { uid: ids.uid, gid: ids.gid, paths: normalizeMarkerPaths(homeDir, paths) };
+  writeFileAtomic(file, `${JSON.stringify(body)}\n`);
 }
 
 // ── Composed host-ownership reconcile (R2) ───────────────────────────────────
@@ -196,17 +237,22 @@ export class HostSwapBlockedError extends Error {
  * On a real host swap the block is fail-safe: it throws HostSwapBlockedError
  * unless `adoptHost` is set. Repair is deep (recursive) so nested root-owned
  * files inside user-owned mount roots are fixed on the drift path too (R3), and
- * it is gated by a session-uid marker so the costly walk runs once per uid
- * change, not on every start (R4).
+ * it is gated by a session-uid + repair-path-set marker so the costly walk
+ * runs once per uid/path-set change, not on every start (R4) — unless
+ * `repair: 'always'` is passed, which forces it regardless of the marker
+ * (still non-strict unless `adoptHost`). Install and upgrade pass `'always'`:
+ * both are about to write into, rename, or delete the whole home, so they
+ * cannot rely on a marker written before this release started covering paths
+ * (e.g. `system/`) it did not used to.
  *
  * Portable: the caller supplies the managed `services` list (this module must
  * not import lifecycle). CLI/UI callers stay thin.
  */
 export async function reconcileHostOwnership(
   state: ControlPlaneState,
-  options: { adoptHost?: boolean; services?: string[] } = {},
+  options: { adoptHost?: boolean; services?: string[]; repair?: 'if-needed' | 'always' } = {},
 ): Promise<void> {
-  const { adoptHost = false, services } = options;
+  const { adoptHost = false, services, repair = 'if-needed' } = options;
   const homeDir = state.homeDir;
 
   // The REPAIR identity, not the raw session identity: a root session over a
@@ -252,14 +298,21 @@ export async function reconcileHostOwnership(
     throw new HostSwapBlockedError(previousIdentity, currentIdentity);
   }
 
-  // The recursive walk runs on an explicit adopt, on detected drift, or the
-  // first time we see a given session uid (marker absent/mismatched). A routine
-  // same-uid start with the marker present skips every docker chown.
-  const alreadyRepaired = sessionIds !== null && ownershipRepairMarkerMatches(homeDir, sessionIds);
-  const needsRepair = sessionIds !== null && (adoptHost || decision === 'drift' || !alreadyRepaired);
+  // Computed once and shared by the repair call and both marker operations, so
+  // "what the walk covered" and "what the marker fingerprints" can never drift
+  // apart from each other.
+  const repairPaths = ownershipRepairPaths(state);
+
+  // The recursive walk runs on an explicit adopt, on detected drift, the first
+  // time we see a given session uid or repair-path set (marker absent/
+  // mismatched), or whenever the caller asks for `repair: 'always'` (install/
+  // upgrade — see the docblock above). A routine same-uid `start` with a
+  // matching marker skips every docker chown.
+  const alreadyRepaired = sessionIds !== null && ownershipRepairMarkerMatches(homeDir, sessionIds, repairPaths);
+  const needsRepair = sessionIds !== null && (repair === 'always' || adoptHost || decision === 'drift' || !alreadyRepaired);
 
   if (sessionIds && needsRepair) {
-    const bindMountsOk = await repairRootOwnedBindMounts(homeDir, ownershipRepairPaths(state), { strict: adoptHost, deep: true });
+    const bindMountsOk = await repairRootOwnedBindMounts(homeDir, repairPaths, { strict: adoptHost, deep: true });
     let namedVolumesOk = true;
     if (services && services.length > 0) {
       namedVolumesOk = await repairManagedNamedVolumes(homeDir, services, { strict: adoptHost });
@@ -290,7 +343,7 @@ export async function reconcileHostOwnership(
     // failing, `openpalm start --adopt-host` forces a strict repair that
     // throws with the underlying docker error instead of failing silently.
     if (bindMountsOk && namedVolumesOk) {
-      writeOwnershipRepairMarker(homeDir, sessionIds);
+      writeOwnershipRepairMarker(homeDir, sessionIds, repairPaths);
     } else {
       logger.warn(
         `Ownership repair did not fully succeed for uid=${sessionIds.uid} — not recording it as done; ` +
