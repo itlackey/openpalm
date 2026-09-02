@@ -185,26 +185,7 @@ export function overwriteSystemTree(
 		rmSync(stageRoot, { recursive: true, force: true });
 		throw error;
 	}
-	// The swap above already succeeded — the new system/ tree is live. This is
-	// best-effort cleanup of the retired copy, not a step the update's success
-	// depends on. An operator upgrading from a release whose guardian installed
-	// its own dependencies at boot (pre-0.13.1) can still have root-owned
-	// entries under system/guardian/node_modules on their FIRST upgrade; a
-	// non-root CLI can rename that directory (needs only write on its parent)
-	// but cannot unlink files inside a root-owned subdirectory it doesn't own
-	// (#641). Failing the whole update here — after migrations already ran —
-	// for a leftover directory nothing reads again would turn a completed
-	// update into a reported failure. Warn, name the path, and move on; a
-	// stray `.system-previous-*` directory is inert and can be removed by hand
-	// (`sudo rm -rf`) or left for the next OS temp/disk cleanup.
-	try {
-		rmSync(previousRoot, { recursive: true, force: true });
-	} catch (error) {
-		logger.warn('could not remove the retired system/ tree copy after a successful update — leaving it in place', {
-			path: previousRoot,
-			error: errMessage(error)
-		});
-	}
+	rmSync(previousRoot, { recursive: true, force: true });
 
 	return {
 		backupDir,

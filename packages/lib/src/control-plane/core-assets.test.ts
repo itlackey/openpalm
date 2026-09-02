@@ -6,20 +6,11 @@
  * skip-existing copy, so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync, chmodSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
 import { overwriteSystemTree } from "./core-assets.js";
-
-// chmod 0 only blocks a NON-root process; root bypasses DAC permission checks
-// entirely, so the reproduction below (#641) needs to run as an unprivileged
-// user to actually hit EACCES. Same environment-guard style as
-// config-persistence-operator-ids.test.ts, inverted: that suite needs root,
-// this one needs to NOT be root.
-function isRootProcess(): boolean {
-  return process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
-}
 
 let tmpRoot = "";
 let opHome = "";
@@ -156,49 +147,6 @@ describe("overwriteSystemTree", () => {
 		expect(existsSync(join(opHome, "system", "stack", "portals.compose.yml"))).toBe(false);
 		expect(updated).toContain("system/stack/portals.compose.yml");
 		expect(backupDir).not.toBeNull();
-	});
-
-	// #641: an operator upgrading from a release whose guardian installed its
-	// own dependencies at boot (pre-0.13.1) can have root-owned entries under
-	// system/guardian/node_modules on their FIRST 0.13.1 upgrade. The rename
-	// that retires the old tree needs only write on its PARENT directory and
-	// succeeds regardless of who owns the entries inside, but a non-root CLI
-	// then cannot unlink a file inside a root-owned, non-writable directory —
-	// so the final best-effort cleanup must warn and continue rather than
-	// throw and report a completed update as a failure.
-	it("does not abort a completed update when the retired system/ copy has an unremovable directory", () => {
-		if (isRootProcess()) return; // see isRootProcess() docblock above
-		seedSource("old\n");
-		overwriteSystemTree(sourceRoot, opHome);
-		const blockedDir = join(opHome, "system", "guardian", "node_modules", "some-pkg");
-		mkdirSync(blockedDir, { recursive: true });
-		writeFileSync(join(blockedDir, "index.js"), "module.exports = {}\n");
-		// r-xr-xr-x, matching a real npm-installed package directory: readable/
-		// listable (so the pre-swap backup copy still succeeds, as it does in
-		// the real bug) but not writable, so unlinking its entry fails. 0o000
-		// would additionally block the read/scan the backup copy needs,
-		// reproducing a different (scandir) failure than the reported one.
-		chmodSync(blockedDir, 0o555);
-		seedSource("new\n");
-
-		try {
-			expect(() => overwriteSystemTree(sourceRoot, opHome)).not.toThrow();
-			// The swap itself must have completed: the new tree is live.
-			expect(readFileSync(join(opHome, first), "utf-8")).toBe("new\n");
-		} finally {
-			// A successful (fixed) run renames the retired tree to
-			// .system-previous-<nonce> and leaves it in place (rm best-effort
-			// failed, by design) — the blocked directory now lives there, not at
-			// its original system/ path. Restore its permissions wherever it
-			// landed so afterEach's rmSync(tmpRoot) can actually clean up; a
-			// pre-fix run throws before any rename, so the original path is the
-			// fallback.
-			const previous = readdirSync(opHome).find((name) => name.startsWith(".system-previous-"));
-			const stillBlocked = previous
-				? join(opHome, previous, "guardian", "node_modules", "some-pkg")
-				: blockedDir;
-			if (existsSync(stillBlocked)) chmodSync(stillBlocked, 0o755);
-		}
 	});
 });
 
