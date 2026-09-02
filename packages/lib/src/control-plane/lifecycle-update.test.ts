@@ -63,7 +63,11 @@ describe('lifecycle update state', () => {
 			expect(backups.length).toBeLessThanOrEqual(3);
 			for (const backup of backups) {
 				expect(existsSync(join(backupsDir, backup, 'knowledge', 'large-user-tree-marker'))).toBe(true);
-				expect(existsSync(join(backupsDir, backup, 'workspace', 'large-workspace-marker'))).toBe(true);
+				// #656/#648: workspace/ is the operator's own regenerable work area
+				// (an unrelated cloned repo's .git/ has no business in an upgrade
+				// safety snapshot) and is excluded from backup scope, same as
+				// data/ and cache/ — see OP_HOME_TREES in home.ts.
+				expect(existsSync(join(backupsDir, backup, 'workspace', 'large-workspace-marker'))).toBe(false);
 			}
 		} finally {
 			rmSync(home, { recursive: true, force: true });

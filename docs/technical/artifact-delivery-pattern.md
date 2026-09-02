@@ -20,7 +20,7 @@ its dependency bootstrap is verified before use and is not a startup install.
 | Host UI + skeleton | Embedded in the CLI binary and in the Electron app bundle | Artifact build version | Materialized into `OP_HOME/data/ui` (and skeleton into `OP_HOME`) from the artifact's own embedded copy; no download, no verification step — the artifact is the trust boundary |
 | Assistant UI | Baked into `/opt/openpalm/ui` during image build | `PLATFORM_VERSION` build arg | Entrypoint supervises the baked build; no runtime install or version override |
 | Assistant tools | Baked from `containers/assistant/tools/package.json` | Exact manifest pins | No boot-time update |
-| Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | Existing-version check is normally a no-op; `OP_GUARDIAN_NPM_VERSION` enables an explicit override install |
+| Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | No runtime override exists: the entrypoint runs the baked package unconditionally |
 | Guardian tools | Baked from `containers/guardian/tools/package.json` | Exact manifest pins | No boot-time update |
 | Portal adapters | Candidate-local SDK and adapter workspaces packed during image build | Candidate source versions | No runtime adapter install |
 | Paperclip OpenCode config dependencies | Managed exact manifest beside the digest-pinned third-party image | Exact AKM pins plus the image's OpenCode version | Installed on first agent use into regenerable cache; bounded, CLI- and tool-hook-checked, and fail-closed |
@@ -43,8 +43,6 @@ resolution never leaves local disk.
 The Guardian image bakes candidate-local `@openpalm/guardian`, so default boot
 is offline. Its entrypoint still supports downstream distributions:
 
-- `OP_GUARDIAN_NPM_VERSION` overrides the Guardian npm version or semver range.
-- `OP_GUARDIAN_PACKAGE` can select a compatible composition package.
 
 These are Guardian-only override paths. They do not restore runtime package
 installation to the assistant.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { applyChanges, applyServiceUpdate } from './versions.js';
+import { applyChanges, applyServiceUpdate, isRollbackPin } from './versions.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -45,5 +45,21 @@ describe('update client', () => {
 		);
 
 		await expect(applyServiceUpdate('assistant')).rejects.toThrow('Docker is unavailable');
+	});
+});
+
+// #639 — distinguishing a rollback-generation-* pin (never operator-typed)
+// from any other configured value.
+describe('isRollbackPin', () => {
+	test('is true only for the rollback-generation- prefix', () => {
+		expect(isRollbackPin('rollback-generation-1788212586188-217761-1')).toBe(true);
+		expect(isRollbackPin('rollback-generation-1')).toBe(true);
+	});
+
+	test('is false for a release tag, a moving tag, a custom pin, or an unset value', () => {
+		expect(isRollbackPin('0.13.1')).toBe(false);
+		expect(isRollbackPin('latest')).toBe(false);
+		expect(isRollbackPin('my-custom-build')).toBe(false);
+		expect(isRollbackPin(undefined)).toBe(false);
 	});
 });

@@ -19,7 +19,7 @@ import {
 	renameSync,
 	rmSync
 } from 'node:fs';
-import { errMessage } from './errors.js';
+import { actionableOwnershipError, errMessage } from './errors.js';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveDataDir, resolveOpenPalmHome, resolveBackupsDir } from './home.js';
@@ -143,54 +143,68 @@ export function overwriteSystemTree(
 	const nonce = `${Date.now()}-${process.pid}`;
 	const stageRoot = join(homeDir, `.system-staging-${nonce}`);
 	const previousRoot = join(homeDir, `.system-previous-${nonce}`);
-	cpSync(sysSource, stageRoot, { recursive: true });
 
-	const sourceFiles = listFiles(stageRoot);
-	const currentFiles = existsSync(targetRoot) ? listFiles(targetRoot) : [];
-	const sourceSet = new Set(sourceFiles);
-	const removedFiles = currentFiles.filter((rel) => !sourceSet.has(rel));
-	// Target-only paths are two different things and must be told apart. A file
-	// the new release RETIRED has to count as a change, or it survives under
-	// OP_HOME/system forever (nothing else prunes the managed tree). A RUNTIME
-	// extra must NOT: the assistant's bind-mounted OPENCODE_CONFIG_DIR
-	// accumulates plugin dependencies under node_modules/, and counting those
-	// would make every launch read 'changed' and re-back-up/rewrite the whole
-	// tree — wiping them and growing backups unboundedly.
-	const retiredFiles = removedFiles.filter((rel) => !isRuntimeExtra(rel));
-	const changed =
-		retiredFiles.length > 0 ||
-		sourceFiles.some((rel) => {
-			const current = join(targetRoot, rel);
-			return (
-				!existsSync(current) ||
-				sha256(readFileSync(current, 'utf8')) !== sha256(readFileSync(join(stageRoot, rel), 'utf8'))
-			);
-		});
-	if (!changed) {
-		rmSync(stageRoot, { recursive: true, force: true });
-		return { backupDir: null, updated: [] };
-	}
-
-	let backupDir: string | null = null;
-	if (existsSync(targetRoot)) {
-		backupDir = ensureBackupDir(null);
-		cpSync(targetRoot, join(backupDir, 'system'), { recursive: true });
-		renameSync(targetRoot, previousRoot);
-	}
-
+	// #641/#642, #653: every copy/rename/rm below can hit a file a PRIOR run
+	// left root-owned (or foreign-owned after a host/drive swap) and surface a
+	// bare `EACCES: permission denied, rm '…'`/`copyfile '…'` with no next
+	// step. Map that one failure class to an actionable message naming the
+	// path and the remedy; everything else still throws unchanged.
 	try {
-		renameSync(stageRoot, targetRoot);
-	} catch (error) {
-		if (existsSync(previousRoot)) renameSync(previousRoot, targetRoot);
-		rmSync(stageRoot, { recursive: true, force: true });
-		throw error;
-	}
-	rmSync(previousRoot, { recursive: true, force: true });
+		cpSync(sysSource, stageRoot, { recursive: true });
 
-	return {
-		backupDir,
-		updated: [...sourceFiles, ...removedFiles].map((rel) => join('system', rel))
-	};
+		const sourceFiles = listFiles(stageRoot);
+		const currentFiles = existsSync(targetRoot) ? listFiles(targetRoot) : [];
+		const sourceSet = new Set(sourceFiles);
+		const removedFiles = currentFiles.filter((rel) => !sourceSet.has(rel));
+		// Target-only paths are two different things and must be told apart. A file
+		// the new release RETIRED has to count as a change, or it survives under
+		// OP_HOME/system forever (nothing else prunes the managed tree). A RUNTIME
+		// extra must NOT: the assistant's bind-mounted OPENCODE_CONFIG_DIR
+		// accumulates plugin dependencies under node_modules/, and counting those
+		// would make every launch read 'changed' and re-back-up/rewrite the whole
+		// tree — wiping them and growing backups unboundedly.
+		const retiredFiles = removedFiles.filter((rel) => !isRuntimeExtra(rel));
+		const changed =
+			retiredFiles.length > 0 ||
+			sourceFiles.some((rel) => {
+				const current = join(targetRoot, rel);
+				return (
+					!existsSync(current) ||
+					sha256(readFileSync(current, 'utf8')) !== sha256(readFileSync(join(stageRoot, rel), 'utf8'))
+				);
+			});
+		if (!changed) {
+			rmSync(stageRoot, { recursive: true, force: true });
+			return { backupDir: null, updated: [] };
+		}
+
+		let backupDir: string | null = null;
+		if (existsSync(targetRoot)) {
+			backupDir = ensureBackupDir(null);
+			cpSync(targetRoot, join(backupDir, 'system'), { recursive: true });
+			renameSync(targetRoot, previousRoot);
+		}
+
+		try {
+			renameSync(stageRoot, targetRoot);
+		} catch (error) {
+			if (existsSync(previousRoot)) renameSync(previousRoot, targetRoot);
+			rmSync(stageRoot, { recursive: true, force: true });
+			throw error;
+		}
+		rmSync(previousRoot, { recursive: true, force: true });
+
+		return {
+			backupDir,
+			updated: [...sourceFiles, ...removedFiles].map((rel) => join('system', rel))
+		};
+	} catch (err) {
+		// targetRoot (the pre-existing system/ tree) is the read side of the
+		// backup-copy cpSync below — the one that can hold a file a prior run
+		// left foreign-owned. sysSource is release-shipped and never the
+		// realistic offender, so it is not worth a second scan.
+		throw actionableOwnershipError(err, targetRoot) ?? err;
+	}
 }
 
 /**

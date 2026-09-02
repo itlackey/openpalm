@@ -386,6 +386,17 @@ function removeRetiredEnvKeys(homeDir: string): string[] {
  * longer built in and drops the removed-addon env keys. A no-op that writes
  * nothing (`changed: false`) when the state is already clean, so it is safe to
  * run unconditionally on every reconcile — no version gate needed.
+ *
+ * #654: deliberately NOT a home-schema migration, unlike the akm sweeps this
+ * shares a category with. Those heal ONE historical shape a specific past
+ * release wrote; this re-derives "what's retired" from BUILTIN_ADDON_IDS and
+ * RETIRED_ENV_KEYS as they stand RIGHT NOW, so each new retirement is covered
+ * by the existing generic sweep rather than needing its own dated migration —
+ * a genuine steady-state invariant (idempotent, content-checked, never
+ * lossy), not a one-shot translation. It also only ever runs from `applyHome`
+ * (install/update), never from the launch-only `applyHomeAssets` path, so it
+ * has none of the "must reach a plain launch" pressure that moved the akm
+ * sweeps into MIGRATIONS.
  */
 export function pruneRemovedAddonState(
   homeDir: string,

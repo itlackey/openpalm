@@ -1,19 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
-# ── Version resolution ────────────────────────────────────────────────────────
-# GUARDIAN_VERSION is baked into the image at build time (Dockerfile ARG → ENV),
-# so the thin host boots with no operator configuration. Operators may override
-# the installed npm package version with OP_GUARDIAN_NPM_VERSION (e.g. to pin a
-# private package at a different version; semver ranges are supported here).
-# OP_GUARDIAN_VERSION is now ONLY the Docker image tag (consumed by Compose on
-# the `image:` line) and is NOT used for the npm install.
-VERSION="${OP_GUARDIAN_NPM_VERSION:-}"
-
-# Composition package + boot entry, overridable for downstream distributions
-# built on the published library seams (defaults to the public core).
-OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
-OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
+# ── The guardian package ──────────────────────────────────────────────────────
+# The image bakes exactly one guardian, built from the candidate source, and
+# that is what runs. There is deliberately NO env override of the package, its
+# version, or its entry point.
+#
+# There used to be one (OP_GUARDIAN_NPM_VERSION / OP_GUARDIAN_PACKAGE /
+# OP_GUARDIAN_ENTRY, installed at boot by install_artifact). It cost a real
+# outage: the pre-0.13 release model WROTE OP_GUARDIAN_NPM_VERSION into
+# state/stack.env, 554b79bc removed that writer without sweeping the key, and
+# every upgraded home kept a stale value. Guardian then discarded its correct
+# baked package on every boot and installed that old version from npm — which
+# predated 0.13.0's always-on OpenCode auth, so it 401'd, disabled its own
+# proxy, answered /health/ready with 503, failed its healthcheck, and took
+# every stack update down with it for months. An image that cannot be silently
+# replaced at boot is worth more than an override nobody was using.
+#
+# OP_GUARDIAN_VERSION remains ONLY the Docker image tag, consumed by Compose on
+# the `image:` line. It is not read here.
+GUARDIAN_PKG_DIR=/opt/openpalm/guardian-pkg/node_modules/@openpalm/guardian
 
 mkdir -p /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
          /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode \
@@ -35,82 +41,6 @@ export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 if [ -n "${GUARDIAN_AUTH_JSON_FILE:-}" ] && [ -f "${GUARDIAN_AUTH_JSON_FILE}" ]; then
   install -m 600 "${GUARDIAN_AUTH_JSON_FILE}" "${HOME:-/opt/openpalm/guardian}/.local/share/opencode/auth.json" \
     || echo "warning: failed to install guardian auth.json from \$GUARDIAN_AUTH_JSON_FILE; continuing" >&2
-fi
-
-# ── Optional private-registry auth ────────────────────────────────────────────
-# To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
-# reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file
-# (OP_GUARDIAN_NPMRC_FILE); OP_GUARDIAN_NPMRC is an inline convenience. The
-# token is never logged.
-NPMRC_DEST="${HOME:-/opt/openpalm/guardian}/.npmrc"
-if [ -n "${OP_GUARDIAN_NPMRC_FILE:-}" ]; then
-  if [ ! -f "${OP_GUARDIAN_NPMRC_FILE}" ]; then
-    echo "ERROR: OP_GUARDIAN_NPMRC_FILE is set but not found: ${OP_GUARDIAN_NPMRC_FILE}" >&2
-    exit 1
-  fi
-  install -m 600 "${OP_GUARDIAN_NPMRC_FILE}" "$NPMRC_DEST"
-  echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC_FILE"
-elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
-  install -m 600 /dev/null "$NPMRC_DEST"
-  printf '%s\n' "${OP_GUARDIAN_NPMRC}" > "$NPMRC_DEST"
-  echo "[guardian] using private-registry .npmrc from \$OP_GUARDIAN_NPMRC"
-fi
-
-# ── Exact-pinned install: skip if already at version, retry transient failures ─
-# FROM oven/bun:1.3-slim ships no node/npm — use bun. bun installs into the
-# cwd's node_modules, so cd into the prefix.
-install_artifact() {
-  local pkg="$1" version="$2" prefix="$3"
-  local manifest="${prefix}/node_modules/${pkg}/package.json"
-
-  # `version` may be an exact pin (the common case) OR a semver RANGE — e.g.
-  # OP_GUARDIAN_NPM_VERSION documents "semver ranges are supported here" for
-  # downstream distributions overriding OP_GUARDIAN_PACKAGE. The skip check
-  # used to compare the installed concrete version to `version` with plain
-  # string equality, which can never match a range (`0.8.14` !== `^0.8.0`),
-  # so a range-pinned override silently re-installed on every single boot.
-  # Use Bun's built-in semver
-  # matcher so an exact pin still matches itself and a range is checked for
-  # satisfaction instead of literal equality.
-  local installed_version
-  installed_version="$(bun -e "try{console.log(require('$manifest').version)}catch{console.log('')}" 2>/dev/null)"
-  if [ -n "$installed_version" ] && \
-     bun -e "process.exit(Bun.semver.satisfies('$installed_version', '$version') ? 0 : 1)" 2>/dev/null; then
-    echo "  ${pkg}@${version} already installed (${installed_version} satisfies ${version}), skipping"
-    return 0
-  fi
-
-  local attempt
-  for attempt in 1 2 3; do
-    echo "Installing ${pkg}@${version} (attempt ${attempt})..."
-    mkdir -p "$prefix"
-    ( cd "$prefix" && bun add "${pkg}@${version}" --production ) && return 0
-    [ "$attempt" -lt 3 ] && echo "  Install failed, retrying in 5s..." && sleep 5
-  done
-  echo "ERROR: Failed to install ${pkg}@${version} after 3 attempts" >&2
-  exit 1
-}
-
-# The image contains the local Guardian candidate. A downstream distribution
-# may explicitly override that package and version.
-#
-# The guardian PACKAGE installs into /opt/openpalm/guardian-pkg, NOT
-# /opt/openpalm/guardian. The latter is $HOME, bind-mounted from
-# OP_HOME/data/guardian in compose for runtime state (nonce/rate-limit,
-# OpenCode auth.json/config) — an empty host dir bind-mounted there would
-# shadow a baked node_modules and force a network re-fetch every boot.
-# guardian-pkg has no bind-mount in the shipped compose, so the image-baked
-# install serves every boot with nothing to shadow it. #585 deleted the
-# guardian-cache named volume that USED to make an override install (a
-# non-default OP_GUARDIAN_NPM_VERSION/OP_GUARDIAN_PACKAGE) persist across
-# container recreation — an override now lives only in the container's
-# writable layer, so it re-installs (not re-downloads: the bun tarball cache
-# is on the host bind, portals.compose.yml) on every recreation, not just
-# restart/reboot. Accepted regression, documented in the #585 plan.
-if [ -n "$VERSION" ]; then
-  install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
-else
-  echo "  using image-baked Guardian package"
 fi
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
@@ -172,15 +102,12 @@ fi
 
 # ── Start the OpenAI-compatible API server ────────────────────────────────────
 # Runs on GUARDIAN_OPENAI_PORT (default 8182), proxies to the guardian server on
-# localhost:${PORT:-8080}. The openai-api server lives in the public core
-# @openpalm/guardian; when OP_GUARDIAN_PACKAGE is an alternate package the core
-# is still present (transitive dep), so resolve it via require.resolve. In the
-# default case this equals the guardian package dir.
-GUARDIAN_CORE_PKG=$(cd /opt/openpalm/guardian-pkg && bun -e "console.log(require('node:path').dirname(require.resolve('@openpalm/guardian/package.json')))" 2>/dev/null || echo "/opt/openpalm/guardian-pkg/node_modules/@openpalm/guardian")
+# localhost:${PORT:-8080}. One baked package, one path.
+GUARDIAN_CORE_PKG="$GUARDIAN_PKG_DIR"
 guardian_server_port="${PORT:-8080}"
 openai_port="${GUARDIAN_OPENAI_PORT:-8182}"
 PORT="${openai_port}" GUARDIAN_URL="http://localhost:${guardian_server_port}" \
   bun run "${GUARDIAN_CORE_PKG}/src/openai-api-server.ts" 2>&1 | sed -u 's/^/[openai-api] /' >&2 &
 
 # ── Start guardian ────────────────────────────────────────────────────────────
-exec bun run "/opt/openpalm/guardian-pkg/node_modules/${OP_GUARDIAN_PACKAGE}/${OP_GUARDIAN_ENTRY}"
+exec bun run "${GUARDIAN_PKG_DIR}/src/server.ts"

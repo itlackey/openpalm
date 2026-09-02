@@ -61,16 +61,31 @@ Voice and Ollama use hardware-specific profiles, for example
 
 ## Shell Helper
 
-`$OP_HOME/openpalm.sh` (and `openpalm.ps1`) apply NO conditional overlays —
-they assemble the base list only (core/services/portals plus your custom
-overlay). See their headers and issue #628: deriving that decision in shell
-meant a second implementation of it, which diverged from the control plane in
-ways that published host ports the app leaves closed, so it was removed rather
-than shipped. The function below covers two of the three conditional overlays
-and matches only the literal string `true`. The control plane
-(`discoverStackOverlays`) is the definition of which overlays apply; anything
-outside it, including both of these, is an approximation you are responsible
-for checking.
+`$OP_HOME/openpalm.sh` (and `openpalm.ps1`) are RENDERED by the control plane
+on every install/update/apply (issue #650) — not a hand-maintained shell
+reimplementation of the overlay/project-name logic. Each render resolves the
+`-f` list the same way a real compose invocation does
+(`discoverStackOverlays`) and the same Compose project name
+(`resolveComposeProjectName`), and bakes both into the script as literal
+data, so it cannot silently diverge from what `openpalm start`, an update, or
+a settings-triggered recreate would run. It also refuses to run (with a clear
+message) if it's invoked under an `OP_HOME` other than the one it was
+rendered for, or if its baked project name is empty — both signs the script
+is stale for the current install. Prefer it (`$OP_HOME/openpalm.sh up`, `...
+down`, `... restart`, `... status`, `... logs`, or `... compose ...` for
+anything else) over hand-rolling an equivalent; it prints a tip pointing at
+the `openpalm` CLI itself when one is on `PATH`.
+
+The function below is a fallback for a home that was assembled by copying
+`packages/skeleton/` directly rather than through install/update (the
+Runtime Inputs section above already notes that path is not a complete
+install) — `$OP_HOME/openpalm.sh` won't exist yet, or won't be an accurate
+render, for such a home. It covers two of the three conditional overlays and
+matches only the literal string `true`; `discoverStackOverlays` is still the
+definition of which overlays apply, and anything outside it, including both
+of these, is an approximation you are responsible for checking. Once an
+install/update has actually run, use the rendered `$OP_HOME/openpalm.sh`
+instead.
 
 For Bash or Zsh:
 

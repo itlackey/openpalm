@@ -37,6 +37,7 @@ import {
 	activateStack,
 	buildComposeOptions,
 	detectRootlessDocker,
+	dockerBin,
 	dockerHasNvidiaRuntime,
 	execFileNoThrow,
 	getAddonProfiles,
@@ -55,7 +56,6 @@ import { translateDockerError } from '$lib/server/voice-errors.js';
 export const VOICE_ADDON = 'voice';
 // compose.yml advertises start_period: 180s. The health-wait must tolerate at
 // least that long on a cold-disk first launch (model download + warm-up).
-const VOICE_PROBE_TIMEOUT_MS = 180_000;
 const PORT_PROBE_TIMEOUT_MS = 750;
 
 // ── Background-pull job state ────────────────────────────────────────
@@ -206,7 +206,7 @@ export function voiceUpstreamUrl(homeDir: string): string {
  */
 async function dockerImagePresent(imageRef: string): Promise<boolean> {
 	if (!imageRef) return true;
-	const res = await execFileNoThrow('docker', ['image', 'inspect', imageRef], 5_000);
+	const res = await execFileNoThrow(dockerBin(), ['image', 'inspect', imageRef], 5_000);
 	return res.ok;
 }
 
@@ -234,7 +234,7 @@ async function resolveServiceImage(composeFiles: string[], service: string): Pro
 	const args = ['compose'];
 	for (const f of composeFiles) args.push('-f', f);
 	args.push('--project-name', resolveProjectName(), 'config', '--format', 'json');
-	const res = await execFileNoThrow('docker', args, 15_000);
+	const res = await execFileNoThrow(dockerBin(), args, 15_000);
 	if (!res.ok) return '';
 	try {
 		const parsed = JSON.parse(res.stdout) as { services?: Record<string, { image?: string }> };
@@ -276,7 +276,7 @@ function isPortListening(port: number): Promise<boolean> {
  */
 async function ourVoiceContainerRunning(): Promise<boolean> {
 	const res = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		['ps', '--filter', 'name=openpalm-voice', '--format', '{{.Names}}'],
 		5_000
 	);
@@ -291,7 +291,7 @@ async function ourVoiceContainerRunning(): Promise<boolean> {
  */
 async function readContainerHealthStatus(containerNamePrefix: string): Promise<string> {
 	const listRes = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		['ps', '--filter', `name=${containerNamePrefix}`, '--format', '{{.Names}}'],
 		5_000
 	);
@@ -301,7 +301,7 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
 		.find(Boolean);
 	if (!name) return '';
 	const inspect = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		[
 			'inspect',
 			name,
@@ -394,10 +394,11 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
 		const result = await activateStack(
 			state,
 			{ kind: 'services', services },
-			// 180s matches the voice compose services' own start_period, so a
-			// cold-disk first launch (model download + warm-up) gets the same
-			// grace window the removed manual poll used.
-			{ healthTimeoutMs: VOICE_PROBE_TIMEOUT_MS },
+			// No health cap: `--wait` blocks until the voice services are healthy,
+			// bounded only by composeUpTimeoutMs(). A cold-disk first launch
+			// (multi-GB model download + warm-up) is exactly the case a fixed
+			// cap used to turn into a false "deploy failed".
+			{},
 			{
 				lock,
 				composeOptions: {
@@ -457,7 +458,7 @@ async function runBringUp(input: BringUpInput): Promise<BringUpOutcome> {
 			? {}
 			: warming
 				? { detail: 'still warming up — refresh in a moment' }
-				: { detail: `did not become healthy within ${VOICE_PROBE_TIMEOUT_MS / 1000}s` })
+				: { detail: 'did not become healthy' })
 	});
 
 	return { composeOk, healthy, warming, steps };

@@ -9,6 +9,12 @@
  * `reconcileHostOwnership(state, { services: await buildManagedServices(state) })`
  * before writing any managed files, mirroring performUpgrade (lifecycle.ts).
  *
+ * Below also covers #641/#642: applyInstall AND performUpgrade now pass
+ * `repair: 'always'` in that same call, so the deep ownership walk runs
+ * before `applyManagedFiles` renames/deletes the managed `system/` tree and
+ * takes the durable backup — regardless of a marker written by an earlier
+ * release that did not yet cover those paths.
+ *
  * `reconcileHostOwnership` is statically imported by lifecycle.ts, so this
  * test mocks it via `mock.module` and re-imports lifecycle.ts with a
  * cache-busting query — the same pattern used elsewhere in this suite (see
@@ -64,8 +70,10 @@ describe("applyInstall runs the rootless ownership reconcile before the first ma
       // observable side effect, with no need to also mock/spy on
       // applyManagedFiles's internals.
       let systemTreeExistedAtReconcileTime: boolean | null = null;
-      const reconcileHostOwnershipMock = mock(async () => {
+      let capturedOptions: { repair?: string } | undefined;
+      const reconcileHostOwnershipMock = mock(async (_state: unknown, options: { repair?: string }) => {
         systemTreeExistedAtReconcileTime = existsSync(join(homeDir, "system"));
+        capturedOptions = options;
       });
 
       mock.module("./ownership-reconcile.js", () => ({
@@ -85,11 +93,65 @@ describe("applyInstall runs the rootless ownership reconcile before the first ma
       // applyInstall did go on to actually write the managed tree afterward —
       // confirms this isn't passing merely because applyManagedFiles never ran.
       expect(existsSync(join(homeDir, "system"))).toBe(true);
+      // #641/#642: install passes repair: 'always' too — a fresh install must
+      // not rely on a marker (there is none yet, but the option is what makes
+      // the walk unconditional rather than an accident of an absent marker).
+      expect(capturedOptions?.repair).toBe("always");
     } finally {
       if (savedHome === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = savedHome;
       if (savedSkip === undefined) delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
       else process.env.OP_SKIP_COMPOSE_PREFLIGHT = savedSkip;
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("performUpgrade passes repair: 'always' to reconcileHostOwnership (#641/#642)", () => {
+  // #641/#642: both failures traced back to the SAME missing behavior — the
+  // deep ownership-repair walk not running before applyManagedFiles renames/
+  // deletes the managed system/ tree and takes the durable backup. The walk
+  // itself is proven separately (ownership-reconcile.test.ts); this test
+  // proves the WIRING — that an upgrade actually asks for the unconditional
+  // walk rather than leaving it to a marker that may have been written by an
+  // earlier release, before this one started covering `system/`.
+  //
+  // reconcileHostOwnership is mocked to record its call options and then
+  // throw a sentinel — short-circuiting performUpgrade right after the call
+  // this test cares about, before it needs a real compose stack (image pull,
+  // health-wait) to succeed. runWithSnapshotRollback (lifecycle.ts) always
+  // re-throws the original error after its best-effort recovery, so the
+  // sentinel still reaches the caller.
+  test("performUpgrade's reconcileHostOwnership call requests repair: 'always'", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "openpalm-upgrade-ownership-"));
+    const savedHome = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
+
+    try {
+      let capturedOptions: { repair?: string; services?: string[] } | undefined;
+      const sentinel = new Error("reconcileHostOwnership-mock-sentinel");
+      const reconcileHostOwnershipMock = mock(async (_state: unknown, options: { repair?: string; services?: string[] }) => {
+        capturedOptions = options;
+        throw sentinel;
+      });
+
+      mock.module("./ownership-reconcile.js", () => ({
+        ...realOwnershipReconcile,
+        reconcileHostOwnership: reconcileHostOwnershipMock,
+      }));
+
+      const { performUpgrade, createState } = await import(
+        `./lifecycle.js?f2-upgrade-repair-test=${Math.random()}`
+      );
+
+      const state = createState();
+      await expect(performUpgrade(state)).rejects.toThrow(sentinel.message);
+
+      expect(reconcileHostOwnershipMock).toHaveBeenCalledTimes(1);
+      expect(capturedOptions?.repair).toBe("always");
+    } finally {
+      if (savedHome === undefined) delete process.env.OP_HOME;
+      else process.env.OP_HOME = savedHome;
       rmSync(homeDir, { recursive: true, force: true });
     }
   });

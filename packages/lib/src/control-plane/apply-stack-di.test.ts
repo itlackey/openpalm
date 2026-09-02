@@ -122,9 +122,69 @@ describe("applyStack", () => {
 
     expect(applied.ok).toBe(false);
     expect(applied.started).toEqual([]);
+    // The templated ps-state reason is kept, with the real `up` stderr
+    // (#644) appended — "wait timeout" here is the whole of what compose
+    // said, so it rides along even though it is not itself very specific.
     expect(applied.failed).toEqual([
-      { service: "assistant", reason: "container assistant did not become healthy (state: running)" },
+      {
+        service: "assistant",
+        reason: "container assistant did not become healthy (state: running): wait timeout",
+      },
     ]);
     expect(applied.upFailed).toBe(true);
+  });
+
+  // Regression (#644): a reapply that fails with `ps -a` still finding a row
+  // (e.g. a `created`-but-not-started container after a failed recreate) used
+  // to report ONLY the templated ps-state sentence — the real Docker daemon
+  // error in `up`'s stderr was computed (`upResult.stderr`) but never reached
+  // the caller. `rawStderr` carried it, but `error`/`failed[].reason` — what
+  // lifecycle.ts's reapply path and every other `.error`-only caller actually
+  // read — did not. Compose's own progress noise (including the `Recreate`
+  // status line compose-errors.ts previously failed to filter, see its own
+  // regression test) sits between the "up" call and the daemon error line, so
+  // this also exercises that the real fix (summarizeComposeStderr) is used
+  // here, not just "stderr is non-empty".
+  test("folds the real daemon error into a per-service reason when ps -a still finds a row", async () => {
+    const daemonError =
+      "Error response from daemon: failed to set up container networking: driver failed " +
+      "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+      "port 127.0.0.1:3810/tcp: address already in use";
+    const upStderr = [
+      " Container proj-assistant-1 Recreate ",
+      " Container proj-assistant-1 Recreated ",
+      " Container proj-assistant-1 Starting ",
+      daemonError,
+    ].join("\n");
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return result(false, upStderr);
+      if (args.includes("ps")) {
+        return {
+          ok: true,
+          stdout: JSON.stringify({ Service: "assistant", State: "created", Health: "" }),
+          stderr: "",
+          code: 0,
+        };
+      }
+      return result(true);
+    });
+
+    const applied = await applyStack(
+      { kind: "service", service: "assistant" },
+      OPTIONS,
+      deps(docker),
+      { pull: "always" },
+    );
+
+    expect(applied.ok).toBe(false);
+    expect(applied.failed).toHaveLength(1);
+    // The real cause must reach the operator — here classified, since the
+    // daemon line is a port conflict, as the actionable port_in_use message
+    // naming the port the daemon reported...
+    expect(applied.failed[0]?.reason).toContain("Port 3810 is already in use");
+    expect(applied.error).toContain("Port 3810 is already in use");
+    // ...and the progress-only status line must NOT be what stands in for it.
+    expect(applied.failed[0]?.reason).not.toBe("Container proj-assistant-1 Recreate");
+    expect(applied.error).not.toBe("Container proj-assistant-1 Recreate");
   });
 });

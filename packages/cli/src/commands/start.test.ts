@@ -11,7 +11,7 @@ const moduleUrls = {
   cliCompose: new URL('../lib/cli-compose.ts', import.meta.url).href,
 };
 const startModuleUrl = new URL('./start.ts', import.meta.url).href;
-const composeWaitArgs = ['--wait', '--wait-timeout', String(realLib.composeWaitTimeoutSec())];
+const composeWaitArgs = ['--wait'];
 
 afterEach(() => {
   mock.restore();

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { planBackupPrune, pruneBackupDirs, resolveOpenPalmHome } from '@openpalm/lib';
+import { planBackupPrune, pruneBackupDirs, resolveOpenPalmHome, summarizeBackups } from '@openpalm/lib';
 import { promptYesNo } from '../lib/prompt.ts';
 
 export default defineCommand({
@@ -8,6 +8,26 @@ export default defineCommand({
     description: 'List and prune upgrade backup snapshots',
   },
   subCommands: {
+    list: defineCommand({
+      meta: {
+        name: 'list',
+        description: 'List upgrade backup snapshots (newest first), with size and creation time.',
+      },
+      async run() {
+        const homeDir = resolveOpenPalmHome();
+        const summary = summarizeBackups(homeDir);
+
+        if (summary.count === 0) {
+          console.log('No backups found.');
+          return;
+        }
+
+        for (const backup of summary.backups) {
+          console.log(`${backup.name}  ${backup.sizeBytes} bytes  ${backup.createdAt}`);
+        }
+        console.log(`\n${summary.count} backup(s), ${summary.totalBytes} bytes total.`);
+      },
+    }),
     prune: defineCommand({
       meta: {
         name: 'prune',
@@ -20,10 +40,11 @@ export default defineCommand({
           '  - Minor upgrade (e.g. 0.12.0 → 0.13.0): keep 1 prior minor (the most recent',
           '    backup from the previous minor series).',
           '',
-          'This command is always confirm-gated; use --yes to skip the prompt. Two other',
-          'paths prune on their own: `install --force` keeps the newest 3, and the host-side',
-          'UI/skeleton updater keeps the newest 3 of its own `ui-*`/`skeleton-*` snapshots.',
-          'Recovery snapshots (-pre-rollback, -pre-update) are never pruned by anything.',
+          'This command is always confirm-gated; use --yes to skip the prompt. Other paths',
+          'prune on their own: `install --force` keeps the newest 3, the host-side UI/skeleton',
+          'updater keeps the newest 3 of its own `ui-*`/`skeleton-*` snapshots, and `openpalm',
+          'rollback` keeps the newest 3 of its own `-pre-rollback` snapshots. A `-pre-update`',
+          'recovery snapshot is never pruned by anything, by any path, regardless of --keep.',
         ].join('\n'),
       },
       args: {
@@ -53,9 +74,9 @@ export default defineCommand({
         const homeDir = resolveOpenPalmHome();
         // Preview exactly what pruneBackupDirs will delete. A global
         // `listBackupDirs().slice(keep)` disagrees with it in both directions:
-        // retention is per-namespace, and -pre-rollback/-pre-update snapshots
-        // are never pruned — so the old preview could list dirs that survive
-        // and omit dirs that die, on a destructive confirm prompt.
+        // retention is per-namespace, and a -pre-update snapshot is never
+        // pruned — so the old preview could list dirs that survive and omit
+        // dirs that die, on a destructive confirm prompt.
         const { toDelete, protected: protectedDirs } = planBackupPrune(homeDir, keep);
 
         if (toDelete.length === 0) {

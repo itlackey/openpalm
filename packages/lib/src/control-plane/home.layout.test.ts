@@ -5,7 +5,7 @@
  * edit in home.ts with this test as the guard).
  */
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, existsSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,6 +22,7 @@ import {
   ensureHomeDirs,
   remoteServeConfigDir,
   remoteTunnelStateDir,
+  OP_HOME_TREES,
 } from "./home.js";
 
 const H = "/op/home";
@@ -71,6 +72,29 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(existsSync(join(home, 'data/paperclip-akm/data'))).toBe(true);
       expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
       expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.OP_HOME;
+      else process.env.OP_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("OP_HOME_TREES (#656 lesson 24) is exactly the set of top-level dirs ensureHomeDirs creates", () => {
+    // The completeness check lesson 24 asks for: a tree ensureHomeDirs starts
+    // creating without a manifest entry (or a manifest entry ensureHomeDirs
+    // no longer creates) fails this test loudly instead of drifting the way
+    // backup/purge/repair's hand-maintained lists did.
+    const prev = process.env.OP_HOME;
+    const home = mkdtempSync(join(tmpdir(), "op-home-manifest-"));
+    try {
+      process.env.OP_HOME = home;
+      ensureHomeDirs();
+      const createdTopLevel = readdirSync(home, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
+      const manifestNames = OP_HOME_TREES.map((tree) => tree.name).sort();
+      expect(manifestNames).toEqual(createdTopLevel);
     } finally {
       if (prev === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = prev;

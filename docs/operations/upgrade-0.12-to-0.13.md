@@ -515,7 +515,7 @@ round, and a rerun is a clean no-op. Beyond that:
 
 - **The shipped task files are rewritten to akm task source v4.** Your copies
   are frozen at what your first install seeded; on a released 0.12.x home they
-  carry no `version:` key at all, which never reaches akm 0.9.6's in-memory
+  carry no `version:` key at all, which never reaches akm 0.9.7's in-memory
   conversion shim — that shim takes a file only once it declares `version: 2`
   or `version: 3`. A version-less file is read as a malformed v4 document and
   fails outright. `knowledge/tasks/` is a `skipExisting` seed, so the current
@@ -596,6 +596,15 @@ round, and a rerun is a clean no-op. Beyond that:
   `knowledge/env/user.env`. Treat anything in the shared stash as readable by
   every enabled `/stash` holder, not just the assistant.
 
+- **A third-party credential consumed as an environment variable goes in
+  `knowledge/env/user.env`, not `stack.env` or a compose `environment:`
+  block.** The secret-boundary audit refuses secret-like keys in both places
+  and points at `<KEY>_FILE`, which is right for services that read file
+  secrets. akm engines do not: their `apiKey` must be a `$VAR` reference that
+  akm resolves from `process.env`, and `knowledge/env/user.env` is the file the
+  assistant entrypoint sources at startup (akm `env path env:user`), so it is
+  the one place such a value both passes the audit and reaches the tool.
+
 Every mount and secret source in the managed compose files now uses
 `${OP_HOME:?}`, so Compose fails loudly instead of resolving those paths against
 an empty `OP_HOME`.
@@ -607,7 +616,7 @@ you wrote is never renamed and never rewritten — the three retired filenames i
 section 2 aside, which are deleted by name. That is a guarantee about the file,
 not about whether it still runs.
 
-Usually it does. akm 0.9.6 reads a `version: 2` or `version: 3` task file by
+Usually it does. akm 0.9.7 reads a `version: 2` or `version: 3` task file by
 running the same deterministic planners `akm migrate apply` uses, converting it
 to v4 in memory and proceeding with a one-line deprecation warning on stderr.
 Your pre-v4 automations keep firing on their existing schedules, and nothing
@@ -637,6 +646,52 @@ in `failures` is a task of yours that is no longer scheduled: convert that file
 to `version: 4` — the grammar is under *Automations* in
 `docs/managing-openpalm.md` — or let
 `akm migrate apply` rewrite it where it can.
+
+### akm's state database waits for a deliberate cutover
+
+akm 0.9.6 and later ship one state.db migration they classify `historical-destructive`
+(`018-drop-dead-lane-schema`: it drops two dead-lane cache tables and one
+retired column left behind by lanes the 0.9.0 refactor deleted), and it never
+applies that class during an ordinary managed open. On a home whose state.db
+predates it — any 0.12.x home with a used improve pipeline — every boot after
+this upgrade has `akm health` exit 78 with "Unable to open state.db: Refusing
+to apply historical destructive state migration…", and every state.db surface
+(events, proposals, task history, improve ledgers, workflow runs) fails to
+open until the cutover runs. Task files, search, and chat are unaffected. The
+boot marker records it as `health 78` on a 0.13.0 image, and as
+`health 78 state-upgrade-pending` from 0.13.1.
+
+Do not run the first command akm's message names. `akm upgrade --force` is the
+package self-updater: inside the container it needs GitHub egress, runs
+`npm install -g akm-cli@latest` — which the image-baked install forbids and
+the container user cannot write anyway — and only reaches the state.db step
+after that install succeeds. It cannot work here. The second one it names from
+akm 0.9.8 on, `akm upgrade --state-only`, is the offline cutover and is what
+the helper below runs.
+
+Run the cutover deliberately, with the project name from section 1:
+
+```bash
+docker compose -p <project> exec assistant openpalm-akm-state-upgrade
+```
+
+That helper ships in images from 0.13.1 (it runs `akm upgrade --state-only`).
+On a 0.13.0 image, whose akm 0.9.6 predates that flag, run the same step
+directly against the image's pinned akm:
+
+```bash
+docker compose -p <project> exec assistant node --input-type=module -e 'const m = await import("/opt/openpalm/tools/node_modules/akm-cli/dist/core/state-db.js"); console.log(JSON.stringify(m.upgradeHistoricalStateDatabase()))'
+```
+
+Either way it is akm's own machinery: a verified sibling safety copy is
+written first (`state.db.pre-018-drop-dead-lane-schema.<timestamp>.<uuid>.bak`
+— `VACUUM INTO`, then
+`PRAGMA quick_check` and a ledger check before anything mutates), then the
+pending migrations apply, 018 through the current end of the ledger. The
+command is idempotent — `{"upgraded":false}` means there was nothing to do —
+and fully offline. Verify afterwards:
+`docker compose -p <project> exec assistant akm health` exits 0 (or 4, a
+warning) and its first hard check reports `state-db-schema: pass`.
 
 ### Published host ports move, and it is not opt-out
 
@@ -913,6 +968,49 @@ Then rerun `openpalm update` and restart the stack so containers re-read the
 changed secret. Do not keep editing a partially migrated tree hoping it settles;
 if the conflict is not obvious, restore the archive and report it with every
 secret value redacted.
+
+### akm reports `database is locked` on every boot (macOS / Windows)
+
+The stack is up and healthy, but the assistant's akm boot status is degraded on
+every boot — the `health` step exits 78, `akm workflow list --active` fails, and
+the assistant's logs carry `database is locked` for `state.db` or `workflow.db`
+— while the same files open fine from the host.
+
+This is WAL residue meeting a correct new refusal. On macOS and Windows every
+bind mount crosses the VM file-sharing layer (virtiofs / gRPC-FUSE), where
+SQLite's WAL locking cannot work; akm >= 0.9.6 (the 0.13.0 pin) therefore opens
+its stores in DELETE journal mode there. But 0.12.x ran an older akm that used
+WAL over that same mount, and it can leave `-wal` sidecar files under
+`$OP_HOME/data/akm/data/` holding **months of un-checkpointed state** — a 4 KB
+`state.db` next to a 1.1 MB `state.db-wal` is this failure, not corruption.
+SQLite engages the WAL machinery for any database with a `-wal` sidecar before
+a client can ask for a different mode, so the in-container akm never gets to
+open the file at all.
+
+Releases after 0.13.0 heal this automatically: install, update and desktop
+launch checkpoint the residue from the host before the stack starts. On 0.13.0
+itself, fold the WAL back in by hand — from the **host**, where WAL works. The
+stack may stay up; the affected files are exactly the ones the container cannot
+hold open:
+
+```bash
+for db in "$OP_HOME"/data/akm/data/*.db; do
+  sqlite3 "$db" 'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;'
+done
+```
+
+Then restart the assistant (`docker compose -p <project> restart assistant`,
+project name from section 1) and re-check `akm migrate status` per section 5.
+macOS ships `sqlite3`; on Windows run the same loop with any sqlite3 build
+against `%OP_HOME%\data\akm\data\*.db`. The same command applies to the one
+shape the automatic heal deliberately skips: Docker Desktop **for Linux**,
+which is VM-mediated like macOS but indistinguishable from native Linux (where
+in-container WAL is legitimate and must not be touched) without asking Docker.
+
+**Never delete a `-wal` file to make the error go away.** The sidecar can hold
+the entire database — checkpointing folds it back into the `.db`; deletion
+destroys it. The checkpoint above leaves every row in place and removes the
+sidecars itself.
 
 ## 9. Rollback
 

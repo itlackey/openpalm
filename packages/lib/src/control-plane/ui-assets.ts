@@ -14,6 +14,7 @@ import { normalizeVersion } from './versioning.js';
 import { SEEDED_SKILL_FILE_HASHES } from './seeded-skill-hashes.js';
 import { resolveDataDir } from './home.js';
 import { overwriteSystemTree } from './core-assets.js';
+import { renderOpenpalmHelperScripts } from './openpalm-helper-script.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('ui-assets');
@@ -209,7 +210,7 @@ const PRE_V4_TASK_SUFFIX = '.pre-v4';
  * on every existing home as the documents they were installed as, and no amount
  * of upgrading replaces them. That is not merely stale. A released 0.12.x home's
  * copies declare no `version:` key at all, which never reaches the in-memory
- * shim akm 0.9.6 uses for a declared v2 or v3 — they are read as malformed v4
+ * shim akm 0.9.7 uses for a declared v2 or v3 — they are read as malformed v4
  * documents and fail there, so `akm task sync` excludes them and the automations
  * this release ships never register. Declaring a version would not rescue them
  * either: their `command:` is a YAML argv array, which the shim's planners also
@@ -248,13 +249,13 @@ function retirePreV4SeededTasks(source: string, homeDir: string): void {
   }
   if (retired.length > 0) {
     logger.warn(
-      `Set aside pre-v4 copies of shipped task files as *${PRE_V4_TASK_SUFFIX} and reseeded them; akm 0.9.6 could not read them, so each was excluded from the schedule`,
+      `Set aside pre-v4 copies of shipped task files as *${PRE_V4_TASK_SUFFIX} and reseeded them; akm 0.9.7 could not read them, so each was excluded from the schedule`,
       { retired },
     );
   }
 }
 
-/** Whether a task file declares the one source version akm 0.9.6 reads natively. */
+/** Whether a task file declares the one source version akm 0.9.7 reads natively. */
 function declaresTaskSourceV4(path: string): boolean {
   try {
     const doc = parseYaml(readFileSync(path, 'utf8'));
@@ -296,6 +297,22 @@ export async function applyHomeSeed(homeDir: string): Promise<{ updated: string[
   // the stale file has to be out of the way for the current one to land.
   retirePreV4SeededTasks(source, homeDir);
   copyTree(source, homeDir, true);
+  // #650: openpalm.sh/.ps1 are RENDERED, not seeded-once — unlike the rest of
+  // copyTree's skipExisting=true seed (genuinely user-owned or user-populated
+  // paths), these two are app-owned outputs of the control plane's own
+  // overlay/project-name resolution, so every reconcile re-renders them from
+  // the CURRENT state (a renamed project, a newly toggled addon overlay, …)
+  // exactly the way `state/stack.env` is always written wholesale rather than
+  // seeded once. Deliberately AFTER copyTree, so this overwrites whatever
+  // static fallback copyTree just seeded from the skeleton on a first install.
+  try {
+    renderOpenpalmHelperScripts(homeDir);
+  } catch (e) {
+    // Best-effort: a helper-script render failure must not abort the whole
+    // seed (the managed system/ tree and the app's own state are already
+    // written by this point) — it only degrades a convenience script.
+    logger.warn('Could not render openpalm.sh/openpalm.ps1', { error: e instanceof Error ? e.message : String(e) });
+  }
   try {
     const version = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;
     if (typeof version === 'string') writeSkeletonVersion(homeDir, normalizeVersion(version));

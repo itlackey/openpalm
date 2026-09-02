@@ -113,6 +113,16 @@ function openpalmConfigPath(state: ControlPlaneState): string {
 }
 
 /**
+ * homeDir-based form of {@link openpalmConfigPath}, for the three sweeps below
+ * that are now home-schema MIGRATIONS (home-schema.ts) rather than
+ * `ControlPlaneState`-scoped writers: a migration only ever has a homeDir,
+ * and `configDir` is always `${homeDir}/config` (home.ts's resolveConfigDir).
+ */
+function assistantAkmConfigPath(homeDir: string): string {
+  return join(homeDir, "config", "akm", "config.json");
+}
+
+/**
  * Container/OpenPalm side: add the personal stash (mounted at /host-stash) as a
  * secondary bundle. Parse-tolerant (we own this config). Writable by default so
  * the assistant can contribute back via an explicit `--bundle host-akm` (or
@@ -158,16 +168,20 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
  * that upgrades into the `knowledge/skills/` → `system/skills/` move gets the
  * `:ro` `/system-stash` mount but no bundle entry pointing at it — akm never
  * walks the directory, and the shipped skills the migration just removed from
- * the stash are gone from the assistant entirely. Swept on the lifecycle pass,
- * beside the retired-key strip, for the same "an upgraded install heals itself"
- * reason.
+ * the stash are gone from the assistant entirely.
  *
- * Deliberately narrow, like its neighbour: it upserts one bundle by id and
+ * #654: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep run
+ * on every apply — the shape it heals ("no bundle entry for a mount this
+ * release's skills move introduced") is exactly one release transition, so it
+ * belongs behind a `since` gate with its own test, run once per upgraded home,
+ * rather than re-checked on every install/update/launch forever.
+ *
+ * Deliberately narrow, like its neighbours: it upserts one bundle by id and
  * writes only when that actually changed. It never touches `defaultBundle`,
  * `defaultWriteTarget`, or any other entry.
  */
-export function ensureSystemBundle(state: ControlPlaneState): boolean {
-  const configPath = openpalmConfigPath(state);
+export function ensureSystemBundle(homeDir: string): boolean {
+  const configPath = assistantAkmConfigPath(homeDir);
   if (!existsSync(configPath)) return false;
   let config: AkmConfigObject;
   try {
@@ -326,11 +340,11 @@ function assertDefaultsOnlyRepointedToPrimary(
  * block no OpenPalm writer emits), and the AKM settings PATCH route, which
  * pins the primary entry but preserves the rest of the map verbatim.
  *
- * STATUS UNDER akm >= 0.9.6 — read this before deleting the sweep. akm 0.9.6
- * fixed the root cause (akm#870) the same way this does: bundle identity is
- * the RESOLVED content root at both registration sites, so akm no longer mints
- * a second id for an already-configured directory, and `migrate` no longer
- * throws on one that already exists. That removes the recurring exit-70
+ * STATUS UNDER akm >= 0.9.7 — read this before deleting the migration. akm
+ * 0.9.7 fixed the root cause (akm#870) the same way this does: bundle identity
+ * is the RESOLVED content root at both registration sites, so akm no longer
+ * mints a second id for an already-configured directory, and `migrate` no
+ * longer throws on one that already exists. That removes the recurring exit-70
  * failure, NOT the config state behind it. Verified against the shipped 0.9.6
  * on a fixture carrying the live duplicate shape: `migrate status` reports
  * `current` with no blockers, and the config is byte-identical afterwards —
@@ -341,19 +355,17 @@ function assertDefaultsOnlyRepointedToPrimary(
  * removes the duplicate from a home that ran 0.9.1-0.9.5, and the only thing
  * that moves `defaultBundle`/`defaultWriteTarget` off an id akm synthesized and
  * OpenPalm does not own. It is now legacy cleanup rather than a guard against
- * active corruption — on a home that has only ever seen >= 0.9.6 it finds
+ * active corruption — on a home that has only ever seen >= 0.9.7 it finds
  * nothing and returns false. It also still covers the case where an akm older
  * than the container pin writes this file (a rollback, or a host akm run
  * against the same config), which is exactly how the duplicate got minted.
  *
- * REACH, honestly: this is not a chokepoint on the boot that actually fails.
- * `applyHomeAssets` runs on install/update, on desktop launch, and on the CLI
- * supervisor's non-stackless spawn — but NOT on a plain `openpalm start` /
- * `restart`, which brings the stack up without writing OP_HOME assets by
- * deliberate policy (cli-state.ts: "no self-healing on a plain command"). On a
- * headless install the heal therefore lands on the next install/update or
- * UI-supervisor spawn, not necessarily before the next failing boot. That is
- * the same reach the two neighbouring sweeps already have.
+ * #654: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep run
+ * on every apply forever — the duplicate it cleans up is a shape older akm
+ * releases wrote, i.e. exactly a release transition, so it belongs behind a
+ * `since` gate with its own test rather than being re-checked on every
+ * install/update/launch against a home that has long since stopped producing
+ * it.
  *
  * OpenPalm keeps its OWN id. Renaming the primary to `stash` would hand the
  * bundle id akm happens to synthesize authority over the one tree a backup
@@ -363,11 +375,10 @@ function assertDefaultsOnlyRepointedToPrimary(
  * ROOT collides with the primary's, folds any field they carried and the
  * primary lacks onto the primary, and repoints only a default that named one
  * of them. It touches no other entry and no other key, and it is a no-op (no
- * write, returns false) when there is no duplicate — this runs on every
- * lifecycle pass against a file the operator owns.
+ * write, returns false) when there is no duplicate.
  */
-export function reconcileDuplicateBundles(state: ControlPlaneState): boolean {
-  const configPath = openpalmConfigPath(state);
+export function reconcileDuplicateBundles(homeDir: string): boolean {
+  const configPath = assistantAkmConfigPath(homeDir);
   if (!existsSync(configPath)) return false;
   let config: AkmConfigObject;
   try {
@@ -474,15 +485,25 @@ export function reconcileDuplicateBundles(state: ControlPlaneState): boolean {
  *
  * Every `akm` invocation in the assistant then fails with INVALID_CONFIG_FILE
  * and the UI reports AKM metrics as unavailable, with nothing naming the
- * cause. Swept on the lifecycle pass instead, beside the retired stack.env
- * keys, so an upgraded install heals itself.
+ * cause.
+ *
+ * #654/#645: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep
+ * run on every apply forever. The shape it heals — a config still carrying
+ * retired 0.8 keys, or a 0.12.x `profiles.llm.*` never translated into
+ * `engines.*` — is exactly a release transition, so it gets a `since` gate and
+ * its own test instead of asking "what do I delete?" on every install/update/
+ * launch against a home that has long since been cleaned. The translation
+ * itself (`translateLegacyLlmProfiles`, called from `stripRetiredAkmKeys`
+ * below) is unconditional and content-based, so replaying this migration
+ * after a rollback is already safe by construction: a config with no more
+ * `profiles.llm.*` has nothing left to translate (#657.3).
  *
  * Deliberately narrow: it removes retired keys and stamps `configVersion`, and
  * writes ONLY when one of those actually changed. It does not reshape bundles
- * or defaults — this runs on every lifecycle action against a file the
- * operator owns, so it must not rewrite anything it was not asked to.
+ * or defaults — this must not rewrite anything it was not asked to on a file
+ * the operator owns.
  */
-export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
+export function stripRetiredAkmConfigKeys(homeDir: string): boolean {
   // BOTH akm configs, not just the assistant's. Paperclip runs its own akm
   // against `config/paperclip/akm/config.json` (services.compose.yml mounts it
   // at /etc/akm), seeded once from the skeleton and never rewritten — so it
@@ -491,8 +512,8 @@ export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
   // dies. Sweeping only one of the two was half a fix.
   let changed = false;
   for (const configPath of [
-    openpalmConfigPath(state),
-    join(state.configDir, "paperclip", "akm", "config.json"),
+    assistantAkmConfigPath(homeDir),
+    join(homeDir, "config", "paperclip", "akm", "config.json"),
   ]) {
     if (stripRetiredKeysAt(configPath)) changed = true;
   }
@@ -521,7 +542,51 @@ function stripRetiredKeysAt(configPath: string): boolean {
 }
 
 /**
+ * W10, applied to the host-config import: `config/akm/config.json` is
+ * CONTAINER-VIEW by contract. The setup wizard already rewrites loopback
+ * provider URLs to `host.docker.internal` at the exact point they are
+ * persisted for container consumption (ui setup/payload.ts,
+ * toContainerReachableUrl — same regex), and akm-user-env.ts translates that
+ * hostname BACK to loopback whenever a HOST-side akm process reads this same
+ * file. The host's own ~/.config/akm/config.json is host-view: a local
+ * LM Studio/Ollama engine or embedding endpoint is spelled
+ * `http://localhost:1234/...`, and inside the assistant container that
+ * loopback is the container itself. Importing it verbatim produced a config
+ * that LOADED fine — so the import route's load-validation kept it — and
+ * then failed every LLM call at use time with a connection error nothing
+ * attributed to the import. core.compose.yml ships
+ * `host.docker.internal:host-gateway` on the assistant unconditionally, so
+ * the rewrite is container-reachable on Linux, macOS, and Windows alike.
+ *
+ * Deep walk over every string leaf, mirroring akm-user-env.ts's
+ * rewriteHostDockerInternalDeep (the exact reverse direction) for the same
+ * reason it gives: any endpoint-shaped field — present or added later, in
+ * any engine — gets the fix without this code tracking akm's config schema.
+ * Safe because only strings that BEGIN with a loopback http(s) origin are
+ * touched; engine names, model ids, and genuinely remote URLs never match.
+ */
+const LOOPBACK_HOST_RE = /^(https?:\/\/)(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?=[:/]|$)/i;
+
+function toContainerReachableDeep<T>(value: T): T {
+  if (typeof value === "string")
+    return value.replace(LOOPBACK_HOST_RE, "$1host.docker.internal") as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => toContainerReachableDeep(v)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = toContainerReachableDeep(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
  * Copy the host's akm engine/embedding configuration into the assistant's.
+ *
+ * Loopback endpoints are rewritten to `host.docker.internal` on the way in —
+ * host values only, never anything the operator already set here (see
+ * {@link toContainerReachableDeep}).
  *
  * MANUAL ONLY. Nothing calls this on install, on upgrade, or as a side effect
  * of any toggle — it runs when an operator explicitly asks for it, the same
@@ -554,6 +619,10 @@ export function importHostAkmConfig(
 ): { imported: string[] } {
   const host = readHostConfigBestEffort(hostConfigPath);
   if (!host) return { imported: [] };
+  // Container-view translation BEFORE the merge, host values only — see
+  // toContainerReachableDeep. The read stays strictly read-only: the walk
+  // builds a rewritten copy and never touches the host's file.
+  const hostView = toContainerReachableDeep(host);
 
   const opPath = openpalmConfigPath(state);
   const op = readConfigTolerant(opPath);
@@ -568,9 +637,9 @@ export function importHostAkmConfig(
   // engines (akm 0.9.0 config-schema EnginesSchema).
   const opEngines = isObj(op.engines) ? (op.engines as Record<string, unknown>) : {};
   let engines = opEngines;
-  if (isObj(host.engines)) {
+  if (isObj(hostView.engines)) {
     // host first, existing last → existing wins; only host-only engine names are added.
-    const merged: Record<string, unknown> = { ...(host.engines as Record<string, unknown>), ...opEngines };
+    const merged: Record<string, unknown> = { ...(hostView.engines as Record<string, unknown>), ...opEngines };
     if (Object.keys(merged).length > Object.keys(opEngines).length) {
       engines = merged;
       imported.push("engines");
@@ -579,7 +648,7 @@ export function importHostAkmConfig(
 
   // defaults.engine / defaults.llmEngine / defaults.improveStrategy — only
   // adopt a host selection when OpenPalm has none.
-  const hostDefaults = isObj(host.defaults) ? (host.defaults as Record<string, unknown>) : {};
+  const hostDefaults = isObj(hostView.defaults) ? (hostView.defaults as Record<string, unknown>) : {};
   const opDefaults = isObj(op.defaults) ? { ...(op.defaults as Record<string, unknown>) } : {};
   for (const key of ["engine", "llmEngine", "improveStrategy"] as const) {
     if (typeof hostDefaults[key] === "string" && typeof opDefaults[key] !== "string") {
@@ -589,7 +658,7 @@ export function importHostAkmConfig(
   }
 
   // improve.strategies — additive by strategy name.
-  const hostImprove = isObj(host.improve) ? (host.improve as Record<string, unknown>) : {};
+  const hostImprove = isObj(hostView.improve) ? (hostView.improve as Record<string, unknown>) : {};
   const opImprove = isObj(op.improve) ? { ...(op.improve as Record<string, unknown>) } : {};
   let improveChanged = false;
   if (isObj(hostImprove.strategies)) {
@@ -605,9 +674,9 @@ export function importHostAkmConfig(
   // Top-level embedding connection. Per-field additive: existing OpenPalm
   // fields win; host fills only missing fields.
   let embedding: Record<string, unknown> | undefined;
-  if (isObj(host.embedding)) {
+  if (isObj(hostView.embedding)) {
     const existing = isObj(op.embedding) ? (op.embedding as Record<string, unknown>) : {};
-    const merged: Record<string, unknown> = { ...(host.embedding as Record<string, unknown>), ...existing };
+    const merged: Record<string, unknown> = { ...(hostView.embedding as Record<string, unknown>), ...existing };
     if (Object.keys(merged).length > Object.keys(existing).length) {
       embedding = merged;
       imported.push("embedding");

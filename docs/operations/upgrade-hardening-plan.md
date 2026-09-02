@@ -47,13 +47,26 @@ stashDir/wiki removals in 0.9.0; the node 22→24→22 engine flip across
 
 ### Mode 3 — No automated gate ever ran the real pinned akm against a real home
 
-CI's only akm exercise is `akm --version`. upgrade-path-smoke.sh never calls
-akm (its one mention is a comment, line 313), never runs `applyHomeAssets`
-(only the seed, lines 219-226), and force-deletes `state/schema-version`
-(line 96) — making the mid-cycle-stamp population that stranded the retired
-files untestable *by construction*. #558 M21 predicted this in advance:
-"zero automated coverage of the one scenario every real user will hit."
-All five 0.9.4 failures were discoverable only on a live instance.
+**Update (0.13.1): the three named gaps below are closed** —
+`scripts/upgrade-path-smoke.sh` now runs `applyHomeAssets` (not just the
+seed), exercises the real pinned akm (`migrate status`, `task sync
+--dry-run`) against each era's migrated home (reusing
+akm-pin-integration-smoke.sh's technique), and no longer force-deletes
+`state/schema-version` — it stamps 0 for every fetched era instead (the only
+stamp consistent with the pre-consolidation fixture content
+`smoke_seed_legacy_install_state` writes; see that function's own comments in
+the script for why a stamp derived from what the era's skeleton ships,
+rather than what the FIXTURE'S file shapes actually require, produced false
+migration failures when tried). The paragraph below is kept as the historical
+incident record.
+
+CI's only akm exercise used to be `akm --version`. upgrade-path-smoke.sh never
+called akm (its one mention was a comment, line 313), never ran
+`applyHomeAssets` (only the seed, lines 219-226), and force-deleted
+`state/schema-version` (line 96) — making the mid-cycle-stamp population that
+stranded the retired files untestable *by construction*. #558 M21 predicted
+this in advance: "zero automated coverage of the one scenario every real user
+will hit." All five 0.9.4 failures were discoverable only on a live instance.
 
 ### Mode 4 — One-shot delivery to existing homes
 
@@ -113,7 +126,7 @@ load-validation tightens. Fixtures in an existing gated suite, not new
 machinery.
 
 ### 3. One pinned-akm integration job in CI, required on every pin bump
-**openpalm · medium — the highest-leverage single item**
+**openpalm · DONE — `scripts/akm-pin-integration-smoke.sh`, wired into CI quality-gates**
 
 A scripted version of the manual procedure that actually caught this cycle's
 bugs: exact-pin install under the image's Node version (so an engines floor
@@ -125,17 +138,23 @@ against the shim spool, `config list`. Fail on any nonzero exit. This one job
 would have caught failures 1, 2, 3 and 5 of this cycle before merge.
 
 ### 4. Release-owned files move to the managed overwrite channel
-**openpalm · medium**
+**openpalm · medium — guard landed (0.13.1); the file-ownership migration itself is still open**
 
 Stop inventing escape hatches: release-owned task files move onto the channel
 `system/skills` already uses — always-overwritten managed tree, with the
 existing frozen-hash pristine-check protecting operator edits. Retire
 rename-and-reseed for release content. Record the rule in core-principles.md:
 release-owned content lives on an overwrite channel; the user-owned knowledge
-tree receives nothing the release will later need to change. Guard in
-upgrade-path-smoke.sh: one era keeps its schema stamp (kills the
-untestable-by-construction gap), and post-upgrade every task file must parse
-via loadMarkdownTasks with nonzero count.
+tree receives nothing the release will later need to change.
+
+The guard this depends on has landed: upgrade-path-smoke.sh no longer
+force-deletes `state/schema-version` (every fetched era keeps a real stamp —
+see the Mode 3 update above), which is what kills the
+untestable-by-construction gap for whatever migration eventually ships this
+move. The move itself — retiring rename-and-reseed and the post-upgrade
+"every task file parses via loadMarkdownTasks with nonzero count" assertion
+that would prove it — has not shipped; it is a lifecycle/migration change,
+not a test-lane one.
 
 ### 5. Close the two unpinned lanes
 **openpalm · small-medium**
@@ -171,10 +190,16 @@ caught every bug this cycle; unit suites and health checks caught none.
    the image's base (`containers/assistant/Dockerfile:65`). Mismatch = stop.
 3. **Bump all lockstep surfaces together** — assistant tools, paperclip
    manifest, opencode.jsonc — and confirm paperclip-compose-contract passes.
-4. **Run the pinned-akm integration job** (countermeasure 3; by hand until it
-   exists in CI).
+4. **Run the pinned-akm integration job**: `./scripts/akm-pin-integration-smoke.sh`
+   (countermeasure 3, now automated and wired into CI's quality-gates).
 5. **Build the image and boot the real stack twice** — fresh OP_HOME and an
-   upgraded legacy fixture home.
+   upgraded legacy fixture home. Then **confirm the running `akm --version`
+   equals the new pin before reading any other result.** Building an image does
+   not mean the stack runs it: a home whose `OP_ASSISTANT_VERSION` names a
+   rollback generation (or any tag other than the one just built) boots the OLD
+   image, and every downstream check — clean boot logs, a clean marker, the
+   scheduler — then describes the version you were trying to replace. This
+   nearly published a 0.9.6 result as 0.9.7 verification.
 6. **Gate on boot logs, not health**: scan logs since
    `docker inspect --format '{{.State.StartedAt}}'` (plain `--since`
    spans restarts); fail on any akm warning line.

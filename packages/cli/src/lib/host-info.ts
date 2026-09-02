@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { dockerBin } from '@openpalm/lib';
+
 export interface HostInfo {
   platform: string;
   arch: string;
@@ -9,14 +12,29 @@ export interface HostInfo {
 }
 
 /**
+ * Resolve whether the configured docker binary ({@link dockerBin}, honoring
+ * OP_DOCKER_BIN) is actually available. A bare name (the "docker" default, or
+ * an override like "podman" with no path separator) needs PATH resolution —
+ * `Bun.which`. An explicit path (OP_DOCKER_BIN pointed at a specific binary
+ * or shim) is checked directly with `existsSync`: `Bun.which` only resolves
+ * bare command names against PATH and does not confirm an absolute/relative
+ * path actually exists.
+ */
+export function dockerBinAvailable(bin: string): boolean {
+  if (bin.includes('/') || bin.includes('\\')) return existsSync(bin);
+  return Boolean(Bun.which(bin));
+}
+
+/**
  * Detects host system information including platform, Docker availability,
  * and local AI service endpoints.
  */
 export async function detectHostInfo(): Promise<HostInfo> {
-  const dockerAvailable = Boolean(Bun.which('docker'));
+  const bin = dockerBin();
+  const dockerAvailable = dockerBinAvailable(bin);
   let dockerRunning = false;
   if (dockerAvailable) {
-    const proc = Bun.spawn(['docker', 'info'], { stdout: 'ignore', stderr: 'ignore' });
+    const proc = Bun.spawn([bin, 'info'], { stdout: 'ignore', stderr: 'ignore' });
     dockerRunning = (await proc.exited) === 0;
   }
 

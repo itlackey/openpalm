@@ -276,7 +276,7 @@ describe("skeleton: knowledge/ structure", () => {
    *
    * Neither half is redundant. akm excludes a source it cannot version from
    * the scheduler sync, so one bad file costs that task's schedule — hence the
-   * `version: 4` assertion, akm 0.9.6's only standing grammar. And OpenPalm's own reader is what the Automations tab and
+   * `version: 4` assertion, akm 0.9.7's only standing grammar. And OpenPalm's own reader is what the Automations tab and
    * the Run-now gate use, so a file akm accepts but `loadMarkdownTasks` drops
    * is an installed, cron-registered task the operator cannot see or trigger.
    *

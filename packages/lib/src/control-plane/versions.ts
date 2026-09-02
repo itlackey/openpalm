@@ -17,9 +17,10 @@
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { writeFileAtomic } from './fs-atomic.js';
 import { parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
-import { stackEnvFile } from './home.js';
+import { HOME_SCHEMA_VERSION, readHomeSchemaVersion, stackEnvFile } from './home.js';
+import { readSkeletonVersion } from './ui-assets.js';
 import type { ControlPlaneState } from './types.js';
-import { normalizeVersion, PLATFORM_VERSION } from './versioning.js';
+import { compareComparableVersions, isComparableSemver, normalizeVersion, PLATFORM_VERSION } from './versioning.js';
 
 /** Docker image tags — one per deployable OpenPalm image. */
 export const SERVICE_VERSION_KEYS = [
@@ -67,8 +68,89 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 	'OP_TOOL_AKM_VERSION',
 	'OP_TOOL_CLAUDE_CODE_VERSION',
 	'OP_TOOL_CODEX_VERSION',
-	'OP_TOOL_OPENCODE_VERSION'
+	'OP_TOOL_OPENCODE_VERSION',
+	// The one that proved the docblock above literally true. The pre-0.13
+	// release model WROTE this key; 554b79bc removed the writer and left the
+	// value behind on every upgraded home. The guardian entrypoint honoured it,
+	// discarding its correct image-baked package to install that old version
+	// from npm on every boot — which predated 0.13.0's always-on OpenCode auth,
+	// so the guardian 401'd, disabled its own proxy, answered /health/ready
+	// with 503, failed its healthcheck, and took every stack update down with
+	// it for months. The override no longer exists in the entrypoint; this
+	// sweep is what removes the stale row that was driving it.
+	'OP_GUARDIAN_NPM_VERSION',
+	'OP_GUARDIAN_PACKAGE',
+	'OP_GUARDIAN_ENTRY',
+	'OP_GUARDIAN_NPMRC',
+	'OP_GUARDIAN_NPMRC_FILE'
 ] as const;
+
+// ── Version-skew guard (#636) ────────────────────────────────────────────────
+//
+// An OP_HOME is written by whichever app last ran install/update against it —
+// `.skeleton-version` (ui-assets.ts) and `state/schema-version` (home.ts) both
+// record that. Nothing used to compare those stamps against the CODE now
+// running before writing to the home, so an older app (e.g. a desktop build
+// stuck mid-self-update, #635) pointed at a home a newer app had already
+// upgraded would silently downgrade it: `advanceManagedImageVersions`
+// defaults its target to THIS build's `PLATFORM_VERSION`, and `applyHomeSeed`
+// unconditionally overwrites `system/` and re-stamps `.skeleton-version` from
+// THIS build's skeleton — both moving a newer home backwards with no operator
+// confirmation.
+//
+// This is that comparison, done once. `newer` is true when either stamp says
+// the home was written by a build ahead of this one; every caller that would
+// mutate managed files, version pins, or the version stamps themselves must
+// check it FIRST and refuse before touching anything. A missing or
+// non-semver `.skeleton-version` (fresh install, a pre-stamp home) never
+// trips it — `isComparableSemver` guards that — and neither does an equal or
+// older home, which is the normal upgrade direction and must stay unguarded.
+
+export type HomeVersionSkew = {
+	/** True when the home was written by a build newer than the one running now. */
+	newer: boolean;
+	/** `.skeleton-version` stamped into the home, or null when absent/unparseable. */
+	homeSkeletonVersion: string | null;
+	/** This build's platform version (bare semver). */
+	runningPlatformVersion: string;
+	/** Recorded OP_HOME layout schema version (0 when unrecorded). */
+	homeSchemaVersion: number;
+	/** This build's OP_HOME layout schema version. */
+	runningSchemaVersion: number;
+};
+
+/** Compare the home's recorded version stamps against the code running now. */
+export function detectHomeVersionSkew(state: ControlPlaneState): HomeVersionSkew {
+	const homeSkeletonVersion = readSkeletonVersion(state.homeDir);
+	const homeSchemaVersion = readHomeSchemaVersion(state.homeDir);
+	const skeletonNewer =
+		isComparableSemver(homeSkeletonVersion) &&
+		compareComparableVersions(homeSkeletonVersion as string, PLATFORM_VERSION) > 0;
+	const schemaNewer = homeSchemaVersion > HOME_SCHEMA_VERSION;
+	return {
+		newer: skeletonNewer || schemaNewer,
+		homeSkeletonVersion,
+		runningPlatformVersion: PLATFORM_VERSION,
+		homeSchemaVersion,
+		runningSchemaVersion: HOME_SCHEMA_VERSION
+	};
+}
+
+/**
+ * Refuse to continue when `state.homeDir` was written by a newer OpenPalm than
+ * the one running now. Call this BEFORE any managed-file write, version-pin
+ * advance, or version-stamp write — see the module docblock above.
+ */
+export function assertHomeNotNewerThanApp(state: ControlPlaneState): void {
+	const skew = detectHomeVersionSkew(state);
+	if (!skew.newer) return;
+	const homeLabel = skew.homeSkeletonVersion ?? `schema ${skew.homeSchemaVersion}`;
+	throw new Error(
+		`OP_HOME (${state.homeDir}) was set up by OpenPalm ${homeLabel}, but this app is ${skew.runningPlatformVersion}. ` +
+			'Refusing to overwrite managed files, advance image versions, or downgrade this home. ' +
+			`Update this app to ${homeLabel} or later, then try again.`
+	);
+}
 
 // ── Version configuration ────────────────────────────────────────────────────
 

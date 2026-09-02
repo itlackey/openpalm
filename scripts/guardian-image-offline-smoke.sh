@@ -102,16 +102,19 @@ if [ "$ok" != "1" ]; then
 fi
 echo "PASS: guardian reached healthy under --network none."
 
-# The reproducibility receipt (package@version + entry + auth strategy in one
-# structured boot line) is asserted against LOCAL source in
-# packages/guardian/src/server.test.ts ("Guardian boot receipt"), not here:
-# this script builds from the local candidate source. What this script verifies
-# is that the baked package is used as-is with no re-fetch.
+# What this script verifies is that the baked package is used as-is with no
+# re-fetch. The entrypoint no longer announces that with its own log line — the
+# boot-time package override it used to print around was deleted outright
+# (a000687), and the exec is now unconditional — so the proof is the guardian's
+# structured boot receipt: its `entry` is Bun.main, and only the image layer
+# puts @openpalm/guardian at this path (the shipped compose bind-mounts
+# /opt/openpalm/guardian, never /opt/openpalm/guardian-pkg).
+BAKED_ENTRY="/opt/openpalm/guardian-pkg/node_modules/@openpalm/guardian/src/server.ts"
 # Capture once because `docker logs | grep -q` races under pipefail: grep can
 # close the pipe after a match and turn docker's resulting SIGPIPE into failure.
 CONTAINER_LOGS="$(docker logs "$CONTAINER" 2>&1)"
-if ! grep -q "using image-baked Guardian package" <<<"$CONTAINER_LOGS"; then
-  echo "FAIL: entrypoint did not use the baked guardian package" >&2
+if ! grep -qF "\"entry\":\"${BAKED_ENTRY}\"" <<<"$CONTAINER_LOGS"; then
+  echo "FAIL: guardian boot receipt does not name the image-baked entry ${BAKED_ENTRY}" >&2
   printf '%s\n' "$CONTAINER_LOGS" >&2
   exit 1
 fi

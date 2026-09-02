@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "license": "MPL-2.0",
   "workspaces": [
@@ -34,7 +34,7 @@
     "portal:discord:dev": "bun run packages/portal-discord/src/index.ts",
     "portal:slack:dev": "bun run packages/portal-slack/src/index.ts",
     "cli:test": "bun test --isolate --cwd packages/cli",
-    "wizard:dev": "rm -rf /tmp/openpalm/.dev && OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main.ts install --no-start",
+    "wizard:dev": "rm -rf /tmp/openpalm/.dev && OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main.ts install",
     "lib:test": "bun test --cwd packages/lib",
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/core.compose.yml -f .dev/system/stack/services.compose.yml -f .dev/system/stack/portals.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",

@@ -75,7 +75,9 @@ export default defineCommand({
 		},
 		start: {
 			type: 'boolean',
-			description: 'Start services after install (use --no-start to skip)',
+			description:
+				'Start services after install (use --no-start to skip). Applies to --file installs ' +
+				'only — the setup wizard always configures and starts the stack in one step.',
 			default: true
 		},
 		open: {
@@ -153,10 +155,10 @@ type InstallOptions = {
  * probes rather than a bespoke `docker info`/`docker compose version` check.
  * `ensureDockerReady` distinguishes "daemon stopped" from "socket permission
  * denied" (mapDockerError), tolerates a warning-only `docker info` exit
- * (checkDocker), and its Compose check enforces the `--wait`/`--wait-timeout`
- * version floor (checkDockerCompose / meetsComposeWaitFloor) that the final
- * deploy's `--wait-timeout` flag needs — a bare version-exists check would
- * pass a too-old Compose that then fails at the very end of the wizard.
+ * (checkDocker), and its Compose check enforces the `--wait` version floor
+ * (checkDockerCompose / meetsComposeWaitFloor) that the final deploy's
+ * `--wait` flag needs — a bare version-exists check would pass a too-old
+ * Compose that then fails at the very end of the wizard.
  */
 async function ensureDockerAndComposeReady(): Promise<void> {
 	const result = await ensureDockerReady();
@@ -243,6 +245,23 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
+	// #632: --no-start only has meaning on the --file path. prepareInstallFiles
+	// deliberately never mints secrets (C1 below) — performSetup is the sole
+	// minter, whether reached via runFileInstall or via the wizard the operator
+	// drives through the UI. On the wizard path there is nothing for --no-start
+	// to skip: the wizard both configures AND deploys in one step, so silently
+	// honoring the flag there used to leave a compose-looking home with no
+	// secrets and no explanation — Docker's own error only surfaces much later,
+	// at the first `docker compose up`. Fail loudly here instead, before
+	// anything touches disk.
+	if (options.noStart && !options.file) {
+		throw new Error(
+			'--no-start requires --file: the setup wizard configures and starts the stack in one ' +
+				'step. For a non-interactive install that must not start containers, write a setup ' +
+				'config and pass --file <path> --no-start (see docs/operations/manual-headless-install.md).'
+		);
+	}
+
 	// Warn early if any bind address is non-loopback so the operator sees it
 	// before services start. #563 — preset-aware: a matched network access
 	// preset collapses to one informational line; unexplained exposure stays
@@ -413,7 +432,7 @@ async function prepareInstallFiles(
 	// runs (deploy happens later from inside the UI), so this explicit seed is
 	// the only one that runs before the wizard comes up.
 	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, dataDir);
-	runHomeMigrations(homeDir);
+	await runHomeMigrations(homeDir);
 	// Materialize the embedded UI build into data/ui — no network, no backup:
 	// this binary's build wins unconditionally once its stamp differs from
 	// what's already there (a no-op on a repeat install at the same version).

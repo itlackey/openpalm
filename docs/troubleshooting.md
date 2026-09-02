@@ -272,6 +272,16 @@ openpalm rollback
 Raw copying is incomplete because install/update also generates state, private
 secrets, caches, and runtime files.
 
+### Stuck on a rollback image tag after repeated failed updates
+
+Each failed `update` retags your previous images as
+`rollback-generation-<id>` and pins `state/stack.env` to them so the
+automatic recovery restarts exactly what was running before. Repeated
+failures just move the pin to a newer generation each time — that's expected,
+not a stuck state. Fix the actual update failure and run `openpalm update`
+again; once it succeeds, the pin moves forward to the real release tag on its
+own. There is nothing to clear by hand.
+
 ## Factory Reset
 
 Back up first. Then remove the stack and all OpenPalm-owned trees:

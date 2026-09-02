@@ -236,11 +236,115 @@ export const RETIRED_AKM_CONFIG_KEYS = [
 ] as const;
 
 export function stripRetiredAkmKeys(config: Record<string, unknown>): void {
+	translateLegacyLlmProfiles(config);
 	for (const key of RETIRED_AKM_CONFIG_KEYS) delete config[key];
 	if (config.defaults && typeof config.defaults === 'object') {
 		delete (config.defaults as Record<string, unknown>).llm;
 		delete (config.defaults as Record<string, unknown>).agent;
 		delete (config.defaults as Record<string, unknown>).improve;
+	}
+}
+
+/**
+ * akm 0.9's `engines.<name>.apiKey` must be an env-var reference
+ * (`$VAR`/`${VAR}`), never a literal secret — mirrors akm-cli's
+ * `ENV_REFERENCE_PATTERN` (core/config/schema/primitives.js). A retired 0.8
+ * `profiles.llm.<name>.apiKey` holding a literal key can't be carried over:
+ * writing it as-is would both fail akm's schema (rejecting the WHOLE config)
+ * and put a secret in the user-owned, non-secret `config/akm/config.json`.
+ */
+const AKM_ENV_REFERENCE_PATTERN = /^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
+
+function isHttpUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		return url.protocol === 'http:' || url.protocol === 'https:';
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * akm 0.9 retires `profiles.*` with no translation of its own — akm's own
+ * upgrade guidance is "Recreate engines ... manually for AKM 0.9.0;
+ * profile-based configuration is not translated automatically"
+ * (config-version-shim.js). OpenPalm drives this migration during
+ * install/update (`stripRetiredAkmConfigKeys`), so without this step the
+ * retired-key strip below silently deletes `profiles.llm.*` and a 0.12.x
+ * upgrade lands on a stamped-valid `engines: {}` with no loud failure
+ * anywhere — issue #645.
+ *
+ * Best-effort translates `profiles.llm.<name>` into the current
+ * `engines.<name>` shape before the strip removes it. Additive only, like
+ * every other writer of this file: never overwrites an engine name that
+ * already exists and never overwrites an already-set `defaults.llmEngine`.
+ * A profile missing a usable `model`/`endpoint`, or one whose `apiKey` is a
+ * literal secret rather than an env-var reference, is left untranslated —
+ * exactly as silently dropped as before — but named in a loud warning
+ * instead. Other retired profile kinds (`profiles.agent`, `profiles.improve`)
+ * are out of scope here the same way they are for akm itself
+ * (docs/migration/v0.8-to-v0.9.md: "engine settings are never guessed") —
+ * also just named in the warning.
+ */
+function translateLegacyLlmProfiles(config: Record<string, unknown>): void {
+	const profiles = config.profiles;
+	if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) return;
+	const profileKinds = profiles as Record<string, unknown>;
+
+	const engines = (
+		config.engines && typeof config.engines === 'object' && !Array.isArray(config.engines)
+			? (config.engines as Record<string, unknown>)
+			: {}
+	) as Record<string, Record<string, unknown>>;
+	const translated: string[] = [];
+	const dropped: string[] = [];
+
+	const llmProfiles = profileKinds.llm;
+	if (llmProfiles && typeof llmProfiles === 'object' && !Array.isArray(llmProfiles)) {
+		for (const [name, raw] of Object.entries(llmProfiles as Record<string, unknown>)) {
+			if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+			if (name in engines) continue; // never overwrite a live engine
+			const profile = raw as Record<string, unknown>;
+			const model = typeof profile.model === 'string' ? profile.model.trim() : '';
+			const provider = typeof profile.provider === 'string' ? profile.provider : undefined;
+			const rawEndpoint = typeof profile.endpoint === 'string' ? profile.endpoint : '';
+			const endpoint = rawEndpoint ? buildAkmEndpoint(provider ?? '', rawEndpoint, '/chat/completions') : '';
+			if (!model || !isHttpUrl(endpoint)) {
+				dropped.push(`profiles.llm.${name}`);
+				continue;
+			}
+			const engine: Record<string, unknown> = { kind: 'llm', endpoint, model };
+			if (provider) engine.provider = provider;
+			if (typeof profile.apiKey === 'string' && profile.apiKey.length > 0) {
+				if (AKM_ENV_REFERENCE_PATTERN.test(profile.apiKey)) {
+					engine.apiKey = profile.apiKey;
+				} else {
+					dropped.push(`profiles.llm.${name}.apiKey`);
+				}
+			}
+			engines[name] = engine;
+			translated.push(name);
+		}
+	}
+	for (const kind of Object.keys(profileKinds)) {
+		if (kind !== 'llm') dropped.push(`profiles.${kind}`);
+	}
+
+	if (translated.length > 0) {
+		config.engines = engines;
+		const defaults = { ...(config.defaults && typeof config.defaults === 'object' ? (config.defaults as Record<string, unknown>) : {}) };
+		if (typeof defaults.llmEngine !== 'string') {
+			const legacyDefault = typeof defaults.llm === 'string' && translated.includes(defaults.llm) ? defaults.llm : translated[0];
+			defaults.llmEngine = legacyDefault;
+		}
+		config.defaults = defaults;
+		logger.warn('akm config migration: translated retired profiles.llm into engines', { translated });
+	}
+	if (dropped.length > 0) {
+		logger.warn(
+			'akm config migration: retired akm config fields dropped with no automatic translation — reconfigure manually',
+			{ dropped }
+		);
 	}
 }
 

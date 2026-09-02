@@ -5,12 +5,21 @@
  * `/system-stash` was mounted and held all three shipped skills, and the
  * assistant's akm config listed only `openpalm` and `host-akm` — no bundle
  * pointed at the mount, so akm never walked it and every shipped skill resolved
- * to the stale `/stash` copy instead. `ensureSystemBundle` existed for exactly
- * this and was correct; it was simply never reached, because it hangs off
- * `applyHome` and the desktop app calls `applyHomeSeed` directly (main.ts) —
- * writing `system/skills/` on every launch while skipping the heal that makes
- * that tree readable. A desktop install updates itself without ever running
- * install or update, so nothing else was going to call it.
+ * to the stale `/stash` copy instead.
+ *
+ * #654: the akm-config heals (`ensureSystemBundle`, `reconcileDuplicateBundles`)
+ * that used to run inside `applyHomeAssets` on every apply forever are now
+ * home-schema MIGRATIONS (home-schema.ts), each behind a `since` gate with its
+ * own dedicated test (home-schema.test.ts). `applyHomeAssets` alone no longer
+ * heals them — it only refreshes the managed `system/` tree. What still makes
+ * a plain launch heal the config end to end is the SAME arrangement schema
+ * migrations already used elsewhere: the UI child every launch path spawns
+ * runs `runHomeMigrations` once at startup (`hooks.server.ts`'s `migrateHome`).
+ * These tests exercise that pairing explicitly — `applyHomeAssets` (what
+ * Electron's `seedBundledSkeleton` / the CLI supervisor call before spawning
+ * the UI) followed by `runHomeMigrations` (what the spawned UI child runs) —
+ * so this file still pins "a launch, taken as a whole, heals an upgraded
+ * config", just split across the two calls that actually perform it.
  *
  * These run against the REAL repo skeleton (OPENPALM_REPO_ROOT, set by the bun
  * preload), so what lands in `system/skills/` is what the build actually ships.
@@ -20,6 +29,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyHomeAssets, createState } from "./lifecycle.js";
+import { runHomeMigrations } from "./home-schema.js";
 import { resolveLocalOpenpalmDir } from "./ui-assets.js";
 
 const savedHome = process.env.OP_HOME;
@@ -29,7 +39,13 @@ afterEach(() => {
   else process.env.OP_HOME = savedHome;
 });
 
-/** A home mid-upgrade: managed tree from the previous release, real config. */
+/**
+ * A home mid-upgrade: managed tree from the previous release, real config, and
+ * a `state/stack.env` so `runHomeMigrations` treats it as an existing
+ * unmigrated install rather than an absent one (`hasAnyStackEnvFile`) — no
+ * `state/schema-version`, so it reads as version 0, below every migration's
+ * `since` gate.
+ */
 function upgradedHome(bundles: Record<string, unknown>, defaultBundle = "openpalm"): string {
   const homeDir = mkdtempSync(join(tmpdir(), "openpalm-launch-assets-"));
   mkdirSync(join(homeDir, "config", "akm"), { recursive: true });
@@ -37,10 +53,12 @@ function upgradedHome(bundles: Record<string, unknown>, defaultBundle = "openpal
     join(homeDir, "config", "akm", "config.json"),
     `${JSON.stringify({ configVersion: "0.9.0", bundles, defaultBundle }, null, 2)}\n`,
   );
+  mkdirSync(join(homeDir, "state"), { recursive: true });
+  writeFileSync(join(homeDir, "state", "stack.env"), "OP_SETUP_COMPLETE=true\n");
   return homeDir;
 }
 
-describe("applyHomeAssets (what a launch, not an install, applies)", () => {
+describe("applyHomeAssets + runHomeMigrations (what a launch, taken as a whole, applies)", () => {
   test("registers the /system-stash bundle a config written before the skills move never got", async () => {
     // Verbatim from the real upgraded instance: stash + host-stash, no system.
     const homeDir = upgradedHome({
@@ -50,6 +68,7 @@ describe("applyHomeAssets (what a launch, not an install, applies)", () => {
     process.env.OP_HOME = homeDir;
     try {
       await applyHomeAssets(createState());
+      await runHomeMigrations(homeDir);
 
       const cfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
       expect(cfg.bundles["openpalm-system"]).toEqual({
@@ -58,7 +77,7 @@ describe("applyHomeAssets (what a launch, not an install, applies)", () => {
         enabled: true,
       });
       // The mount the entry names now has something behind it, and the two
-      // halves are useless apart: this is why they belong in one call.
+      // halves are useless apart: this is why a launch performs both.
       expect(existsSync(join(homeDir, "system", "skills", "config-diagnostics"))).toBe(true);
       // Narrow: the operator's own entries are untouched.
       expect(cfg.bundles.openpalm).toEqual({ path: "/stash", writable: true, enabled: true });
@@ -86,6 +105,7 @@ describe("applyHomeAssets (what a launch, not an install, applies)", () => {
     process.env.OP_HOME = homeDir;
     try {
       await applyHomeAssets(createState());
+      await runHomeMigrations(homeDir);
 
       const cfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
       expect(Object.keys(cfg.bundles).sort()).toEqual(["host-akm", "openpalm", "openpalm-system"]);

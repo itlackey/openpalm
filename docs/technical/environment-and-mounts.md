@@ -36,8 +36,9 @@ Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 > [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
 > for the decision record and migration.
 
-Lifecycle safety backups include `state/` and exclude `data/` and regenerable
-`cache/`. A service excluded that way takes its own credentials with it:
+Lifecycle safety backups include `state/` and exclude `data/`, regenerable
+`cache/`, and the operator's own regenerable `workspace/`. A service excluded
+that way takes its own credentials with it:
 `state/env/<service>.env` is left out alongside `data/<service>/`, so the pair
 is backed up and restored as one unit, and the snapshot's `.backup-complete`
 marker names each file it skipped. `uninstall --purge` removes every `OP_HOME`
@@ -310,7 +311,6 @@ There is one Guardian OpenAI-compatible listener and one host publication.
 | `GUARDIAN_RECONCILE_INTERVAL_MS` | `300000` (5 minutes) | Orphan-session reconciliation cadence; `0` disables periodic sweeps |
 | `GUARDIAN_OPENAI_PORT` | `8182` | Single compatible API listener |
 | `OPENAI_COMPAT_API_KEY_FILE` | `/run/secrets/op_api_key` | Client API key; missing key fails closed |
-| `OP_GUARDIAN_NPM_VERSION` | Image version when unset | Guardian thin-host package override |
 
 Only explicit `0`, `false`, `no`, or `off` values (case-insensitive) disable
 content validation. Suspicious messages escalate to the moderator; moderator

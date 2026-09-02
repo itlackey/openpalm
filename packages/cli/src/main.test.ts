@@ -131,7 +131,15 @@ function makeFakeChildProcess(code = 0): EventEmitter {
 	child.stdin = null;
 	child.pid = 0;
 	child.kill = () => true;
-	queueMicrotask(() => child.emit('close', code));
+	// Real node:child_process emits "exit" before "close" — runComposeStreaming
+	// (docker.ts, §655.2) now drives its resolve/reject off "exit" rather than
+	// "close" (so a SIGTERM-killed run with an orphaned descendant holding its
+	// stderr pipe open can't hang forever), so this fake must emit both, in
+	// that order, for anything exercising that path.
+	queueMicrotask(() => {
+		child.emit('exit', code, null);
+		child.emit('close', code);
+	});
 	return child;
 }
 

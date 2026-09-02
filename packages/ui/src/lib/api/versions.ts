@@ -31,3 +31,8 @@ export async function patchVersions(versions: Partial<Record<VersionKey, string>
 		})
 	);
 }
+
+/** A `rollback-` tag is never an operator-typed pin (#639) — only restoreRunningImageIds writes that shape. */
+export function isRollbackPin(value: string | undefined): boolean {
+	return !!value?.startsWith('rollback-');
+}

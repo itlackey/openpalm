@@ -1,7 +1,7 @@
 /**
  * AKM task parser — the read side of knowledge/tasks/*.yml.
  *
- * akm 0.9.6's only standing grammar is task source v4 (`version: 4`), which is
+ * akm 0.9.7's only standing grammar is task source v4 (`version: 4`), which is
  * what OpenPalm ships and what the Automations tab writes. Its targets:
  *   run:   <shell string> (+ optional `shell:`) — a host command
  *   uses:  akm/command (+ `with.content`)      — a prompt for the assistant
@@ -45,7 +45,7 @@ export type MarkdownTaskTarget =
   | { kind: "prompt"; engine?: string; body: string }
   | { kind: "workflow"; ref: string; params: Record<string, unknown> };
 
-/** The one task source version akm 0.9.6 accepts without a conversion shim. */
+/** The one task source version akm 0.9.7 accepts without a conversion shim. */
 export const TASK_SOURCE_V4_VERSION = 4;
 
 // ── Parser: task source v4 ────────────────────────────────────────────────

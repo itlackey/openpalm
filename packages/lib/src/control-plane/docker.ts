@@ -2,7 +2,7 @@
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
-import { mapDockerError } from "./compose-errors.js";
+import { mapDockerError, summarizeComposeStderr } from "./compose-errors.js";
 
 export type DockerResult = {
   ok: boolean;
@@ -274,16 +274,17 @@ export async function checkDocker(): Promise<DockerResult> {
 }
 
 /**
- * Minimum Docker Compose version that supports `--wait`/`--wait-timeout`
- * (`--wait-timeout` requires Compose v2.17.0) — §2.1 makes these the health gate for
- * every `compose up`, so an older CLI must fail the preflight instead of
- * silently rejecting the flag at runtime.
+ * Minimum Docker Compose version that supports `--wait` — §2.1 makes it the
+ * health gate for every `compose up`, so an older CLI must fail the preflight
+ * instead of silently rejecting the flag at runtime. The floor stays at 2.17
+ * (where `--wait-timeout` landed) even though that flag is no longer passed:
+ * it is a safe, long-since-ubiquitous floor and lowering it buys nothing.
  */
 const COMPOSE_WAIT_FLOOR = [2, 17, 0] as const;
 
 /**
  * Decide whether a `docker compose version` output (e.g. "Docker Compose
- * version v2.29.1") is new enough for `--wait`/`--wait-timeout`. An
+ * version v2.29.1") is new enough for `--wait`. An
  * unparsable string is treated as new enough — fail open on a version-string
  * format change rather than blocking every install.
  */
@@ -613,18 +614,31 @@ export function composeUpTimeoutMs(): number {
 }
 
 /**
- * Seconds budget for compose's OWN `--wait-timeout` (§2.1's single health
- * gate) — how long compose itself waits for every targeted service to become
- * healthy before `up` exits non-zero. Default 5 minutes, matching the
- * health-poll deadline this replaces (the deleted deploy.ts pollContainerHealth
- * loop) and comfortably above the voice addon's 180s start_period. Override
- * with OP_COMPOSE_WAIT_TIMEOUT_MS (ms).
+ * Bound on how much recent stderr {@link runComposeStreaming} keeps for
+ * classification (§655.2). 64 KiB comfortably holds many minutes of Compose
+ * progress lines plus the daemon error that follows them — this is a
+ * classification aid, not a log store, so older bytes are dropped rather than
+ * grown without limit.
  */
-export function composeWaitTimeoutSec(): number {
-  const raw = process.env.OP_COMPOSE_WAIT_TIMEOUT_MS?.trim();
-  const parsed = raw ? Number(raw) : NaN;
-  const ms = Number.isFinite(parsed) && parsed > 0 ? parsed : 5 * 60_000;
-  return Math.ceil(ms / 1000);
+export const COMPOSE_STREAM_STDERR_BUFFER_BYTES = 64 * 1024;
+
+/**
+ * Append `chunk` to `buffer`, keeping only the last {@link maxBytes} bytes.
+ * Pure and exported so the bound is unit-testable without spawning a process.
+ * Trims by BYTES (Buffer.byteLength), not JS string length, so multi-byte
+ * UTF-8 stderr (a path or image tag with non-ASCII characters) is bounded
+ * correctly rather than merely by character count.
+ */
+export function appendBoundedStderr(buffer: string, chunk: string, maxBytes: number): string {
+  const combined = buffer + chunk;
+  if (Buffer.byteLength(combined, "utf-8") <= maxBytes) return combined;
+  // Drop from the front until the tail fits — a real Compose failure line
+  // survives at the END of the stream, so what's cut is the oldest progress
+  // noise, never the failure itself (unless a single non-error run produces
+  // more than maxBytes of stderr with no failure at all, which is not the
+  // case this buffer exists to classify).
+  const asBuffer = Buffer.from(combined, "utf-8");
+  return asBuffer.subarray(asBuffer.length - maxBytes).toString("utf-8");
 }
 
 /**
@@ -636,6 +650,19 @@ export function composeWaitTimeoutSec(): number {
  * re-implementing the spawn. Node-compatible (`node:child_process` spawn), so it
  * works under both Bun and Node.
  *
+ * §655.2: stdout is still inherited (the operator needs live progress), but
+ * stderr is a TEE, not an either/or choice — every chunk is written straight
+ * through to the parent's stderr (so nothing about what the operator sees
+ * changes) AND appended to a bounded ring buffer
+ * ({@link COMPOSE_STREAM_STDERR_BUFFER_BYTES}). On a non-zero exit, the
+ * buffered stderr is run through {@link mapDockerError} — the SAME
+ * translation `applyStack` already gives install/update — so a `start`,
+ * `restart`, `rollback`, `addon`, or `uninstall` failure (everything routed
+ * through {@link runComposeStreaming} via `activateComposeCommand`) gets a
+ * classified, actionable message instead of the bare
+ * `docker compose <args> failed with exit code N` this used to reject with,
+ * which carried nothing `mapDockerError` could classify.
+ *
  * Rejects on a spawn error or non-zero exit. `timeoutMs`, when set, SIGTERM-kills
  * a run that exceeds the budget (pass {@link composeUpTimeoutMs} for `up`, which
  * may extract multi-GB images on a first install); omit it for interactive
@@ -646,19 +673,84 @@ export function runComposeStreaming(
   opts: { timeoutMs?: number } = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(dockerBin(), ["compose", ...args], { stdio: "inherit" });
+    const child = spawn(dockerBin(), ["compose", ...args], {
+      stdio: ["inherit", "inherit", "pipe"],
+    });
+    let stderrBuffer = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      // Tee, not either/or: the operator still sees live progress on their
+      // terminal, and the same bytes feed the bounded classification buffer.
+      process.stderr.write(chunk);
+      stderrBuffer = appendBoundedStderr(stderrBuffer, chunk.toString("utf-8"), COMPOSE_STREAM_STDERR_BUFFER_BYTES);
+    });
+
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       timer = setTimeout(() => { child.kill("SIGTERM"); }, opts.timeoutMs);
     }
+
+    // Settling is driven off "exit", not "close" — see the two comments
+    // below for why either one ALONE is wrong now that stderr is a real pipe
+    // rather than "inherit" (it was a byte-identical no-op change before
+    // this stderr tee existed, since inherited stdio creates no pipes for
+    // Node to wait on either way).
+    let settled = false;
+    let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function finish(): void {
+      if (settled || !exitInfo) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      const { code, signal } = exitInfo;
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      // `code` is null when the process was killed by a signal (our own
+      // SIGTERM timeout, or an external kill) rather than exiting on its
+      // own — say so instead of the misleading "exited with code null".
+      const outcome = code !== null ? `exited with code ${code}` : `was killed by signal ${signal}`;
+      const mapped = mapDockerError(
+        `${stderrBuffer}\ndocker compose ${args.join(" ")} ${outcome}`,
+      );
+      reject(new Error(mapped.message));
+    }
+
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
       reject(err);
     });
-    child.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`docker compose ${args.join(" ")} failed with exit code ${code}`));
+
+    // "close" waits for every stdio stream to fully end before firing — which
+    // hangs FOREVER if `docker compose` (or an OP_DOCKER_BIN shim) leaves an
+    // orphaned descendant holding the stderr pipe's write end open: the
+    // direct child is reaped immediately, but the pipe is not, since
+    // something else still has it open. That silently defeats the timeout
+    // above (verified: a killed child whose grandchild still holds the pipe
+    // never reaches "close" at all). "exit" fires as soon as THIS process
+    // ends, independent of its stdio handles, so the timeout is an actual
+    // bound again.
+    //
+    // But "exit" alone can race ahead of the OS pipe buffer: a burst of
+    // stderr larger than the pipe's buffer can still be sitting unread when
+    // the process has already terminated (verified: 4000 lines of stderr
+    // written just before `exit` reliably arrived with the buffer still
+    // empty). So on "exit", finish immediately if the stream already drained
+    // (`readableEnded`), otherwise give it one short grace window — long
+    // enough for the ordinary "still catching up on already-written bytes"
+    // case, short enough to still bound the pathological orphaned-descendant
+    // case instead of waiting on it forever.
+    child.stderr?.on("end", finish);
+    child.on("exit", (code, signal) => {
+      exitInfo = { code, signal };
+      if (child.stderr === null || child.stderr.readableEnded) {
+        finish();
+      } else {
+        graceTimer = setTimeout(finish, 200);
+      }
     });
   });
 }
@@ -796,7 +888,10 @@ export async function composePs(
   }
 
   const args = buildComposeArgs(options);
-  args.push("ps", "--format", "json");
+  // `-a` for the same reason applyStack's diagnostic uses it: a one-shot that
+  // has already exited is absent from a bare `ps`, and every caller here is
+  // deciding whether a service came up.
+  args.push("ps", "-a", "--format", "json");
 
   return run(args, undefined);
 }
@@ -808,7 +903,7 @@ export async function composePs(
  * stale one left over from a PREVIOUS `up` under the same service name (see
  * {@link newlyObservedRows}).
  */
-export type ComposePsRow = { service: string; state: string; health: string; id: string };
+export type ComposePsRow = { service: string; state: string; health: string; id: string; exitCode: number | null };
 
 /**
  * Parse `compose ps --format json` stdout (one JSON object per line, or a
@@ -838,6 +933,7 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
           state: String(obj.State ?? ""),
           health: String(obj.Health ?? ""),
           id: String(obj.ID ?? ""),
+          exitCode: typeof obj.ExitCode === "number" ? obj.ExitCode : null,
         });
       }
     } catch {
@@ -848,7 +944,14 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
 }
 
 export function isComposePsRowHealthy(row: ComposePsRow | undefined): boolean {
-  if (row?.state.toLowerCase() !== 'running') return false;
+  if (!row) return false;
+  const state = row.state.toLowerCase();
+  // A one-shot that ran to completion is a SUCCESS, not a failure. Compose
+  // services like paperclip-locale do their work and exit 0; they can never be
+  // "running", so judging them by that alone reported a service that had done
+  // exactly what it was supposed to as a failed deploy.
+  if (state === 'exited') return row.exitCode === 0;
+  if (state !== 'running') return false;
   const health = row.health.toLowerCase();
   return health === '' || health === 'healthy';
 }
@@ -977,13 +1080,9 @@ export type ApplyStackResult = {
  *   which supports installs and local development without forcing a registry
  *   lookup for an image already present. `pull: "always"` first runs an explicit
  *   `compose pull` for the requested scope and only then runs `up --pull never`.
- * - `healthTimeoutMs` widens compose's own `--wait-timeout` beyond the default
- *   for a caller (e.g. the voice addon's slow cold boot) that tolerates a longer
- *   start.
  */
 export type ApplyStackOptions = {
   pull?: "always" | "missing";
-  healthTimeoutMs?: number;
 };
 
 /**
@@ -998,7 +1097,7 @@ export type ApplyStackOptions = {
  * freshly pulled same-tag image (#450). Active profiles are always passed
  * (§4.3). Success = running AND healthy — `up -d --wait` IS the single health
  * gate (§2.1): compose blocks until every targeted service reaches
- * running+healthy or `--wait-timeout` elapses, so there is no separate
+ * running+healthy, so there is no separate
  * per-container poll loop; on failure ONE `compose ps --format json` call names
  * which services didn't come up.
  *
@@ -1029,10 +1128,6 @@ export async function applyStack(
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const base = buildComposeArgs(options, fileExists);
   const pullMode = applyOpts.pull ?? "missing";
-  const waitTimeoutSec = applyOpts.healthTimeoutMs
-    ? Math.max(1, Math.ceil(applyOpts.healthTimeoutMs / 1000))
-    : composeWaitTimeoutSec();
-
   const scopedServices = scope.kind === "service" ? [scope.service] : scope.kind === "services" ? scope.services : [];
 
   if (pullMode === "always") {
@@ -1062,7 +1157,19 @@ export async function applyStack(
   // `always` was completed transactionally above; never perform a second,
   // implicit pull while containers are being recreated.
   const upPullMode = pullMode === "always" ? "never" : "missing";
-  const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--wait-timeout", String(waitTimeoutSec), "--force-recreate"];
+  // NO `--wait-timeout`. It was a second, far tighter deadline layered under the
+  // outer composeUpTimeoutMs() process budget, and it broke updates outright:
+  // the shipped dependency chain is serialized on health gates
+  // (assistant start_period 30s -> guardian 180s -> discord 30s), so guardian
+  // alone could consume 180s of the fixed 300s cap before discord was created.
+  // `up` then exited non-zero, the deploy was declared failed, and the stack was
+  // rolled back and pinned to rollback- image tags — permanently, because the
+  // pin only clears on a SUCCESSFUL update (#639, #640). A slow start is not a
+  // failed deploy. `--wait` still blocks until every targeted service is
+  // running+healthy; composeUpTimeoutMs() (30 min, OP_COMPOSE_UP_TIMEOUT_MS)
+  // remains the bound that stops a genuinely hung start, and it is deliberately
+  // the ONLY one.
+  const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--force-recreate"];
   if (scope.kind === "service") {
     upArgs.push("--no-deps", scope.service);
   } else if (scope.kind === "services") {
@@ -1090,7 +1197,12 @@ export async function applyStack(
   //      `rawStderr` let a caller with its own stderr translation (the voice
   //      addon) distinguish "up never came up" from "some service unhealthy".
   if (!upResult.ok) {
-    const psArgs = [...base, "ps", "--format", "json"];
+    // `-a` is load-bearing: without it compose ps lists only RUNNING
+    // containers, so a one-shot that already exited 0 is absent and the loop
+    // below reports "container for service X not found after up" — a failed
+    // deploy manufactured from a service that succeeded. Verified against a
+    // live stack: paperclip-locale is missing from `ps` and present in `ps -a`.
+    const psArgs = [...base, "ps", "-a", "--format", "json"];
     const psResult = await docker.run(psArgs, { timeoutMs: 15_000, env: envOverrides });
     const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
     if (rows.length === 0) {
@@ -1109,6 +1221,16 @@ export async function applyStack(
     }
     const started: string[] = [];
     const failed: { service: string; reason: string }[] = [];
+    // #644: `ps -a` gives us WHICH service didn't come up (the row/state
+    // below), but not WHY — that lives only in `upResult.stderr`, which this
+    // branch used to ignore entirely once `ps` returned any rows. A reapply
+    // (`kind: "all"`) that fails one service out of a mostly-healthy stack
+    // took this path and reported a templated "did not become healthy" with
+    // the real Docker daemon error (a port conflict, a networking failure,
+    // …) dropped on the floor. Fold the same summarized stderr line the
+    // `rows.length === 0` branch above already surfaces into each per-service
+    // reason too, so the underlying cause travels with it.
+    const composeErrorLine = summarizeComposeStderr(upResult.stderr);
     for (const svc of targetServices) {
       const row = rows.find((r) => r.service === svc);
       if (isComposePsRowHealthy(row)) {
@@ -1120,7 +1242,8 @@ export async function applyStack(
         : row.health === "unhealthy"
           ? `container ${svc} is unhealthy`
           : `container ${svc} did not become healthy (state: ${row.state || "unknown"})`;
-      failed.push({ service: svc, reason: mapDockerError(rawReason).message });
+      const reasonWithCause = composeErrorLine ? `${rawReason}: ${composeErrorLine}` : rawReason;
+      failed.push({ service: svc, reason: mapDockerError(reasonWithCause).message });
     }
     return {
       ok: false,

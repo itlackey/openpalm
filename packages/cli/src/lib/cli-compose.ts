@@ -56,7 +56,7 @@ export async function runComposeWithPreflight(
 	// down/stop resolve no addon profiles and leave addon containers running
 	// while reporting success. Only the heavier activation preflight below is
 	// skipped for teardown.
-	runHomeMigrations(state.homeDir);
+	await runHomeMigrations(state.homeDir);
 
 	if (operation === 'down' || operation === 'stop') {
 		const composeArgs = buildComposeCliArgs(state);

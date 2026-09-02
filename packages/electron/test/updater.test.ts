@@ -543,6 +543,150 @@ describe('installOnQuit', () => {
   });
 });
 
+// #635: "install call ignored: quitAndInstallCalled is set to true" jams the
+// updater — the operator's log shows exactly one v0.13.0 start against 24
+// reverts to v0.12.42, with that warning recurring for weeks.
+//
+// FakeRealUpdater below is NOT the loose FakeUpdater above: it mirrors
+// electron-updater 6.8.9's ACTUAL BaseUpdater#install/#quitAndInstall
+// (node_modules/electron-updater/out/BaseUpdater.js) line for line, including
+// the part that matters here — `install()` sets `quitAndInstallCalled = true`
+// BEFORE it attempts anything, and on failure only `quitAndInstall()`'s own
+// wrapper resets that flag back to false; a direct `install()` call (which is
+// exactly what `installOnQuit()` makes) never resets it. `onAppQuit` stands
+// in for the real Electron `app.quit()` that `quitAndInstall()` schedules —
+// wiring it straight to `installOnQuit()` reproduces the exact cascade
+// main.ts's before-quit handler creates: it calls `installOnQuit()`
+// unconditionally on every quit, including the one electron-updater's own
+// `quitAndInstall()` triggers internally.
+describe('quitAndInstall single-attempt guard (#635)', () => {
+  class FakeRealUpdater implements AppUpdaterLike {
+    autoDownload = true;
+    autoInstallOnAppQuit = false;
+    channel: string | null = null;
+    allowPrerelease = false;
+    /** Mirrors BaseUpdater#quitAndInstallCalled exactly. */
+    quitAndInstallCalled = false;
+    /** Raw calls that reached electron-updater's real install() — not refused by its guard. */
+    rawInstallCalls: Array<[boolean, boolean]> = [];
+    /** Mirrors electron-updater's own `_logger` output (console by default). */
+    logs: Array<string> = [];
+    doInstallOutcome: 'succeed' | 'throw' | 'return-false' = 'succeed';
+    /** Stands in for the real Electron app.quit() that quitAndInstall() schedules. */
+    onAppQuit: (() => void) | null = null;
+    private listeners = new Map<string, Array<(...a: unknown[]) => void>>();
+
+    async checkForUpdates() {
+      return { updateInfo: { version: '2.0.0' } };
+    }
+    async downloadUpdate() {
+      return [];
+    }
+
+    // Mirrors BaseUpdater.js's install() (lines 42-68) exactly.
+    install(isSilent = false, isForceRunAfter = false): boolean {
+      if (this.quitAndInstallCalled) {
+        this.logs.push('install call ignored: quitAndInstallCalled is set to true');
+        return false;
+      }
+      this.quitAndInstallCalled = true;
+      try {
+        this.rawInstallCalls.push([isSilent, isForceRunAfter]);
+        if (this.doInstallOutcome === 'throw') throw new Error('mv failed: EACCES');
+        return this.doInstallOutcome === 'succeed';
+      } catch (e) {
+        this.logs.push(`error: ${e instanceof Error ? e.message : String(e)}`);
+        return false;
+      }
+    }
+
+    // Mirrors BaseUpdater.js's quitAndInstall() (lines 13-27) exactly,
+    // `autoRunAppAfterInstall` defaulting true as it does in real
+    // electron-updater.
+    quitAndInstall(isSilent = false, isForceRunAfter = false): void {
+      const isInstalled = this.install(isSilent, isSilent ? isForceRunAfter : true);
+      if (isInstalled) {
+        this.onAppQuit?.();
+      } else {
+        this.quitAndInstallCalled = false;
+      }
+    }
+
+    on(event: string, listener: (...args: unknown[]) => void) {
+      const list = this.listeners.get(event) ?? [];
+      list.push(listener);
+      this.listeners.set(event, list);
+      return this;
+    }
+    removeListener(event: string, listener: (...args: unknown[]) => void) {
+      const list = this.listeners.get(event) ?? [];
+      const idx = list.indexOf(listener);
+      if (idx >= 0) list.splice(idx, 1);
+      return this;
+    }
+    emit(event: string, ...args: unknown[]): void {
+      for (const l of this.listeners.get(event) ?? []) l(...args);
+    }
+  }
+
+  async function makeRealisticUpdater() {
+    const fake = new FakeRealUpdater();
+    const updater = new DesktopUpdater({
+      updater: fake,
+      currentVersion: '0.12.42',
+      platform: 'linux',
+      isPackaged: true,
+      windowsInstallerPresent: false,
+      prerelease: false,
+    });
+    await updater.check();
+    fake.emit('update-downloaded');
+    await updater.download();
+    expect(updater.getState().status).toBe('downloaded');
+    return { updater, fake };
+  }
+
+  // The exact operator sequence: click "Restart and update" -> electron-updater's
+  // quitAndInstall() installs and schedules its own app.quit() -> that fires
+  // Electron's real 'before-quit' -> main.ts's handler calls installOnQuit()
+  // unconditionally, REGARDLESS of how the quit started.
+  it('makes at most one raw install() call across quitAndInstall -> cascading installOnQuit', async () => {
+    const { updater, fake } = await makeRealisticUpdater();
+    fake.onAppQuit = () => updater.installOnQuit();
+
+    expect(updater.quitAndInstall()).toBe(true);
+
+    expect(fake.rawInstallCalls).toEqual([[false, true]]);
+    expect(fake.logs).not.toContain('install call ignored: quitAndInstallCalled is set to true');
+  });
+
+  // Ordinary quit, no button click: installOnQuit() is the ONLY and FIRST
+  // attempt. When electron-updater's doInstall step itself fails (a real
+  // AppImage/NSIS failure — disk full, EACCES, whatever), the failure must be
+  // loud, and this process must never retry into electron-updater's now
+  // permanently-stuck quitAndInstallCalled guard.
+  it('logs a failed quit-time install loudly and never retries the doomed call', async () => {
+    const { updater, fake } = await makeRealisticUpdater();
+    fake.doInstallOutcome = 'throw';
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(updater.installOnQuit()).toBe(false);
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockClear();
+
+      // A later quit attempt in the SAME process must be refused WITHOUT a
+      // second raw call — electron-updater's guard makes it unrecoverable, so
+      // retrying would only ever reproduce the silent "install call ignored"
+      // no-op this fix exists to avoid.
+      expect(updater.installOnQuit()).toBe(false);
+      expect(fake.rawInstallCalls).toHaveLength(1);
+      expect(fake.logs).not.toContain('install call ignored: quitAndInstallCalled is set to true');
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
 // E6: createDesktopUpdater rebuilds a DesktopUpdater over the SAME singleton
 // autoUpdater on every prerelease-channel toggle. Without dispose(), each
 // rebuild leaves the PRIOR instance's listeners registered on the shared

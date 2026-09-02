@@ -11,14 +11,15 @@ import {
 	resolveStackDir,
 	ensureHomeDirs
 } from './home.js';
-import { ensureSecrets, ensureOpenCodeConfig } from './secrets.js';
+import { ensureSecrets, ensureOpenCodeConfig, readStackEnv } from './secrets.js';
 import { runHomeMigrations } from './home-schema.js';
 import { reconcileRemoteAccess } from './remote-apply.js';
 import {
 	resolveRuntimeFiles,
 	writeRuntimeFiles,
 	discoverStackOverlays,
-	ensureComposeVolumeTargets
+	ensureComposeVolumeTargets,
+	ensureHostPortDefaults
 } from './config-persistence.js';
 import { ensureOpenCodeSystemConfig } from './core-assets.js';
 import { applyHomeSeed, readSkeletonVersion } from './ui-assets.js';
@@ -47,8 +48,8 @@ import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
-import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
-import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
+import { advanceManagedImageVersions, assertHomeNotNewerThanApp, ensureVersionDefaults } from './versions.js';
+import { reconcileAkmDbJournalMode } from './akm-db-journal.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -160,20 +161,26 @@ async function reconcileCore(
 
 /**
  * Bring an OP_HOME's RELEASE-SHIPPED assets to this build: overwrite the managed
- * `system/` tree, seed the user/data trees once, and heal the akm configs that
- * tree is inert without.
+ * `system/` tree and seed the user/data trees once.
  *
  * Split out of {@link applyHome} because this is exactly what a plain LAUNCH is
  * allowed to do, and the harnesses were doing less. Electron's
  * `seedBundledSkeleton` and the CLI supervisor both refresh the managed tree
  * before spawning the UI so an updated shell never serves the previous
- * release's managed files — but they called `applyHomeSeed` alone, which writes
- * `system/skills/` while leaving the assistant's akm config with no bundle
- * pointing at the `:ro` /system-stash mount it lands on. Only install/update
- * reach `applyHome`, and a desktop app updates itself without ever running one,
- * so on every upgraded desktop home the shipped skills were mounted, unindexed,
- * and shadowed by the stale stash copies — the exact failure `ensureSystemBundle`
- * was written for, never reached by the path that needed it.
+ * release's managed files.
+ *
+ * #654: the akm-config heals that used to run HERE, on every apply, forever
+ * (`stripRetiredAkmConfigKeys`, `reconcileDuplicateBundles`, `ensureSystemBundle`)
+ * moved to home-schema.ts's versioned `MIGRATIONS` — each is a release-transition
+ * heal (a shape an OLDER release wrote), not a steady-state invariant, so it
+ * belongs behind a `since` gate with its own test rather than an unbounded
+ * "what do I delete?" sweep. They still reach every launch path, including the
+ * one this function does NOT cover (a plain desktop/CLI-supervisor launch runs
+ * only `applyHomeAssets`, never `runHomeMigrations`): the UI child process
+ * every such launch spawns runs `runHomeMigrations` itself, once, at startup
+ * (`packages/ui/src/hooks.server.ts`'s `migrateHome`) — the same "one owner
+ * covers the Electron harness, the CLI supervisor, and `vite dev` alike"
+ * arrangement schema migrations already used for everything else.
  *
  * What deliberately stays behind in `applyHome`: secrets, addon state, image
  * versions and the `remote` serve config. Those reconcile RUNTIME state, and
@@ -181,20 +188,26 @@ async function reconcileCore(
  * rollback snapshot — a launch holds none of those.
  */
 export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
+	// #636: a plain launch reaches this directly (Electron's seedBundledSkeleton,
+	// the CLI's spawnUiChild) with no snapshot/rollback safety net around it, so
+	// the check belongs here too, not only at the install/update/upgrade entry
+	// points below — this is the call that overwrites system/ and re-stamps
+	// .skeleton-version.
+	assertHomeNotNewerThanApp(state);
 	await applyHomeSeed(state.homeDir);
-	// An upgrade can leave the assistant's akm config carrying keys the newer
-	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
-	stripRetiredAkmConfigKeys(state);
-	// Two bundle ids pointing at /stash make akm refuse every durable-state
-	// migration ("duplicate task migration file path"), silently, on every boot.
-	// Ordering among these three is presentational: each re-reads the config
-	// from disk and they share no state, so the end result is the same whichever
-	// runs first.
-	reconcileDuplicateBundles(state);
-	// Same "an upgraded install heals itself" sweep for the release-shipped
-	// skills bundle: only setup and install pin it, so without this an upgraded
-	// home gets the :ro /system-stash mount with nothing configured to read it.
-	ensureSystemBundle(state);
+	// akm's DATA, not its config: on macOS/Windows the containers' bind mounts
+	// always cross a VM filesystem, where SQLite WAL cannot work, so akm >= 0.9.6
+	// opens its stores in DELETE journal mode — but WAL residue left by an older
+	// akm (un-checkpointed `-wal` sidecars under data/akm/data/, holding
+	// potentially months of state) makes every in-container open fail "database
+	// is locked" on every boot. Only the host can checkpoint that WAL back in,
+	// and it must happen before the stack starts. No-op on Linux (native binds —
+	// in-container WAL is legitimate there) and on healthy homes; never throws
+	// (failures log and retry on the next pass). This one stays here rather than
+	// moving to MIGRATIONS: it repairs whatever WAL residue is on disk RIGHT NOW,
+	// not one historical shape, so it has to run on every apply to catch residue
+	// left by whichever akm version most recently touched the store.
+	reconcileAkmDbJournalMode(state);
 }
 
 /**
@@ -207,7 +220,8 @@ export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
  *   • ensureSecrets         — generate any missing service secrets
  *   • applyHomeAssets       — overwrite the managed system/ tree wholesale +
  *                             seed the user/data trees once (skip-existing) +
- *                             heal the akm configs that tree depends on
+ *                             heal the akm configs and SQLite journal modes
+ *                             that tree depends on
  *   • reconcileRemoteAccess — regenerate the `remote` addon's serve config
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *
@@ -221,7 +235,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// the file is absent, which on a pre-consolidation home is every time — so
 	// running it first left the migration merging a stub over the operator's real
 	// state and reporting a completed install as unconfigured.
-	runHomeMigrations(state.homeDir);
+	await runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
 	await applyHomeAssets(state);
 	// Make the `remote` addon's generated serve config match its persisted state
@@ -293,9 +307,18 @@ async function applyManagedFiles(
 	// snapshot may capture no stack env at all; every migration below the
 	// consolidation is value-preserving, so there is nothing to roll back.)
 	const generation = snapshotCurrentState(state);
-	runHomeMigrations(state.homeDir);
+	await runHomeMigrations(state.homeDir);
 	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
 	advanceManagedImageVersions(state, previousPlatformVersion);
+	// #660: a compose-published host port left ABSENT falls straight through
+	// to compose's own bare `${KEY:-default}` — the port migrations above only
+	// ever considered assistant/ui, so every other default (workspace, api,
+	// guardian, guardian-admin, paperclip, voice) was host-blind: two sibling
+	// installs could both land on the same default and collide. Runs on both
+	// install and update, and BEFORE applyHome/reconcileCore so the resolved
+	// value is what the stack actually activates with, not a value chosen
+	// after compose already tried (and failed) to bind the busy default.
+	await ensureHostPortDefaults(state);
 	await applyHome(state);
 	await reconcileCore(state, { activateServices });
 	return generation;
@@ -374,6 +397,10 @@ export async function applyInstall(
 	const lock = resolveLifecycleLock(state, opts);
 	if (!lock) throw new Error('Another install is already in progress');
 	try {
+		// #636: checked before runWithSnapshotRollback, not inside it — a refusal
+		// here must be a true no-op (no snapshot, no restore-from-an-unrelated
+		// earlier generation), not just "no managed write".
+		assertHomeNotNewerThanApp(state);
 		let generation: string | undefined;
 		await runWithSnapshotRollback(
 			state,
@@ -386,7 +413,7 @@ export async function applyInstall(
 				// Skippable (like OP_SKIP_COMPOSE_PREFLIGHT) for tests and environments
 				// that manage ownership externally, since it shells out to docker.
 				if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
-					await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+					await reconcileHostOwnership(state, { services: await buildManagedServices(state), repair: 'always' });
 				}
 				generation = await applyManagedFiles(state, true);
 				ensureComposeVolumeTargets(state);
@@ -406,6 +433,8 @@ export async function applyUpdate(
 	const lock = resolveLifecycleLock(state, opts);
 	if (!lock) throw new Error('Another install is already in progress');
 	try {
+		// #636: see applyInstall above for why this runs before the rollback wrapper.
+		assertHomeNotNewerThanApp(state);
 		let generation: string | undefined;
 		await runWithSnapshotRollback(
 			state,
@@ -445,12 +474,16 @@ export async function performUpgrade(
 	let generation: string | undefined;
 	let imageSnapshot: RunningImageSnapshot = {};
 	try {
+		// #636: see applyInstall above for why this runs before the rollback
+		// wrapper — nothing, not even the running-image capture below, should
+		// happen once this home is known to be newer than the running app.
+		assertHomeNotNewerThanApp(state);
 		imageSnapshot = await captureRunningImageIds(buildComposeOptions(state));
 		await runWithSnapshotRollback(
 			state,
 			async () => {
 				if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
-					await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+					await reconcileHostOwnership(state, { services: await buildManagedServices(state), repair: 'always' });
 				}
 				generation = await applyManagedFiles(state, true);
 
@@ -461,7 +494,11 @@ export async function performUpgrade(
 					throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
 				}
 
-				const result = await activateStack(state, { kind: 'all' }, { pull: 'always' }, { lock });
+				// A dev tag is a local build that was never pushed anywhere, so an explicit
+				// `compose pull` can only fail; fold any fetch into `up` the way runDeploy
+				// (deploy.ts) already does. Every published tag pulls first.
+				const isDevTag = (readStackEnv(state.homeDir).OP_ASSISTANT_VERSION ?? '').startsWith('dev');
+				const result = await activateStack(state, { kind: 'all' }, { pull: isDevTag ? 'missing' : 'always' }, { lock });
 				if (!result.ok) {
 					containersMutated = containersMutated || result.pullFailed !== true;
 					throw new Error(result.error ?? 'Failed to apply stack');

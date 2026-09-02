@@ -201,6 +201,48 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 // ── form → payload ───────────────────────────────────────────────────────────
 
 /**
+ * extraParams keys akm refuses at config load because a first-class engine
+ * field shadows them (akm 0.9.8, `LIFTABLE_EXTRA_PARAMS_KEYS`), keyed by akm's
+ * normalization of the raw key (lower-case, non-alphanumerics dropped) so
+ * `max_tokens`, `maxTokens` and `MAX-TOKENS` all resolve to the same field.
+ */
+const LIFTED_EXTRA_PARAM_FIELDS: Record<string, 'temperature' | 'maxTokens' | 'enableThinking' | 'reasoningEffort'> = {
+	temperature: 'temperature',
+	maxtokens: 'maxTokens',
+	enablethinking: 'enableThinking',
+	reasoningeffort: 'reasoningEffort',
+};
+
+const normalizeExtraParamKey = (key: string): string => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Move legacy extraParams keys onto the first-class engine fields, the way
+ * akm's own `migrate apply` lift does, so the UI never writes a config akm
+ * fails closed on. A key whose field is already set to a different value is
+ * an error rather than a guess — akm refuses that config too.
+ */
+function liftLegacyExtraParams(
+	name: string,
+	out: Record<string, unknown>,
+	extraParams: Record<string, unknown>,
+): Record<string, unknown> {
+	const rest: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(extraParams)) {
+		const field = LIFTED_EXTRA_PARAM_FIELDS[normalizeExtraParamKey(key)];
+		if (!field) {
+			rest[key] = value;
+			continue;
+		}
+		if (out[field] !== undefined && out[field] !== value)
+			throw new Error(
+				`LLM engine "${name}": extraParams.${key} (${JSON.stringify(value)}) conflicts with the ${field} field (${JSON.stringify(out[field])}) — set it in one place`,
+			);
+		out[field] = value;
+	}
+	return rest;
+}
+
+/**
  * Build the akm save payload for one LLM engine (engines.<name>, kind "llm").
  * Throws a friendly error when extraParams is not a valid JSON object so
  * save() can surface it.
@@ -230,7 +272,8 @@ export function buildLlmEnginePayload(p: LlmEngine): Record<string, unknown> {
 		}
 		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
 			throw new Error(`LLM engine "${p.name}": extraParams must be a JSON object`);
-		out.extraParams = parsed;
+		const rest = liftLegacyExtraParams(p.name, out, parsed as Record<string, unknown>);
+		if (Object.keys(rest).length > 0) out.extraParams = rest;
 	}
 	return out;
 }

@@ -208,7 +208,10 @@ of the four on a home upgraded from a released 0.12.x, since
 you wrote yourself are left exactly as they are: akm reads a declared
 `version: 2` or `version: 3` file by converting it in memory and warning, and
 `akm migrate apply` rewrites it permanently when the conversion is
-deterministic. Two cases are not converted — a file with no `version:` key at
+deterministic. The assistant's boot check records this pending state honestly
+— `migrate 0 ready operator-apply-pending` in its boot marker, with a log line
+pointing here — but by design never runs the apply for you: your files stay as
+written until you convert them. Two cases are not converted — a file with no `version:` key at
 all (read as a malformed v4 document) and a v2 shape whose meaning would change
 under v4, such as a `command:` argv array. Either way only that file is
 affected: `akm task sync` excludes it, names it in the run's failures, and
@@ -284,6 +287,54 @@ configuration rather than falling back to the cached images, so a partial or
 mixed-version stack is never left behind. An installed stack continues running
 offline; only the update itself needs the network. See
 [System Requirements → Network requirements](system-requirements.md#network-requirements).
+
+### akm's state database cutover after an update
+
+An update that bumps the bundled akm can leave akm's state database
+(`data/akm/data/state.db` — events, proposals, task history, improve ledgers,
+workflow runs) one deliberate step behind: akm never applies a migration it
+classifies as destructive during an ordinary open. When that happens the
+assistant boots degraded — `akm health` exits 78, the boot marker
+(`/tmp/openpalm-akm-boot.status` inside the assistant) records
+`health 78 state-upgrade-pending`, and the boot log names the fix. Tasks,
+search, and chat keep working; the state.db surfaces above are down until you
+run the cutover:
+
+```bash
+docker compose -p <project> exec assistant openpalm-akm-state-upgrade
+```
+
+This runs `akm upgrade --state-only` against the image's own akm (never the
+plain `akm upgrade`, which is the package self-updater and cannot run in the
+image-baked container): a verified sibling safety copy —
+`state.db.pre-<migration>.<timestamp>.<uuid>.bak` — is written first, then the
+pending migrations apply. It is idempotent and fully offline; `"upgraded":
+false` with "state.db is already current" means there was nothing to do. Boot
+never runs this for you: applying a destructive migration stays an explicit
+operator action, the same rule that keeps your task files unrewritten at boot.
+
+akm's state.db upgrades are one-way. Once the assistant's akm opens the
+database, an older akm refuses it (`Refusing to open a database with a newer
+migration ledger`), and `data/` is not part of an OpenPalm backup. If you may
+roll the stack back across an akm bump, snapshot the file first:
+
+```bash
+docker compose -p <project> exec assistant sqlite3 /opt/akm/data/state.db "VACUUM INTO '/opt/akm/data/state.db.pre-upgrade.bak'"
+```
+
+### A failed update leaves the stack pinned to a rollback image
+
+**A failed update pins your images to a preserved rollback tag, not to
+`latest`.** Before a failed update can mutate anything, OpenPalm retags each
+running image as `<namespace>/<service>:rollback-generation-<id>` and points
+`state/stack.env` at those tags, so the automatic recovery above restarts the
+exact images that were running before — never a `latest` that might not match
+your restored config. If `update` keeps failing, every attempt repeats this,
+so the stack stays correctly pinned to whichever rollback generation is
+newest; it never drifts to a stale one. This is automatic and self-releasing:
+fix the underlying problem (bad connectivity, a bad tag, disk space, …) and
+run `openpalm update` again — once it succeeds, the pin moves forward to the
+normal release tag on its own. There is nothing to clear by hand.
 
 ### Desktop app updates
 

@@ -1,17 +1,29 @@
-import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, type Dirent, existsSync, mkdirSync, openSync, readSync, readdirSync, readFileSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, relative, sep } from "node:path";
-import { resolveBackupsDirFor, stateEnvDir } from "./home.js";
+import { actionableOwnershipError } from "./errors.js";
+import { OP_HOME_TREES, resolveBackupsDirFor, stateEnvDir } from "./home.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("lib:backup");
 
 export function timestampDirName(now = new Date()): string {
   return now.toISOString().replace(/[:.]/g, "-");
 }
 
 /**
- * The top-level trees a safety snapshot never copies. `data/` is large,
- * regenerable service state; `cache/` (S1) is regenerable by definition.
- * Copying either re-creates the multi-GB snapshots #581 AC4 exists to prevent.
+ * The top-level trees a safety snapshot never copies, derived from the ONE
+ * tree manifest (#656 / lesson 24) instead of a hand-maintained denylist that
+ * drifted from it — `workspace/` was missing here even though its docblock
+ * never claimed to cover it, so a cloned repo's `.git/` under workspace/ was
+ * copied into every snapshot (#648). `data/` is large, regenerable service
+ * state; `cache/` (S1) is regenerable by definition; `workspace/` is the
+ * operator's own regenerable work area. Copying any of them re-creates the
+ * multi-GB snapshots #581 AC4 / #648 exist to prevent.
  */
-const UNBACKED_TOP_LEVEL: ReadonlySet<string> = new Set(["data", "cache"]);
+const UNBACKED_TOP_LEVEL: ReadonlySet<string> = new Set(
+  OP_HOME_TREES.filter((tree) => !tree.inBackup).map((tree) => tree.name),
+);
 
 /** What a safety snapshot copies, and what it deliberately leaves out. */
 export interface BackupScope {
@@ -187,7 +199,7 @@ export function describeBackupSpaceShortfall(check: BackupSpaceCheck): string {
     `The safety backup is estimated at ${formatBytes(check.estimatedBytes)}, but only ` +
     `${formatBytes(check.freeBytes)} is free on this disk. Backing up could fill the disk. ` +
     `Free up space (your old backups are under data/backups/ — review them with ` +
-    `\`openpalm backups list\`), or re-run with confirmation to proceed anyway. ` +
+    `\`openpalm backups list\`), or re-run with confirmation to proceed anyway. ` + // #648: this command must exist — see backups.ts's `list` subcommand.
     `Nothing was changed or deleted.`
   );
 }
@@ -234,6 +246,100 @@ export interface BackupOpenPalmHomeOptions {
   copyEntry?: (source: string, target: string) => void;
 }
 
+/** Streamed chunk size for {@link hashScopeContents} — bounds memory regardless of file size. */
+const HASH_CHUNK_BYTES = 1 << 20; // 1 MiB
+
+/** Stream a file's bytes into `hash` in fixed-size chunks — never buffers a whole file. */
+function hashFileStreaming(hash: import("node:crypto").Hash, path: string): void {
+  const fd = openSync(path, "r");
+  try {
+    const buf = Buffer.alloc(HASH_CHUNK_BYTES);
+    for (;;) {
+      const bytesRead = readSync(fd, buf, 0, buf.length, null);
+      if (bytesRead === 0) break;
+      hash.update(bytesRead === buf.length ? buf : buf.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Content hash of everything `scope` includes under `homeDir` (#657 pt.1).
+ *
+ * Path+size+mtime is NOT a content hash: a `touch`, a restore that preserves
+ * mtimes, or an editor that rewrites a file byte-for-byte all change one of
+ * those without changing what a restore would produce, in both directions —
+ * false positives (a needless multi-GB re-copy) and false negatives (a real
+ * edit missed because size and mtime happened to collide) are both live
+ * risks with a metadata-only check. This hashes actual file bytes, streamed
+ * in fixed chunks (see {@link hashFileStreaming}) so even a large in-scope
+ * file (an operator's own `knowledge/` content) is never buffered whole.
+ * Every file's relative path and content is folded into one running SHA-256,
+ * NUL-delimited (POSIX paths cannot contain NUL) so no path/content boundary
+ * is ambiguous, in a fixed (sorted) order so the result is deterministic
+ * regardless of directory-listing order.
+ */
+function hashScopeContents(homeDir: string, scope: BackupScope): string {
+  const hash = createHash("sha256");
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (!scope.includes(full)) continue;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.push(full);
+    }
+  };
+  walk(homeDir);
+  files.sort();
+  for (const file of files) {
+    hash.update(relative(homeDir, file));
+    hash.update("\0");
+    try {
+      hashFileStreaming(hash, file);
+    } catch {
+      // Unreadable (permission, or a concurrent writer removed it mid-walk):
+      // hash as absent content rather than aborting the gate. If it is still
+      // unreadable when the real copy runs below, that copy surfaces the
+      // actionable ownership error itself.
+    }
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+const CONTENT_HASH_LINE_PREFIX = "content-hash: sha256:";
+
+/** The content-hash line a previous {@link backupOpenPalmHome} call recorded in its `.backup-complete` marker, or null if absent/unreadable (a pre-hash-gate snapshot, or a namespace that never writes one). */
+function readRecordedContentHash(backupDir: string): string | null {
+  try {
+    const marker = readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), "utf-8");
+    const line = marker.split("\n").find((l) => l.startsWith(CONTENT_HASH_LINE_PREFIX));
+    return line ? line.slice(CONTENT_HASH_LINE_PREFIX.length).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The newest snapshot `backupOpenPalmHome` itself wrote — NOT the newest
+ * backup dir overall. `ui-*`/`skeleton-*` are a different process with a
+ * different scope and no content-hash line; `-pre-rollback` is a different
+ * (partial-file) scope written by rollback.ts. Comparing the hash gate
+ * against either would skip a real backup or compare hashes that were never
+ * computed the same way.
+ */
+function newestTimestampBackupDir(homeDir: string): string | null {
+  return listBackupDirs(homeDir).find((dir) => backupNamespace(dir) === "timestamp") ?? null;
+}
+
 /**
  * Create a durable backup snapshot of the current OP_HOME contents.
  *
@@ -251,9 +357,20 @@ export interface BackupOpenPalmHomeOptions {
  * installed under `data/guardian`; see containers/guardian/Dockerfile). Either
  * way, snapshotting `data/` buys nothing for recovery (the rollback/restore
  * path never reads these snapshots) and previously filled the disk (~5 GB per
- * snapshot). A service excluded that way loses its credentials from the
- * snapshot too — see {@link resolveBackupScope} — and the completion marker
- * names each one, so the snapshot itself says what it does not contain.
+ * snapshot). `workspace/` is excluded for the same reason: it is the
+ * operator's own regenerable work area, and a cloned repo's `.git/` there
+ * once made a routine upgrade copy hundreds of MB per snapshot (#648). A
+ * service excluded that way loses its credentials from the snapshot too —
+ * see {@link resolveBackupScope} — and the completion marker names each one,
+ * so the snapshot itself says what it does not contain.
+ *
+ * Hash gate (#657 pt.1): before copying anything, this hashes the in-scope
+ * tree's actual content ({@link hashScopeContents}) and compares it to the
+ * hash the newest snapshot in this same (plain-timestamp) namespace
+ * recorded. An unchanged home — the common case on a failed-then-retried
+ * upgrade, which previously wrote a full undeduplicated snapshot on every
+ * attempt — skips the copy entirely and returns that existing snapshot's
+ * directory; a home that changed proceeds exactly as before.
  *
  * Atomicity: every entry is copied into a hidden `.staging-<timestamp>` dir
  * first; only on full success is a completion marker written and the staging
@@ -268,6 +385,16 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   const threshold = options.threshold ?? 0.8;
   const scope = resolveBackupScope(homeDir);
 
+  const contentHash = hashScopeContents(homeDir, scope);
+  const previousBackup = newestTimestampBackupDir(homeDir);
+  if (previousBackup && readRecordedContentHash(previousBackup) === contentHash) {
+    logger.info("backup skipped: content unchanged since previous snapshot", {
+      previousBackup,
+      contentHash,
+    });
+    return previousBackup;
+  }
+
   // Wire the space guard BEFORE any mutation: measure the DESTINATION
   // filesystem (which per S5 may be a configured external mount, not
   // homeDir's own fs). Measuring via the nearest existing ancestor means we
@@ -278,67 +405,88 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
     throw new Error(describeBackupSpaceShortfall(spaceCheck));
   }
 
-  mkdirSync(destRoot, { recursive: true });
-  cleanupStaleStaging(destRoot);
-
-  const name = timestampDirName();
-  const stagingDir = join(destRoot, `${BACKUP_STAGING_PREFIX}${name}`);
-  const finalDir = join(destRoot, name);
-  rmSync(stagingDir, { recursive: true, force: true });
-  mkdirSync(stagingDir, { recursive: true });
-
-  const copyEntry =
-    options.copyEntry ??
-    ((source: string, target: string) => cpSync(source, target, { recursive: true, filter: scope.includes }));
-
-  let copiedAny = false;
+  // #641/#642, #653: a copy/rename/rm below can hit a file a prior root-owned
+  // (or foreign-owned, after a host/drive swap) run left behind and surface a
+  // bare `EACCES: permission denied, rm '…'`/`copyfile '…'` with no next
+  // step. Map that one failure class to an actionable message naming the
+  // path and the remedy; everything else still throws unchanged.
   try {
-    for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
-      const source = join(homeDir, entry.name);
-      // The scope skips the `data`/`cache` trees wholesale here, and prunes an
-      // excluded service's credentials from inside the trees that are copied.
-      if (!scope.includes(source)) continue;
-      copyEntry(source, join(stagingDir, entry.name));
-      copiedAny = true;
+    mkdirSync(destRoot, { recursive: true });
+    cleanupStaleStaging(destRoot);
+
+    const name = timestampDirName();
+    const stagingDir = join(destRoot, `${BACKUP_STAGING_PREFIX}${name}`);
+    const finalDir = join(destRoot, name);
+    rmSync(stagingDir, { recursive: true, force: true });
+    mkdirSync(stagingDir, { recursive: true });
+
+    const copyEntry =
+      options.copyEntry ??
+      ((source: string, target: string) => cpSync(source, target, { recursive: true, filter: scope.includes }));
+
+    let copiedAny = false;
+    try {
+      for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
+        const source = join(homeDir, entry.name);
+        // The scope skips the `data`/`cache`/`workspace` trees wholesale
+        // here, and prunes an excluded service's credentials from inside the
+        // trees that are copied.
+        if (!scope.includes(source)) continue;
+        copyEntry(source, join(stagingDir, entry.name));
+        copiedAny = true;
+      }
+    } catch (err) {
+      // Torn-copy cleanup: never leave a partially-populated dir behind,
+      // staged or (since we only rename below, on full success) final. Never
+      // let a cleanup failure here mask the real copy error below.
+      try {
+        rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort; the original copy error is what gets rethrown */
+      }
+      throw err;
     }
+
+    if (!copiedAny) {
+      rmSync(stagingDir, { recursive: true, force: true });
+      return null;
+    }
+
+    // Completion marker + atomic rename: the backup only becomes visible under
+    // its final name in one filesystem operation, once everything has copied
+    // successfully. A crash before this point leaves only a hidden `.staging-`
+    // dir (cleaned up by the next call's cleanupStaleStaging, or manually) —
+    // never a half-written directory at the name callers/listBackupDirs expect.
+    //
+    // The marker also NAMES the credentials the scope left out (§5), and
+    // records the content hash the next call's hash gate compares against.
+    // Whoever restores this snapshot months from now is the person who needs
+    // to know that a service's login secret is not in it, and the marker
+    // travels with the snapshot; a log line at backup time does not.
+    writeFileSync(
+      join(stagingDir, BACKUP_COMPLETE_MARKER),
+      [
+        new Date().toISOString(),
+        `${CONTENT_HASH_LINE_PREFIX}${contentHash}`,
+        ...(scope.skippedCredentials.length > 0
+          ? [
+              "",
+              "Skipped — these belong to a service whose data/ tree is out of scope,",
+              "and are restored with it (see docs/backup-restore.md):",
+              ...scope.skippedCredentials.map((path) => `  ${relative(homeDir, path)}`),
+            ]
+          : []),
+      ].join("\n"),
+    );
+    renameSync(stagingDir, finalDir);
+    return finalDir;
   } catch (err) {
-    // Torn-copy cleanup: never leave a partially-populated dir behind, staged
-    // or (since we only rename below, on full success) final.
-    rmSync(stagingDir, { recursive: true, force: true });
-    throw err;
+    // homeDir is the read side of every copyEntry() call above — the tree
+    // that already existed and can hold a file a prior run left
+    // foreign-owned; stagingDir is freshly created by this call and not the
+    // realistic offender.
+    throw actionableOwnershipError(err, homeDir) ?? err;
   }
-
-  if (!copiedAny) {
-    rmSync(stagingDir, { recursive: true, force: true });
-    return null;
-  }
-
-  // Completion marker + atomic rename: the backup only becomes visible under
-  // its final name in one filesystem operation, once everything has copied
-  // successfully. A crash before this point leaves only a hidden `.staging-`
-  // dir (cleaned up by the next call's cleanupStaleStaging, or manually) —
-  // never a half-written directory at the name callers/listBackupDirs expect.
-  //
-  // The marker also NAMES the credentials the scope left out (§5). Whoever
-  // restores this snapshot months from now is the person who needs to know
-  // that a service's login secret is not in it, and the marker travels with
-  // the snapshot; a log line at backup time does not.
-  writeFileSync(
-    join(stagingDir, BACKUP_COMPLETE_MARKER),
-    [
-      new Date().toISOString(),
-      ...(scope.skippedCredentials.length > 0
-        ? [
-            "",
-            "Skipped — these belong to a service whose data/ tree is out of scope,",
-            "and are restored with it (see docs/backup-restore.md):",
-            ...scope.skippedCredentials.map((path) => `  ${relative(homeDir, path)}`),
-          ]
-        : []),
-    ].join("\n"),
-  );
-  renameSync(stagingDir, finalDir);
-  return finalDir;
 }
 
 function mtimeMsOf(path: string): number {
@@ -440,40 +588,50 @@ export function summarizeBackups(homeDir: string): BackupSummary {
 }
 
 /**
- * `-pre-rollback`/`-pre-update` suffixed backups are safety snapshots taken
- * right before a destructive restore/upgrade — they may be the only surviving
- * copy of data lost elsewhere (a stripped secret value, a clobbered
- * moderation.md edit). Pruning must never touch them, regardless of the
- * `keep` count or how old they are.
+ * `-pre-update` suffixed backups are safety snapshots taken right before a
+ * destructive upgrade — they may be the only surviving copy of data lost
+ * elsewhere (a stripped secret value, a clobbered moderation.md edit).
+ * Pruning must never touch them, regardless of the `keep` count or how old
+ * they are.
+ *
+ * `-pre-rollback` is deliberately NOT in this predicate (#657 pt.2): nothing
+ * capped it, so a stack that keeps failing and retrying `openpalm rollback`
+ * wrote an unbounded run of them. It is a normal per-namespace retention
+ * bucket instead — see {@link backupNamespace} — capped the same way
+ * `ui-*`/`skeleton-*` are; rollback.ts's own restoreSnapshot caps it at the
+ * same N plain timestamp backups keep.
  */
 function isProtectedRecoveryBackup(dirPath: string): boolean {
-  return /-pre-(rollback|update)$/.test(dirPath);
+  return /-pre-update$/.test(dirPath);
 }
 
 /**
  * The distinct backup namespaces sharing one `data/backups/` (or configured
- * external) directory: plain timestamp safety snapshots (`backupOpenPalmHome`,
- * `-pre-rollback`/`-pre-update`), and the `ui-*`/`skeleton-*` namespaces.
+ * external) directory: plain timestamp safety snapshots (`backupOpenPalmHome`),
+ * `-pre-rollback` (rollback.ts, capped like any other namespace — see
+ * {@link isProtectedRecoveryBackup}), and the `ui-*`/`skeleton-*` namespaces.
  * Retention is per-namespace — a burst of one type must never evict another
  * type's snapshots, and mixing them under one lexicographic/global cutoff is
  * exactly the bug this fixes.
  */
-export type BackupNamespace = "timestamp" | "ui" | "skeleton";
+export type BackupNamespace = "timestamp" | "ui" | "skeleton" | "pre-rollback";
 
 function backupNamespace(dirPath: string): BackupNamespace {
   const name = dirPath.slice(dirPath.lastIndexOf("/") + 1);
   if (name.startsWith("ui-")) return "ui";
   if (name.startsWith("skeleton-")) return "skeleton";
+  if (name.endsWith("-pre-rollback")) return "pre-rollback";
   return "timestamp";
 }
 
 /**
  * Keep the `keep` most-recent (by mtime) backups PER NAMESPACE, deleting the
- * rest — except `-pre-rollback`/`-pre-update` safety snapshots, which are
- * never touched. Applying retention per-namespace (rather than one global
- * newest-N cut across mixed prefixes) is what actually prunes `ui-*`/
- * `skeleton-*` host-updater snapshots instead of leaving them to accumulate
- * unbounded or evicting them out of turn against unrelated timestamp backups.
+ * rest — except `-pre-update` safety snapshots, which are never touched (see
+ * {@link isProtectedRecoveryBackup}). Applying retention per-namespace
+ * (rather than one global newest-N cut across mixed prefixes) is what
+ * actually prunes `ui-*`/`skeleton-*`/`-pre-rollback` snapshots on their own
+ * terms instead of leaving them to accumulate unbounded or evicting them out
+ * of turn against unrelated timestamp backups.
  */
 export function planBackupPrune(
   homeDir: string,
@@ -508,8 +666,8 @@ export function planBackupPrune(
   return { toDelete, protected: protectedDirs };
 }
 
-export function pruneBackupDirs(homeDir: string, keep: number): string[] {
-  const { toDelete } = planBackupPrune(homeDir, keep);
+export function pruneBackupDirs(homeDir: string, keep: number, namespace?: BackupNamespace): string[] {
+  const { toDelete } = planBackupPrune(homeDir, keep, namespace);
   for (const backupDir of toDelete) {
     rmSync(backupDir, { recursive: true, force: true });
   }

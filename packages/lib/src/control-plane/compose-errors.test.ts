@@ -94,6 +94,95 @@ describe("summarizeComposeStderr", () => {
     // instead of a progress line masquerading as a diagnosis.
     expect(summarizeComposeStderr("voice Pulling\nvoice Pulled\n")).toBe("");
   });
+
+  // #655.3/#644 verb audit — fixtures captured verbatim from a real
+  // `docker compose` v5.1.1 daemon (see the COMPOSE_PROGRESS_RE comment).
+
+  it("skips a kill/pause/restart sequence (no verb pair assumptions)", () => {
+    // Captured from real `docker compose kill`, `pause`, `unpause`, and
+    // `restart` runs. Pause/unpause emit ONLY the done form (no
+    // `Pausing`/`Unpausing`); restart's done line reuses `Started`, not a
+    // `Restarted` that does not exist.
+    const stderr = [
+      "Container optest-app-1 Killing",
+      "Container optest-app-1 Killed",
+      "Container optest-app-1 Paused",
+      "Container optest-app-1 Unpaused",
+      "Container optest-app-1 Restarting",
+      "Container optest-app-1 Started",
+      "Error response from daemon: no such container: optest-app-1",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: no such container: optest-app-1",
+    );
+  });
+
+  it("skips the idle Running status and Building/Attaching lines", () => {
+    const stderr = [
+      "Container optest-app-1 Running",
+      "Image openpalm-test/scratch-built:1 Building",
+      "Attaching to app-1",
+      "Error response from daemon: something went wrong",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: something went wrong",
+    );
+  });
+
+  // #644 recreate-path fixture: verbatim capture of a real `docker compose
+  // up -d --force-recreate` against a running container whose host port was
+  // taken over by another container in the gap between the old container's
+  // removal and the new one's start — the exact "recreate that fails on a
+  // real daemon error" shape #644 exists to keep working.
+  it("recreate-path fixture: Recreate/Recreated progress, then the real daemon error", () => {
+    const stderr = [
+      "Container optest-app-1 Recreate",
+      "Container optest-app-1 Recreated",
+      "Container optest-app-1 Starting",
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint optest-app-1 " +
+        "(ea9aae3438a70024ae2d66c35b54d50d83d5af01db6be82ac8d880809f0bd6ed): " +
+        "Bind for 127.0.0.1:39217 failed: port is already allocated",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint optest-app-1 " +
+        "(ea9aae3438a70024ae2d66c35b54d50d83d5af01db6be82ac8d880809f0bd6ed): " +
+        "Bind for 127.0.0.1:39217 failed: port is already allocated",
+    );
+    // And mapDockerError classifies it: the daemon puts the port BEFORE the
+    // phrase in every real phrasing, which the old capture never handled.
+    expect(mapDockerError(stderr)).toEqual({
+      code: "port_in_use",
+      message: "Port 39217 is already in use by another program. Free it, then retry.",
+    });
+  });
+
+  // Regression (#644): a real `--force-recreate` reapply failed, and the
+  // operator-facing error was reduced to `Container <proj>-assistant-1
+  // Recreate` — the compose PROGRESS line, not the Docker daemon error a
+  // manual `docker compose up -d assistant` immediately revealed (a port
+  // conflict). Every other in-progress/done verb pair here is listed
+  // together (Creating/Created, Starting/Started, Stopping/Stopped,
+  // Removing/Removed) but `Recreate` (compose's bare present-tense verb, not
+  // `Recreating`) had only its past tense `Recreated` covered, so it was the
+  // FIRST unmatched line and became the whole summary — hiding the real
+  // `Error response from daemon: ...` line further down the same stderr.
+  it("skips the Recreate progress line and reports the real daemon error below it", () => {
+    const stderr = [
+      "Container proj-assistant-1 Recreate",
+      "Container proj-assistant-1 Recreated",
+      "Container proj-assistant-1 Starting",
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    );
+  });
 });
 
 describe("mapDockerError", () => {
@@ -108,6 +197,17 @@ describe("mapDockerError", () => {
     expect(mapDockerError("Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3880 -> 0.0.0.0:0: listen tcp 0.0.0.0:3880: bind: address already in use")).toEqual({
       code: "port_in_use",
       message: "Port 3880 is already in use by another program. Free it, then retry.",
+    });
+  });
+
+  it("maps the newer daemon phrasing, port before the phrase, with a /tcp suffix", () => {
+    expect(mapDockerError(
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    )).toEqual({
+      code: "port_in_use",
+      message: "Port 3810 is already in use by another program. Free it, then retry.",
     });
   });
 
