@@ -507,10 +507,13 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 
-  test('the opencode.jsonc pair is deliberately NOT re-swept on a home stamped 10', async () => {
-    // Only the task files break anything (they take down akm's whole scheduler
-    // sync). These two are stale, not broken, and they live in the tree the
-    // operator owns and edits — so this entry does not blind-delete there.
+  test('an opencode.jsonc with none of the shipped markers is left alone — marker-gated, not blind (#675)', async () => {
+    // This used to be "the pair is deliberately NOT re-swept" — that was the
+    // OLD policy. `migrateShadowingOpencodeUserConfig` (`since: 12`, also
+    // `>= 10` so it runs on this same home) DOES now retire the shipped
+    // residue, but this particular seed — `{"plugin":[]}` — carries neither
+    // marker (no `akm-opencode@` pin, no `./`-relative `instructions`), so it
+    // reads as an operator's own file and stays exactly where it is.
     seedV10Home();
 
     await runHomeMigrations(homeDir);
@@ -518,6 +521,7 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     expect(readFileSync(join(homeDir, 'config', 'assistant', 'opencode.jsonc'), 'utf8')).toBe(
       '{"plugin":[]}\n',
     );
+    expect(existsSync(join(homeDir, 'config', 'assistant', 'opencode.jsonc.retired'))).toBe(false);
   });
 
   test("an operator's own task file is untouched", async () => {
@@ -710,6 +714,127 @@ describe('schema → 12: ensureSystemBundle is a migration', () => {
       defaultBundle: 'openpalm',
     });
     expect(await runHomeMigrations(homeDir)).toBe(false);
+  });
+});
+
+// ── schema 12 → 13: the opencode.jsonc pair shadows a mount, not merely stale ─
+//
+// #675: `config/{assistant,guardian}/opencode.jsonc` are bind-mounted as
+// OpenCode's USER global config, one directory over from the MANAGED copy at
+// `system/{assistant,guardian}` → `/etc/opencode`. A leftover shipped-shaped
+// file at the user path is read INSTEAD of the managed one, not merely
+// alongside it — the reversal of `migrateRetiredTaskFiles`'s old "they break
+// nothing" call.
+
+/** A home stamped 12 — the schema this migration is new at `since:`. */
+function seedV12Home(): void {
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
+  writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
+  writeHomeSchemaVersion(homeDir, 12);
+}
+
+/** Real content from 3087384a^ — the assistant file's last shipped shape. */
+const SHIPPED_ASSISTANT_OPENCODE_JSONC =
+  '{\n' +
+  '  "$schema": "https://opencode.ai/config.json",\n' +
+  '  "instructions": [\n' +
+  '    "./instructions/core.md",\n' +
+  '    "./instructions/conversation.md",\n' +
+  '    "./persona.md"\n' +
+  '  ],\n' +
+  '  "plugin": [\n' +
+  '    "akm-opencode@latest"\n' +
+  '  ]\n' +
+  '}\n';
+
+/** Real content from 3087384a^ — the guardian file's last shipped shape. */
+const SHIPPED_GUARDIAN_OPENCODE_JSONC =
+  '{\n' +
+  '  "$schema": "https://opencode.ai/config.json",\n' +
+  '  "instructions": ["./instructions/moderation.md"],\n' +
+  '  "model": "opencode/big-pickle"\n' +
+  '}\n';
+
+describe('schema 12 → 13: the shadowing opencode.jsonc pair (#675)', () => {
+  test('a shipped-shaped stale config/assistant/opencode.jsonc is renamed .retired, and the managed copy is untouched', async () => {
+    seedV12Home();
+    const userPath = join(homeDir, 'config', 'assistant', 'opencode.jsonc');
+    mkdirSync(dirname(userPath), { recursive: true });
+    writeFileSync(userPath, SHIPPED_ASSISTANT_OPENCODE_JSONC);
+    // The MANAGED copy the skeleton now ships to system/assistant, mounted at
+    // /etc/opencode — absolute instruction paths, the exact pin.
+    const managedPath = join(homeDir, 'system', 'assistant', 'opencode.jsonc');
+    mkdirSync(dirname(managedPath), { recursive: true });
+    const managedContent = '{"instructions":["/etc/opencode/instructions/core.md"],"plugin":["akm-opencode@1.2.3"]}\n';
+    writeFileSync(managedPath, managedContent);
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    expect(existsSync(userPath)).toBe(false);
+    expect(readFileSync(`${userPath}.retired`, 'utf8')).toBe(SHIPPED_ASSISTANT_OPENCODE_JSONC);
+    // Removing the shadow IS the restoration — the managed file itself is
+    // never read, copied from, or rewritten by this migration.
+    expect(readFileSync(managedPath, 'utf8')).toBe(managedContent);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('a shipped-shaped stale config/guardian/opencode.jsonc is retired the same way', async () => {
+    // No `plugin` key here at all — the guardian file only ever carried the
+    // `./`-relative `instructions` marker, confirming that marker alone is
+    // sufficient.
+    seedV12Home();
+    const userPath = join(homeDir, 'config', 'guardian', 'opencode.jsonc');
+    mkdirSync(dirname(userPath), { recursive: true });
+    writeFileSync(userPath, SHIPPED_GUARDIAN_OPENCODE_JSONC);
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    expect(existsSync(userPath)).toBe(false);
+    expect(readFileSync(`${userPath}.retired`, 'utf8')).toBe(SHIPPED_GUARDIAN_OPENCODE_JSONC);
+  });
+
+  test("an operator's own opencode.jsonc, carrying neither marker, is left in place and logs a warning naming it", async () => {
+    seedV12Home();
+    const userPath = join(homeDir, 'config', 'assistant', 'opencode.jsonc');
+    mkdirSync(dirname(userPath), { recursive: true });
+    const ownContent = '{\n  "model": "openai/gpt-5",\n  "instructions": ["/absolute/notes.md"]\n}\n';
+    writeFileSync(userPath, ownContent);
+
+    const warnings: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(' '));
+    };
+    try {
+      expect(await runHomeMigrations(homeDir)).toBe(false);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(readFileSync(userPath, 'utf8')).toBe(ownContent);
+    expect(existsSync(`${userPath}.retired`)).toBe(false);
+    const line = warnings.find((w) => w.includes('shadows the managed config'));
+    expect(line, 'expected a warning naming the shadowing path').toBeTruthy();
+    expect(String(line)).toContain(userPath);
+  });
+
+  test('renaming overwrites a pre-existing .retired file rather than refusing', async () => {
+    seedV12Home();
+    const userPath = join(homeDir, 'config', 'assistant', 'opencode.jsonc');
+    mkdirSync(dirname(userPath), { recursive: true });
+    writeFileSync(userPath, SHIPPED_ASSISTANT_OPENCODE_JSONC);
+    writeFileSync(`${userPath}.retired`, 'stale leftover from a previous run\n');
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    expect(readFileSync(`${userPath}.retired`, 'utf8')).toBe(SHIPPED_ASSISTANT_OPENCODE_JSONC);
+  });
+
+  test('a home with neither file is a no-op, still stamped current', async () => {
+    seedV12Home();
+
+    expect(await runHomeMigrations(homeDir)).toBe(false);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 });
 

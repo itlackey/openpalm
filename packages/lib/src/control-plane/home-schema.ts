@@ -25,6 +25,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   rmdirSync,
   writeFileSync,
@@ -210,17 +211,120 @@ function migrateRetiredSkeletonFiles(homeDir: string): boolean {
  * `version:`, so the Automations tab lists all three as real automations —
  * including an enabled weekly `openpalm update` — that can never run.
  *
- * Only the task files are re-swept. The two `opencode.jsonc` files are a weaker
- * case and this entry deliberately does not make it: they break nothing, they
- * are merely stale, and they sit in the tree the operator owns and edits —
- * OpenCode's USER config directory, where `.jsonc` is a first-class spelling
- * beside the `opencode.json` the skeleton now ships. A blind second delete
- * there also lands on homes where the `since: 6` sweep already removed the
- * shipped copy, so a file at that path now is one someone put back. Homes at 6
- * and below still get the pair from that sweep, which is unchanged.
+ * Only the task files are re-swept here. The two `opencode.jsonc` files get
+ * their own migration instead — `migrateShadowingOpencodeUserConfig`, `since:
+ * 12` below — because this function's original reasoning ("they break
+ * nothing, they're merely stale") turned out to be wrong (#675): the path
+ * they sit at is not just stale, it is the exact directory Compose mounts as
+ * OpenCode's USER global config, so a leftover copy SHADOWS the managed
+ * config the skeleton now ships to `/etc/opencode` — the assistant silently
+ * boots with `instructions` that resolve to nothing (relative
+ * `./instructions/...` paths that only existed under the old tree) and an
+ * unpinned `akm-opencode@latest` plugin fetch on every start, instead of the
+ * exact pin. That migration is marker-gated and renames rather than deletes,
+ * because this same tree is where an operator's own edits to `opencode.jsonc`
+ * live. Homes at 6 and below still get the pair removed outright by the
+ * `since: 6` sweep above, which is unchanged.
  */
 function migrateRetiredTaskFiles(homeDir: string): boolean {
   return removeRetiredFiles(homeDir, RETIRED_TASK_FILES);
+}
+
+/** Where the shadowing pair sits, relative to `homeDir`. See #675. */
+const SHADOWING_OPENCODE_PATHS = [
+  "config/assistant/opencode.jsonc",
+  "config/guardian/opencode.jsonc",
+] as const;
+
+/**
+ * Cheap substring/regex markers for "this is the shipped file's residue",
+ * taken from the actual last-shipped content (3087384a^, before it moved to
+ * `system/`): the assistant's plugin pin reads `"akm-opencode@latest"` and
+ * both its and the guardian's `instructions` arrays open with a `./`-relative
+ * entry (`./instructions/core.md`, `./instructions/moderation.md`) — paths
+ * that only resolved under the old tree. Either marker alone is enough; a
+ * regex substring check is deliberate here rather than pulling in a JSONC
+ * parser for a one-shot migration.
+ */
+const SHIPPED_OPENCODE_MARKERS = [
+  /"plugin"\s*:\s*\[\s*"akm-opencode@/,
+  /"instructions"\s*:\s*\[\s*"\.\//,
+];
+
+function looksLikeShippedOpencodeResidue(text: string): boolean {
+  return SHIPPED_OPENCODE_MARKERS.some((marker) => marker.test(text));
+}
+
+/**
+ * Retire the `opencode.jsonc` pair `since: 6` deliberately left alone — by
+ * RENAME, not delete, and only when the file still carries the shipped
+ * copy's markers.
+ *
+ * `since: 12`: this is a brand-new entry, not a re-run of an existing one —
+ * it has never fired for any home — so, exactly like the `since: 11` trio
+ * above, `since` is the HIGHEST recorded value a home can carry and still
+ * need it, not the version it was introduced to fix. Every home stamped
+ * anywhere from 0 up to the OLD `HOME_SCHEMA_VERSION` (12) needs this to run
+ * once, and 12 is the smallest value that covers that whole range.
+ *
+ * Why re-open a decision `migrateRetiredTaskFiles` explicitly declined:
+ * that docblock's "they break nothing" treated the pair as stale config, not
+ * as config at a mount point. `core.compose.yml` binds `config/assistant`
+ * at `~/.config/opencode` (OpenCode's USER global config) and
+ * `system/assistant` at `/etc/opencode` (the MANAGED config), so a leftover
+ * file here is not beside the config OpenCode reads — it is read ahead of
+ * the managed one. That is shadowing, not staleness, and it is silent:
+ * OpenCode does not warn about instruction paths that resolve to nothing.
+ *
+ * Marker-gated because this tree is also where an operator's own
+ * `opencode.jsonc` customisations live, and `.jsonc` beside `persona.md` /
+ * `user-profile.md` is a normal, supported shape there. A file with neither
+ * marker is left in place with a `logger.warn` naming it, exactly as a home
+ * where the operator replaced the shipped copy wholesale should be treated.
+ *
+ * Rename, not delete: `opencode.jsonc.retired` (overwriting any prior
+ * `.retired`) is inert — OpenCode only reads `opencode.json`/`opencode.jsonc`
+ * — but keeps a recoverable copy for an operator who DID have real edits
+ * mixed in with the shipped markers. Removing the shadow is the whole fix:
+ * OpenCode then reads the managed `/etc/opencode/opencode.jsonc`, which
+ * already carries absolute instruction paths and the pinned plugin spec, so
+ * there is nothing to copy or rewrite into the user tree.
+ */
+function migrateShadowingOpencodeUserConfig(homeDir: string): boolean {
+  const retired: string[] = [];
+  for (const rel of SHADOWING_OPENCODE_PATHS) {
+    const path = join(homeDir, rel);
+    if (!existsSync(path)) continue;
+
+    let text: string;
+    try {
+      text = readFileSync(path, "utf-8");
+    } catch {
+      continue;
+    }
+
+    if (!looksLikeShippedOpencodeResidue(text)) {
+      logger.warn(
+        "Left an operator-owned opencode.jsonc in place; it shadows the managed config at the OpenCode config mount",
+        { path },
+      );
+      continue;
+    }
+
+    try {
+      const retiredPath = `${path}.retired`;
+      rmSync(retiredPath, { force: true });
+      renameSync(path, retiredPath);
+      retired.push(rel);
+    } catch {
+      // Best-effort, like removeRetiredFiles: a home we cannot rename in is
+      // not a home we should refuse to start.
+    }
+  }
+  if (retired.length > 0) {
+    logger.warn("Retired shadowing opencode.jsonc files by renaming them out of OpenCode's read path", { retired });
+  }
+  return retired.length > 0;
 }
 
 const SECRETS_DIR_MODE = 0o700;
@@ -426,6 +530,15 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean | Promise<b
   { since: 11, run: stripRetiredAkmConfigKeys },
   { since: 11, run: reconcileDuplicateBundles },
   { since: 11, run: ensureSystemBundle },
+  // #675: the `opencode.jsonc` pair `migrateRetiredTaskFiles` deliberately did
+  // NOT re-sweep — see that function's docblock for why that call is now
+  // reversed. `since: 12` for the same reason as the `since: 11` trio above:
+  // this is a brand-new entry that has never run, so every home stamped
+  // anywhere from 0 up to the OLD HOME_SCHEMA_VERSION (12) still needs it
+  // once, and 12 is the smallest `since` that covers that whole range. Last
+  // in the table because it depends on nothing above it and nothing below it
+  // depends on it.
+  { since: 12, run: migrateShadowingOpencodeUserConfig },
 ];
 
 /**

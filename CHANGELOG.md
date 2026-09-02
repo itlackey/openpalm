@@ -9,6 +9,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **#675 a stray `config/{assistant,guardian}/opencode.jsonc` from before
+  the pair moved into `system/` was stranding the assistant without its own
+  instructions.** `migrateRetiredSkeletonFiles` (`since: 6`) was supposed
+  to delete this pair, but every home upgraded during 0.13.0 development is
+  stamped 10 or higher and never ran it — `since: 6` only reaches homes at 6
+  and below — so the pair sat forever at the exact path Compose mounts as
+  OpenCode's USER global config, one directory over from the MANAGED copy at
+  `system/assistant` → `/etc/opencode`. On an affected home the stale file
+  wins: its `instructions` are relative `./instructions/...` paths that
+  resolve to nothing there, so the assistant boots without `core.md`,
+  `conversation.md`, or its persona, and its `plugin` spec is the unpinned
+  `akm-opencode@latest` — a live registry fetch on every boot instead of the
+  exact pin. A new migration, `migrateShadowingOpencodeUserConfig`
+  (`since: 12`), retires the pair by renaming each to `opencode.jsonc.retired`
+  beside it — inert, since OpenCode only reads `opencode.json`/`opencode.jsonc`,
+  but recoverable — and only when the file still carries a marker of the
+  shipped copy (the `akm-opencode@` plugin pin or a `./`-relative
+  `instructions` entry). A file with neither marker is an operator's own and
+  is left in place with a warning naming it; nothing is copied or rewritten
+  into the user tree, since removing the shadow is enough for OpenCode to
+  read the managed config underneath on the next boot.
+
 - **#676 a deploy blocked by an unhealthy guardian now names guardian, not
   just the container that never got created.** The `/health/ready` drift
   gate that could once return a bare 503 is gone — 0.13's image-baked
