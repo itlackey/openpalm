@@ -63,6 +63,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   already trust) confirms it is free or held by this install's own
   containers, stepping to the next free port otherwise. `doctor` now says
   "held by another process" for a genuine collision.
+  The same check now covers every compose-published port on install and
+  update (`ensureHostPortDefaults`): a key with no explicit value whose
+  default another instance already holds is persisted to the next free port,
+  and a fresh `stack.env` no longer bakes the ui/assistant/workspace defaults
+  as if an operator had chosen them. The multi-instance lane caught the
+  workspace port (3820) colliding on its first run.
 - **Upgrade heals are versioned migrations (#654).** The akm retired-key strip
   (with the `profiles.llm` → `engines` translation), duplicate-bundle
   reconcile, and system-bundle registration moved out of the every-launch
