@@ -47,7 +47,7 @@ import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
-import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
+import { advanceManagedImageVersions, assertHomeNotNewerThanApp, ensureVersionDefaults } from './versions.js';
 import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
 import { reconcileAkmDbJournalMode } from './akm-db-journal.js';
 import {
@@ -182,6 +182,12 @@ async function reconcileCore(
  * rollback snapshot — a launch holds none of those.
  */
 export async function applyHomeAssets(state: ControlPlaneState): Promise<void> {
+	// #636: a plain launch reaches this directly (Electron's seedBundledSkeleton,
+	// the CLI's spawnUiChild) with no snapshot/rollback safety net around it, so
+	// the check belongs here too, not only at the install/update/upgrade entry
+	// points below — this is the call that overwrites system/ and re-stamps
+	// .skeleton-version.
+	assertHomeNotNewerThanApp(state);
 	await applyHomeSeed(state.homeDir);
 	// An upgrade can leave the assistant's akm config carrying keys the newer
 	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
@@ -387,6 +393,10 @@ export async function applyInstall(
 	const lock = resolveLifecycleLock(state, opts);
 	if (!lock) throw new Error('Another install is already in progress');
 	try {
+		// #636: checked before runWithSnapshotRollback, not inside it — a refusal
+		// here must be a true no-op (no snapshot, no restore-from-an-unrelated
+		// earlier generation), not just "no managed write".
+		assertHomeNotNewerThanApp(state);
 		let generation: string | undefined;
 		await runWithSnapshotRollback(
 			state,
@@ -419,6 +429,8 @@ export async function applyUpdate(
 	const lock = resolveLifecycleLock(state, opts);
 	if (!lock) throw new Error('Another install is already in progress');
 	try {
+		// #636: see applyInstall above for why this runs before the rollback wrapper.
+		assertHomeNotNewerThanApp(state);
 		let generation: string | undefined;
 		await runWithSnapshotRollback(
 			state,
@@ -458,6 +470,10 @@ export async function performUpgrade(
 	let generation: string | undefined;
 	let imageSnapshot: RunningImageSnapshot = {};
 	try {
+		// #636: see applyInstall above for why this runs before the rollback
+		// wrapper — nothing, not even the running-image capture below, should
+		// happen once this home is known to be newer than the running app.
+		assertHomeNotNewerThanApp(state);
 		imageSnapshot = await captureRunningImageIds(buildComposeOptions(state));
 		await runWithSnapshotRollback(
 			state,

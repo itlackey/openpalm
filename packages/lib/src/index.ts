@@ -390,13 +390,15 @@ export {
   RETIRED_TOOL_VERSION_KEYS,
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
+  assertHomeNotNewerThanApp,
   clearRollbackPins,
+  detectHomeVersionSkew,
   isVersionKey,
   readVersions,
   stripRetiredToolVersions,
   writeVersions,
 } from "./control-plane/versions.js";
-export type { ClearRollbackPinsResult, VersionKey } from "./control-plane/versions.js";
+export type { ClearRollbackPinsResult, HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
