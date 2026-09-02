@@ -190,11 +190,11 @@ echo "=== Operator writes an override into B's state/stack.env between attempts 
 printf '\nOP_SMOKE_RETRY_MARKER=operator-set-between-attempts\n' >> "${B_HOME}/state/stack.env"
 
 echo "=== Attempt 2 (the real retry): openpalm update on B, with A still live ==="
+ATTEMPT2_RC=0
 OP_HOME="$B_HOME" bun -e "
   import { runUpgradeAction } from './packages/cli/src/commands/update.ts';
   await runUpgradeAction();
-" >"${WORK_DIR}/attempt2.out" 2>"${WORK_DIR}/attempt2.err"
-ATTEMPT2_RC=$?
+" >"${WORK_DIR}/attempt2.out" 2>"${WORK_DIR}/attempt2.err" || ATTEMPT2_RC=$?
 if [[ $ATTEMPT2_RC -ne 0 ]]; then
   cat "${WORK_DIR}/attempt2.out" "${WORK_DIR}/attempt2.err" >&2
   fail "attempt 2 (the real retry) failed"
