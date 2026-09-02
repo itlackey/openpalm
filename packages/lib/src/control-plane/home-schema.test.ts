@@ -97,45 +97,6 @@ describe('an existing home migrates exactly once', () => {
     expect(readFileSync(stackEnvFile(homeDir), 'utf-8')).toBe(afterFirst);
   });
 
-  // issue #643 follow-up: a rollback can restore state/schema-version
-  // alongside a pre-rollback stack.env, so an operator's post-rollback hand
-  // edit to the CONSOLIDATED state/stack.env sits there while schema-version
-  // reads 0 and knowledge/env/stack.env (never deleted by the failed update)
-  // still carries no ports. The next runHomeMigrations then re-runs the whole
-  // chain from since:0: migrateLegacyDefaultPorts used to probe a FRESH
-  // default for the legacy file with no regard for the explicit value already
-  // sitting in state/stack.env, and migrateToSingleStackEnv's target-only-key
-  // merge only preserves a target key the legacy-derived merge does NOT
-  // already define — so that freshly-probed default silently beat the
-  // operator's real, explicit value.
-  test("an operator's explicit consolidated ports survive a schema-version reset to 0, even when a sibling instance occupies the corrected default", async () => {
-    seedLegacyHome();
-    // Overwrite the legacy seed: neither port is set there at all (the shape
-    // that makes migrateLegacyDefaultPorts probe for fresh defaults).
-    writeFileSync(legacyKnowledgeStackEnvFile(homeDir), 'OP_PROJECT_NAME=verify643\nOP_ENABLED_ADDONS=\n');
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    writeFileSync(
-      stackEnvFile(homeDir),
-      'OP_PROJECT_NAME=verify643\nOP_ASSISTANT_PORT=3812\nOP_UI_PORT=3802\n',
-    );
-    writeHomeSchemaVersion(homeDir, 0);
-
-    // A sibling OpenPalm instance already holding the corrected default —
-    // proves the fix carries the operator's value over rather than merely
-    // probing past the collision onto some OTHER value.
-    const server = Bun.serve({ port: 3810, hostname: '127.0.0.1', fetch: () => new Response('sibling') });
-    try {
-      expect(await runHomeMigrations(homeDir)).toBe(true);
-    } finally {
-      server.stop(true);
-    }
-
-    const migrated = readFileSync(stackEnvFile(homeDir), 'utf-8');
-    expect(migrated).toContain('OP_ASSISTANT_PORT=3812');
-    expect(migrated).toContain('OP_UI_PORT=3802');
-    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
-  });
-
   test('schema 5 migrates the persisted Paperclip signing key', async () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });

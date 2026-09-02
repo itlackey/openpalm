@@ -103,28 +103,11 @@ export async function migrateLegacyDefaultPorts(homeDir: string): Promise<boolea
   const updates: Record<string, string> = {};
 
   if ((!hasAssistantPort && !hasUiPort) || (oldEffectiveAssistantPort === "3800" && oldEffectiveUiPort === "3810")) {
-    // A home whose schema-version got reset below 1 (e.g. a rollback restored
-    // it alongside a pre-rollback stack.env) re-runs migrateToSingleStackEnv
-    // right after this. That merge takes the legacy file as its base and only
-    // ADDS keys the base doesn't already define ("target-only" keys) from the
-    // consolidated state/stack.env — so a default THIS function writes here
-    // for a key the operator already set explicitly in the consolidated file
-    // would silently beat it, even though state/stack.env is the one file an
-    // operator is told they may hand-edit. Carry that explicit value over
-    // instead of probing for a fresh default; only probe for a key that is
-    // explicit NOWHERE (neither file).
-    const consolidatedPath = stackEnvFile(homeDir);
-    const consolidated = existsSync(consolidatedPath)
-      ? parseEnvContent(readFileSync(consolidatedPath, "utf-8"))
-      : {};
-    const explicitAssistant = consolidated.OP_ASSISTANT_PORT?.trim();
-    const explicitUi = consolidated.OP_UI_PORT?.trim();
-
     const composeProject = { name: resolveComposeProjectName(parsed), workingDir: stackDirFor(homeDir) };
-    updates.OP_ASSISTANT_PORT = explicitAssistant || String(
+    updates.OP_ASSISTANT_PORT = String(
       await pickAvailableHostPort(STACK_DEFAULTS.ports.assistant, composeProject),
     );
-    updates.OP_UI_PORT = explicitUi || String(await pickAvailableHostPort(STACK_DEFAULTS.ports.ui, composeProject));
+    updates.OP_UI_PORT = String(await pickAvailableHostPort(STACK_DEFAULTS.ports.ui, composeProject));
   } else {
     if (!assistantPort) updates.OP_ASSISTANT_PORT = oldEffectiveAssistantPort;
     if (!uiPort) updates.OP_UI_PORT = oldEffectiveUiPort;
