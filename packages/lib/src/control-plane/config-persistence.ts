@@ -93,8 +93,21 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
   const updates: Record<string, string> = {};
 
   if ((!hasAssistantPort && !hasUiPort) || (oldEffectiveAssistantPort === "3800" && oldEffectiveUiPort === "3810")) {
-    updates.OP_ASSISTANT_PORT = String(STACK_DEFAULTS.ports.assistant);
-    updates.OP_UI_PORT = String(STACK_DEFAULTS.ports.ui);
+    // migrateToSingleStackEnv merges legacy-first and only fills target-only
+    // keys from state/stack.env, and a rollback restores schema-version with
+    // a pre-rollback stack.env — so a default written here for an explicit
+    // key would beat the operator's hand-edited value on the next migration
+    // run. Carry the consolidated file's explicit port over instead of
+    // writing the default; only a key unset in both files gets the default.
+    const consolidatedPath = stackEnvFile(homeDir);
+    const consolidated = existsSync(consolidatedPath)
+      ? parseEnvContent(readFileSync(consolidatedPath, "utf-8"))
+      : {};
+    const explicitAssistant = consolidated.OP_ASSISTANT_PORT?.trim();
+    const explicitUi = consolidated.OP_UI_PORT?.trim();
+
+    updates.OP_ASSISTANT_PORT = explicitAssistant || String(STACK_DEFAULTS.ports.assistant);
+    updates.OP_UI_PORT = explicitUi || String(STACK_DEFAULTS.ports.ui);
   } else {
     if (!assistantPort) updates.OP_ASSISTANT_PORT = oldEffectiveAssistantPort;
     if (!uiPort) updates.OP_UI_PORT = oldEffectiveUiPort;

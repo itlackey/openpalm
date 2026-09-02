@@ -97,6 +97,35 @@ describe('an existing home migrates exactly once', () => {
     expect(readFileSync(stackEnvFile(homeDir), 'utf-8')).toBe(afterFirst);
   });
 
+  // issue #643: a rollback can restore state/schema-version alongside a
+  // pre-rollback stack.env, so an operator's post-rollback hand edit to the
+  // CONSOLIDATED state/stack.env sits there while schema-version reads 0 and
+  // knowledge/env/stack.env (never deleted by the failed update) still
+  // carries no ports. The next runHomeMigrations re-runs the whole chain from
+  // since:0 — migrateLegacyDefaultPorts must carry the explicit consolidated
+  // value into the legacy file rather than writing the corrected default, or
+  // migrateToSingleStackEnv's target-only-key merge won't see it as already
+  // defined and the fresh default silently wins.
+  test("an operator's explicit consolidated ports survive a schema-version reset to 0", () => {
+    seedLegacyHome();
+    // Overwrite the legacy seed: neither port is set there at all (the shape
+    // that makes migrateLegacyDefaultPorts materialize corrected defaults).
+    writeFileSync(legacyKnowledgeStackEnvFile(homeDir), 'OP_PROJECT_NAME=verify643\nOP_ENABLED_ADDONS=\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(
+      stackEnvFile(homeDir),
+      'OP_PROJECT_NAME=verify643\nOP_ASSISTANT_PORT=3812\nOP_UI_PORT=3802\n',
+    );
+    writeHomeSchemaVersion(homeDir, 0);
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    const migrated = readFileSync(stackEnvFile(homeDir), 'utf-8');
+    expect(migrated).toContain('OP_ASSISTANT_PORT=3812');
+    expect(migrated).toContain('OP_UI_PORT=3802');
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
   test('schema 5 migrates the persisted Paperclip signing key', () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     mkdirSync(join(homeDir, 'state', 'env'), { recursive: true });
