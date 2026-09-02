@@ -34,8 +34,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **akm-cli 0.9.8-beta.3 (from 0.9.7), in the assistant image and the Paperclip
-  plugin manifest.** akm's own delta: `akm upgrade --state-only` (akm#895, the
+- **akm-cli 0.9.8 + akm-opencode 0.9.8202609020939 (from 0.9.7 and
+  0.9.2202608290901).** The whole akm lane moves together: the assistant image's
+  tool manifest, the Paperclip plugin manifest, and the assistant's
+  `opencode.jsonc` plugin spec. akm's own delta: `akm upgrade --state-only` (akm#895, the
   fix OpenPalm's state-cutover helper now runs); `akm migrate` absorbs the
   remaining one-time cleanups (dead `.akm` residue, stale transaction journals,
   the legacy `extraParams` config lift — `akm health --clean-dead-residue` is
@@ -44,11 +46,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   task names the `command:` → `run:` + `shell:` rewrite it needs; a no-op
   incremental `akm index` no longer costs minutes of CPU, and its freshness
   digest now covers every file so an edit with a restored mtime cannot go
-  unindexed; `akm health` gains a `data-dir-usage` advisory. beta.3 closed the
-  two defects this bump's verification found: `akm migrate apply` could not
-  clear a legacy `extraParams` config because it died on the very load error it
-  exists to fix, and `data-dir-usage` warned on an untouched install by counting
-  SQLite's `-wal`/`-shm` sidecars against their own databases. **Upgrading is
+  unindexed; `akm health` gains a `data-dir-usage` advisory. Two defects
+  this repo's bump verification found against the betas are fixed in the
+  release: `akm migrate apply` could not clear a legacy `extraParams` config
+  because it died on the very load error it exists to fix, and
+  `data-dir-usage` warned on an untouched install by counting SQLite's
+  `-wal`/`-shm` sidecars toward the data dir but not toward their own
+  databases. **Upgrading is
   one-way for `data/akm/data/state.db`**:
   0.9.8 adds ledger migrations 025 and 026, and 0.9.7 refuses a database that
   carries them ("Refusing to open a database with a newer migration ledger:
@@ -57,13 +61,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   snapshots state.db first — the snapshot command is in
   `docs/managing-openpalm.md`. The `historical-destructive` gate on
   `018-drop-dead-lane-schema` and the `configVersion "0.9.0"` config contract are
-  unchanged. **Prerelease caveat:** the akm-opencode plugin (0.9.2202608290901,
-  unchanged) selects its CLI by probing `akm --version` against `^0.9.2`, and
-  node-semver never lets a prerelease satisfy that range, so on a beta pin
-  the plugin skips the image's akm and falls back to the akm-cli 0.9.7 it
-  bundles — which then refuses the state.db that 0.9.8 has already opened.
-  Move the pin to the stable 0.9.8 (admitted by `^0.9.2` and `^0.9.7`) before
-  the release tag; the CLI-side verification below was done on the beta.
+  unchanged. `index.db` re-reads every directory once after the upgrade as the
+  freshness fingerprint takes its new shape, then returns to the fast path; the
+  index is derived, so nothing is lost. The plugin moves in the same step
+  because its compatibility range did: `akm-opencode` now requires `^0.9.8`
+  (it was `^0.9.2`), which is what makes it select the image's own akm instead
+  of the akm-cli it bundles.
 - **CI and release run the same gates (#659).** The gate jobs live in
   `.github/workflows/gates.yml` (`workflow_call`) and both `ci.yml` and
   `release.yml`'s preflight invoke it, so the release pipeline cannot run
