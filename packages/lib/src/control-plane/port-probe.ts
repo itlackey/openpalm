@@ -95,6 +95,48 @@ export async function portHeldByOurContainer(
   return "free";
 }
 
+/**
+ * Is `port` safe for THIS install to bind (issue #643)? True when nothing is
+ * bound there, or when whatever holds it is our own compose project's own
+ * container — which `docker compose up` will simply recreate on the same
+ * port, not a real conflict.
+ *
+ * Resolves `true` on every state this cannot verify (no `composeProject`
+ * given, or Docker unreachable — {@link portHeldByOurContainer}'s own
+ * "unreachable" case) rather than `false`: a caller using this to decide
+ * whether to keep a port must never invent a NEW reason to move it beyond
+ * what it can actually confirm is someone else's.
+ */
+export async function isHostPortAvailableForUs(
+  port: number,
+  composeProject?: { name: string; workingDir: string },
+  client: DockerClient = realDockerClient,
+): Promise<boolean> {
+  if (await checkPortAvailable(port)) return true;
+  if (!composeProject) return true;
+  const ownership = await portHeldByOurContainer(port, composeProject, client);
+  return ownership !== "free";
+}
+
+/**
+ * Return `preferred` when {@link isHostPortAvailableForUs}, else the next
+ * port confirmed available, scanning forward up to `scanLimit` candidates.
+ * Falls back to `preferred` unchanged when nothing in range can be confirmed
+ * free — the eventual conflict still surfaces at `docker compose up` /
+ * `openpalm doctor`, exactly as it did before this existed.
+ */
+export async function pickAvailableHostPort(
+  preferred: number,
+  composeProject?: { name: string; workingDir: string },
+  opts: { client?: DockerClient; scanLimit?: number } = {},
+): Promise<number> {
+  const scanLimit = opts.scanLimit ?? 20;
+  for (let port = preferred; port < preferred + scanLimit; port++) {
+    if (await isHostPortAvailableForUs(port, composeProject, opts.client)) return port;
+  }
+  return preferred;
+}
+
 export interface InstallPortTarget {
   port: number;
   service: string;

@@ -413,7 +413,7 @@ async function prepareInstallFiles(
 	// runs (deploy happens later from inside the UI), so this explicit seed is
 	// the only one that runs before the wizard comes up.
 	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, dataDir);
-	runHomeMigrations(homeDir);
+	await runHomeMigrations(homeDir);
 	// Materialize the embedded UI build into data/ui — no network, no backup:
 	// this binary's build wins unconditionally once its stamp differs from
 	// what's already there (a no-op on a repeat install at the same version).
