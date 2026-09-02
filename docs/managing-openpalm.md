@@ -321,17 +321,10 @@ running image as `<namespace>/<service>:rollback-generation-<id>` and points
 exact images that were running before — never a `latest` that might not match
 your restored config. If `update` keeps failing, every attempt repeats this,
 so the stack stays correctly pinned to whichever rollback generation is
-newest; it never drifts to a stale one, but the pin also never clears itself.
-Run `openpalm unpin` once the underlying problem is fixed (bad connectivity, a
-bad tag, disk space, …) to release the pin and let the next `update`/`start`
-pull the normal release tag again — it only edits `state/stack.env` and never
-touches a version you set yourself (a value without the `rollback-` prefix),
-so run `update` afterward to actually apply it:
-
-```bash
-openpalm unpin
-openpalm update
-```
+newest; it never drifts to a stale one. This is automatic and self-releasing:
+fix the underlying problem (bad connectivity, a bad tag, disk space, …) and
+run `openpalm update` again — once it succeeds, the pin moves forward to the
+normal release tag on its own. There is nothing to clear by hand.
 
 ### Desktop app updates
 

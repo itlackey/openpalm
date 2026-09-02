@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { applyChanges, applyServiceUpdate, clearRollbackPin, isRollbackPin } from './versions.js';
+import { applyChanges, applyServiceUpdate, isRollbackPin } from './versions.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -61,39 +61,5 @@ describe('isRollbackPin', () => {
 		expect(isRollbackPin('latest')).toBe(false);
 		expect(isRollbackPin('my-custom-build')).toBe(false);
 		expect(isRollbackPin(undefined)).toBe(false);
-	});
-});
-
-describe('clearRollbackPin', () => {
-	test('POSTs to the dedicated clear-rollback-pin action and returns what was cleared', async () => {
-		const cleared = { OP_ASSISTANT_VERSION: { from: 'rollback-generation-1', to: '0.13.1' } };
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ ok: true, cleared }), {
-				status: 200,
-				headers: { 'content-type': 'application/json' }
-			})
-		);
-		vi.stubGlobal('fetch', fetchMock);
-
-		const result = await clearRollbackPin();
-
-		expect(result.cleared).toEqual(cleared);
-		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(String(url)).toContain('/api/host/versions/clear-rollback-pin');
-		expect(init.method).toBe('POST');
-	});
-
-	test('throws the server message for non-success responses', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn().mockResolvedValue(
-				new Response(JSON.stringify({ error: 'clear_rollback_pin_failed', message: 'boom' }), {
-					status: 500,
-					headers: { 'content-type': 'application/json' }
-				})
-			)
-		);
-
-		await expect(clearRollbackPin()).rejects.toThrow('boom');
 	});
 });

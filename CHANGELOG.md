@@ -52,16 +52,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `openpalm rollback` restores; a leftover root-owned `.system-previous-*`
   tree (a pre-0.13.1 guardian's `node_modules`) is warned about instead of
   failing the already-completed update.
-- **Failed updates can be un-pinned from `rollback-generation-*` image tags
-  (#639).** New `openpalm unpin` command and a Recovery-tab banner with a
-  one-click clear share one lib function that clears only `rollback-`
-  prefixed values, so a deliberate operator pin is never touched.
+- **A stack pinned to a `rollback-generation-*` image tag now explains
+  itself (#639).** The Recovery tab shows a read-only notice while any
+  configured image is on a preserved rollback tag from a failed update,
+  naming the affected key(s) and making clear this is expected and
+  self-clearing: fixing the underlying failure and running `openpalm update`
+  again moves the pin forward to the normal release tag with no separate
+  command or button needed.
 - **An older app refuses to manage a newer `OP_HOME` (#636).** Install,
-  update, upgrade, home-asset seeding, and `unpin` compare
-  `.skeleton-version` and `state/schema-version` against the running build
-  and refuse with an actionable message instead of rewriting `system/` or
-  advancing image pins backwards; `status`, `validate`, and `start` keep
-  working.
+  update, upgrade, and home-asset seeding compare `.skeleton-version` and
+  `state/schema-version` against the running build and refuse with an
+  actionable message instead of rewriting `system/` or advancing image pins
+  backwards; `status`, `validate`, and `start` keep working.
 - **The desktop self-updater never calls electron-updater's `install()`
   twice (#635).** A second call after a quit-time install was a silent no-op
   that jammed every later install for the process; it is now refused, and a
