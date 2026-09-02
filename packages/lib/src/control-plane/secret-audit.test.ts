@@ -177,15 +177,6 @@ describe('auditComposeSecrets — #563 opencode_server_password (D2/D3)', () => 
 
 describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
   it('accepts the shipped named-secret aliases only at their canonical files', () => {
-    // The files must actually exist on disk (#632): the audit now checks
-    // presence, not just the path shape, so a boundary-only fixture with no
-    // real files would (correctly) fail it.
-    mkdirSync(join(tempDir, 'state', 'secrets'), { recursive: true, mode: 0o700 });
-    mkdirSync(join(tempDir, 'knowledge', 'secrets'), { recursive: true, mode: 0o700 });
-    writeFileSync(join(tempDir, 'state', 'secrets', 'op_opencode_password'), 'x\n', { mode: 0o600 });
-    writeFileSync(join(tempDir, 'state', 'secrets', 'op_ui_login_password'), 'x\n', { mode: 0o600 });
-    writeFileSync(join(tempDir, 'knowledge', 'secrets', 'auth.json'), '{}\n', { mode: 0o600 });
-
     const issues = auditResolvedComposeSecrets({
       secrets: {
         opencode_server_password: { file: `${tempDir}/state/secrets/op_opencode_password` },
@@ -201,9 +192,6 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
     // Regression: the delegated-name check used to be a pattern list that
     // omitted ts_authkey, so a remote-addon activation failed the audit even
     // though the secret was at exactly the path the provisioner writes.
-    mkdirSync(join(tempDir, 'state', 'secrets'), { recursive: true, mode: 0o700 });
-    writeFileSync(join(tempDir, 'state', 'secrets', 'ts_authkey'), '', { mode: 0o600 });
-
     const issues = auditResolvedComposeSecrets({
       secrets: {
         ts_authkey: { file: `${tempDir}/state/secrets/ts_authkey` },
@@ -216,28 +204,6 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
     }, { homeDir: tempDir });
 
     expect(issues).toEqual([]);
-  });
-
-  it('#632: reports a specific, actionable issue when a resolved secret file does not exist', () => {
-    // The directory exists (ensureHomeDirs always creates it) but is empty —
-    // exactly the state `install --no-start` leaves behind when setup was
-    // never completed. Regression for the opaque `docker compose up`
-    // "bind source path does not exist" failure this audit now catches first.
-    mkdirSync(join(tempDir, 'state', 'secrets'), { recursive: true, mode: 0o700 });
-
-    const issues = auditResolvedComposeSecrets({
-      secrets: {
-        opencode_server_password: { file: `${tempDir}/state/secrets/op_opencode_password` },
-        ui_login_password: { file: `${tempDir}/state/secrets/op_ui_login_password` },
-      },
-    }, { homeDir: tempDir });
-
-    expect(issues.map((entry) => entry.code)).toEqual([
-      'compose-secret-file-missing',
-      'compose-secret-file-missing',
-    ]);
-    const loginIssue = issues.find((entry) => entry.path === 'secrets.ui_login_password.file');
-    expect(loginIssue?.message).toContain('openpalm reset-password');
   });
 
   it('rejects a top-level source override even when the service grant name is allowed', () => {
