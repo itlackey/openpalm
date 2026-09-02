@@ -138,7 +138,7 @@ describe("ensureSystemBundle (upgrade heals a config written before system/skill
       engines: { default: { kind: "llm" } },
     }, null, 2));
 
-    expect(ensureSystemBundle(state)).toBe(true);
+    expect(ensureSystemBundle(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
@@ -151,21 +151,21 @@ describe("ensureSystemBundle (upgrade heals a config written before system/skill
 
   it("is a no-op once the entry is present — no rewrite on every lifecycle pass", () => {
     writeFileSync(opConfigPath, JSON.stringify({ configVersion: "0.9.0", bundles: {} }));
-    expect(ensureSystemBundle(state)).toBe(true);
+    expect(ensureSystemBundle(root)).toBe(true);
     const after = readFileSync(opConfigPath, "utf-8");
 
-    expect(ensureSystemBundle(state)).toBe(false);
+    expect(ensureSystemBundle(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
     // The neighbouring sweep must not fight it back the other way: both run on
     // every lifecycle pass, and they used to disagree about a trailing newline.
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
-    expect(ensureSystemBundle(state)).toBe(false);
+    expect(ensureSystemBundle(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
   });
 
   it("leaves an absent config absent — install owns creation, not this sweep", () => {
-    expect(ensureSystemBundle(state)).toBe(false);
+    expect(ensureSystemBundle(root)).toBe(false);
     expect(existsSync(opConfigPath)).toBe(false);
   });
 });
@@ -195,7 +195,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
     // `duplicate task migration file path: /stash/tasks/akm-improve.yml`.
     writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
@@ -227,7 +227,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       },
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
 
     const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
     expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm", "openpalm-system"]);
@@ -248,7 +248,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
     }, null, 2)}\n`;
     writeFileSync(opConfigPath, raw);
 
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
   });
 
@@ -260,7 +260,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       },
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     expect(Object.keys(readJson(opConfigPath).bundles as Record<string, unknown>)).toEqual(["openpalm"]);
   });
 
@@ -276,7 +276,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
     }, null, 2)}\n`;
     writeFileSync(opConfigPath, raw);
 
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
   });
 
@@ -289,7 +289,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
     }, null, 2)}\n`;
     writeFileSync(opConfigPath, raw);
 
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
   });
 
@@ -301,7 +301,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       },
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
     // registryId is adopted; `writable: false` is NOT.
     expect(bundles.openpalm).toEqual({ path: "/stash", writable: true, registryId: "/stash" });
@@ -317,7 +317,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       },
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
     // registryId is adopted; the relocating components block is not.
     expect(bundles.openpalm).toEqual({ path: "/stash", writable: true, registryId: "r" });
@@ -328,7 +328,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       writeFileSync(opConfigPath, JSON.stringify({
         bundles: { openpalm: { path: "/stash", writable: true }, stash: { path: spelling } },
       }, null, 2));
-      expect(reconcileDuplicateBundles(state)).toBe(true);
+      expect(reconcileDuplicateBundles(root)).toBe(true);
       const bundles = readJson(opConfigPath).bundles as Record<string, unknown>;
       expect(Object.keys(bundles)).toEqual(["openpalm"]);
     }
@@ -341,7 +341,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       defaultWriteTarget: "stash",
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     expect(cfg.defaultBundle).toBe("openpalm");
@@ -358,7 +358,7 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
       defaultBundle: HOST_SOURCE_NAME,
     }, null, 2));
 
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     // Not our business to "fix" — the guard only permits moving a default that
     // named a bundle this sweep removed.
     expect(readJson(opConfigPath).defaultBundle).toBe(HOST_SOURCE_NAME);
@@ -376,47 +376,47 @@ describe("reconcileDuplicateBundles (two ids, one directory, blocked akm migrati
     }, null, 2)}\n`;
     writeFileSync(opConfigPath, raw);
 
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
   });
 
   it("is a no-op on a second run — no rewrite on every boot", () => {
     writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     const after = readFileSync(opConfigPath, "utf-8");
 
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
     // The neighbouring sweeps must not fight it back the other way — all three
     // run on every lifecycle pass against this one file.
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
-    expect(ensureSystemBundle(state)).toBe(false);
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
+    expect(ensureSystemBundle(root)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(after);
   });
 
   it("leaves an unparseable config alone rather than destroying it", () => {
     writeFileSync(opConfigPath, "{ not json");
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe("{ not json");
   });
 
   it("does nothing when there is no primary bundle to be a duplicate of", () => {
     const raw = `${JSON.stringify({ bundles: { stash: { path: "/stash" }, other: { path: "/stash" } } }, null, 2)}\n`;
     writeFileSync(opConfigPath, raw);
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe(raw);
   });
 
   it("is a no-op when there is no config yet", () => {
     rmSync(opConfigPath, { force: true });
-    expect(reconcileDuplicateBundles(state)).toBe(false);
+    expect(reconcileDuplicateBundles(root)).toBe(false);
     expect(existsSync(opConfigPath)).toBe(false);
   });
 
   it("writes mode 0600", () => {
     writeFileSync(opConfigPath, JSON.stringify(liveShape(), null, 2));
-    expect(reconcileDuplicateBundles(state)).toBe(true);
+    expect(reconcileDuplicateBundles(root)).toBe(true);
     expect(statSync(opConfigPath).mode & 0o777).toBe(0o600);
   });
 });
@@ -436,7 +436,7 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
       defaults: { llmEngine: "fast", llm: "retired" },
     }, null, 2));
 
-    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     expect(cfg.stashDir).toBeUndefined();
@@ -454,7 +454,7 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
       configVersion: "0.9.0",
       bundles: { openpalm: { path: "/stash", writable: true } },
     }, null, 2)}\n`);
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
   });
 
   it("issue #645: translates a 0.12.x profiles.llm.default into engines.default instead of dropping it into engines: {}", () => {
@@ -478,7 +478,7 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
       defaultBundle: "openpalm",
     }, null, 2));
 
-    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     expect(cfg.profiles).toBeUndefined();
@@ -502,7 +502,7 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
       configVersion: "0.9.0",
     }, null, 2));
 
-    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(true);
 
     const cfg = readJson(opConfigPath);
     expect(cfg.profiles).toBeUndefined();
@@ -511,13 +511,13 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
 
   it("leaves an unparseable config alone rather than destroying it", () => {
     writeFileSync(opConfigPath, "{ not json");
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
     expect(readFileSync(opConfigPath, "utf-8")).toBe("{ not json");
   });
 
   it("is a no-op when there is no config yet", () => {
     rmSync(opConfigPath, { force: true });
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
   });
 });
 
@@ -532,7 +532,7 @@ describe("stripRetiredAkmConfigKeys covers paperclip's own akm config", () => {
     writeFileSync(pcPath, JSON.stringify({ profiles: { agent: {} }, stashDir: "/stash" }, null, 2));
     writeFileSync(opConfigPath, `${JSON.stringify({ configVersion: "0.9.0" }, null, 2)}\n`);
 
-    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(true);
 
     const pc = JSON.parse(readFileSync(pcPath, "utf-8")) as Record<string, unknown>;
     expect(pc.profiles).toBeUndefined();
@@ -542,7 +542,7 @@ describe("stripRetiredAkmConfigKeys covers paperclip's own akm config", () => {
 
   it("returns false when neither config needs a change", () => {
     writeFileSync(opConfigPath, `${JSON.stringify({ configVersion: "0.9.0" }, null, 2)}\n`);
-    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(stripRetiredAkmConfigKeys(root)).toBe(false);
   });
 });
 

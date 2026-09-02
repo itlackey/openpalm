@@ -113,6 +113,16 @@ function openpalmConfigPath(state: ControlPlaneState): string {
 }
 
 /**
+ * homeDir-based form of {@link openpalmConfigPath}, for the three sweeps below
+ * that are now home-schema MIGRATIONS (home-schema.ts) rather than
+ * `ControlPlaneState`-scoped writers: a migration only ever has a homeDir,
+ * and `configDir` is always `${homeDir}/config` (home.ts's resolveConfigDir).
+ */
+function assistantAkmConfigPath(homeDir: string): string {
+  return join(homeDir, "config", "akm", "config.json");
+}
+
+/**
  * Container/OpenPalm side: add the personal stash (mounted at /host-stash) as a
  * secondary bundle. Parse-tolerant (we own this config). Writable by default so
  * the assistant can contribute back via an explicit `--bundle host-akm` (or
@@ -158,16 +168,20 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
  * that upgrades into the `knowledge/skills/` → `system/skills/` move gets the
  * `:ro` `/system-stash` mount but no bundle entry pointing at it — akm never
  * walks the directory, and the shipped skills the migration just removed from
- * the stash are gone from the assistant entirely. Swept on the lifecycle pass,
- * beside the retired-key strip, for the same "an upgraded install heals itself"
- * reason.
+ * the stash are gone from the assistant entirely.
  *
- * Deliberately narrow, like its neighbour: it upserts one bundle by id and
+ * #654: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep run
+ * on every apply — the shape it heals ("no bundle entry for a mount this
+ * release's skills move introduced") is exactly one release transition, so it
+ * belongs behind a `since` gate with its own test, run once per upgraded home,
+ * rather than re-checked on every install/update/launch forever.
+ *
+ * Deliberately narrow, like its neighbours: it upserts one bundle by id and
  * writes only when that actually changed. It never touches `defaultBundle`,
  * `defaultWriteTarget`, or any other entry.
  */
-export function ensureSystemBundle(state: ControlPlaneState): boolean {
-  const configPath = openpalmConfigPath(state);
+export function ensureSystemBundle(homeDir: string): boolean {
+  const configPath = assistantAkmConfigPath(homeDir);
   if (!existsSync(configPath)) return false;
   let config: AkmConfigObject;
   try {
@@ -326,11 +340,11 @@ function assertDefaultsOnlyRepointedToPrimary(
  * block no OpenPalm writer emits), and the AKM settings PATCH route, which
  * pins the primary entry but preserves the rest of the map verbatim.
  *
- * STATUS UNDER akm >= 0.9.7 — read this before deleting the sweep. akm 0.9.7
- * fixed the root cause (akm#870) the same way this does: bundle identity is
- * the RESOLVED content root at both registration sites, so akm no longer mints
- * a second id for an already-configured directory, and `migrate` no longer
- * throws on one that already exists. That removes the recurring exit-70
+ * STATUS UNDER akm >= 0.9.7 — read this before deleting the migration. akm
+ * 0.9.7 fixed the root cause (akm#870) the same way this does: bundle identity
+ * is the RESOLVED content root at both registration sites, so akm no longer
+ * mints a second id for an already-configured directory, and `migrate` no
+ * longer throws on one that already exists. That removes the recurring exit-70
  * failure, NOT the config state behind it. Verified against the shipped 0.9.6
  * on a fixture carrying the live duplicate shape: `migrate status` reports
  * `current` with no blockers, and the config is byte-identical afterwards —
@@ -346,14 +360,12 @@ function assertDefaultsOnlyRepointedToPrimary(
  * than the container pin writes this file (a rollback, or a host akm run
  * against the same config), which is exactly how the duplicate got minted.
  *
- * REACH, honestly: this is not a chokepoint on the boot that actually fails.
- * `applyHomeAssets` runs on install/update, on desktop launch, and on the CLI
- * supervisor's non-stackless spawn — but NOT on a plain `openpalm start` /
- * `restart`, which brings the stack up without writing OP_HOME assets by
- * deliberate policy (cli-state.ts: "no self-healing on a plain command"). On a
- * headless install the heal therefore lands on the next install/update or
- * UI-supervisor spawn, not necessarily before the next failing boot. That is
- * the same reach the two neighbouring sweeps already have.
+ * #654: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep run
+ * on every apply forever — the duplicate it cleans up is a shape older akm
+ * releases wrote, i.e. exactly a release transition, so it belongs behind a
+ * `since` gate with its own test rather than being re-checked on every
+ * install/update/launch against a home that has long since stopped producing
+ * it.
  *
  * OpenPalm keeps its OWN id. Renaming the primary to `stash` would hand the
  * bundle id akm happens to synthesize authority over the one tree a backup
@@ -363,11 +375,10 @@ function assertDefaultsOnlyRepointedToPrimary(
  * ROOT collides with the primary's, folds any field they carried and the
  * primary lacks onto the primary, and repoints only a default that named one
  * of them. It touches no other entry and no other key, and it is a no-op (no
- * write, returns false) when there is no duplicate — this runs on every
- * lifecycle pass against a file the operator owns.
+ * write, returns false) when there is no duplicate.
  */
-export function reconcileDuplicateBundles(state: ControlPlaneState): boolean {
-  const configPath = openpalmConfigPath(state);
+export function reconcileDuplicateBundles(homeDir: string): boolean {
+  const configPath = assistantAkmConfigPath(homeDir);
   if (!existsSync(configPath)) return false;
   let config: AkmConfigObject;
   try {
@@ -474,15 +485,25 @@ export function reconcileDuplicateBundles(state: ControlPlaneState): boolean {
  *
  * Every `akm` invocation in the assistant then fails with INVALID_CONFIG_FILE
  * and the UI reports AKM metrics as unavailable, with nothing naming the
- * cause. Swept on the lifecycle pass instead, beside the retired stack.env
- * keys, so an upgraded install heals itself.
+ * cause.
+ *
+ * #654/#645: a HOME-SCHEMA MIGRATION (home-schema.ts `MIGRATIONS`), not a sweep
+ * run on every apply forever. The shape it heals — a config still carrying
+ * retired 0.8 keys, or a 0.12.x `profiles.llm.*` never translated into
+ * `engines.*` — is exactly a release transition, so it gets a `since` gate and
+ * its own test instead of asking "what do I delete?" on every install/update/
+ * launch against a home that has long since been cleaned. The translation
+ * itself (`translateLegacyLlmProfiles`, called from `stripRetiredAkmKeys`
+ * below) is unconditional and content-based, so replaying this migration
+ * after a rollback is already safe by construction: a config with no more
+ * `profiles.llm.*` has nothing left to translate (#657.3).
  *
  * Deliberately narrow: it removes retired keys and stamps `configVersion`, and
  * writes ONLY when one of those actually changed. It does not reshape bundles
- * or defaults — this runs on every lifecycle action against a file the
- * operator owns, so it must not rewrite anything it was not asked to.
+ * or defaults — this must not rewrite anything it was not asked to on a file
+ * the operator owns.
  */
-export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
+export function stripRetiredAkmConfigKeys(homeDir: string): boolean {
   // BOTH akm configs, not just the assistant's. Paperclip runs its own akm
   // against `config/paperclip/akm/config.json` (services.compose.yml mounts it
   // at /etc/akm), seeded once from the skeleton and never rewritten — so it
@@ -491,8 +512,8 @@ export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
   // dies. Sweeping only one of the two was half a fix.
   let changed = false;
   for (const configPath of [
-    openpalmConfigPath(state),
-    join(state.configDir, "paperclip", "akm", "config.json"),
+    assistantAkmConfigPath(homeDir),
+    join(homeDir, "config", "paperclip", "akm", "config.json"),
   ]) {
     if (stripRetiredKeysAt(configPath)) changed = true;
   }

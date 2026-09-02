@@ -53,6 +53,7 @@ import { migrateChatAddonRemoval, migrateProfileOnlyAddonEnablement } from './ad
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToStateDir } from './secrets-migration.js';
 import { migrateLegacyPaperclipEnv } from './paperclip.js';
+import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
 
 const logger = createLogger('home-schema');
 
@@ -335,7 +336,7 @@ function migrateOpHomeLayout(homeDir: string): boolean {
  * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
  * env and writes the app-owned record, so it must follow it.
  */
-const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
+const MIGRATIONS: { since: number; run: (homeDir: string) => boolean | Promise<boolean> }[] = [
   // Layout: private/ → state/, plus the skeleton tree this release retired.
   // FIRST on purpose — see the docblock for why the credential move has to
   // precede the two knowledge/secrets sweeps below.
@@ -396,6 +397,35 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // which the `since: 6` entry above cannot reach. Cron registration is dead on
   // every one of them until these are gone; see the docblock.
   { since: 10, run: migrateRetiredTaskFiles },
+  // #654: three akm config heals that used to run UNVERSIONED on every apply
+  // forever (lifecycle.ts's `applyHomeAssets`) — each is a release-transition
+  // heal (a shape an OLDER release wrote), so each gets a `since` gate and its
+  // own test instead of an unbounded "what do I delete?" sweep.
+  //
+  // `since: 11` — the loop's condition is `migration.since >= recorded`, so
+  // `since` is NOT "the version this was introduced to fix", it is the
+  // HIGHEST recorded value a home can carry and still need this migration.
+  // Because these three are BRAND NEW to the registry (they ran unconditionally
+  // forever, at every version, for every home), every home that exists today —
+  // recorded anywhere from 0 up to the OLD HOME_SCHEMA_VERSION (11) — needs
+  // them to run exactly once more. `since: 11` is the smallest value that
+  // covers that whole range; a home stamped 11 satisfies `11 >= 11`, and any
+  // lower recorded value satisfies it too. (Unlike `migrateLegacyDefaultPorts`
+  // at `since: 0` above: that one is also gated on a legacy FILE that
+  // `migrateToSingleStackEnv` deletes on its very first run, so by the time
+  // any home is stamped past 0 the file is already gone and `since: 0` is
+  // sufficient; these three have no such file gate — the config they touch is
+  // still standing at any recorded value.)
+  //
+  // No ordering dependency on the layout/consolidation migrations above: all
+  // three read and write only `config/akm/config.json` (+ `config/paperclip/
+  // akm/config.json` for the retired-key strip), a tree none of those
+  // migrations touch. Relative order among the three is presentational — each
+  // re-reads the config from disk and they share no state — kept identical to
+  // their former call order in applyHomeAssets.
+  { since: 11, run: stripRetiredAkmConfigKeys },
+  { since: 11, run: reconcileDuplicateBundles },
+  { since: 11, run: ensureSystemBundle },
 ];
 
 /**
@@ -403,8 +433,14 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
  *
  * Returns whether anything actually changed on disk. An up-to-date home reads
  * one small file and returns — it never touches stack.env.
+ *
+ * Async (#658): the port migrations now probe live TCP/Docker state before
+ * writing a DEFAULT port, so `run` may return a `Promise<boolean>`. Every
+ * caller awaits this — see `lifecycle.ts`, `packages/cli/src/lib/
+ * cli-compose.ts`, `packages/cli/src/commands/install.ts`, and the UI's
+ * `hooks.server.ts` top-level `migrateHome`.
  */
-export function runHomeMigrations(homeDir: string): boolean {
+export async function runHomeMigrations(homeDir: string): Promise<boolean> {
   const recorded = readHomeSchemaVersion(homeDir);
   if (recorded >= HOME_SCHEMA_VERSION) return false;
 
@@ -417,7 +453,7 @@ export function runHomeMigrations(homeDir: string): boolean {
   let changed = false;
   for (const migration of MIGRATIONS) {
     if (migration.since < recorded) continue;
-    if (migration.run(homeDir)) changed = true;
+    if (await migration.run(homeDir)) changed = true;
   }
 
   writeHomeSchemaVersion(homeDir, HOME_SCHEMA_VERSION);
