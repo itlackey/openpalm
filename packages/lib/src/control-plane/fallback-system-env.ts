@@ -70,9 +70,12 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — portals reach it via",
     "# http://guardian:8080 over the portal_net Docker network.",
-    `OP_UI_PORT=${STACK_DEFAULTS.ports.ui}`,
-    `OP_ASSISTANT_PORT=${STACK_DEFAULTS.ports.assistant}`,
-    `OP_WORKSPACE_PORT=${STACK_DEFAULTS.ports.workspace}`,
+    "# The compose-published ports (OP_UI_PORT, OP_ASSISTANT_PORT,",
+    "# OP_WORKSPACE_PORT, …) are deliberately NOT seeded: an absent key means",
+    "# the release default, and a value written here would read as an",
+    "# operator's explicit choice before anything has checked the host. The",
+    "# first install/update apply probes each default and persists a free",
+    "# port only if another instance already holds it (ensureHostPortDefaults).",
     `OP_HOST_UI_PORT=${STACK_DEFAULTS.ports.hostUi}`,
     ""
   ].join("\n");

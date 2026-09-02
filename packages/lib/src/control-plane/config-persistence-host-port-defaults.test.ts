@@ -141,3 +141,23 @@ describe("ensureHostPortDefaults (#660)", () => {
     }
   });
 });
+
+describe("generateFallbackSystemEnv leaves compose-published ports to the host-aware apply", () => {
+  test("seeds no OP_UI_PORT / OP_ASSISTANT_PORT / OP_WORKSPACE_PORT rows", async () => {
+    const { generateFallbackSystemEnv } = await import("./fallback-system-env.js");
+    const homeDir = mkdtempSync(join(tmpdir(), "openpalm-fallback-env-"));
+    let env: string;
+    try {
+      env = generateFallbackSystemEnv(stateFor(homeDir));
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+    // A baked value would read as an operator's explicit, authoritative
+    // choice and bypass ensureHostPortDefaults on a fresh install — exactly
+    // how a second instance on one host used to land on the same 3820.
+    for (const key of ["OP_UI_PORT", "OP_ASSISTANT_PORT", "OP_WORKSPACE_PORT"]) {
+      expect(env).not.toMatch(new RegExp(`^${key}=`, "m"));
+    }
+    expect(env).toMatch(/^OP_HOST_UI_PORT=3880$/m);
+  });
+});
