@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('lifecycle update state', () => {
-	test('advances managed exact pins and creates a bounded safety backup', async () => {
+	test('deploys this release over every prior image tag, and creates a bounded safety backup', async () => {
 		const home = mkdtempSync(join(tmpdir(), 'openpalm-lifecycle-update-'));
 		process.env.OP_HOME = home;
 		process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -52,7 +52,11 @@ describe('lifecycle update state', () => {
 			const stackEnv = readFileSync(join(home, 'state', 'stack.env'), 'utf8');
 			expect(stackEnv).toContain(`OP_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
 			expect(stackEnv).toContain(`OP_GUARDIAN_VERSION=${PLATFORM_VERSION}`);
-			expect(stackEnv).toContain('OP_PORTAL_VERSION=custom-pin');
+			// #679: an update deploys THIS release's images. A hand-set tag and a
+			// preserved rollback tag alike are values an update moves forward —
+			// there is no marker protocol deciding which ones it is allowed to
+			// touch, which is what silently froze a live stack on 0.13.1.
+			expect(stackEnv).toContain(`OP_PORTAL_VERSION=${PLATFORM_VERSION}`);
 			const backupsDir = join(home, 'data', 'backups');
 			const backups = existsSync(backupsDir)
 				? readdirSync(backupsDir).filter((backup) =>

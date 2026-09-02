@@ -8,6 +8,8 @@ import {
   detectCliVersionSkew,
   isComparableSemver,
   isRollbackRecoveryFailure,
+  readVersions,
+  SERVICE_VERSION_KEYS,
   type ControlPlaneState,
 } from '@openpalm/lib';
 import cliPkg from '../../package.json' with { type: 'json' };
@@ -104,8 +106,8 @@ export function describeUpgradeFailure(err: unknown): UpgradeFailureOutcome {
 // build, so an old CLI's own guard could never see itself as old; it only
 // ever caught a dev checkout with a hand-edited package.json. The real fix
 // is to make an old CLI current FIRST, then run the ordinary (now unguarded)
-// upgrade with a binary that is no longer old. `performUpgrade` pins images
-// to ITS OWN `PLATFORM_VERSION` (`advanceManagedImageVersions`'s default), so
+// upgrade with a binary that is no longer old. `performUpgrade` deploys ITS
+// OWN `PLATFORM_VERSION` (`setPlatformImageVersions`), so
 // this is what actually prevents an old CLI from deploying an old stack —
 // #662's comparison alone never could.
 
@@ -276,6 +278,13 @@ export async function runUpgradeAction(
   // running `openpalm`/`openpalm admin` supervisor materializes it into
   // data/ui on its next spawn. Updating the CLI itself means replacing the
   // binary (see the install docs), not downloading a separate UI release.
+  // #679: say what is now running. "Update complete." with no versions is how
+  // an update that silently advanced NOTHING passed for a successful one on a
+  // live stack, release after release.
+  const deployed = readVersions(state);
+  console.log(
+    `Images: ${SERVICE_VERSION_KEYS.map((key) => `${key.slice('OP_'.length).replace('_VERSION', '').toLowerCase()} ${deployed[key]}`).join(', ')}`,
+  );
   console.log(stillOlderCli ? 'Update complete. To update the CLI itself, install a newer openpalm binary.' : 'Update complete.');
 }
 

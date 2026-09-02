@@ -33,12 +33,6 @@ export const SERVICE_VERSION_KEYS = [
 export type VersionKey = (typeof SERVICE_VERSION_KEYS)[number];
 
 const VERSION_KEY_SET: ReadonlySet<string> = new Set(SERVICE_VERSION_KEYS);
-export const MANAGED_VERSION_MARKERS: Record<VersionKey, string> = {
-	OP_ASSISTANT_VERSION: 'OP_MANAGED_ASSISTANT_VERSION',
-	OP_GUARDIAN_VERSION: 'OP_MANAGED_GUARDIAN_VERSION',
-	OP_PORTAL_VERSION: 'OP_MANAGED_PORTAL_VERSION',
-	OP_VOICE_VERSION: 'OP_MANAGED_VOICE_VERSION'
-};
 
 /** Default values seeded into a fresh stack.env (and returned for unset keys). */
 export const VERSION_DEFAULTS: Record<VersionKey, string> = {
@@ -64,7 +58,7 @@ export function isVersionKey(key: string): key is VersionKey {
  * debugging a version skew edits it and nothing happens. Swept on the same
  * lifecycle pass that seeds the real version keys.
  */
-export const RETIRED_TOOL_VERSION_KEYS = [
+export const RETIRED_STACK_ENV_KEYS = [
 	'OP_TOOL_AKM_VERSION',
 	'OP_TOOL_CLAUDE_CODE_VERSION',
 	'OP_TOOL_CODEX_VERSION',
@@ -82,7 +76,19 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 	'OP_GUARDIAN_PACKAGE',
 	'OP_GUARDIAN_ENTRY',
 	'OP_GUARDIAN_NPMRC',
-	'OP_GUARDIAN_NPMRC_FILE'
+	'OP_GUARDIAN_NPMRC_FILE',
+	// The managed-version markers (#679). Four shadow keys that encoded, by
+	// their relationship to the real OP_*_VERSION rows, whether an update was
+	// allowed to advance each image. Equal meant "release-managed", blank meant
+	// "operator pin", and a third state nobody wrote deliberately — present but
+	// DIFFERENT — silently froze the stack: `openpalm update` reported success
+	// on every release while never moving the images again. That is what
+	// happened on a live 0.13.1 -> 0.13.3 upgrade. Deleted rather than guarded:
+	// an update now deploys this release's images, full stop.
+	'OP_MANAGED_ASSISTANT_VERSION',
+	'OP_MANAGED_GUARDIAN_VERSION',
+	'OP_MANAGED_PORTAL_VERSION',
+	'OP_MANAGED_VOICE_VERSION'
 ] as const;
 
 // ── Version-skew guard (#636) ────────────────────────────────────────────────
@@ -92,8 +98,8 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 // record that. Nothing used to compare those stamps against the CODE now
 // running before writing to the home, so an older app (e.g. a desktop build
 // stuck mid-self-update, #635) pointed at a home a newer app had already
-// upgraded would silently downgrade it: `advanceManagedImageVersions`
-// defaults its target to THIS build's `PLATFORM_VERSION`, and `applyHomeSeed`
+// upgraded would silently downgrade it: `setPlatformImageVersions` writes
+// THIS build's `PLATFORM_VERSION`, and `applyHomeSeed`
 // unconditionally overwrites `system/` and re-stamps `.skeleton-version` from
 // THIS build's skeleton — both moving a newer home backwards with no operator
 // confirmation.
@@ -156,8 +162,8 @@ export function assertHomeNotNewerThanApp(state: ControlPlaneState): void {
 //
 // #636 (above) stops an OLDER app from silently rewriting a NEWER home. #662
 // is the same hazard from the other direction: `openpalm update` deploys
-// image tags pinned to `targetVersion` (defaulting to THIS build's
-// `PLATFORM_VERSION` — see `advanceManagedImageVersions`'s default), but
+// image tags for `targetVersion` (THIS build's `PLATFORM_VERSION` — see
+// `setPlatformImageVersions`), but
 // nothing ever compared that target against the CLI binary actually doing the
 // deploying. A CLI whose own package version trails the release it is about
 // to pin the stack to finishes `update` having created exactly the stale
@@ -211,22 +217,19 @@ export function ensureVersionDefaults(state: ControlPlaneState): void {
 	const current = existsSync(path) ? parseEnvFile(path) : {};
 	const missing: Record<string, string> = {};
 	for (const key of SERVICE_VERSION_KEYS) {
-		if (current[key] === undefined) {
-			missing[key] = VERSION_DEFAULTS[key];
-			missing[MANAGED_VERSION_MARKERS[key]] = VERSION_DEFAULTS[key];
-		}
+		if (current[key] === undefined) missing[key] = VERSION_DEFAULTS[key];
 	}
 	writeVersionState(state, missing);
-	stripRetiredToolVersions(state);
+	stripRetiredStackEnvKeys(state);
 }
 
-/** Drop {@link RETIRED_TOOL_VERSION_KEYS} from `state/stack.env`. No-op once clean. */
-export function stripRetiredToolVersions(state: ControlPlaneState): boolean {
+/** Drop {@link RETIRED_STACK_ENV_KEYS} from `state/stack.env`. No-op once clean. */
+export function stripRetiredStackEnvKeys(state: ControlPlaneState): boolean {
 	const path = stackEnvFile(state.homeDir);
 	if (!existsSync(path)) return false;
 	const content = readFileSync(path, 'utf-8');
 	const parsed = parseEnvFile(path);
-	const retired = RETIRED_TOOL_VERSION_KEYS.filter((key) => Object.hasOwn(parsed, key));
+	const retired = RETIRED_STACK_ENV_KEYS.filter((key) => Object.hasOwn(parsed, key));
 	if (retired.length === 0) return false;
 	let next = content;
 	for (const key of retired) next = removeEnvKey(next, key);
@@ -235,69 +238,69 @@ export function stripRetiredToolVersions(state: ControlPlaneState): boolean {
 	return true;
 }
 
-/** Advance release-managed exact pins while preserving explicit moving or custom pins. */
-export function advanceManagedImageVersions(
+/**
+ * Set every platform image to the release this app IS. Called by the update
+ * lifecycle; returns what it wrote so `openpalm update` can print it.
+ *
+ * There is no "is this a pin?" question to answer here anymore (#679). The tag
+ * an update deploys is this release's tag — including over a `rollback-*` tag
+ * from a previous failed upgrade, and including over a tag someone set by hand,
+ * which is the honest meaning of "update": move to the current release. Anyone
+ * who wants a different image edits the key afterwards, and it holds until the
+ * next update.
+ *
+ * Two values are left alone, both because writing a release tag over them
+ * would point compose at an image that does not exist:
+ *
+ * - Voice. Its tags are accelerator-variant suffixed (`latest-cpu`,
+ *   `v1.4.0-cu121`) and it ships on its own cadence, so no bare
+ *   platform-version voice image is ever published.
+ * - A `dev` tag. That is a local build no registry has; an update that
+ *   repointed it at a published tag would silently replace the images a
+ *   developer (and the smoke scripts) built and are running.
+ *
+ * Both are properties of the VALUE, checkable by looking at it. Neither needs
+ * a second key recording what the first key is allowed to do.
+ */
+export function setPlatformImageVersions(
 	state: ControlPlaneState,
-	previousPlatformVersion: string | null,
 	targetPlatformVersion = PLATFORM_VERSION
-): void {
-	const current = parseEnvFile(stackEnvFile(state.homeDir));
-	const previous = normalizeVersion(previousPlatformVersion);
+): Record<string, string> {
 	const updates: Record<string, string> = {};
+	const current = parseEnvFile(stackEnvFile(state.homeDir));
 	for (const key of SERVICE_VERSION_KEYS) {
-		const value = current[key]?.trim() ?? '';
-		const markerKey = MANAGED_VERSION_MARKERS[key];
-		const managedValue = current[markerKey]?.trim() ?? '';
-		const legacyManaged = current[markerKey] === undefined && key !== 'OP_VOICE_VERSION' && previous && normalizeVersion(value) === previous;
-		if (value.startsWith('rollback-')) {
-			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
-			updates[key] = target;
-			updates[markerKey] = target;
-		} else if ((managedValue && value === managedValue) || legacyManaged) {
-			// Voice tags are variant-suffixed (latest-cpu, vX.Y.Z-cu121), not
-			// platform semver, and publish-voice.yml never publishes a bare
-			// platform-version tag — same reason the rollback arm above excludes
-			// it. Advancing voice to targetPlatformVersion here would point it at
-			// an image that was never published, and because this arm also
-			// re-stamps the marker to match, the bad value would be sticky.
-			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
-			updates[key] = target;
-			updates[markerKey] = target;
-		}
+		if (key === 'OP_VOICE_VERSION') continue;
+		if ((current[key]?.trim() ?? '').startsWith('dev')) continue;
+		updates[key] = targetPlatformVersion;
 	}
 	writeVersionState(state, updates);
+	return updates;
 }
 
 /**
- * Write validated version tags to the state file (atomically: temp + rename).
- * Only SERVICE_VERSION_KEYS are accepted, so a typo or hostile caller can't smuggle
- * arbitrary env into the stack config. mergeEnvContent preserves any existing state
- * keys/comments. Supplied values, including `latest` and `next`, are persisted
- * honestly as the desired Compose configuration.
+ * Write image tags to `state/stack.env` (atomically: temp + rename). Only
+ * SERVICE_VERSION_KEYS are accepted, so a typo or hostile caller can't smuggle
+ * arbitrary env into the stack config. mergeEnvContent preserves existing keys
+ * and comments. Values are persisted verbatim, `latest` and `next` included.
  *
- * This is the OPERATOR-PIN API: it blanks each key's OP_MANAGED_*_VERSION
- * marker, which tells advanceManagedImageVersions the value is a deliberate
- * choice that must never be auto-advanced. Only a genuine operator choice
- * (the Updates tab PATCH, or a wizard's explicit Advanced image-tag field)
- * should call this. A release-managed DEFAULT that setup fills in on the
- * operator's behalf must use writeManagedVersions below instead — blanking
- * its marker here would make it indistinguishable from a real pin and freeze
- * it on the install-time tag forever.
+ * A value written here holds until the next `openpalm update`, which deploys
+ * that release's images (see setPlatformImageVersions).
  */
 export function writeVersions(state: ControlPlaneState, updates: Record<string, string>): void {
-	writeVersionEntries(state, updates, () => '');
-}
-
-/**
- * Same validation/persistence as writeVersions, but for a value setup chose
- * as a release-managed DEFAULT, not something the operator asked for: the
- * marker is stamped to match the value (instead of blanked) so a later
- * advanceManagedImageVersions still recognizes it as managed and advances it
- * on the next release, exactly like the markers generateFallbackSystemEnv
- * seeds into a brand-new stack.env.
- */
-export function writeManagedVersions(state: ControlPlaneState, updates: Record<string, string>): void {
-	writeVersionEntries(state, updates, (value) => value);
+	const accepted: Record<string, string> = {};
+	for (const [key, value] of Object.entries(updates)) {
+		if (!isVersionKey(key)) {
+			throw new Error(`Refusing to write unknown version key: ${key}`);
+		}
+		const trimmed = (value ?? '').trim();
+		if (key === 'OP_VOICE_VERSION' && VOICE_VARIANT_SUFFIX_RE.test(trimmed)) {
+			throw new Error(
+				`OP_VOICE_VERSION is the base image tag; Compose appends the accelerator suffix itself. Use "${trimmed.replace(VOICE_VARIANT_SUFFIX_RE, '')}" instead of "${trimmed}", or the image resolves to a tag that does not exist.`
+			);
+		}
+		accepted[key] = trimmed;
+	}
+	writeVersionState(state, accepted);
 }
 
 /**
@@ -312,28 +315,6 @@ export function writeManagedVersions(state: ControlPlaneState, updates: Record<s
  * that failure back to the field that caused it.
  */
 const VOICE_VARIANT_SUFFIX_RE = /-(?:cpu|cu\d+|rocm\d+)$/i;
-
-function writeVersionEntries(
-	state: ControlPlaneState,
-	updates: Record<string, string>,
-	markerValue: (value: string) => string
-): void {
-	const accepted: Record<string, string> = {};
-	for (const [key, value] of Object.entries(updates)) {
-		if (!isVersionKey(key)) {
-			throw new Error(`Refusing to write unknown version key: ${key}`);
-		}
-		const trimmed = (value ?? '').trim();
-		if (key === 'OP_VOICE_VERSION' && VOICE_VARIANT_SUFFIX_RE.test(trimmed)) {
-			throw new Error(
-				`OP_VOICE_VERSION is the base image tag; Compose appends the accelerator suffix itself. Use "${trimmed.replace(VOICE_VARIANT_SUFFIX_RE, '')}" instead of "${trimmed}", or the image resolves to a tag that does not exist.`
-			);
-		}
-		accepted[key] = trimmed;
-		accepted[MANAGED_VERSION_MARKERS[key]] = markerValue(trimmed);
-	}
-	writeVersionState(state, accepted);
-}
 
 function writeVersionState(state: ControlPlaneState, updates: Record<string, string>): void {
 	if (Object.keys(updates).length === 0) return;

@@ -390,8 +390,7 @@ export {
 
 // ── Version variables (stack.env image tags) ─────────────────────────────
 export {
-  MANAGED_VERSION_MARKERS,
-  RETIRED_TOOL_VERSION_KEYS,
+  RETIRED_STACK_ENV_KEYS,
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
   assertHomeNotNewerThanApp,
@@ -399,7 +398,7 @@ export {
   detectHomeVersionSkew,
   isVersionKey,
   readVersions,
-  stripRetiredToolVersions,
+  stripRetiredStackEnvKeys,
   writeVersions,
 } from "./control-plane/versions.js";
 export type { CliVersionSkew, HomeVersionSkew, VersionKey } from "./control-plane/versions.js";

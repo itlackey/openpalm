@@ -3,7 +3,7 @@
  * images as `<namespace>/<service>:rollback-generation-<id>` and pins
  * `state/stack.env` to them (restoreRunningImageIds, image-snapshots.ts, run
  * as `performUpgrade`'s snapshot-rollback `preserveImages` callback). The
- * ONLY code that ever clears a `rollback-` pin, `advanceManagedImageVersions`
+ * ONLY code that ever clears a `rollback-` pin, `setPlatformImageVersions`
  * (applyManagedFiles, called at the START of every upgrade attempt, before
  * activateStack), runs earlier in the SAME attempt — so on every repeated
  * failure the sequence is unpin -> attempt -> fail -> re-pin to a NEW
@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realDocker from './docker.js';
 import * as realActivation from './activation.js';
-import { readVersions, SERVICE_VERSION_KEYS, MANAGED_VERSION_MARKERS } from './versions.js';
+import { readVersions, SERVICE_VERSION_KEYS } from './versions.js';
 import { PLATFORM_VERSION } from './versioning.js';
 
 const realActivateStack = realActivation.activateStack;
@@ -171,19 +171,9 @@ describe('a rollback-generation-* pin from a failed performUpgrade releases itse
 				const stillPinnedAfterThreeFailures = readVersions(state).OP_ASSISTANT_VERSION;
 				expect(stillPinnedAfterThreeFailures).toBe(seenPins[2]);
 
-				// Every re-pinned key's OP_MANAGED_* marker is blank — restoreRunningImageIds
-				// (the only writer of the rollback- value) never stamps it, and this
-				// is the exact shape a genuine operator pin also leaves, which is why
-				// the marker alone can never distinguish the two.
-				const contentAfterFailures = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
-				for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
-					const markerKey = MANAGED_VERSION_MARKERS[key];
-					expect(contentAfterFailures).toMatch(new RegExp(`${markerKey}=(\\r?\\n|$)`));
-				}
-
-				// (b) The next performUpgrade activates successfully. advanceManagedImageVersions
-				// (applyManagedFiles, before activateStack) clears the rollback- pin to the
-				// target platform version on its own — no unpin command, no operator step.
+				// (b) The next performUpgrade activates successfully. setPlatformImageVersions
+				// (applyManagedFiles, before activateStack) writes the release tag over the
+				// rollback- value on its own — no unpin command, no operator step.
 				await performUpgrade(state);
 
 				expect(activateStackMock).toHaveBeenCalledTimes(4);
@@ -195,11 +185,9 @@ describe('a rollback-generation-* pin from a failed performUpgrade releases itse
 
 				const contentAfterSuccess = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
 				expect(contentAfterSuccess).not.toContain('rollback-generation-');
-				// The marker is re-stamped to match (not left blank), so a later
-				// release still recognizes these keys as managed and advances them.
-				for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
-					expect(contentAfterSuccess).toContain(`${MANAGED_VERSION_MARKERS[key]}=${PLATFORM_VERSION}`);
-				}
+				// #679: no marker rows are written at all — the release tag in the
+				// version key is the whole state.
+				expect(contentAfterSuccess).not.toContain('OP_MANAGED_');
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true, force: true });

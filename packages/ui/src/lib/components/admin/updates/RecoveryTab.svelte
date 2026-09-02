@@ -38,13 +38,11 @@
   let unlocking = $state<ActionHandle<{ removed: boolean }> | null>(null);
   let unlockCleared = $state(false);
 
-  // #639 — a failed update pins state/stack.env to a preserved rollback-*
-  // image tag (never `latest`) so automatic recovery restarts exactly what
-  // was running before. Distinct from a deliberate operator pin, which never
-  // carries the `rollback-` prefix. Nothing to clear by hand: the next
-  // successful `openpalm update` advances the pin off this tag on its own
-  // (advanceManagedImageVersions, run at the start of every upgrade attempt)
-  // — this is read-only, a status notice rather than a control.
+  // #639 — a failed update writes a preserved rollback-* image tag into
+  // state/stack.env (never `latest`) so automatic recovery restarts exactly
+  // what was running before. Nothing to clear by hand: the next successful
+  // `openpalm update` overwrites it with the release tag — this is read-only,
+  // a status notice rather than a control.
   const versionsRes = resource(async () => (await fetchVersions()).configured);
   let rollbackPinnedKeys = $derived(
     (Object.entries(versionsRes.data ?? {}) as [VersionKey, string][])

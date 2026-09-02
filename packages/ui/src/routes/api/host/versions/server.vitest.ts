@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
-	MANAGED_VERSION_MARKERS,
 	PLATFORM_VERSION,
 	SERVICE_VERSION_KEYS,
 	VERSION_DEFAULTS
@@ -100,7 +99,7 @@ describe('PATCH /api/host/versions', () => {
 		for (const key of SERVICE_VERSION_KEYS) {
 			if (key === 'OP_ASSISTANT_VERSION' || key === 'OP_PORTAL_VERSION') continue;
 			expect(parsed[key]).toBe(VERSION_DEFAULTS[key]);
-			expect(parsed[MANAGED_VERSION_MARKERS[key]]).toBe(VERSION_DEFAULTS[key]);
+			expect(parsed[`OP_MANAGED_${key.slice('OP_'.length)}`]).toBeUndefined();
 		}
 	});
 
