@@ -11,7 +11,10 @@ import {
 	readVersions,
 	ensureVersionDefaults,
 	advanceManagedImageVersions,
-	stripRetiredToolVersions
+	stripRetiredToolVersions,
+	clearRollbackPins,
+	MANAGED_VERSION_MARKERS,
+	SERVICE_VERSION_KEYS
 } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 import { PLATFORM_VERSION } from './versioning.js';
@@ -270,5 +273,95 @@ describe('retired OP_TOOL_*_VERSION keys', () => {
 		writeFileSync(envPath(), 'OP_TOOL_AKM_VERSION=0.8.14\n');
 		ensureVersionDefaults(home.state);
 		expect(readFileSync(envPath(), 'utf-8')).not.toContain('OP_TOOL_AKM_VERSION');
+	});
+
+	// #639: a failed performUpgrade/runDeploy re-pins every SERVICE_VERSION_KEY
+	// to a preserved rollback-generation-* tag via restoreRunningImageIds, which
+	// ALWAYS leaves the OP_MANAGED_* marker blank — the exact same shape
+	// writeVersions leaves after a genuine operator pin. clearRollbackPins is
+	// the supported way off that pin (backing both `openpalm unpin` and the
+	// admin UI's dedicated clear action).
+	describe('clearRollbackPins (#639)', () => {
+		it('clears every rollback- pin to the target version and re-stamps its managed marker', () => {
+			// The operator's exact reported shape: rollback- values with BLANK
+			// markers (restoreRunningImageIds never stamps them).
+			writeFileSync(
+				envPath(),
+				[
+					'OP_ASSISTANT_VERSION=rollback-generation-1788212586188-217761-1',
+					'OP_VOICE_VERSION=rollback-generation-1788212586188-217761-1',
+					'OP_GUARDIAN_VERSION=rollback-generation-1788212586188-217761-1',
+					'OP_PORTAL_VERSION=rollback-generation-1788212586188-217761-1',
+					'OP_MANAGED_ASSISTANT_VERSION=',
+					'OP_MANAGED_GUARDIAN_VERSION=',
+					'OP_MANAGED_PORTAL_VERSION=',
+					'OP_MANAGED_VOICE_VERSION='
+				].join('\n')
+			);
+
+			const result = clearRollbackPins(home.state, '0.13.1');
+
+			expect(Object.keys(result.cleared).sort()).toEqual([...SERVICE_VERSION_KEYS].sort());
+			for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
+				expect(result.cleared[key]).toEqual({
+					from: 'rollback-generation-1788212586188-217761-1',
+					to: '0.13.1'
+				});
+			}
+			expect(result.cleared.OP_VOICE_VERSION).toEqual({
+				from: 'rollback-generation-1788212586188-217761-1',
+				to: 'latest'
+			});
+
+			const versions = readVersions(home.state);
+			expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.1');
+			expect(versions.OP_GUARDIAN_VERSION).toBe('0.13.1');
+			expect(versions.OP_PORTAL_VERSION).toBe('0.13.1');
+			expect(versions.OP_VOICE_VERSION).toBe('latest');
+
+			// Re-stamped (not blanked) so a later advanceManagedImageVersions still
+			// recognizes these as managed and keeps advancing them.
+			const content = readFileSync(envPath(), 'utf-8');
+			for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
+				expect(content).toContain(`${MANAGED_VERSION_MARKERS[key]}=0.13.1`);
+			}
+			expect(content).toContain(`${MANAGED_VERSION_MARKERS.OP_VOICE_VERSION}=latest`);
+		});
+
+		it('never touches a value without the rollback- prefix, even with a blank marker (a genuine operator pin)', () => {
+			writeFileSync(
+				envPath(),
+				[
+					'OP_ASSISTANT_VERSION=rollback-generation-1',
+					'OP_GUARDIAN_VERSION=my-custom-build',
+					'OP_MANAGED_ASSISTANT_VERSION=',
+					'OP_MANAGED_GUARDIAN_VERSION='
+				].join('\n')
+			);
+
+			const result = clearRollbackPins(home.state, '0.13.1');
+
+			expect(result.cleared.OP_ASSISTANT_VERSION).toEqual({
+				from: 'rollback-generation-1',
+				to: '0.13.1'
+			});
+			expect(result.cleared.OP_GUARDIAN_VERSION).toBeUndefined();
+			expect(result.kept.OP_GUARDIAN_VERSION).toBe('my-custom-build');
+
+			const content = readFileSync(envPath(), 'utf-8');
+			expect(content).toContain('OP_GUARDIAN_VERSION=my-custom-build');
+			// The operator pin's marker stays exactly as it was — untouched.
+			expect(content).toMatch(/OP_MANAGED_GUARDIAN_VERSION=(\r?\n|$)/);
+		});
+
+		it('is a no-op when nothing is pinned to a rollback generation', () => {
+			writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.13.0\n');
+			const before = readFileSync(envPath(), 'utf-8');
+
+			const result = clearRollbackPins(home.state, '0.13.1');
+
+			expect(result.cleared).toEqual({});
+			expect(readFileSync(envPath(), 'utf-8')).toBe(before);
+		});
 	});
 });

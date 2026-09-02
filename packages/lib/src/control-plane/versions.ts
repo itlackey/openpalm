@@ -208,6 +208,67 @@ export function writeManagedVersions(state: ControlPlaneState, updates: Record<s
  */
 const VOICE_VARIANT_SUFFIX_RE = /-(?:cpu|cu\d+|rocm\d+)$/i;
 
+export type ClearRollbackPinsResult = {
+	/** Keys that carried a `rollback-` pin and were just advanced off it. */
+	cleared: Partial<Record<VersionKey, { from: string; to: string }>>;
+	/** Every other key's current value (default, moving tag, or a genuine operator pin), left untouched. */
+	kept: Partial<Record<VersionKey, string>>;
+};
+
+/**
+ * Clear rollback-generation-* pins that {@link restoreRunningImageIds}
+ * (image-snapshots.ts) writes into every SERVICE_VERSION_KEY on EVERY failed
+ * performUpgrade/runDeploy attempt (it runs as the snapshot-rollback catch's
+ * preserveImages callback). Nothing else ever un-pins that value: the only
+ * OTHER code that clears a `rollback-` value is advanceManagedImageVersions,
+ * and it only runs earlier in the SAME upgrade attempt, before the failure
+ * that re-pins it — so a repeatedly-failing upgrade never releases the pin on
+ * its own (#639).
+ *
+ * Distinguishing rule (decided here, once, rather than per caller): a
+ * `rollback-` prefixed value is by construction never an operator-typed pin
+ * -- no CLI flag or UI field accepts that shape, only restoreRunningImageIds
+ * writes it -- and it always pairs with a BLANK OP_MANAGED_* marker, the
+ * exact shape writeVersions leaves after a genuine operator pin. The marker
+ * alone can't tell the two apart; only the `rollback-` prefix can. So this
+ * clears purely on that prefix, regardless of the marker's state, and it
+ * never touches a key whose value lacks the prefix -- a deliberate operator
+ * pin, a release default, or a moving tag -- no matter what its marker says.
+ *
+ * Mirrors the target selection advanceManagedImageVersions's own rollback arm
+ * already uses (platform version for assistant/guardian/portal,
+ * VERSION_DEFAULTS.OP_VOICE_VERSION for voice) and, like writeManagedVersions,
+ * re-stamps the OP_MANAGED_* marker to match the new value so a later release
+ * still recognizes the key as managed and advances it.
+ *
+ * Does not touch Compose or containers — the caller (CLI `unpin` command, or
+ * the admin UI's dedicated clear action) is responsible for telling the
+ * operator to run `openpalm update`/`start` afterward to apply the change.
+ */
+export function clearRollbackPins(
+	state: ControlPlaneState,
+	targetPlatformVersion = PLATFORM_VERSION
+): ClearRollbackPinsResult {
+	const current = parseEnvFile(stackEnvFile(state.homeDir));
+	const updates: Record<string, string> = {};
+	const cleared: ClearRollbackPinsResult['cleared'] = {};
+	const kept: ClearRollbackPinsResult['kept'] = {};
+	for (const key of SERVICE_VERSION_KEYS) {
+		const value = current[key]?.trim() ?? '';
+		if (!value.startsWith('rollback-')) {
+			kept[key] = value || VERSION_DEFAULTS[key];
+			continue;
+		}
+		const markerKey = MANAGED_VERSION_MARKERS[key];
+		const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
+		updates[key] = target;
+		updates[markerKey] = target;
+		cleared[key] = { from: value, to: target };
+	}
+	writeVersionState(state, updates);
+	return { cleared, kept };
+}
+
 function writeVersionEntries(
 	state: ControlPlaneState,
 	updates: Record<string, string>,
