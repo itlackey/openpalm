@@ -41,15 +41,6 @@ import {
   pruneBackupDirs,
 } from './backup.js';
 
-// chmod 0 only blocks a NON-root process; root bypasses DAC permission checks
-// entirely, so the two #642 reproductions below need to run unprivileged to
-// actually hit EACCES. Same guard style as
-// config-persistence-operator-ids.test.ts, inverted: that suite needs root,
-// these need to NOT be root.
-function isRootProcess(): boolean {
-  return process.platform !== 'win32' && typeof process.getuid === 'function' && process.getuid() === 0;
-}
-
 let homeDir: string;
 
 beforeEach(() => {
@@ -60,6 +51,21 @@ afterEach(() => {
   rmSync(homeDir, { recursive: true, force: true });
   delete process.env.OP_BACKUP_DIR;
 });
+
+/**
+ * `timestampDirName()` has 1ms resolution; two real `backupOpenPalmHome()`
+ * calls issued back-to-back can land in the same millisecond on a fast
+ * machine, which would make this test's two snapshots collide on the SAME
+ * directory name rather than actually proving two distinct ones were
+ * written. Not a hash-gate concern (the gate is content-based) — purely
+ * ensuring the two calls in this test are distinguishable by name.
+ */
+function waitForNextMillisecond(): void {
+  const start = Date.now();
+  while (Date.now() === start) {
+    /* spin */
+  }
+}
 
 function makeBackupDir(backupsDir: string, name: string, mtimeMsAgo: number): string {
   const dir = join(backupsDir, name);
@@ -124,32 +130,38 @@ describe('pruneBackupDirs keeps the N newest by mtime, per namespace', () => {
 });
 
 describe('planBackupPrune previews exactly what pruneBackupDirs deletes', () => {
-  it('agrees with the real prune, and never lists a protected recovery snapshot', () => {
+  it('agrees with the real prune; -pre-update is protected, -pre-rollback is capped like any other namespace', () => {
     const backupsDir = join(homeDir, 'data', 'backups');
     mkdirSync(backupsDir, { recursive: true });
 
     // A mix that a global `listBackupDirs().slice(keep)` preview gets wrong in
-    // BOTH directions: it would list the protected snapshots for deletion, and
-    // omit ui-2 (which per-namespace retention actually deletes).
+    // BOTH directions: it would list the protected snapshot for deletion, and
+    // omit ui-2/x-pre-rollback-old (which per-namespace retention deletes).
     makeBackupDir(backupsDir, 't-1', 0); // newest timestamp — kept
     const t2 = makeBackupDir(backupsDir, 't-2', 1_000);
     const t3 = makeBackupDir(backupsDir, 't-3', 2_000);
     makeBackupDir(backupsDir, 'ui-1', 0); // newest ui-* — kept
     const ui2 = makeBackupDir(backupsDir, 'ui-2', 1_000);
-    const guarded1 = makeBackupDir(backupsDir, 'x-pre-rollback', 5_000);
-    const guarded2 = makeBackupDir(backupsDir, 'y-pre-update', 6_000);
+    // #657 pt.2: -pre-rollback is its OWN namespace now, capped the same as
+    // any other — NOT permanently protected the way -pre-update still is.
+    // The suffix (not a prefix, unlike ui-*/skeleton-*) is what backupNamespace
+    // matches, so both names below end in "-pre-rollback".
+    makeBackupDir(backupsDir, 'x1-pre-rollback', 5_000); // newest pre-rollback — kept
+    const preRollbackOld = makeBackupDir(backupsDir, 'x2-pre-rollback', 6_000);
+    const guardedPreUpdate = makeBackupDir(backupsDir, 'y-pre-update', 7_000);
 
-    // keep=1 per namespace: t-1 and ui-1 survive; everything older in each
-    // namespace goes; the two recovery snapshots are excluded entirely.
+    // keep=1 per namespace: t-1, ui-1, and x-pre-rollback-new survive;
+    // everything older in each namespace goes; -pre-update is excluded
+    // entirely regardless of the keep count.
     const plan = planBackupPrune(homeDir, 1);
-    expect(plan.toDelete.sort()).toEqual([t2, t3, ui2].sort());
-    expect(plan.protected.sort()).toEqual([guarded1, guarded2].sort());
+    expect(plan.toDelete.sort()).toEqual([t2, t3, ui2, preRollbackOld].sort());
+    expect(plan.protected).toEqual([guardedPreUpdate]);
 
     // The preview is the contract: what it lists is exactly what gets deleted.
     const deleted = pruneBackupDirs(homeDir, 1);
     expect(deleted.sort()).toEqual(plan.toDelete.sort());
-    expect(existsSync(guarded1)).toBe(true);
-    expect(existsSync(guarded2)).toBe(true);
+    expect(existsSync(preRollbackOld)).toBe(false);
+    expect(existsSync(guardedPreUpdate)).toBe(true);
   });
 });
 
@@ -190,53 +202,116 @@ describe('backupOpenPalmHome atomicity', () => {
   });
 });
 
-describe('backupOpenPalmHome tolerates unreadable files (#642)', () => {
-  // #642: an operator-created root-owned file anywhere under OP_HOME (e.g. a
-  // `sudo cp state/stack.env state/stack.env.bak` left behind before a hand
-  // edit) previously threw EACCES on the first unreadable entry and aborted
-  // `openpalm update` entirely, mid-way through applying managed files. One
-  // stray backup artifact should not block the whole update.
-  it('skips an unreadable non-essential file, names it in the marker, and still completes the backup', () => {
-    if (isRootProcess()) return; // see isRootProcess() docblock above
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_HOME=x\n');
-    const blocked = join(homeDir, 'state', 'stack.env.bak-portfix-test');
-    writeFileSync(blocked, 'OP_ENABLED_ADDONS=old\n');
-    chmodSync(blocked, 0o000); // unreadable, simulating a root-owned sudo artifact
+describe('#641/#642/#653 — a permission-denied file surfaces an actionable message, not a bare EACCES', () => {
+  it('names the exact path and the repair-ownership remedy instead of a bare EACCES', () => {
+    // Root bypasses DAC checks entirely, so a chmod 000 file is still fully
+    // readable/writable here. Run this file's tests as a non-root user
+    // (`runuser -u optest -- bun test ...`) to exercise the real EACCES path
+    // — see the agent runbook.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) return;
 
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
+    const locked = join(homeDir, 'config', 'a.txt');
+    chmodSync(locked, 0o000);
     try {
-      const backupDir = backupOpenPalmHome(homeDir);
-      expect(backupDir).not.toBeNull();
-      if (backupDir === null) return; // narrow for TS
-      // The file this backup actually needs still made it in.
-      expect(existsSync(join(backupDir, 'state', 'stack.env'))).toBe(true);
-      // The unreadable one was skipped, not fatal.
-      expect(existsSync(join(backupDir, 'state', 'stack.env.bak-portfix-test'))).toBe(false);
-      const marker = readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), 'utf-8');
-      expect(marker).toContain('state/stack.env.bak-portfix-test');
+      let thrown: unknown;
+      try {
+        backupOpenPalmHome(homeDir);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).not.toContain('EACCES: permission denied');
+      expect(message).toContain(locked);
+      expect(message).toContain('openpalm repair-ownership');
     } finally {
-      chmodSync(blocked, 0o600); // restore so afterEach's rmSync(homeDir) can clean up
+      chmodSync(locked, 0o644);
     }
   });
+});
 
-  it('fails loud, naming the path, when a file the restore genuinely needs is unreadable', () => {
-    if (isRootProcess()) return; // see isRootProcess() docblock above
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    const stackEnv = join(homeDir, 'state', 'stack.env');
-    writeFileSync(stackEnv, 'OP_HOME=x\n');
-    chmodSync(stackEnv, 0o000);
+describe('#656/#648 — workspace/ is regenerable and excluded from the snapshot', () => {
+  it('never copies workspace/, even a large tracked-repo .git/ under it', () => {
+    // The exact shape #648 reported: a cloned repo's `.git/` under workspace/
+    // copied wholesale into every safety snapshot. This file stands in for
+    // the 687 MB pack file — the exclusion is by top-level tree name, not
+    // file size, so a small file proves the same code path.
+    mkdirSync(join(homeDir, 'workspace', 'proj', '.git'), { recursive: true });
+    writeFileSync(join(homeDir, 'workspace', 'proj', '.git', 'pack'), 'x'.repeat(10_000));
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
 
-    try {
-      // Not just "it throws" (a raw EACCES already did, pre-fix) — the message
-      // must be the actionable one naming the exact path and the reason it
-      // matters, distinguishing "genuinely needed, fails loud" from the
-      // tolerant skip-and-warn path the previous test exercises.
-      expect(() => backupOpenPalmHome(homeDir)).toThrow(
-        /Backup staging cannot read .*state\/stack\.env.*openpalm rollback/,
-      );
-    } finally {
-      chmodSync(stackEnv, 0o600); // restore so afterEach's rmSync(homeDir) can clean up
-    }
+    expect(estimateHomeBackupBytes(homeDir)).toBeLessThan(10_000);
+
+    const backupDir = backupOpenPalmHome(homeDir) as string;
+    expect(existsSync(join(backupDir, 'workspace'))).toBe(false);
+    expect(existsSync(join(backupDir, 'config', 'a.txt'))).toBe(true);
+  });
+});
+
+describe('#657 pt.1 — backup hash gate skips a no-op re-snapshot', () => {
+  it('reuses the newest snapshot (no new directory, no new copy) when the in-scope tree is unchanged', () => {
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
+
+    const first = backupOpenPalmHome(homeDir);
+    expect(first).not.toBeNull();
+    const backupsDir = join(homeDir, 'data', 'backups');
+    expect(readdirSync(backupsDir)).toHaveLength(1);
+
+    // A failed-then-retried upgrade calls this again with nothing changed —
+    // #648's "10 dirs / 4.2 GB in 8 minutes" scenario. The gate must skip the
+    // copy and hand back the same snapshot, not write a second undeduplicated
+    // one.
+    const second = backupOpenPalmHome(homeDir);
+    expect(second).toBe(first);
+    expect(readdirSync(backupsDir)).toHaveLength(1);
+  });
+
+  it('takes a real new snapshot when the in-scope tree changed since the last one', () => {
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
+    const first = backupOpenPalmHome(homeDir);
+    expect(first).not.toBeNull();
+
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'changed content');
+    waitForNextMillisecond();
+    const second = backupOpenPalmHome(homeDir);
+
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+    const backupsDir = join(homeDir, 'data', 'backups');
+    expect(readdirSync(backupsDir)).toHaveLength(2);
+    expect(readFileSync(join(second as string, 'config', 'a.txt'), 'utf-8')).toBe('changed content');
+  });
+
+  it('records a content-hash line in the completion marker', () => {
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
+
+    const backupDir = backupOpenPalmHome(homeDir) as string;
+    const marker = readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), 'utf-8');
+    expect(marker).toMatch(/^content-hash: sha256:[0-9a-f]{64}$/m);
+  });
+
+  it('does not compare against a ui-*/skeleton-*/-pre-rollback namespace snapshot', () => {
+    // A newer ui-* backup (a different writer, no content-hash line at all)
+    // sitting in the same data/backups/ must never be treated as "the
+    // previous snapshot" for the hash gate — only the plain-timestamp
+    // namespace this function itself writes.
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'a.txt'), 'hello');
+    const first = backupOpenPalmHome(homeDir) as string;
+
+    const uiDir = join(homeDir, 'data', 'backups', 'ui-9999999999999');
+    mkdirSync(uiDir, { recursive: true });
+
+    const second = backupOpenPalmHome(homeDir);
+    // Unchanged content still correctly matches the real (timestamp) previous
+    // snapshot, not the ui-* one, and is skipped as expected.
+    expect(second).toBe(first);
   });
 });
 

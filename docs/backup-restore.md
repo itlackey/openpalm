@@ -54,9 +54,19 @@ Treat every backup as sensitive: it contains `state/secrets/` and
 ## Lifecycle Backups
 
 OpenPalm creates safety snapshots before destructive lifecycle operations.
-Those snapshots include top-level user, managed, state, knowledge, and
-workspace content. They exclude `data/` and `cache/` to avoid copying large
-runtime state and regenerable caches.
+Those snapshots include top-level user, managed, state, and knowledge
+content. They exclude `data/`, `cache/`, and `workspace/` — `data/` is large,
+regenerable runtime state; `cache/` is regenerable by definition; `workspace/`
+is the operator's own regenerable work area (a cloned repo's `.git/` there has
+no business in an upgrade safety snapshot). Which top-level trees are in scope
+is one manifest (`OP_HOME_TREES` in `packages/lib/src/control-plane/home.ts`),
+not a hand-maintained list, so backup/purge/ownership-repair scope cannot
+drift apart the way it did before.
+
+Before copying anything, a snapshot hashes the in-scope tree's actual content
+and compares it to the newest snapshot's recorded hash; an unchanged home (the
+common case on a failed-then-retried upgrade) skips the copy and reuses that
+snapshot instead of writing another full, undeduplicated one.
 
 A service's data and its credentials are one restore unit, so a snapshot takes
 both or neither: because `data/<service>/` is excluded, `state/env/<service>.env`

@@ -429,8 +429,11 @@ record_akm_boot_status() {
 }
 
 run_akm_migration_check() {
-  # `akm migrate` (0.9.6/0.9.7) is the task-file converter: it inspects/rewrites
-  # task-v2 and task-v3 YAML under the stash to task source v4. Run the check
+  # `akm migrate` (0.9.6+) is the task-file converter: it inspects/rewrites
+  # task-v2 and task-v3 YAML under the stash to task source v4 (0.9.8 folds
+  # its other one-time cleanups — dead `.akm` residue, stale transaction
+  # journals, the legacy `extraParams` config lift — into the same plan and
+  # `status` field). Run the check
   # HERE — as the opencode user, with output surfaced to docker logs — so any
   # rewrite that does happen runs under the correct uid (root-owned files in
   # the bind-mounted stash are the chown-clobber class of bug) and its outcome
@@ -440,8 +443,8 @@ run_akm_migration_check() {
   # resumes to convergence) and non-fatal: a migration hiccup must never
   # block the assistant from starting. (#474)
   #
-  # Exit-code contract, verified against akm-cli 0.9.6 and byte-identical in
-  # 0.9.7, the 0.13.1 pin (dist/commands/
+  # Exit-code contract, verified against akm-cli 0.9.6 and unchanged through
+  # 0.9.8-beta.2, the 0.13.1 pin (dist/commands/
   # migrate-cli.js sets a non-zero exit code iff the combined plan status is
   # "blocked"): exit 0 covers BOTH clean plan states — "current" (nothing to
   # convert) and "ready" (files pending that `akm migrate apply` would
@@ -558,19 +561,20 @@ run_akm_migration_check() {
       # akm is refusing to open state.db until its historical-destructive
       # schema cutover is applied deliberately (exit 78; every state.db
       # surface — events, proposals, task history, improve ledgers, workflow
-      # runs — is down until then). The advice inside akm's message does NOT
-      # work in this container: `akm upgrade` is the package self-updater
-      # (GitHub egress + `npm install -g`, both off-limits in an image-baked
-      # install), and it only reaches the state step after a successful
-      # package install. The working remedy is the image-pinned helper, which
-      # drives akm's own safety-copied cutover directly.
+      # runs — is down until then). The FIRST remedy inside akm's message,
+      # `akm upgrade --force`, does NOT work in this container: it is the
+      # package self-updater (GitHub egress + `npm install -g`, both
+      # off-limits in an image-baked install) and only reaches the state step
+      # after a successful package install. The second, `akm upgrade
+      # --state-only` (akm 0.9.8, akm#895), is offline and installs nothing;
+      # the image-pinned helper is the operator-facing name for that call.
       # DESIGN DECISION: boot only reports this state, it never applies it.
       # akm reserves this migration class for explicit intent — a boot that
       # granted that intent automatically would extend it to every FUTURE
       # destructive migration an image bump ships, sight unseen. OpenPalm
       # keeps the intent operator-shaped, exactly like the operator task-file
       # rule in the `ready` branch above.
-      echo "entrypoint: akm's state.db is waiting for its one-time deliberate schema cutover — run 'openpalm-akm-state-upgrade' in this container to apply it (a verified sibling safety copy is created first; see docs/operations/upgrade-0.12-to-0.13.md)" >&2
+      echo "entrypoint: akm's state.db is waiting for its one-time deliberate schema cutover — run 'openpalm-akm-state-upgrade' (akm upgrade --state-only) in this container to apply it (a verified sibling safety copy is created first; see docs/operations/upgrade-0.12-to-0.13.md)" >&2
       record_akm_boot_status health "$hrc" state-upgrade-pending
     else
       record_akm_boot_status health "$hrc"

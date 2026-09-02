@@ -240,6 +240,54 @@ describe('LLM engine payload (0.9)', () => {
 			/extraParams must be valid JSON/,
 		);
 	});
+
+	// akm >= 0.9.8 fails closed at config load on extraParams keys that have a
+	// first-class engine field (temperature, maxTokens, enableThinking,
+	// reasoningEffort) — every akm command, including the boot check, then
+	// exits 78 until the file is rewritten. The UI's extraParams box is
+	// free-form JSON, so the builder lifts those keys onto the fields the way
+	// akm's own `migrate apply` does instead of writing a config akm rejects.
+	it('lifts legacy extraParams keys onto the first-class fields akm shadows them with', () => {
+		const out = buildLlmEnginePayload({
+			...baseEngine,
+			extraParams: JSON.stringify({
+				temperature: 0.2,
+				max_tokens: 512,
+				enable_thinking: true,
+				'reasoning-effort': 'high',
+				top_p: 0.9,
+			}),
+		});
+		expect(out).toEqual({
+			kind: 'llm',
+			endpoint: 'http://x',
+			model: 'm',
+			temperature: 0.2,
+			maxTokens: 512,
+			enableThinking: true,
+			reasoningEffort: 'high',
+			extraParams: { top_p: 0.9 },
+		});
+	});
+
+	it('drops a legacy extraParams key that duplicates the field, and omits an emptied extraParams', () => {
+		const out = buildLlmEnginePayload({
+			...baseEngine,
+			temperature: '0.2',
+			extraParams: JSON.stringify({ temperature: 0.2 }),
+		});
+		expect(out).toEqual({ kind: 'llm', endpoint: 'http://x', model: 'm', temperature: 0.2 });
+	});
+
+	it('refuses a legacy extraParams key that disagrees with the field rather than guessing', () => {
+		expect(() =>
+			buildLlmEnginePayload({
+				...baseEngine,
+				temperature: '0.7',
+				extraParams: JSON.stringify({ temperature: 0.2 }),
+			}),
+		).toThrow(/extraParams\.temperature \(0\.2\) conflicts with the temperature field \(0\.7\)/);
+	});
 });
 
 // Svelte 5 number inputs bind null when cleared (to_number('') === null), and

@@ -75,7 +75,9 @@ export default defineCommand({
 		},
 		start: {
 			type: 'boolean',
-			description: 'Start services after install (use --no-start to skip)',
+			description:
+				'Start services after install (use --no-start to skip). Applies to --file installs ' +
+				'only — the setup wizard always configures and starts the stack in one step.',
 			default: true
 		},
 		open: {
@@ -243,6 +245,23 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 }
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
+	// #632: --no-start only has meaning on the --file path. prepareInstallFiles
+	// deliberately never mints secrets (C1 below) — performSetup is the sole
+	// minter, whether reached via runFileInstall or via the wizard the operator
+	// drives through the UI. On the wizard path there is nothing for --no-start
+	// to skip: the wizard both configures AND deploys in one step, so silently
+	// honoring the flag there used to leave a compose-looking home with no
+	// secrets and no explanation — Docker's own error only surfaces much later,
+	// at the first `docker compose up`. Fail loudly here instead, before
+	// anything touches disk.
+	if (options.noStart && !options.file) {
+		throw new Error(
+			'--no-start requires --file: the setup wizard configures and starts the stack in one ' +
+				'step. For a non-interactive install that must not start containers, write a setup ' +
+				'config and pass --file <path> --no-start (see docs/operations/manual-headless-install.md).'
+		);
+	}
+
 	// Warn early if any bind address is non-loopback so the operator sees it
 	// before services start. #563 — preset-aware: a matched network access
 	// preset collapses to one informational line; unexplained exposure stays

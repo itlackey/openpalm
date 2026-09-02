@@ -72,9 +72,36 @@ const NETWORK_ERROR_RE = /(?:dial tcp|connection reset by peer|EOF|i\/o timeout|
  * was the FIRST unmatched line and thus the whole summary: a reapply's real
  * cause (e.g. `Error response from daemon: ... port is already allocated`)
  * was replaced by `Container <name> Recreate`, which names no problem.
+ *
+ * #655.3/#644 audit: the alternation above was never checked against
+ * Compose's actual progress vocabulary beyond the verbs a real failure had
+ * already exposed. Re-derived against `docker compose` v5.1.1 (the daemon
+ * available for this audit) by driving every lifecycle subcommand
+ * (`up`/`--force-recreate`/`kill`/`pause`/`unpause`/`restart`/`stop`/`rm`/
+ * `build`) against a real container and reading its stderr verbatim — see
+ * the "verb vocabulary" describe block in compose-errors.test.ts for the
+ * exact fixtures. Findings that changed the list:
+ *   - `Killing`/`Killed` (docker compose kill) were entirely absent.
+ *   - `Paused`/`Unpaused` (docker compose pause/unpause) were absent, and
+ *     — unlike every other pair here — Compose emits ONLY the done form:
+ *     there is no `Pausing`/`Unpausing` in-progress line to also match.
+ *   - `Restarting` (docker compose restart) was absent; its "done" line
+ *     reuses the plain `Started` verb already in the list — there is no
+ *     `Restarted`.
+ *   - `Running` (the idle/up-to-date status `docker compose up -d` prints
+ *     for a container that needed no change) was absent.
+ *   - `Building`/`Built` (docker compose build) were absent; Compose
+ *     prefixes these with `Image <name>`, which the existing `{0,2}`
+ *     leading-token budget already tolerates.
+ *   - `Attaching` (the "Attaching to <service>-<n>" line a non-detached
+ *     `up` prints before streaming logs) was absent.
+ * Deliberately NOT added: the lowercase `<name> exited with code N` line —
+ * case-sensitivity is exactly what keeps a real per-service failure from
+ * being swallowed (see the module comment above), and this line carries the
+ * exit code, which is useful, not noise.
  */
 const COMPOSE_PROGRESS_RE =
-  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreate|Recreated|Skipped)\b/;
+  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Restarting|Running|Healthy|Stopping|Stopped|Removing|Removed|Recreate|Recreated|Killing|Killed|Paused|Unpaused|Building|Built|Attaching|Skipped)\b/;
 
 /**
  * Summarise compose stderr in a single short line, suitable for log
@@ -135,9 +162,14 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
     };
   }
 
-  const portMatch = /(?:bind: address already in use|port is already allocated).*?([0-9]{2,5})\b/i.exec(stderr)
-    ?? /listen tcp[^:]*:([0-9]{2,5})\b/i.exec(stderr)
-    ?? /Ports are not available: .*?:([0-9]+)\b/i.exec(stderr);
+  // Every daemon phrasing puts the port BEFORE the phrase — `Bind for
+  // 127.0.0.1:3810 failed: port is already allocated`, `failed to bind host
+  // port 127.0.0.1:3810/tcp: address already in use`, `listen tcp
+  // 0.0.0.0:3880: bind: address already in use` — so take the line that
+  // carries the phrase and read the first `:<port>` on it (an IPv4 octet is
+  // never colon-prefixed, so this cannot pick up `127.0.0.1`).
+  const portLine = stderr.split(/\r?\n/).find((line) => /address already in use|port is already allocated/i.test(line));
+  const portMatch = portLine ? /:([0-9]{2,5})(?:\/(?:tcp|udp))?\b/.exec(portLine) : null;
   if (portMatch) {
     return {
       code: "port_in_use",

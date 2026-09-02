@@ -128,6 +128,19 @@ describe('runUninstallAction --purge (C1)', () => {
 		);
 	});
 
+	test('#656 — the purge dir list is exactly OP_HOME_TREES.inPurge (data/ excepted — resolved separately, last)', async () => {
+		seedInstalledHome(tempHome);
+		mkdirSync(join(tempHome, 'cache'), { recursive: true });
+		resetMocks();
+
+		const { runUninstallAction } = await import(`${uninstallModuleUrl}?t=${Math.random()}`);
+		await runUninstallAction({ purge: true });
+
+		for (const tree of realLib.OP_HOME_TREES) {
+			if (tree.inPurge) expect(existsSync(join(tempHome, tree.name))).toBe(false);
+		}
+	});
+
 	test('a private/ tree the layout migration could not consume is still purged', async () => {
 		seedInstalledHome(tempHome);
 		// migrateOpHomeLayout leaves private/ in place whenever the old and new

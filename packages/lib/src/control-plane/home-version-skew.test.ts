@@ -7,22 +7,16 @@
  * tree, and re-stamping `.skeleton-version` backwards.
  *
  * `detectHomeVersionSkew`/`assertHomeNotNewerThanApp` (versions.ts) are the
- * one guard both `clearRollbackPins` and lifecycle.ts's entry points now
- * check first. This file unit-tests the guard itself and proves
- * `clearRollbackPins` refuses instead of downgrading; lifecycle.test.ts-style
- * coverage for the install/update/upgrade entry points lives in
- * home-version-skew-lifecycle.test.ts (mocks Docker, so it belongs beside the
- * other lifecycle mock-module tests).
+ * one guard lifecycle.ts's entry points check first. This file unit-tests
+ * the guard itself; lifecycle.test.ts-style coverage for the install/update/
+ * upgrade entry points lives in home-version-skew-lifecycle.test.ts (mocks
+ * Docker, so it belongs beside the other lifecycle mock-module tests).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-	assertHomeNotNewerThanApp,
-	clearRollbackPins,
-	detectHomeVersionSkew
-} from './versions.js';
+import { assertHomeNotNewerThanApp, detectHomeVersionSkew } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 import { PLATFORM_VERSION } from './versioning.js';
 import { SKELETON_VERSION_STAMP } from './ui-assets.js';
@@ -131,44 +125,5 @@ describe('assertHomeNotNewerThanApp (#636)', () => {
 			expect(message).toContain(PLATFORM_VERSION);
 			expect(message).toMatch(/refus/i);
 		}
-	});
-});
-
-describe('clearRollbackPins refuses on a newer home instead of downgrading it (#636)', () => {
-	let home: ReturnType<typeof makeState>;
-	beforeEach(() => {
-		home = makeState();
-	});
-	afterEach(() => home.cleanup());
-
-	it('THE BUG (would pass on unfixed code): clearing a rollback pin on a home stamped newer than this app must refuse, not advance the pin to this app\'s own older version', () => {
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			'OP_ASSISTANT_VERSION=rollback-generation-1700000000-1234-1\n' +
-				'OP_GUARDIAN_VERSION=0.99.0\n' +
-				'OP_MANAGED_GUARDIAN_VERSION=0.99.0\n'
-		);
-		// Written by a build ahead of this one — e.g. a desktop app stuck on an
-		// old version (#635) pointed at a home a newer app already upgraded.
-		stampSkeletonVersion(home.state.homeDir, '0.99.0');
-
-		expect(() => clearRollbackPins(home.state)).toThrow(/0\.99\.0/);
-
-		// Refused BEFORE writing anything: the rollback pin is exactly as it was,
-		// not silently advanced to this (older) build's PLATFORM_VERSION.
-		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
-		expect(content).toContain('OP_ASSISTANT_VERSION=rollback-generation-1700000000-1234-1');
-		expect(content).not.toContain(`OP_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
-	});
-
-	it('still clears the pin normally once the home is not newer than this app', () => {
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			'OP_ASSISTANT_VERSION=rollback-generation-1700000000-1234-1\n'
-		);
-		stampSkeletonVersion(home.state.homeDir, PLATFORM_VERSION);
-
-		const { cleared } = clearRollbackPins(home.state);
-		expect(cleared.OP_ASSISTANT_VERSION?.to).toBe(PLATFORM_VERSION);
 	});
 });

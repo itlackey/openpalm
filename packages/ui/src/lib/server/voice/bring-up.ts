@@ -37,6 +37,7 @@ import {
 	activateStack,
 	buildComposeOptions,
 	detectRootlessDocker,
+	dockerBin,
 	dockerHasNvidiaRuntime,
 	execFileNoThrow,
 	getAddonProfiles,
@@ -205,7 +206,7 @@ export function voiceUpstreamUrl(homeDir: string): string {
  */
 async function dockerImagePresent(imageRef: string): Promise<boolean> {
 	if (!imageRef) return true;
-	const res = await execFileNoThrow('docker', ['image', 'inspect', imageRef], 5_000);
+	const res = await execFileNoThrow(dockerBin(), ['image', 'inspect', imageRef], 5_000);
 	return res.ok;
 }
 
@@ -233,7 +234,7 @@ async function resolveServiceImage(composeFiles: string[], service: string): Pro
 	const args = ['compose'];
 	for (const f of composeFiles) args.push('-f', f);
 	args.push('--project-name', resolveProjectName(), 'config', '--format', 'json');
-	const res = await execFileNoThrow('docker', args, 15_000);
+	const res = await execFileNoThrow(dockerBin(), args, 15_000);
 	if (!res.ok) return '';
 	try {
 		const parsed = JSON.parse(res.stdout) as { services?: Record<string, { image?: string }> };
@@ -275,7 +276,7 @@ function isPortListening(port: number): Promise<boolean> {
  */
 async function ourVoiceContainerRunning(): Promise<boolean> {
 	const res = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		['ps', '--filter', 'name=openpalm-voice', '--format', '{{.Names}}'],
 		5_000
 	);
@@ -290,7 +291,7 @@ async function ourVoiceContainerRunning(): Promise<boolean> {
  */
 async function readContainerHealthStatus(containerNamePrefix: string): Promise<string> {
 	const listRes = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		['ps', '--filter', `name=${containerNamePrefix}`, '--format', '{{.Names}}'],
 		5_000
 	);
@@ -300,7 +301,7 @@ async function readContainerHealthStatus(containerNamePrefix: string): Promise<s
 		.find(Boolean);
 	if (!name) return '';
 	const inspect = await execFileNoThrow(
-		'docker',
+		dockerBin(),
 		[
 			'inspect',
 			name,

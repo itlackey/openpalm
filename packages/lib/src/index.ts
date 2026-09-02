@@ -91,7 +91,9 @@ export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/ad
 export { detectRootlessDocker, dockerHasNvidiaRuntime, isVoiceLanAccessEnabled } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
+export type { HomeTree, HomeTreeOwner, HomeTreeDurability } from "./control-plane/home.js";
 export {
+  OP_HOME_TREES,
   resolveOpenPalmHome,
   resolveConfigDir,
   resolveStashDir,
@@ -350,6 +352,7 @@ export {
   readSecretStripNotice,
   dismissSecretStripNotice,
   secretStripNoticePath,
+  ensureHostPortDefaults,
 } from "./control-plane/config-persistence.js";
 
 export {
@@ -391,14 +394,13 @@ export {
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
   assertHomeNotNewerThanApp,
-  clearRollbackPins,
   detectHomeVersionSkew,
   isVersionKey,
   readVersions,
   stripRetiredToolVersions,
   writeVersions,
 } from "./control-plane/versions.js";
-export type { ClearRollbackPinsResult, HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
+export type { HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
@@ -458,8 +460,8 @@ export {
 } from "./control-plane/disk-headroom.js";
 
 // ── Install-port probing (C2) ──────────────────────────────────────────────
-export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
-export { checkPortAvailable, portHeldByOurContainer, isHostPortAvailableForUs, pickAvailableHostPort, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
+export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions, HostPortDefault } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget, HOST_PORT_DEFAULTS } from "./control-plane/port-probe.js";
 
 // ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
 export type {

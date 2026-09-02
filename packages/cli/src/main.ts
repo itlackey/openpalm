@@ -143,7 +143,6 @@ const subCommands = {
   scan: () => import('./commands/scan.ts').then((m) => m.default),
   'audit-secrets': () => import('./commands/audit-secrets.ts').then((m) => m.default),
   rollback: () => import('./commands/rollback.ts').then((m) => m.default),
-  unpin: () => import('./commands/unpin.ts').then((m) => m.default),
   automations: () => import('./commands/automations.ts').then((m) => m.default),
   unlock: () => import('./commands/unlock.ts').then((m) => m.default),
   'reset-password': () => import('./commands/reset-password.ts').then((m) => m.default),

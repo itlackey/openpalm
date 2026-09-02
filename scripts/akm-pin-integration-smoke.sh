@@ -80,7 +80,7 @@ if ! OP_HOME="$HOME_DIR" bun -e "
   import { createState, applyHomeAssets } from './packages/lib/src/control-plane/lifecycle.ts';
   import { persistAkmConfig } from './packages/lib/src/control-plane/setup.ts';
   ensureHomeDirs();
-  runHomeMigrations(process.env.OP_HOME);
+  await runHomeMigrations(process.env.OP_HOME);
   await applyHomeSeed(process.env.OP_HOME);
   await applyHomeAssets(createState());
   // config/akm/config.json comes from SETUP, not from applyHomeAssets, so a

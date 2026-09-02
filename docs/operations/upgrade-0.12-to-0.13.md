@@ -596,6 +596,15 @@ round, and a rerun is a clean no-op. Beyond that:
   `knowledge/env/user.env`. Treat anything in the shared stash as readable by
   every enabled `/stash` holder, not just the assistant.
 
+- **A third-party credential consumed as an environment variable goes in
+  `knowledge/env/user.env`, not `stack.env` or a compose `environment:`
+  block.** The secret-boundary audit refuses secret-like keys in both places
+  and points at `<KEY>_FILE`, which is right for services that read file
+  secrets. akm engines do not: their `apiKey` must be a `$VAR` reference that
+  akm resolves from `process.env`, and `knowledge/env/user.env` is the file the
+  assistant entrypoint sources at startup (akm `env path env:user`), so it is
+  the one place such a value both passes the audit and reaches the tool.
+
 Every mount and secret source in the managed compose files now uses
 `${OP_HOME:?}`, so Compose fails loudly instead of resolving those paths against
 an empty `OP_HOME`.
@@ -640,7 +649,7 @@ to `version: 4` — the grammar is under *Automations* in
 
 ### akm's state database waits for a deliberate cutover
 
-akm 0.9.7 ships one state.db migration it classifies `historical-destructive`
+akm 0.9.6 and later ship one state.db migration they classify `historical-destructive`
 (`018-drop-dead-lane-schema`: it drops two dead-lane cache tables and one
 retired column left behind by lanes the 0.9.0 refactor deleted), and it never
 applies that class during an ordinary managed open. On a home whose state.db
@@ -652,19 +661,22 @@ open until the cutover runs. Task files, search, and chat are unaffected. The
 boot marker records it as `health 78` on a 0.13.0 image, and as
 `health 78 state-upgrade-pending` from 0.13.1.
 
-Do not follow the advice inside akm's message. `akm upgrade` is the package
-self-updater: inside the container it needs GitHub egress, runs
+Do not run the first command akm's message names. `akm upgrade --force` is the
+package self-updater: inside the container it needs GitHub egress, runs
 `npm install -g akm-cli@latest` — which the image-baked install forbids and
 the container user cannot write anyway — and only reaches the state.db step
-after that install succeeds. It cannot work here.
+after that install succeeds. It cannot work here. The second one it names from
+akm 0.9.8 on, `akm upgrade --state-only`, is the offline cutover and is what
+the helper below runs.
 
-Run the cutover deliberately instead, with the project name from section 1:
+Run the cutover deliberately, with the project name from section 1:
 
 ```bash
 docker compose -p <project> exec assistant openpalm-akm-state-upgrade
 ```
 
-That helper ships in images from 0.13.1. On a 0.13.0 image run the same step
+That helper ships in images from 0.13.1 (it runs `akm upgrade --state-only`).
+On a 0.13.0 image, whose akm 0.9.6 predates that flag, run the same step
 directly against the image's pinned akm:
 
 ```bash

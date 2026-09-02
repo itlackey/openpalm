@@ -97,21 +97,19 @@ describe('an existing home migrates exactly once', () => {
     expect(readFileSync(stackEnvFile(homeDir), 'utf-8')).toBe(afterFirst);
   });
 
-  // issue #643 follow-up: a rollback can restore state/schema-version
-  // alongside a pre-rollback stack.env, so an operator's post-rollback hand
-  // edit to the CONSOLIDATED state/stack.env sits there while schema-version
-  // reads 0 and knowledge/env/stack.env (never deleted by the failed update)
-  // still carries no ports. The next runHomeMigrations then re-runs the whole
-  // chain from since:0: migrateLegacyDefaultPorts used to probe a FRESH
-  // default for the legacy file with no regard for the explicit value already
-  // sitting in state/stack.env, and migrateToSingleStackEnv's target-only-key
-  // merge only preserves a target key the legacy-derived merge does NOT
-  // already define — so that freshly-probed default silently beat the
-  // operator's real, explicit value.
-  test("an operator's explicit consolidated ports survive a schema-version reset to 0, even when a sibling instance occupies the corrected default", async () => {
+  // issue #643: a rollback can restore state/schema-version alongside a
+  // pre-rollback stack.env, so an operator's post-rollback hand edit to the
+  // CONSOLIDATED state/stack.env sits there while schema-version reads 0 and
+  // knowledge/env/stack.env (never deleted by the failed update) still
+  // carries no ports. The next runHomeMigrations re-runs the whole chain from
+  // since:0 — migrateLegacyDefaultPorts must carry the explicit consolidated
+  // value into the legacy file rather than writing the corrected default, or
+  // migrateToSingleStackEnv's target-only-key merge won't see it as already
+  // defined and the fresh default silently wins.
+  test("an operator's explicit consolidated ports survive a schema-version reset to 0", async () => {
     seedLegacyHome();
     // Overwrite the legacy seed: neither port is set there at all (the shape
-    // that makes migrateLegacyDefaultPorts probe for fresh defaults).
+    // that makes migrateLegacyDefaultPorts materialize corrected defaults).
     writeFileSync(legacyKnowledgeStackEnvFile(homeDir), 'OP_PROJECT_NAME=verify643\nOP_ENABLED_ADDONS=\n');
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(
@@ -120,15 +118,7 @@ describe('an existing home migrates exactly once', () => {
     );
     writeHomeSchemaVersion(homeDir, 0);
 
-    // A sibling OpenPalm instance already holding the corrected default —
-    // proves the fix carries the operator's value over rather than merely
-    // probing past the collision onto some OTHER value.
-    const server = Bun.serve({ port: 3810, hostname: '127.0.0.1', fetch: () => new Response('sibling') });
-    try {
-      expect(await runHomeMigrations(homeDir)).toBe(true);
-    } finally {
-      server.stop(true);
-    }
+    expect(await runHomeMigrations(homeDir)).toBe(true);
 
     const migrated = readFileSync(stackEnvFile(homeDir), 'utf-8');
     expect(migrated).toContain('OP_ASSISTANT_PORT=3812');
@@ -569,5 +559,237 @@ describe('schema 10 → 11: the versionless retired task files', () => {
     writeHomeSchemaVersion(homeDir, 10);
     expect(await runHomeMigrations(homeDir)).toBe(false);
     expect(tasks()).toEqual(afterFirst);
+  });
+});
+
+// ── schema → 12: the three akm config heals move into MIGRATIONS (#654) ──────
+//
+// Each used to run UNVERSIONED on every apply forever (lifecycle.ts's
+// `applyHomeAssets`). Stamping the home at 11 (one below HOME_SCHEMA_VERSION)
+// means ONLY these `since: 11` entries fire — every earlier migration's
+// `since` is below 11, so `since < recorded` skips it — which is what makes
+// each test below fail if its migration is ever removed from the registry,
+// not merely if the underlying akm-sources.ts function is deleted.
+
+function akmConfigPath(home: string): string {
+  return join(home, 'config', 'akm', 'config.json');
+}
+
+function seedAkmHome(config: Record<string, unknown>): void {
+  mkdirSync(join(homeDir, 'config', 'akm'), { recursive: true });
+  // Trailing newline matters: stripRetiredAkmConfigKeys compares serialized
+  // BYTES (its writer always appends one), so a "no change expected" seed
+  // written without one would spuriously "change" on the newline alone.
+  writeFileSync(akmConfigPath(homeDir), `${JSON.stringify(config, null, 2)}\n`);
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
+  writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
+  writeHomeSchemaVersion(homeDir, 11);
+}
+
+function readAkmConfig(home: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(akmConfigPath(home), 'utf-8'));
+}
+
+describe('schema → 12: stripRetiredAkmConfigKeys is a migration', () => {
+  test('translates a 0.12.x profiles.llm profile into engines instead of dropping it (#645)', async () => {
+    seedAkmHome({
+      profiles: {
+        llm: { default: { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini', provider: 'openai' } },
+      },
+      defaults: { llm: 'default' },
+      bundles: { openpalm: { path: '/stash', writable: true } },
+      defaultBundle: 'openpalm',
+    });
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    const cfg = readAkmConfig(homeDir);
+    expect(cfg.profiles).toBeUndefined();
+    expect(cfg.engines).toEqual({
+      default: { kind: 'llm', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini', provider: 'openai' },
+    });
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe('default');
+    expect(cfg.configVersion).toBe('0.9.0');
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('also sweeps config/paperclip/akm/config.json', async () => {
+    seedAkmHome({ configVersion: '0.9.0', bundles: { openpalm: { path: '/stash', writable: true } } });
+    mkdirSync(join(homeDir, 'config', 'paperclip', 'akm'), { recursive: true });
+    const pcPath = join(homeDir, 'config', 'paperclip', 'akm', 'config.json');
+    writeFileSync(pcPath, JSON.stringify({ stashDir: '/stash', profiles: { agent: {} } }, null, 2));
+
+    await runHomeMigrations(homeDir);
+
+    const pc = JSON.parse(readFileSync(pcPath, 'utf-8'));
+    expect(pc.stashDir).toBeUndefined();
+    expect(pc.profiles).toBeUndefined();
+    expect(pc.configVersion).toBe('0.9.0');
+  });
+
+  test('a config with nothing retired reports no change', async () => {
+    // Also already clean for the two migrations that share this file
+    // (reconcileDuplicateBundles, ensureSystemBundle) — otherwise their
+    // changes would make `runHomeMigrations` return true for a reason other
+    // than the one this test is pinning.
+    seedAkmHome({
+      configVersion: '0.9.0',
+      bundles: {
+        openpalm: { path: '/stash', writable: true },
+        'openpalm-system': { path: '/system-stash', writable: false, enabled: true },
+      },
+      defaultBundle: 'openpalm',
+    });
+    expect(await runHomeMigrations(homeDir)).toBe(false);
+  });
+});
+
+describe('schema → 12: reconcileDuplicateBundles is a migration', () => {
+  test('collapses two bundle ids pointing at the same directory and moves the default with them', async () => {
+    seedAkmHome({
+      bundles: {
+        openpalm: { path: '/stash', writable: true },
+        stash: { path: '/stash', writable: true },
+      },
+      defaultBundle: 'stash',
+    });
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    const cfg = readAkmConfig(homeDir);
+    // `stash` is gone (deduped into `openpalm`); `openpalm-system` is also
+    // present — ensureSystemBundle runs in the same pass (both are `since: 11`
+    // migrations on this home) and this config had no system bundle either.
+    expect(Object.keys(cfg.bundles as Record<string, unknown>).sort()).toEqual(['openpalm', 'openpalm-system']);
+    expect(cfg.defaultBundle).toBe('openpalm');
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('no duplicate — no change', async () => {
+    // Also already clean for the two neighbouring migrations that share this
+    // file (stripRetiredAkmConfigKeys, ensureSystemBundle).
+    seedAkmHome({
+      configVersion: '0.9.0',
+      bundles: {
+        openpalm: { path: '/stash', writable: true },
+        'host-akm': { path: '/host-stash', writable: true },
+        'openpalm-system': { path: '/system-stash', writable: false, enabled: true },
+      },
+      defaultBundle: 'openpalm',
+    });
+    expect(await runHomeMigrations(homeDir)).toBe(false);
+  });
+});
+
+describe('schema → 12: ensureSystemBundle is a migration', () => {
+  test('registers the /system-stash bundle a config written before the skills move never got', async () => {
+    seedAkmHome({
+      configVersion: '0.9.0',
+      bundles: { openpalm: { path: '/stash', writable: true, enabled: true } },
+      defaultBundle: 'openpalm',
+    });
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    const cfg = readAkmConfig(homeDir);
+    expect((cfg.bundles as Record<string, unknown>)['openpalm-system']).toEqual({
+      path: '/system-stash',
+      writable: false,
+      enabled: true,
+    });
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
+  test('already present — no change', async () => {
+    seedAkmHome({
+      configVersion: '0.9.0',
+      bundles: {
+        openpalm: { path: '/stash', writable: true },
+        'openpalm-system': { path: '/system-stash', writable: false, enabled: true },
+      },
+      defaultBundle: 'openpalm',
+    });
+    expect(await runHomeMigrations(homeDir)).toBe(false);
+  });
+});
+
+// ── #657.3: replay safety — a rolled-back operator edit must survive ─────────
+
+describe('replay safety: operator edits survive a schema-version reset to 0', () => {
+  test('explicit ports, a hand-set addon toggle, and an operator-edited engine all survive replaying the whole chain', async () => {
+    // A legacy-shaped home: a translatable 0.12.x akm profile, a duplicate
+    // bundle id, and a config missing the system bundle — everything the three
+    // moved akm migrations heal, all at once, on a home nothing has ever
+    // stamped (recorded 0 — the worst case, where every migration fires).
+    mkdirSync(join(homeDir, 'config', 'akm'), { recursive: true });
+    writeFileSync(
+      akmConfigPath(homeDir),
+      JSON.stringify(
+        {
+          profiles: {
+            llm: { default: { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini', provider: 'openai' } },
+          },
+          defaults: { llm: 'default' },
+          bundles: {
+            openpalm: { path: '/stash', writable: true },
+            stash: { path: '/stash', writable: true },
+          },
+          defaultBundle: 'stash',
+        },
+        null,
+        2,
+      ),
+    );
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\nOP_ENABLED_ADDONS=discord\n');
+
+    // First pass: the whole chain runs once.
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+    const afterFirstRun = readAkmConfig(homeDir);
+    expect(afterFirstRun.profiles).toBeUndefined();
+    expect((afterFirstRun.engines as Record<string, Record<string, unknown>>).default.model).toBe('gpt-4o-mini');
+
+    // Operator edits, made AFTER the migration ran and BEFORE any rollback:
+    //  1. Explicit ports, by hand, in the consolidated file.
+    //  2. A hand-set addon toggle (already there — confirm it survives too).
+    //  3. The operator tweaks the just-translated engine's model.
+    const stackEnvBefore = readFileSync(stackEnvFile(homeDir), 'utf-8');
+    writeFileSync(
+      stackEnvFile(homeDir),
+      `${stackEnvBefore}OP_ASSISTANT_PORT=3812\nOP_UI_PORT=3802\n`,
+    );
+    const editedCfg = { ...afterFirstRun, engines: { default: { ...(afterFirstRun.engines as Record<string, Record<string, unknown>>).default, model: 'gpt-4o' } } };
+    writeFileSync(akmConfigPath(homeDir), JSON.stringify(editedCfg, null, 2));
+
+    // Simulate a rollback: the restored files carry the operator's edits, but
+    // state/schema-version reverts to 0 (issue #657 part 3 — rollback restores
+    // the OLDER schema-version alongside the files, because the restored files
+    // ARE the older shape; a failed-then-recovered attempt then replays the
+    // whole chain against files an operator has since hand-edited).
+    writeHomeSchemaVersion(homeDir, 0);
+
+    expect(await runHomeMigrations(homeDir)).toBe(true);
+
+    // Ports: untouched. migrateConsolidatedDefaultPorts only ever swaps the
+    // EXACT retired pair (3800/3810); 3812/3802 is neither, so it never probes
+    // or moves them.
+    const stackEnvAfter = readFileSync(stackEnvFile(homeDir), 'utf-8');
+    expect(stackEnvAfter).toContain('OP_ASSISTANT_PORT=3812');
+    expect(stackEnvAfter).toContain('OP_UI_PORT=3802');
+    // The hand-set addon toggle: untouched.
+    expect(stackEnvAfter).toMatch(/^OP_ENABLED_ADDONS=discord$/m);
+
+    // The akm config: `profiles` is already gone, so translateLegacyLlmProfiles
+    // has nothing left to translate — replay is a no-op there, and the
+    // operator's own post-translation edit survives byte-for-byte.
+    const finalCfg = readAkmConfig(homeDir);
+    expect(finalCfg.profiles).toBeUndefined();
+    expect((finalCfg.engines as Record<string, Record<string, unknown>>).default.model).toBe('gpt-4o');
+    // The dedup and system-bundle heals are also no-ops the second time:
+    // there is no duplicate left, and the system bundle is already there.
+    expect(Object.keys(finalCfg.bundles as Record<string, unknown>).sort()).toEqual(['openpalm', 'openpalm-system']);
+
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 });

@@ -15,16 +15,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `018-drop-dead-lane-schema`) during an ordinary open: `akm health` exits 78
   on every boot and every state.db surface — events, proposals, task history,
   improve ledgers, workflow runs — fails to open until the cutover runs. The
-  remedy akm's own error names, `akm upgrade --force`, is the package
+  first remedy akm's error named, `akm upgrade --force`, is the package
   SELF-UPDATER and cannot work inside the container: it needs GitHub egress,
   runs `npm install -g akm-cli@latest` (forbidden by the image-baked model and
   EACCES for the container user anyway), and only reaches the state.db step
-  after that install succeeds — verified against the 0.9.6 sources, byte-
-  identical in 0.9.7, which expose the state step
-  (`upgradeHistoricalStateDatabase`) to the self-updater alone. The image now bakes a helper that drives that machinery directly:
+  after that install succeeds. Reported upstream as akm#895; akm 0.9.8 fixed
+  it with `akm upgrade --state-only`, which applies the pending state.db
+  migrations offline and installs nothing. The image bakes a helper that runs
+  exactly that against the image-pinned akm:
   a verified sibling safety copy first (`VACUUM INTO` + `quick_check` + ledger
-  check), then the pending migrations; idempotent and fully offline, rehearsed
-  end-to-end on the built image. Boot recognizes the refusal in `akm health`'s
+  check), then the pending migrations; idempotent and fully offline. Boot recognizes the refusal in `akm health`'s
   output, records `health 78 state-upgrade-pending` in the boot marker, and
   logs the helper's name — and deliberately never runs it: akm reserves this
   migration class for explicit intent, and a boot that granted that intent
@@ -32,36 +32,140 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bump ships. Operator docs cover the upgrade-time symptom and the remedy,
   including a fallback invocation for 0.13.0 images that predate the helper.
 
+### Changed
+
+- **akm-cli 0.9.8 + akm-opencode 0.9.8202609020939 (from 0.9.7 and
+  0.9.2202608290901).** The whole akm lane moves together: the assistant image's
+  tool manifest, the Paperclip plugin manifest, and the assistant's
+  `opencode.jsonc` plugin spec. akm's own delta: `akm upgrade --state-only` (akm#895, the
+  fix OpenPalm's state-cutover helper now runs); `akm migrate` absorbs the
+  remaining one-time cleanups (dead `.akm` residue, stale transaction journals,
+  the legacy `extraParams` config lift — `akm health --clean-dead-residue` is
+  gone); task-migration snapshots are capped at five; `akm task sync` memoizes
+  its npm probe (one spawn per process instead of one per call); a blocked v2
+  task names the `command:` → `run:` + `shell:` rewrite it needs; a no-op
+  incremental `akm index` no longer costs minutes of CPU, and its freshness
+  digest now covers every file so an edit with a restored mtime cannot go
+  unindexed; `akm health` gains a `data-dir-usage` advisory. Two defects
+  this repo's bump verification found against the betas are fixed in the
+  release: `akm migrate apply` could not clear a legacy `extraParams` config
+  because it died on the very load error it exists to fix, and
+  `data-dir-usage` warned on an untouched install by counting SQLite's
+  `-wal`/`-shm` sidecars toward the data dir but not toward their own
+  databases. **Upgrading is
+  one-way for `data/akm/data/state.db`**:
+  0.9.8 adds ledger migrations 025 and 026, and 0.9.7 refuses a database that
+  carries them ("Refusing to open a database with a newer migration ledger:
+  unknown migration ID 025-task-history-vocabulary-backfill"). `data/` is not in
+  an OpenPalm backup, so an operator who may roll back across this bump
+  snapshots state.db first — the snapshot command is in
+  `docs/managing-openpalm.md`. The `historical-destructive` gate on
+  `018-drop-dead-lane-schema` and the `configVersion "0.9.0"` config contract are
+  unchanged. `index.db` re-reads every directory once after the upgrade as the
+  freshness fingerprint takes its new shape, then returns to the fast path; the
+  index is derived, so nothing is lost. The plugin moves in the same step
+  because its compatibility range did: `akm-opencode` now requires `^0.9.8`
+  (it was `^0.9.2`), which is what makes it select the image's own akm instead
+  of the akm-cli it bundles.
+- **CI and release run the same gates (#659).** The gate jobs live in
+  `.github/workflows/gates.yml` (`workflow_call`) and both `ci.yml` and
+  `release.yml`'s preflight invoke it, so the release pipeline cannot run
+  fewer checks than a pull request. Check names are now `gates / …`.
+- **Two new test lanes (#652, #653).** `multi-instance-smoke.sh` updates
+  instance B beside a live instance A and asserts ports, project name, and an
+  operator override survive; `cross-uid-smoke.sh` plants root-owned files
+  and runs the real ownership repair, system swap, and backup as the
+  unprivileged runner, and the root-gated identity tests now execute under
+  `sudo` and fail loudly if skipped. `upgrade-path-smoke.sh` runs
+  `applyHomeAssets` and the pinned akm binary and keeps the historical
+  `schema-version` stamp. Tier 5 explicitly does not gate a release.
+
 ### Fixed
 
+- **The AKM settings tab no longer writes an engine config akm 0.9.8 refuses.**
+  akm >= 0.9.8 fails closed at config load when `engines.<name>.extraParams`
+  carries a key that has a first-class field (`temperature`, `max_tokens`,
+  `enable_thinking`, `reasoning_effort`, in any spelling) — every akm command,
+  the boot check included, then exits 78 until the file is rewritten. The
+  tab's extraParams box is free-form JSON, so `buildLlmEnginePayload` now
+  lifts those keys onto the first-class fields exactly as akm's own
+  `migrate apply` does, drops one that merely duplicates the field, and
+  refuses one that disagrees with it instead of guessing.
 - **`openpalm update` from 0.12.x no longer silently drops the akm LLM
   engine (#645).** The retired `profiles.llm.*` block is translated into akm
   0.9 `engines.*` (endpoint, model, provider, and an env-var `apiKey`
   reference) before the retired keys are stripped; anything untranslatable is
   named in a warning, and `openpalm validate` now warns when an akm config has
   zero engines instead of reporting OK.
-- **Port migrations no longer revert an operator's `state/stack.env` port or
-  assign a port another instance already holds (#643).** An explicit
-  `OP_ASSISTANT_PORT`/`OP_UI_PORT` in the consolidated file survives a re-run
-  of the migration chain (which a rollback's restored schema-version
-  triggers), and a fresh default is probed host-wide and steps to the next
-  free port when a sibling install binds it.
-- **Root-owned files in `OP_HOME` no longer abort `openpalm update` (#641,
-  #642).** The backup snapshot skips an unreadable file it does not need and
-  records it in `.backup-complete`, failing loud only for the files
-  `openpalm rollback` restores; a leftover root-owned `.system-previous-*`
-  tree (a pre-0.13.1 guardian's `node_modules`) is warned about instead of
-  failing the already-completed update.
-- **Failed updates can be un-pinned from `rollback-generation-*` image tags
-  (#639).** New `openpalm unpin` command and a Recovery-tab banner with a
-  one-click clear share one lib function that clears only `rollback-`
-  prefixed values, so a deliberate operator pin is never touched.
+- **Port migrations are host-aware and never overwrite an operator's port
+  (#643, #658).** `migrateLegacyDefaultPorts` carries an explicit
+  `OP_ASSISTANT_PORT`/`OP_UI_PORT` from `state/stack.env` through the
+  legacy-first merge instead of writing a default over it, and a DEFAULT is
+  only written after `probeInstallPorts` (the prober `doctor` and the wizard
+  already trust) confirms it is free or held by this install's own
+  containers, stepping to the next free port otherwise. `doctor` now says
+  "held by another process" for a genuine collision.
+  The same check now covers every compose-published port on install and
+  update (`ensureHostPortDefaults`): a key with no explicit value whose
+  default another instance already holds is persisted to the next free port,
+  and a fresh `stack.env` no longer bakes the ui/assistant/workspace defaults
+  as if an operator had chosen them. The multi-instance lane caught the
+  workspace port (3820) colliding on its first run.
+- **Upgrade heals are versioned migrations (#654).** The akm retired-key strip
+  (with the `profiles.llm` → `engines` translation), duplicate-bundle
+  reconcile, and system-bundle registration moved out of the every-launch
+  sweep in `applyHomeAssets` into `MIGRATIONS` at schema 12, each with its own
+  test; the UI test that asserted the data loss now asserts the translation.
+  Every migration is replay-safe: re-running the chain after a rollback
+  restores `schema-version` leaves operator edits untouched (#657).
+- **Backups are scoped by one manifest and no longer storm on retries (#656,
+  #648, #657).** `OP_HOME_TREES` declares every top-level tree with its
+  owner, durability, and whether backup, purge, and ownership repair cover
+  it; a test fails when `ensureHomeDirs` and the manifest disagree.
+  `workspace/` is out of the backup, an unchanged home is not re-snapshotted
+  (content hash recorded in `.backup-complete`), `-pre-rollback` snapshots are
+  capped like the rest, and `openpalm backups list` exists. An EACCES from
+  the backup or the system swap now names the path and `openpalm
+  repair-ownership`.
+- **One docker boundary (#655, #644).** `runComposeStreaming` tees stderr
+  into a bounded buffer and classifies a non-zero exit through the same
+  `mapDockerError` path install/update use, so `start`/`restart`/`rollback`/
+  `addon` failures carry the daemon's cause. The four raw `docker` spawns in
+  the UI and CLI go through `dockerBin()`, guarded by a test. The progress
+  filter was audited against a real Compose v5 daemon (kill, pause, restart,
+  build, attach verbs added), and a port conflict is classified whichever
+  side of the phrase the daemon prints the port on.
+- **`openpalm.sh`/`openpalm.ps1` are rendered from the control plane
+  (#650).** Every reconcile writes them with the exact resolved overlay list
+  and project name; the script refuses to run under a different `OP_HOME` or
+  with no recorded project instead of defaulting to `openpalm` and starting a
+  duplicate stack.
+- **`openpalm update` against a dev-tagged image no longer dies at the
+  pull.** `performUpgrade` folds the fetch into `up` for a `dev` tag exactly
+  as `runDeploy` does.
+- **The secret-boundary audit names `knowledge/env/user.env` (#649)** as the
+  destination for a credential an in-container tool reads from the
+  environment, alongside the `<KEY>_FILE` remedy.
+- **`openpalm update` starts by making the whole home the operator's again
+  (#641, #642).** The ownership repair walk now covers `system/` and any
+  leftover `.system-previous-*` staging tree, its "already repaired" marker
+  records the path set it covered so a release that widens the set re-walks,
+  and install/update run the walk unconditionally instead of trusting the
+  marker. A root-owned `system/guardian/node_modules` left by a pre-0.13
+  guardian or an operator's `sudo`-created `.bak` file is chowned back before
+  the backup and the system-tree swap, which stay strict and fail loudly.
+- **A stack pinned to a `rollback-generation-*` image tag now explains
+  itself (#639).** The Recovery tab shows a read-only notice while any
+  configured image is on a preserved rollback tag from a failed update,
+  naming the affected key(s) and making clear this is expected and
+  self-clearing: fixing the underlying failure and running `openpalm update`
+  again moves the pin forward to the normal release tag with no separate
+  command or button needed.
 - **An older app refuses to manage a newer `OP_HOME` (#636).** Install,
-  update, upgrade, home-asset seeding, and `unpin` compare
-  `.skeleton-version` and `state/schema-version` against the running build
-  and refuse with an actionable message instead of rewriting `system/` or
-  advancing image pins backwards; `status`, `validate`, and `start` keep
-  working.
+  update, upgrade, and home-asset seeding compare `.skeleton-version` and
+  `state/schema-version` against the running build and refuse with an
+  actionable message instead of rewriting `system/` or advancing image pins
+  backwards; `status`, `validate`, and `start` keep working.
 - **The desktop self-updater never calls electron-updater's `install()`
   twice (#635).** A second call after a quit-time install was a silent no-op
   that jammed every later install for the process; it is now refused, and a
@@ -70,14 +174,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (#644).** The bare `Recreate` Compose progress line is filtered out, and a
   per-service failure reason now carries the summarized compose stderr
   instead of a templated "did not become healthy".
-- **A home missing a compose secret file fails before Docker does (#632).**
-  The pre-activation secret audit checks that each resolved secret file
-  exists and names the secret, the path, and the remedy, instead of Docker's
-  opaque bind-mount error after `install --no-start`.
-- **`bun.lock` workspace versions are trued up at release stamp time
-  (#633).** `bun install --lockfile-only` never rewrites a workspace's own
-  version field; the release workflow now patches exactly those fields after
-  the bump.
+- **`install --no-start` without `--file` is rejected up front (#632).** The
+  flag only ever meant anything on the `--file` path; the wizard configures and
+  starts the stack in one step and was ignoring it, leaving a compose-looking
+  home with no secrets. The error names the headless route.
+- **The release stamp no longer patches `bun.lock` (#633).** bun never
+  rewrites or reads a workspace's own version field in the lockfile, so the
+  drift is cosmetic; the field values were trued up once and the shim removed.
 
 - **Preferred-model saves from the admin UI now persist — and clearing one
   actually clears it.** Three defects in the `opencode.json` write path

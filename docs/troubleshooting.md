@@ -276,19 +276,11 @@ secrets, caches, and runtime files.
 
 Each failed `update` retags your previous images as
 `rollback-generation-<id>` and pins `state/stack.env` to them so the
-automatic recovery restarts exactly what was running before — but nothing
-clears that pin on its own, so repeated failures just move it to a newer
-generation. Once the update failure itself is fixed, release the pin and
-apply the real release tag:
-
-```bash
-openpalm unpin
-openpalm update
-```
-
-`openpalm unpin` only clears `state/stack.env` keys that are still on a
-`rollback-generation-*` tag; it never touches an image tag you pinned
-yourself.
+automatic recovery restarts exactly what was running before. Repeated
+failures just move the pin to a newer generation each time — that's expected,
+not a stuck state. Fix the actual update failure and run `openpalm update`
+again; once it succeeds, the pin moves forward to the real release tag on its
+own. There is nothing to clear by hand.
 
 ## Factory Reset
 

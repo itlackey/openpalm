@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, chownSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -15,7 +15,7 @@ import {
   HostSwapBlockedError,
 } from './ownership-reconcile.js';
 import { writeHostIdentity, readHostIdentity } from './host-identity.js';
-import { hostIdentityFile } from './home.js';
+import { hostIdentityFile, OP_HOME_TREES } from './home.js';
 
 let homeDir = '';
 let restoreIds: (() => void) | null = null;
@@ -73,6 +73,7 @@ describe('ownership canary paths', () => {
       join(homeDir, 'data', 'portal'),
       join(homeDir, 'data', 'akm'),
       join(homeDir, 'data', 'logs'),
+      join(homeDir, 'system'),
     ]);
   });
 
@@ -86,6 +87,24 @@ describe('ownership canary paths', () => {
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'assistant'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'guardian'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'akm'));
+  });
+
+  // #641: the CLI-managed system/ tree an update renames and deletes (a
+  // pre-0.13.1 guardian's root-owned system/guardian/node_modules lives under
+  // here) never depended on system/guardian surfacing as a discovered compose
+  // bind mount — that only holds when the guardian profile is active. A
+  // leftover .system-previous-* staging dir from an aborted update is
+  // CLI-created state too, ours to repair — but only one that still exists.
+  test('includes the managed system/ tree and any existing .system-previous-* staging dir, never a non-existent one', () => {
+    const state = makeState();
+    const stagingDir = join(homeDir, '.system-previous-1699999999-1234');
+    mkdirSync(stagingDir, { recursive: true });
+
+    const paths = ownershipRepairPaths(state);
+
+    expect(paths).toContain(join(homeDir, 'system'));
+    expect(paths).toContain(stagingDir);
+    expect(paths).not.toContain(join(homeDir, '.system-previous-does-not-exist'));
   });
 
   test('excludes the regenerable cache tree from repair and canary recursion', () => {
@@ -111,6 +130,25 @@ describe('ownership canary paths', () => {
       expect(paths).toContain(durableBind);
       expect(paths).toContain(join(homeDir, 'root-secret'));
       expect(paths).not.toContain(homeDir);
+    }
+  });
+
+  // #656 / lesson 24: the base list is DERIVED from OP_HOME_TREES' inRepair
+  // flags, not an independent hardcoded list that can drift from it — this
+  // ties the manifest directly to what ownershipRepairPaths returns, rather
+  // than only proving the current (incidental) outcome.
+  test('the base tree list is exactly what OP_HOME_TREES.inRepair says (data/ excepted — it is subpath-refined)', () => {
+    const state = makeState();
+    const paths = ownershipRepairPaths(state);
+
+    for (const tree of OP_HOME_TREES) {
+      if (tree.name === 'data') continue; // refined to specific subpaths, not the whole tree
+      const wholeTreePath = join(homeDir, tree.name);
+      if (tree.inRepair) {
+        expect(paths).toContain(wholeTreePath);
+      } else {
+        expect(paths).not.toContain(wholeTreePath);
+      }
     }
   });
 });
@@ -228,11 +266,50 @@ describe('reconcile decision building', () => {
 describe('ownership repair marker (R4)', () => {
   test('marker round-trips and matches only the recorded session ids', () => {
     const state = makeState();
-    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 })).toBe(false);
-    writeOwnershipRepairMarker(state.homeDir, { uid: 1000, gid: 1000 });
-    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 })).toBe(true);
-    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1001, gid: 1001 })).toBe(false);
+    const paths = ['/home/op/state', '/home/op/knowledge'];
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, paths)).toBe(false);
+    writeOwnershipRepairMarker(state.homeDir, { uid: 1000, gid: 1000 }, paths);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, paths)).toBe(true);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1001, gid: 1001 }, paths)).toBe(false);
     expect(existsSync(ownershipRepairMarkerFile(state.homeDir))).toBe(true);
+  });
+
+  // The marker must fingerprint what the walk actually covered, not just who
+  // ran it — a release that starts repairing a new path (#641's `system/`)
+  // must re-run the walk even for an unchanged uid.
+  test('does not match once the repaired path set changes, even for the same uid/gid', () => {
+    const state = makeState();
+    const before = ['/home/op/state', '/home/op/knowledge'];
+    const after = [...before, '/home/op/system'];
+    writeOwnershipRepairMarker(state.homeDir, { uid: 1000, gid: 1000 }, before);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, before)).toBe(true);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, after)).toBe(false);
+  });
+
+  // Order and duplicates in the caller's path list must not defeat a match —
+  // only the actual set (relative to homeDir) matters.
+  test('matches regardless of input order or duplicates', () => {
+    const state = makeState();
+    writeOwnershipRepairMarker(state.homeDir, { uid: 1000, gid: 1000 }, [
+      join(state.homeDir, 'state'),
+      join(state.homeDir, 'system'),
+    ]);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, [
+      join(state.homeDir, 'system'),
+      join(state.homeDir, 'state'),
+      join(state.homeDir, 'system'),
+    ])).toBe(true);
+  });
+
+  // A marker written by a release before the path set was recorded (R4, pre-
+  // #641) must never be treated as a match — it cannot vouch for a set of
+  // paths it never knew about, so it forces exactly one repair walk after
+  // upgrading to this release.
+  test('a legacy {uid,gid}-only marker never matches', () => {
+    const state = makeState();
+    mkdirSync(join(state.homeDir, 'state'), { recursive: true });
+    writeFileSync(ownershipRepairMarkerFile(state.homeDir), JSON.stringify({ uid: 1000, gid: 1000 }));
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 1000, gid: 1000 }, ['/home/op/state'])).toBe(false);
   });
 });
 
@@ -283,7 +360,7 @@ describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
     expect(logged).not.toContain('chown -R 0:0');
     // The marker and recorded host identity carry the pinned ids too, so the
     // next start's fast path compares against what was actually repaired.
-    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 4242, gid: 4243 })).toBe(true);
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 4242, gid: 4243 }, ownershipRepairPaths(state))).toBe(true);
     expect(readHostIdentity(hostIdentityFile(state.homeDir))?.uid).toBe(4242);
   });
 
@@ -296,9 +373,103 @@ describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
     // biome-ignore lint/style/noNonNullAssertion: process.getgid is defined on POSIX (win32 returned early).
     const sessionGid = process.getgid!();
     // Marker present + match decision → needsRepair false → no docker invoked.
-    writeOwnershipRepairMarker(state.homeDir, { uid: sessionUid, gid: sessionGid });
+    writeOwnershipRepairMarker(state.homeDir, { uid: sessionUid, gid: sessionGid }, ownershipRepairPaths(state));
     await reconcileHostOwnership(state, { services: ['assistant'] });
     // Identity is still recorded even on the fast path.
     expect(readHostIdentity(hostIdentityFile(state.homeDir))?.uid).toBe(sessionUid);
+  });
+});
+
+describe("reconcileHostOwnership `repair` option (install/upgrade force the walk)", () => {
+  // Same fixture for both tests: a session identity whose canaries agree with
+  // it (decision === 'match', so the marker is the ONLY thing that can be
+  // gating the walk — a lingering 'drift' would make `if-needed` repair too,
+  // hiding exactly the difference this test exists to prove) plus a marker
+  // that matches that identity AND the exact repair path set
+  // reconcileHostOwnership itself computes. `'always'` is what
+  // performUpgrade/applyInstall now pass (#641/#642 — those operations must
+  // assert the whole home is theirs regardless of a marker written before
+  // this release covered `system/`); `'if-needed'` is the default `start` keeps.
+  function primeSessionAndMarker(state: ReturnType<typeof makeState>): { uid: number; gid: number } {
+    const canaryDirs = [join(state.homeDir, 'state'), join(state.homeDir, 'knowledge'), state.workspaceDir];
+    let ids: { uid: number; gid: number };
+    if (process.getuid?.() === 0) {
+      // This suite's own runner is root (a root CI/dev container): a pure
+      // root session repairs to root ids, and repairRootOwnedBindMounts
+      // refuses to chown TO root (see the note above isRootIds usage in
+      // volume-ownership.ts) — a no-op that would mask the very thing this
+      // test checks. Pin a non-root OP_UID/OP_GID (same setup as the
+      // "FINDING 12" test above) so resolveRepairIdentity resolves to a
+      // chownable identity, then chown the canaries root itself just created
+      // to that pinned identity so they AGREE with it (decision === 'match'
+      // instead of 'drift').
+      const stackEnv = join(state.homeDir, 'state', 'stack.env');
+      writeFileSync(stackEnv, 'OP_UID=4242\nOP_GID=4243\n');
+      ids = { uid: 4242, gid: 4243 };
+      for (const path of [...canaryDirs, stackEnv]) chownSync(path, ids.uid, ids.gid);
+    } else {
+      // A genuine non-root runner already owns the dirs it just created —
+      // canaries already agree with the session identity, no chown needed.
+      // biome-ignore lint/style/noNonNullAssertion: process.getuid is defined on POSIX (win32 returned early by both callers).
+      ids = { uid: process.getuid!(), gid: process.getgid!() };
+    }
+    writeOwnershipRepairMarker(state.homeDir, ids, ownershipRepairPaths(state));
+    return ids;
+  }
+
+  function installFakeDocker(state: ReturnType<typeof makeState>): { argvLog: string; restore: () => void } {
+    const argvLog = join(state.homeDir, 'docker-argv.log');
+    const fakeDocker = join(state.homeDir, 'fake-docker.sh');
+    writeFileSync(fakeDocker, `#!/bin/sh\necho "$@" >> ${argvLog}\nexit 0\n`);
+    chmodSync(fakeDocker, 0o755);
+    const saved = process.env.OP_DOCKER_BIN;
+    process.env.OP_DOCKER_BIN = fakeDocker;
+    return {
+      argvLog,
+      restore: () => {
+        if (saved === undefined) delete process.env.OP_DOCKER_BIN;
+        else process.env.OP_DOCKER_BIN = saved;
+      },
+    };
+  }
+
+  test("'always' invokes the deep chown even though the marker matches", async () => {
+    if (process.platform === 'win32') return;
+    const state = makeState();
+    const { uid, gid } = primeSessionAndMarker(state);
+    const { argvLog, restore } = installFakeDocker(state);
+    try {
+      await reconcileHostOwnership(state, { repair: 'always' });
+    } finally {
+      restore();
+    }
+    expect(existsSync(argvLog)).toBe(true);
+    expect(readFileSync(argvLog, 'utf8')).toContain(`chown -R ${uid}:${gid}`);
+  });
+
+  test("'if-needed' still skips when the marker matches", async () => {
+    if (process.platform === 'win32') return;
+    const state = makeState();
+    primeSessionAndMarker(state);
+    const { argvLog, restore } = installFakeDocker(state);
+    try {
+      await reconcileHostOwnership(state, { repair: 'if-needed' });
+    } finally {
+      restore();
+    }
+    expect(existsSync(argvLog)).toBe(false);
+  });
+
+  test('omitting `repair` (the default) behaves like `if-needed` and still skips', async () => {
+    if (process.platform === 'win32') return;
+    const state = makeState();
+    primeSessionAndMarker(state);
+    const { argvLog, restore } = installFakeDocker(state);
+    try {
+      await reconcileHostOwnership(state, {});
+    } finally {
+      restore();
+    }
+    expect(existsSync(argvLog)).toBe(false);
   });
 });

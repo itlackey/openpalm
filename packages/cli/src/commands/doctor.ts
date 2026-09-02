@@ -674,7 +674,19 @@ function printDoctorReport(report: DoctorReport): void {
   console.log('Ports:');
   for (const p of report.ports) {
     const state = p.available ? 'available' : p.blocking ? 'CONFLICT' : 'in use (non-blocking)';
-    const note = p.ownership === 'ours' || p.ownership === 'held' ? ' — held by OpenPalm itself' : p.ownership === 'unreachable' ? ' — could not verify ownership' : '';
+    // #658: distinguish "in use by THIS instance" from "in use by another
+    // process" explicitly in the wording, rather than leaving the latter as a
+    // bare, unexplained CONFLICT — self-held already reads `available` (not a
+    // conflict at all) plus this note; a genuine cross-instance collision now
+    // gets its own note too, instead of silence standing in for "not us".
+    const note =
+      p.ownership === 'ours' || p.ownership === 'held'
+        ? ' — held by OpenPalm itself'
+        : p.ownership === 'unreachable'
+          ? ' — could not verify ownership'
+          : !p.available
+            ? ' — held by another process'
+            : '';
     console.log(`  ${p.service} (${p.port}): ${state}${note}`);
   }
 

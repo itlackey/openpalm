@@ -57,11 +57,9 @@ let migrationsDone = false;
 // and returns. Non-fatal — a home that cannot be migrated must still serve,
 // degraded, rather than refuse to boot.
 //
-// Async since issue #643: the port-default migrations now probe host-wide
-// port availability before writing a value the operator never set. Awaited at
-// the module-level call site below (before loadProcessEnv()) so a home still
-// mid-migration is never read from — the exact race the old process-local
-// port shim (see the comment further down) existed to paper over.
+// Async (#658): the port migrations now probe live TCP/Docker state before
+// writing a default port, so `runHomeMigrations` returns a Promise. Awaited
+// at the top-level call site below, before `loadProcessEnv` reads stack.env.
 async function migrateHome(): Promise<void> {
   if (migrationsDone) return;
   migrationsDone = true;

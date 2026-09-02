@@ -344,14 +344,17 @@ function resolveBundledSkeletonDir(): string | null {
  * embedded archive. applyHomeAssets overwrites the managed tree and leaves user
  * data alone, which is what keeps repeat launches at the same version cheap.
  *
- * It is applyHomeAssets and NOT the bare applyHomeSeed because writing
- * `system/skills/` is only half of shipping a skill: the assistant reads that
- * tree through a `:ro` /system-stash mount that its akm config must name, and
- * the entry is pinned only by setup and install. A desktop app updates itself
- * without ever running either, so the seed-only call left every upgraded home
- * with the skills mounted and unindexed. applyHomeAssets is lib's own pairing
- * of the two; this harness does not get to decide what "apply the release's
- * assets" means.
+ * It is applyHomeAssets and NOT the bare applyHomeSeed because lib owns what
+ * "apply the release's assets" means; this harness does not get to decide it.
+ * Today that is the managed `system/` tree only — compose files, OpenCode
+ * config, shipped skills, and the rendered openpalm.sh/.ps1 helpers. It no
+ * longer touches the akm configs: the heals that once ran inside it on every
+ * apply (registering the `/system-stash` bundle the shipped skills need,
+ * the retired-key strip, the duplicate-bundle reconcile) are versioned
+ * migrations in home-schema.ts's MIGRATIONS (#654), and they reach this
+ * launch path through the UI child's own `runHomeMigrations` at startup
+ * (packages/ui/src/hooks.server.ts, `migrateHome`), once per schema bump,
+ * not through this call.
  *
  * Nonfatal: a failure here must not stop the app from starting, since the
  * previous release's tree is still serviceable.
@@ -476,14 +479,14 @@ async function startUIServer(): Promise<boolean> {
   // applyHome), which does it under the install lock behind a backup and a
   // rollback snapshot.
   //
-  // A launch is therefore not read-only, and the exception is deliberate: past
-  // the managed `system/` tree, applyHomeAssets also heals the two akm configs
-  // that tree is inert without (`config/akm/config.json`,
-  // `config/paperclip/akm/config.json`). Those are operator-owned files written
-  // outside the install lock and without applyHome's backup — accepted because
-  // each write is atomic, only-on-change, and confined to the keys the shipped
-  // mounts require. The UI child locates the bundled skeleton via
-  // OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
+  // applyHomeAssets writes only the managed `system/` tree here. The two akm
+  // configs that tree is inert without (`config/akm/config.json`,
+  // `config/paperclip/akm/config.json`) are healed by versioned migrations
+  // (#654) that the UI child runs once at its own startup — see the NOTE
+  // below — so a launch is still not strictly read-only, but that write is
+  // gated by state/schema-version rather than repeated on every launch. The
+  // UI child locates the bundled skeleton via OPENPALM_SKELETON_DIR (set in
+  // buildUIServerEnv).
   ensureHomeDirs();
 
   // Refresh the managed system/ tree from THIS app version's bundled skeleton,

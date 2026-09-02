@@ -11,6 +11,19 @@ builds the UI once, builds images and native assets from the candidate-local
 source tree, and validates one complete asset manifest. There are no release
 units, no per-unit GitHub Releases, and no deploy bundle.
 
+**`preflight` and CI's quality gates cannot drift — they are the same file.**
+`.github/workflows/gates.yml` (`on: workflow_call`) holds every standing gate
+job: Stack hygiene, Quality gates (including every rootless/host-swap/
+guardian-offline/akm-pin/upgrade-path/multi-instance smoke), UI unit tests
+(Vitest, including the Tier 4 self-contained browser suite), Electron unit
+tests, PowerShell installer behavior, and Biome lint. `.github/workflows/
+ci.yml` calls it on every PR/push; `release.yml`'s `preflight` job calls the
+identical file against the restored candidate source. Before this, `preflight`
+hand-copied a subset of what ci.yml actually ran (missing every one of the
+smokes above, and Biome lint entirely) — a release could pass with coverage a
+PR could not have. Now a release runs the exact same gates a PR does, plus the
+release-specific candidate/tag/asset/signing steps below.
+
 **Invariant: every published release ships the complete product, or it does
 not publish.** That means the CLI binary for every platform, the desktop app
 for every platform electron-builder targets, and the electron-updater feed
@@ -101,13 +114,32 @@ an unexecuted check is not a pass. Never include credential values in evidence.
 
 ### Automated gates
 
-- [ ] `bun run lint` passes.
-- [ ] `bun run test:t1`, `bun run test:t2`, `bun run test:t3`, and
-      `bun run test:t4` pass.
-- [ ] `bun run test:t5` passes for stack or onboarding changes.
-- [ ] `bun run ui:test:pwa` passes for UI, PWA, or release candidates.
-- [ ] `bun run --cwd packages/electron typecheck` and
-      `bun run --cwd packages/electron test` pass.
+Everything in this section runs BY the release dispatch itself — `preflight`
+calls `.github/workflows/gates.yml`, the identical file `ci.yml` calls on
+every PR (see Architecture, above). There is nothing left here for a human to
+run by hand before dispatching; verify the `preflight` check passed (it
+reports six sub-jobs — Stack hygiene, Quality gates, UI unit tests, Electron
+unit tests, PowerShell installer behavior, Biome lint) and record its run URL
+as the evidence for this section.
+
+- [ ] `preflight` (`.github/workflows/gates.yml`) passed for the dispatched
+      candidate — Biome lint; `bun run test` (lib/CLI/guardian/portals);
+      `bun run ui:check`; every rootless/host-swap/guardian-offline/akm-pin/
+      upgrade-path/multi-instance smoke; `bun run ui:test:unit`;
+      `bun run ui:test:pwa`; the Tier 4 self-contained browser suite
+      (`bun run ui:test:e2e:mocked`); `bun run --cwd packages/electron
+      typecheck` and `test`; the PowerShell installer contract tests.
+
+**Tier 5 (`bun run test:t5`) does NOT gate a release, and nothing in this
+workflow runs it.** It needs a live Docker daemon with built images
+(`scripts/dev-e2e-test.sh --playwright`), which a hosted GitHub Actions runner
+does not carry the way this repo's other Docker-backed gates do (those build
+their own images in-job; Tier 5's launcher is a standalone dev-stack script,
+not wired into any workflow). Run it by hand, from the candidate SHA, for
+stack- or onboarding-affecting changes — record the result as `BLOCKED_*` or
+`N/A` like every other manual check in this document if you skip it, never
+silently. The Tailscale/Paperclip acceptance guide below reuses its launcher
+for the same reason (`docs/technical/testing-workflow.md`).
 
 ### Onboarding and runtime acceptance
 

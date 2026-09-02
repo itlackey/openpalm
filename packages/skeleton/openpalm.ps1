@@ -4,6 +4,18 @@
   openpalm.ps1 — example helper for power users (Windows).
 
 .DESCRIPTION
+  THIS IS THE PRE-RENDER FALLBACK COPY. Every real install/update/apply
+  OVERWRITES this file at OP_HOME with a version rendered by the control
+  plane for that exact install — the same overlay file list
+  (discoverStackOverlays) and the same Compose project name
+  (resolveComposeProjectName) a real compose invocation resolves, baked in as
+  literal data, plus refusal checks against a stale/mismatched OP_HOME (see
+  packages/lib/src/control-plane/openpalm-helper-script.ts, issue #650). You
+  are looking at this copy only if you materialized OP_HOME by copying
+  packages/skeleton/ directly without ever running `openpalm install` or
+  `openpalm update` — the Manual Compose Runbook already notes that is not a
+  complete install.
+
   Wraps the same `docker compose` invocation the OpenPalm CLI and admin UI use,
   so you can drive the stack directly without the CLI installed. This is an
   EXAMPLE: the canonical orchestrator is the `openpalm` CLI (and the admin UI).
@@ -21,14 +33,17 @@
   .\openpalm.ps1 logs api      # Follow logs (optionally for one service)
   .\openpalm.ps1 compose ...   # Run an arbitrary docker compose subcommand
 .NOTES
-LIMITATION - conditional compose overlays. This helper assembles only the base
-file list (core/services/portals plus your custom overlay). It does NOT apply
-the three conditional overlays the app resolves from your settings:
-guardian.compose.api.yml (publishes the OpenAI-compatible API port),
-voice.compose.lan.yml (LAN voice), and workspace.compose.loopback.yml (the
-workspace publish). If any of those settings are on, bringing the stack up with
-THIS script recreates those containers without them. Use the `openpalm` CLI or
-the admin UI for normal operation, or pass the overlay yourself:
+LIMITATION - conditional compose overlays. Because this specific fallback copy
+was never rendered, it assembles only the base file list (core/services/portals
+plus your custom overlay). It does NOT apply the three conditional overlays the
+app resolves from your settings: guardian.compose.api.yml (publishes the
+OpenAI-compatible API port), voice.compose.lan.yml (LAN voice), and
+workspace.compose.loopback.yml (the workspace publish). If any of those
+settings are on, bringing the stack up with THIS unrendered copy recreates
+those containers without them. Run `openpalm install`/`openpalm update` once to
+get the rendered version (which does not have this limitation), use the
+`openpalm` CLI or the admin UI for normal operation, or pass the overlay
+yourself:
   ./openpalm.ps1 compose -f system/stack/guardian.compose.api.yml up -d
 
 Deriving that decision here would mean a second implementation of it, in

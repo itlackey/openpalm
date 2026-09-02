@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrateLegacyDefaultPorts } from './config-persistence.js';
+import type { Server } from 'node:net';
+import { createServer } from 'node:net';
+import { migrateLegacyDefaultPorts, migrateConsolidatedDefaultPorts } from './config-persistence.js';
 
 async function withStackEnv(
   content: string,
@@ -73,25 +75,109 @@ describe('legacy default port migration', () => {
     });
   });
 
-  // Issue #643: a sibling OpenPalm instance on the same host can already hold
-  // the corrected default (3810) at the moment this migration materializes it
-  // for a home that never configured a port at all. Blindly writing 3810
-  // handed the next `docker compose up` a guaranteed "port is already
-  // allocated" failure. Occupy the port with a REAL listener (matching how
-  // `checkPortAvailable` actually probes) and confirm the migration steps
-  // past it instead.
-  test('steps past the default assistant port when a real listener already holds it', async () => {
-    const server = Bun.serve({ port: 3810, hostname: '127.0.0.1', fetch: () => new Response('x') });
-    try {
-      await withStackEnv('OP_OWNER_NAME=Alice\n', async (homeDir, path) => {
-        expect(await migrateLegacyDefaultPorts(homeDir)).toBe(true);
-        const migrated = readFileSync(path, 'utf8');
-        expect(migrated).toContain('OP_UI_PORT=3800');
-        expect(migrated).not.toContain('OP_ASSISTANT_PORT=3810');
-        expect(migrated).toContain('OP_ASSISTANT_PORT=3811');
-      });
-    } finally {
-      server.stop(true);
-    }
+  // ── issue #658: DEFAULT port writes are probed, never an explicit value ──
+
+  test("an operator's explicit consolidated port is carried through untouched — never probed or moved", async () => {
+    // The legacy file has neither port; the CONSOLIDATED file already carries
+    // the operator's own explicit choice. migrateLegacyDefaultPorts must copy
+    // it verbatim, not probe or renumber it, even if that exact port happens
+    // to be occupied right now.
+    let server: Server | undefined;
+    await withStackEnv('OP_OWNER_NAME=Alice\n', async (homeDir) => {
+      server = createServer();
+      await new Promise<void>((resolve) => server?.listen(3812, '127.0.0.1', resolve));
+      mkdirSync(join(homeDir, 'state'), { recursive: true });
+      writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_PORT=3812\nOP_UI_PORT=3802\n');
+
+      expect(await migrateLegacyDefaultPorts(homeDir)).toBe(true);
+      const migrated = readFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), 'utf8');
+      expect(migrated).toContain('OP_ASSISTANT_PORT=3812');
+      expect(migrated).toContain('OP_UI_PORT=3802');
+    });
+    await new Promise<void>((resolve) => server?.close(() => resolve()));
+  });
+});
+
+describe('legacy default port migration — port probing (#658)', () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
+    server = undefined;
+  });
+
+  test('a fresh legacy home lands on the next free port when the default is occupied', async () => {
+    server = createServer();
+    await new Promise<void>((resolve) => server?.listen(3810, '127.0.0.1', resolve));
+
+    await withStackEnv('OP_OWNER_NAME=Alice\n', async (homeDir, path) => {
+      expect(await migrateLegacyDefaultPorts(homeDir)).toBe(true);
+      const migrated = readFileSync(path, 'utf8');
+      // The UI default (3800) is free and stays put; the assistant default
+      // (3810) is occupied, so the migration takes the next free port.
+      expect(migrated).toContain('OP_UI_PORT=3800');
+      expect(migrated).toContain('OP_ASSISTANT_PORT=3811');
+    });
+  });
+
+  test('never picks the same free port for both defaults', async () => {
+    // Occupy 3800 (the UI default) — the assistant default (3810) is free.
+    // The UI port must move to the next free port (3801), and the assistant
+    // port must not be pulled onto it.
+    server = createServer();
+    await new Promise<void>((resolve) => server?.listen(3800, '127.0.0.1', resolve));
+
+    await withStackEnv('OP_OWNER_NAME=Alice\n', async (homeDir, path) => {
+      expect(await migrateLegacyDefaultPorts(homeDir)).toBe(true);
+      const migrated = readFileSync(path, 'utf8');
+      expect(migrated).toContain('OP_UI_PORT=3801');
+      expect(migrated).toContain('OP_ASSISTANT_PORT=3810');
+    });
+  });
+});
+
+describe('consolidated default port migration — port probing (#658)', () => {
+  let homeDir: string;
+  let server: Server | undefined;
+
+  beforeEach(() => {
+    homeDir = mkdtempSync(join(tmpdir(), 'openpalm-consolidated-port-migration-'));
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
+    server = undefined;
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  function stackEnvPath(): string {
+    return join(homeDir, 'state', 'stack.env');
+  }
+
+  test('the retired pair swaps to the corrected defaults when both are free', async () => {
+    writeFileSync(stackEnvPath(), 'OP_ASSISTANT_PORT=3800\nOP_UI_PORT=3810\n');
+    expect(await migrateConsolidatedDefaultPorts(homeDir)).toBe(true);
+    const migrated = readFileSync(stackEnvPath(), 'utf8');
+    expect(migrated).toContain('OP_ASSISTANT_PORT=3810');
+    expect(migrated).toContain('OP_UI_PORT=3800');
+  });
+
+  test('lands on the next free port when the corrected default is occupied', async () => {
+    server = createServer();
+    await new Promise<void>((resolve) => server?.listen(3810, '127.0.0.1', resolve));
+    writeFileSync(stackEnvPath(), 'OP_ASSISTANT_PORT=3800\nOP_UI_PORT=3810\n');
+
+    expect(await migrateConsolidatedDefaultPorts(homeDir)).toBe(true);
+    const migrated = readFileSync(stackEnvPath(), 'utf8');
+    expect(migrated).toContain('OP_UI_PORT=3800');
+    expect(migrated).toContain('OP_ASSISTANT_PORT=3811');
+  });
+
+  test('a non-retired pair is left alone — no probing happens at all', async () => {
+    const original = 'OP_ASSISTANT_PORT=4800\nOP_UI_PORT=4900\n';
+    writeFileSync(stackEnvPath(), original);
+    expect(await migrateConsolidatedDefaultPorts(homeDir)).toBe(false);
+    expect(readFileSync(stackEnvPath(), 'utf8')).toBe(original);
   });
 });

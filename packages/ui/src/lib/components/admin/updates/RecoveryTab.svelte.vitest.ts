@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 
 // vi.mock factories are hoisted above their file's top-level statements, so
 // any variable they reference must come from vi.hoisted() too.
-const { DEFAULT_VERSIONS, fetchVersionsMock, clearRollbackPinMock } = vi.hoisted(() => {
+const { DEFAULT_VERSIONS, fetchVersionsMock } = vi.hoisted(() => {
 	const defaultVersions = {
 		configured: {
 			OP_ASSISTANT_VERSION: '0.13.0',
@@ -15,8 +15,7 @@ const { DEFAULT_VERSIONS, fetchVersionsMock, clearRollbackPinMock } = vi.hoisted
 	};
 	return {
 		DEFAULT_VERSIONS: defaultVersions,
-		fetchVersionsMock: vi.fn().mockResolvedValue(defaultVersions),
-		clearRollbackPinMock: vi.fn().mockResolvedValue({ ok: true, cleared: {} })
+		fetchVersionsMock: vi.fn().mockResolvedValue(defaultVersions)
 	};
 });
 
@@ -47,7 +46,6 @@ vi.mock('$lib/api.js', () => ({
 	clearInstallLock: vi.fn(),
 	// #639
 	fetchVersions: fetchVersionsMock,
-	clearRollbackPin: clearRollbackPinMock,
 	isRollbackPin: (value: string | undefined) => !!value?.startsWith('rollback-')
 }));
 
@@ -74,10 +72,11 @@ describe('RecoveryTab prune confirmation accessibility', () => {
 });
 
 // #639 — the stack must surface a rollback-pinned image without expanding
-// any collapsed panel, distinct from a deliberate operator pin, with a
-// one-click clear that never restarts anything on its own.
-describe('RecoveryTab rollback pin banner (#639)', () => {
-	test('shows no banner when nothing is pinned to a rollback generation', async () => {
+// any collapsed panel, distinct from a deliberate operator pin. Read-only:
+// there is no clear control, because the next successful update advances
+// the pin off this tag on its own.
+describe('RecoveryTab rollback pin notice (#639)', () => {
+	test('shows no notice when nothing is pinned to a rollback generation', async () => {
 		fetchVersionsMock.mockResolvedValueOnce(DEFAULT_VERSIONS);
 		await render(RecoveryTab);
 
@@ -85,7 +84,22 @@ describe('RecoveryTab rollback pin banner (#639)', () => {
 		await expect(page.getByText('Stack pinned to a rollback image').query()).not.toBeInTheDocument();
 	});
 
-	test('shows the banner naming the pinned key(s) and clears it on click, without prompting a restart', async () => {
+	test('shows no notice for a deliberate operator-pinned custom tag', async () => {
+		fetchVersionsMock.mockResolvedValueOnce({
+			configured: {
+				OP_ASSISTANT_VERSION: 'my-custom-build',
+				OP_GUARDIAN_VERSION: '0.13.0',
+				OP_PORTAL_VERSION: '0.13.0',
+				OP_VOICE_VERSION: 'latest'
+			}
+		});
+		await render(RecoveryTab);
+
+		await expect.element(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
+		await expect(page.getByText('Stack pinned to a rollback image').query()).not.toBeInTheDocument();
+	});
+
+	test('shows the read-only notice naming the pinned key(s), with no clear control', async () => {
 		fetchVersionsMock.mockResolvedValueOnce({
 			configured: {
 				OP_ASSISTANT_VERSION: 'rollback-generation-1788212586188-217761-1',
@@ -94,20 +108,14 @@ describe('RecoveryTab rollback pin banner (#639)', () => {
 				OP_VOICE_VERSION: 'latest'
 			}
 		});
-		fetchVersionsMock.mockResolvedValueOnce(DEFAULT_VERSIONS); // reload() after clearing
 
 		await render(RecoveryTab);
 
-		const banner = page.getByText('Stack pinned to a rollback image');
-		await expect.element(banner).toBeVisible();
+		const notice = page.getByText('Stack pinned to a rollback image');
+		await expect.element(notice).toBeVisible();
 		await expect.element(page.getByText('OP_ASSISTANT_VERSION', { exact: false })).toBeVisible();
-		await expect.element(page.getByText('update afterward', { exact: false })).toBeVisible();
+		await expect.element(page.getByText('nothing to clear by hand', { exact: false })).toBeVisible();
 
-		const clearButton = page.getByRole('button', { name: 'Clear pin' });
-		await clearButton.click();
-
-		expect(clearRollbackPinMock).toHaveBeenCalledTimes(1);
-		await expect.element(page.getByText('Cleared', { exact: true })).toBeVisible();
-		await expect(banner.query()).not.toBeInTheDocument();
+		await expect(page.getByRole('button', { name: 'Clear pin' }).query()).not.toBeInTheDocument();
 	});
 });

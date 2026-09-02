@@ -178,9 +178,11 @@ describe("applyStack", () => {
 
     expect(applied.ok).toBe(false);
     expect(applied.failed).toHaveLength(1);
-    // The real cause must be present verbatim...
-    expect(applied.failed[0]?.reason).toContain(daemonError);
-    expect(applied.error).toContain(daemonError);
+    // The real cause must reach the operator — here classified, since the
+    // daemon line is a port conflict, as the actionable port_in_use message
+    // naming the port the daemon reported...
+    expect(applied.failed[0]?.reason).toContain("Port 3810 is already in use");
+    expect(applied.error).toContain("Port 3810 is already in use");
     // ...and the progress-only status line must NOT be what stands in for it.
     expect(applied.failed[0]?.reason).not.toBe("Container proj-assistant-1 Recreate");
     expect(applied.error).not.toBe("Container proj-assistant-1 Recreate");

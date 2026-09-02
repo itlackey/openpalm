@@ -3,9 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appendBoundedStderr,
   buildComposePreflightError,
   checkDocker,
   composeConfigJson,
+  COMPOSE_STREAM_STDERR_BUFFER_BYTES,
   detectExistingProject,
   dockerBin,
   ensureDockerReady,
@@ -14,6 +16,7 @@ import {
   meetsComposeWaitFloor,
   parseComposePsRows,
   resolveComposeProjectName,
+  runComposeStreaming,
   toDockerResult,
 } from "./docker.js";
 
@@ -163,6 +166,129 @@ describe("detectExistingProject (inspects EVERY matched container, not just ids[
     });
 
     expect(result.running).toBe(false);
+  });
+});
+
+// ── §655.2: runComposeStreaming's stderr tee + bounded classification ─────
+
+describe("appendBoundedStderr (§655.2 ring buffer)", () => {
+  it("passes short input through unchanged", () => {
+    expect(appendBoundedStderr("", "hello", 1024)).toBe("hello");
+    expect(appendBoundedStderr("hello ", "world", 1024)).toBe("hello world");
+  });
+
+  it("keeps only the last maxBytes bytes, dropping the oldest content", () => {
+    const result = appendBoundedStderr("a".repeat(10), "b".repeat(10), 12);
+    expect(result.length).toBe(12);
+    // The tail survives; the earlier "a"s are dropped.
+    expect(result).toBe("a".repeat(2) + "b".repeat(10));
+  });
+
+  it("bounds by UTF-8 BYTE length, not JS string length", () => {
+    // "é" is 1 JS string char but 2 UTF-8 bytes — a char-length bound would
+    // let this through; a byte-length bound must not.
+    const result = appendBoundedStderr("", "é".repeat(10), 10);
+    expect(Buffer.byteLength(result, "utf-8")).toBeLessThanOrEqual(10);
+  });
+
+  it("never exceeds maxBytes across repeated appends", () => {
+    let buf = "";
+    for (let i = 0; i < 50; i++) {
+      buf = appendBoundedStderr(buf, `line ${i}\n`, 200);
+    }
+    expect(Buffer.byteLength(buf, "utf-8")).toBeLessThanOrEqual(200);
+    // The most recent content survives.
+    expect(buf).toContain("line 49");
+  });
+});
+
+describe("runComposeStreaming (§655.2 stderr tee + mapDockerError classification)", () => {
+  const saved: Record<string, string | undefined> = {};
+  let scriptDir: string;
+
+  function writeFakeDockerBin(script: string): string {
+    const scriptPath = join(scriptDir, "fake-docker-streaming.sh");
+    writeFileSync(scriptPath, script);
+    chmodSync(scriptPath, 0o755);
+    return scriptPath;
+  }
+
+  beforeEach(() => {
+    scriptDir = mkdtempSync(join(tmpdir(), "openpalm-fake-docker-streaming-"));
+    saved.OP_DOCKER_BIN = process.env.OP_DOCKER_BIN;
+  });
+
+  afterEach(() => {
+    if (saved.OP_DOCKER_BIN === undefined) delete process.env.OP_DOCKER_BIN;
+    else process.env.OP_DOCKER_BIN = saved.OP_DOCKER_BIN;
+    rmSync(scriptDir, { recursive: true, force: true });
+  });
+
+  it("resolves on exit code 0 without touching stderr classification", async () => {
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin(
+      ["#!/bin/sh", 'echo "Container demo-app-1 Started" >&2', "exit 0", ""].join("\n"),
+    );
+    await expect(runComposeStreaming(["up", "-d"])).resolves.toBeUndefined();
+  });
+
+  it("classifies a non-zero exit through mapDockerError instead of the old bare exit-code message", async () => {
+    // Same fixture wording the existing compose-errors "maps port conflicts"
+    // test uses, so this proves runComposeStreaming's rejection now goes
+    // through the SAME classification applyStack uses — not the previous
+    // bare `docker compose <args> failed with exit code N`, which carried
+    // nothing mapDockerError could work with.
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin(
+      [
+        "#!/bin/sh",
+        'echo "Container demo-app-1 Recreate" >&2',
+        'echo "Container demo-app-1 Recreated" >&2',
+        'echo "Container demo-app-1 Starting" >&2',
+        'echo "Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3880 -> 0.0.0.0:0: listen tcp 0.0.0.0:3880: bind: address already in use" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    await expect(runComposeStreaming(["up", "-d"])).rejects.toThrow(
+      "Port 3880 is already in use by another program. Free it, then retry.",
+    );
+  });
+
+  it("still rejects with the raw spawn error when the binary itself cannot be found (unchanged)", async () => {
+    process.env.OP_DOCKER_BIN = join(scriptDir, "does-not-exist");
+    await expect(runComposeStreaming(["up", "-d"])).rejects.toThrow(/ENOENT/);
+  });
+
+  it("keeps the SIGTERM timeout behavior on a run that exceeds its budget", async () => {
+    // No trap: an untrapped SIGTERM's default disposition (terminate) fires
+    // immediately even while the shell is blocked on the foreground `sleep`
+    // — a trap handler would instead only run once the shell regains control
+    // (i.e. after `sleep` itself returns), which defeats the whole point of
+    // the timeout.
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin(["#!/bin/sh", "sleep 30", ""].join("\n"));
+    await expect(runComposeStreaming(["up", "-d"], { timeoutMs: 200 })).rejects.toThrow();
+  }, 5000);
+
+  it("classifies the real daemon error even when preceded by far more than the 64 KiB buffer bound", async () => {
+    // Proves the bound is respected end-to-end, not just in the pure
+    // appendBoundedStderr unit tests above: ~200 KiB of progress noise (well
+    // over COMPOSE_STREAM_STDERR_BUFFER_BYTES) is written first, so if the
+    // buffer were unbounded OR mis-truncated, the real error at the tail
+    // could be pushed out or corrupted. It survives either way.
+    const paddingLines = Array.from(
+      { length: 4000 },
+      (_, i) => `echo "Container demo-app-1 Waiting ${"x".repeat(40)} ${i}" >&2`,
+    ).join("\n");
+    expect(paddingLines.length).toBeGreaterThan(COMPOSE_STREAM_STDERR_BUFFER_BYTES);
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin(
+      [
+        "#!/bin/sh",
+        paddingLines,
+        'echo "Error response from daemon: toomanyrequests: You have reached your pull rate limit." >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    await expect(runComposeStreaming(["up", "-d"])).rejects.toThrow(/pull rate limit/);
   });
 });
 

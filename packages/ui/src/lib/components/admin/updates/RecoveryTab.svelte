@@ -9,7 +9,6 @@
     fetchInstallLockStatus,
     clearInstallLock,
     fetchVersions,
-    clearRollbackPin,
     isRollbackPin,
     type InstallLockStatusView,
   } from '$lib/api.js';
@@ -41,16 +40,17 @@
 
   // #639 — a failed update pins state/stack.env to a preserved rollback-*
   // image tag (never `latest`) so automatic recovery restarts exactly what
-  // was running before; nothing else releases that pin. Distinct from a
-  // deliberate operator pin, which never carries the `rollback-` prefix.
+  // was running before. Distinct from a deliberate operator pin, which never
+  // carries the `rollback-` prefix. Nothing to clear by hand: the next
+  // successful `openpalm update` advances the pin off this tag on its own
+  // (advanceManagedImageVersions, run at the start of every upgrade attempt)
+  // — this is read-only, a status notice rather than a control.
   const versionsRes = resource(async () => (await fetchVersions()).configured);
   let rollbackPinnedKeys = $derived(
     (Object.entries(versionsRes.data ?? {}) as [VersionKey, string][])
       .filter(([, value]) => isRollbackPin(value))
       .map(([key]) => key),
   );
-  let clearingPin = $state<ActionHandle<unknown> | null>(null);
-  let pinCleared = $state(false);
 
   onMount(() => {
     void backupsRes.reload();
@@ -58,14 +58,6 @@
     void installLockRes.reload();
     void versionsRes.reload();
   });
-
-  async function onClearRollbackPin(): Promise<void> {
-    const run = runAction(() => clearRollbackPin(), { fallback: 'Failed to clear the rollback pin.' });
-    clearingPin = run;
-    const res = await run.result;
-    if (res) pinCleared = true;
-    await versionsRes.reload();
-  }
 
   async function onClearLock(): Promise<void> {
     const run = runAction(() => clearInstallLock(), { fallback: 'Failed to clear the lock.' });
@@ -167,27 +159,11 @@
         <div class="stuck-notice-text">
           <p class="stuck-notice-title">Stack pinned to a rollback image</p>
           <p>
-            A previous failed update left {rollbackPinnedKeys.join(', ')} pointed at the image that
-            was preserved for automatic recovery, not the normal release tag. This is different
-            from a deliberate version pin you set yourself — it just needs clearing so the next
-            update can move forward. Clearing only edits <code>state/stack.env</code>; run an
-            update afterward to apply it.
+            The last update failed, so {rollbackPinnedKeys.join(', ')} {rollbackPinnedKeys.length === 1 ? 'is' : 'are'}
+            still pointed at the image that was running before it — not the normal release tag.
+            Fix whatever caused the update to fail and run <code>openpalm update</code> again; once
+            it succeeds, this moves forward on its own. There's nothing to clear by hand.
           </p>
-        </div>
-        <button
-          class="btn btn-sm btn-primary"
-          onclick={onClearRollbackPin}
-          disabled={clearingPin?.loading ?? false}
-          aria-busy={clearingPin?.loading ?? false}
-        >
-          {#if clearingPin?.loading}<Spinner /> Clearing…{:else}Clear pin{/if}
-        </button>
-      </div>
-    {:else if pinCleared}
-      <div class="stuck-notice stuck-notice-ok" role="status">
-        <div class="stuck-notice-text">
-          <p class="stuck-notice-title">Cleared</p>
-          <p>The rollback pin was cleared. Run an update to apply the normal release tag.</p>
         </div>
       </div>
     {/if}

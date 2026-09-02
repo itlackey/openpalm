@@ -36,13 +36,3 @@ export async function patchVersions(versions: Partial<Record<VersionKey, string>
 export function isRollbackPin(value: string | undefined): boolean {
 	return !!value?.startsWith('rollback-');
 }
-
-export type ClearRollbackPinResponse = {
-	cleared: Partial<Record<VersionKey, { from: string; to: string }>>;
-};
-
-/** Clears only `rollback-` pinned keys via the shared lib function — never a deliberate operator pin. */
-export async function clearRollbackPin(): Promise<ClearRollbackPinResponse> {
-	const response = await requireOk(await request('POST', '/api/host/versions/clear-rollback-pin'));
-	return (await response.json()) as ClearRollbackPinResponse;
-}

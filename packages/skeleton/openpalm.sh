@@ -2,6 +2,18 @@
 #
 # openpalm.sh — example helper for power users.
 #
+# THIS IS THE PRE-RENDER FALLBACK COPY. Every real install/update/apply
+# OVERWRITES this file at OP_HOME with a version rendered by the control
+# plane for that exact install — the same overlay file list
+# (discoverStackOverlays) and the same Compose project name
+# (resolveComposeProjectName) a real compose invocation resolves, baked in
+# as literal data, plus refusal checks against a stale/mismatched OP_HOME
+# (see packages/lib/src/control-plane/openpalm-helper-script.ts, issue #650).
+# You are looking at this copy only if you materialized OP_HOME by copying
+# packages/skeleton/ directly without ever running `openpalm install` or
+# `openpalm update` — the Manual Compose Runbook already notes that is not a
+# complete install.
+#
 # Wraps the same `docker compose` invocation the OpenPalm CLI and admin UI
 # use, so you can drive the stack directly without the CLI installed. This is
 # an EXAMPLE: the canonical orchestrator is the `openpalm` CLI (and the admin
@@ -9,15 +21,18 @@
 # refresh shipped assets or the UI build from GitHub the way `openpalm update`
 # does.
 #
-# LIMITATION — conditional compose overlays. This helper assembles only the
-# base file list (core/services/portals + your custom overlay). It does NOT
-# apply the three conditional overlays the app resolves from your settings:
+# LIMITATION — conditional compose overlays. Because this specific fallback
+# copy was never rendered, it assembles only the base file list
+# (core/services/portals + your custom overlay). It does NOT apply the three
+# conditional overlays the app resolves from your settings:
 # guardian.compose.api.yml (publishes the OpenAI-compatible API port),
 # voice.compose.lan.yml (LAN voice), and workspace.compose.loopback.yml (the
 # workspace publish). If you have any of those settings on, bringing the stack
-# up with THIS script recreates those containers without them. Use the
-# `openpalm` CLI or the admin UI for normal operation, or pass the overlay
-# yourself: ./openpalm.sh compose -f system/stack/guardian.compose.api.yml up -d
+# up with THIS unrendered copy recreates those containers without them. Run
+# `openpalm install`/`openpalm update` once to get the rendered version (which
+# does not have this limitation), use the `openpalm` CLI or the admin UI for
+# normal operation, or pass the overlay yourself:
+# ./openpalm.sh compose -f system/stack/guardian.compose.api.yml up -d
 #
 # Deriving that decision here would mean a second implementation of it, in
 # shell, reading a dotenv file whose values have several legal spellings. The

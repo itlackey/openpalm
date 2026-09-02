@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -175,6 +176,39 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     const backupDir = join(backupsDir, preRollbackDirs.at(0) ?? "");
     expect(readFileSync(join(backupDir, "state", "stack.env"), "utf-8")).toContain("slack");
     expect(readFileSync(join(backupDir, "state", "stack.env"), "utf-8")).toContain("custom");
+  });
+
+  test("#657 pt.2 — restoreSnapshot caps -pre-rollback snapshots instead of leaving them to accumulate unbounded", () => {
+    // backups.ts documented this namespace as "never pruned by anything" —
+    // that was the bug, not a guarantee. Seed 4 pre-existing -pre-rollback
+    // snapshots (older than the one this restoreSnapshot call is about to
+    // create) to prove the cap actually deletes the oldest ones rather than
+    // just capping future growth.
+    snapshotCurrentState(state);
+    const backupsDir = join(home, "data", "backups");
+    mkdirSync(backupsDir, { recursive: true });
+    const seeded: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const dir = join(backupsDir, `2020-01-0${i + 1}T00-00-00-000Z-pre-rollback`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "marker.txt"), String(i));
+      // Oldest (i=0) to newest (i=3) of the 4 seeded snapshots, all older than
+      // "now" (what the real restoreSnapshot call below creates).
+      const t = new Date(Date.now() - (10_000 - i * 1_000));
+      utimesSync(dir, t, t);
+      seeded.push(dir);
+    }
+
+    restoreSnapshot(state);
+
+    // 4 seeded + 1 just-created = 5 total; the cap of 3 leaves the 3 newest:
+    // the just-created one, plus the 2 newest seeded ones.
+    const preRollbackDirs = readdirSync(backupsDir).filter((name) => name.endsWith("-pre-rollback"));
+    expect(preRollbackDirs).toHaveLength(3);
+    expect(existsSync(seeded[0])).toBe(false);
+    expect(existsSync(seeded[1])).toBe(false);
+    expect(existsSync(seeded[2])).toBe(true);
+    expect(existsSync(seeded[3])).toBe(true);
   });
 
   test("a torn snapshot preserves the previous complete generation", () => {

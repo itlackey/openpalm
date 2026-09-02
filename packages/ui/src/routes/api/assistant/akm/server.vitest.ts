@@ -422,9 +422,37 @@ describe('PATCH /api/assistant/akm — 0.9 invariants (configVersion, bundle pin
     expect(config).not.toHaveProperty('stashDir');
   });
 
-  test('strips every retired 0.8 key from a pre-upgrade config on the first PATCH', async () => {
+  // #645/#654: this used to seed `profiles.llm.default` with no `model` field,
+  // which `translateLegacyLlmProfiles` correctly declines to translate (an
+  // untranslatable profile is dropped with a loud warning, not silently kept)
+  // — so the test asserted only that `profiles` vanished, never checking
+  // whether the endpoint actually reached `engines`. That encoded the exact
+  // data loss #645 reported as the spec. Seeding a REALISTIC pre-upgrade
+  // profile (the full `/chat/completions` URL 0.12.x wrote, a model, a
+  // provider) inverts it: the retired keys still go, but the operator's LLM
+  // configuration must survive the translation, not just disappear with them.
+  //
+  // Route/migration split (#654): `stripRetiredAkmConfigKeys` — the SAME
+  // translate-then-strip primitive (`stripRetiredAkmKeys`, setup.ts) this
+  // route already calls — moved out of `applyHomeAssets`'s unconditional
+  // per-launch sweep and into a versioned home-schema MIGRATION, because that
+  // passive sweep is what silently ran the strip with no requirement to
+  // translate first. This ROUTE's own call to `stripRetiredAkmKeys` is
+  // different in kind: it is the explicit write path an operator's own PATCH
+  // takes, already gated behind the same translate step (never bypassed), so
+  // it stays exactly where it is — an operator editing their config through
+  // the UI must always land on a config akm can load, migration or not.
+  test('translates a pre-upgrade profiles.llm profile into engines on the first PATCH, instead of silently dropping it', async () => {
     seedAkmConfig({
-      profiles: { llm: { default: { endpoint: 'http://x' } } },
+      profiles: {
+        llm: {
+          default: {
+            endpoint: 'https://api.openai.com/v1/chat/completions',
+            model: 'gpt-4o-mini',
+            provider: 'openai',
+          },
+        },
+      },
       llm: { endpoint: 'http://x' },
       agent: { platform: 'opencode' },
       features: { extract: true },
@@ -443,6 +471,18 @@ describe('PATCH /api/assistant/akm — 0.9 invariants (configVersion, bundle pin
     for (const key of ['profiles','llm','agent','features','stashes','stashDir','sources','installed','wikiName']) {
       expect(config, key).not.toHaveProperty(key);
     }
+    // The whole point: the retired profile reached `engines`, not the void.
+    expect(config.engines).toEqual({
+      default: {
+        kind: 'llm',
+        endpoint: 'https://api.openai.com/v1/chat/completions',
+        model: 'gpt-4o-mini',
+        provider: 'openai',
+      },
+    });
+    // `defaults.llmEngine` is set — to the operator's OWN explicit PATCH
+    // value ('main'), which the translation correctly does not clobber
+    // (additive merge: an already-set llmEngine always wins).
     expect(config.defaults).toEqual({ llmEngine: 'main' });
     expect(config.configVersion).toBe('0.9.0');
     expect(config.semanticSearchMode).toBe('auto');

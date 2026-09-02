@@ -96,6 +96,61 @@ export function resolveStateDir(): string {
   return `${resolveOpenPalmHome()}/state`;
 }
 
+// ── Tree manifest — THE single source of truth for OP_HOME scope ─────────────
+//
+// #656 / lesson 24: SCOPE over this layout used to be re-enumerated three
+// times in three shapes — backup.ts's UNBACKED_TOP_LEVEL denylist, purge's
+// allowlist (uninstall.ts), and ownershipRepairPaths' hardcoded base list —
+// and they drifted (backup never excluded workspace/; purge once missed a
+// whole tree; repair missed a staging dir until a one-off patch added it).
+// This is the one list. Every consumer below reads its inBackup/inPurge/
+// inRepair flags instead of keeping its own copy; home.layout.test.ts asserts
+// this set matches ensureHomeDirs' top-level directories exactly, so adding a
+// tree to one and not the other fails a test instead of drifting silently.
+
+export type HomeTreeOwner = "cli" | "container" | "operator";
+export type HomeTreeDurability = "durable" | "regenerable" | "derived";
+
+export interface HomeTree {
+  /** Top-level directory name under OP_HOME (e.g. "config"). */
+  readonly name: string;
+  /** Who authors this tree's content day to day. */
+  readonly owner: HomeTreeOwner;
+  /** Whether losing this tree loses something irreplaceable. */
+  readonly durability: HomeTreeDurability;
+  /** Copied into a lifecycle safety snapshot (backup.ts). */
+  readonly inBackup: boolean;
+  /** Removed by `uninstall --purge` (uninstall.ts). */
+  readonly inPurge: boolean;
+  /** In the ownership-repair base path list (ownership-reconcile.ts). */
+  readonly inRepair: boolean;
+}
+
+/**
+ * THE tree manifest. Values are the truthful current scope (constitution §
+ * Filesystem contract): a lifecycle safety backup includes config/, system/,
+ * state/, knowledge/ and excludes data/, workspace/, cache/ — workspace/ is
+ * the operator's own regenerable work area (a cloned repo's `.git/` has no
+ * business in an upgrade safety snapshot), matching data/ and cache/ already
+ * excluded. `uninstall --purge` removes all seven trees. Ownership repair
+ * covers durable/user/state roots and skips regenerable cache content.
+ *
+ * `data/` needs sub-path refinement beyond tree-level membership — only some
+ * data/ subdirectories are ownership-repaired, and purge already resolves it
+ * as one directory — so those refinements stay local to their consuming
+ * module rather than growing this manifest into a second schema. What lives
+ * here is tree-level membership: which top-level names are in scope at all.
+ */
+export const OP_HOME_TREES: readonly HomeTree[] = [
+  { name: "config", owner: "operator", durability: "durable", inBackup: true, inPurge: true, inRepair: true },
+  { name: "system", owner: "cli", durability: "regenerable", inBackup: true, inPurge: true, inRepair: true },
+  { name: "state", owner: "cli", durability: "durable", inBackup: true, inPurge: true, inRepair: true },
+  { name: "knowledge", owner: "operator", durability: "durable", inBackup: true, inPurge: true, inRepair: true },
+  { name: "data", owner: "container", durability: "durable", inBackup: false, inPurge: true, inRepair: true },
+  { name: "workspace", owner: "operator", durability: "regenerable", inBackup: false, inPurge: true, inRepair: true },
+  { name: "cache", owner: "container", durability: "regenerable", inBackup: false, inPurge: true, inRepair: false },
+] as const;
+
 // ── Well-known files — THE single source of truth ────────────────────────────
 // Every well-known path is defined HERE, once, derived from an explicit `home`.
 // Moving a file/dir is a one-line edit in this section — never a grep-and-replace
@@ -168,7 +223,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 11;
+export const HOME_SCHEMA_VERSION = 12;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {

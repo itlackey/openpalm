@@ -188,7 +188,7 @@ export function auditStackEnv(env: Record<string, string>, label = 'stack.env'):
     if (isSecretLikeKey(key)) {
       issues.push(issue(
         'stack-env-secret-key',
-        `${label} must not contain secret-like key ${key}; store it as a narrowly granted file secret and expose ${key}_FILE instead.`,
+        `${label} must not contain secret-like key ${key}; store it as a narrowly granted file secret and expose ${key}_FILE, or, if the consumer reads it from the environment (akm engines, for example), put it in knowledge/env/user.env, which the assistant entrypoint sources at startup.`,
         `${label}:${key}`,
       ));
     }
@@ -228,7 +228,7 @@ export function auditComposeSecrets(
       ) {
         issues.push(issue(
           'compose-secret-env-var',
-          `service ${serviceName} environment key ${key} is secret-like; expose only ${key}_FILE.`,
+          `service ${serviceName} environment key ${key} is secret-like; expose only ${key}_FILE, or, if the consumer reads it from the environment (akm engines, for example), put it in knowledge/env/user.env, which the assistant entrypoint sources at startup.`,
           `services.${serviceName}.environment.${key}`,
         ));
       }
@@ -379,26 +379,6 @@ export function auditResolvedComposeSecrets(
       issues.push(issue(
         'compose-secret-source-boundary',
         `top-level secret ${name} must source exactly ${expected}; secret-name aliases and redirection are forbidden.`,
-        `secrets.${name}.file`,
-      ));
-    } else if (!existsSync(source)) {
-      // #632: `install --no-start` (or an interrupted wizard) can leave a home
-      // whose compose files are fully materialized but whose secrets were
-      // never minted — `docker compose up` then fails at container-create
-      // time with an opaque "bind source path does not exist", because
-      // `docker compose config` never checks that a secret's file source
-      // actually exists (only that the compose YAML itself is well-formed).
-      // This audit runs before every activation (start/restart/addon/deploy —
-      // see runComposeActivation), so it is the one place that can catch a
-      // missing secret BEFORE the daemon does and say which one, instead of
-      // an operator (or script) hitting the raw bind-mount error with no clue
-      // what to do about it.
-      issues.push(issue(
-        'compose-secret-file-missing',
-        `secret ${name} file does not exist: ${expected}. Setup was never completed for this ` +
-          `OpenPalm home. ${name === 'ui_login_password'
-            ? 'Run `openpalm reset-password` to create it, or re-run setup (`openpalm install --force`), then try again.'
-            : 'Re-run setup (`openpalm install --force`, interactively or with --file) to create it, then try again.'}`,
         `secrets.${name}.file`,
       ));
     }

@@ -68,7 +68,14 @@ smoke_copy_skeleton_version() {
 #   knowledge/paperclip/*    — the retired /stash/{env,secrets} overlay dirs
 #   knowledge/skills/*       — stash copies of release-shipped skills, from the
 #                              era before they moved to system/skills/
-# and removes any schema-version record, so the home reads as version 0.
+#
+# Deliberately does NOT touch state/schema-version. Mode 3
+# (docs/operations/upgrade-hardening-plan.md) named force-deleting that file
+# here as the reason the mid-cycle-stamp bug (a home with no recorded schema
+# reads as an ABSENT install and skips every migration, untestable by
+# construction) could not have been caught by this suite. The caller stamps
+# the schema BEFORE calling this — see smoke_seed_historical_schema_stamp —
+# with the value a real install of this era would actually have carried.
 #
 # Usage: smoke_seed_legacy_install_state <home>
 
@@ -92,8 +99,6 @@ SMOKE_SKILL_EDIT_MARKER='<!-- operator edit: upgrade-path smoke -->'
 smoke_seed_legacy_install_state() {
   local home="$1"
   local name
-
-  rm -f "${home}/state/schema-version"
 
   mkdir -p "${home}/knowledge/env"
   cat >"${home}/knowledge/env/stack.env" <<'EOF'
@@ -146,6 +151,37 @@ EOF
   printf '%s\n' "$SMOKE_SKILL_EDIT_MARKER" >>"${home}/knowledge/skills/${SMOKE_EDITED_SKILL}/SKILL.md"
 }
 
+# Stamp state/schema-version the way a real install of THIS era would have
+# left it — never force-deleted (Mode 3: a home with no schema record reads
+# as an ABSENT install and skips runHomeMigrations entirely, which is exactly
+# what let the mid-cycle-stamp bug go untested "by construction").
+#
+# Always 0, deliberately NOT derived from what the fetched skeleton ships
+# (e.g. whether it has system/ yet): `runHomeMigrations` only runs a
+# migration when `migration.since >= recorded` (home-schema.ts), so a stamp
+# is a claim about which OLDER migrations already ran — and
+# smoke_seed_legacy_install_state (called right after this) unconditionally
+# writes the SAME oldest pre-consolidation shape every time (pre-since:1
+# knowledge/env/stack.env, pre-§G1 knowledge/secrets/*, pre-0.13
+# private/{secrets,env}) regardless of which skeleton version was fetched.
+# A higher stamp (verified against a real 0.13.0-beta.13 fixture, which
+# already ships system/) skips exactly those early migrations and leaves the
+# still-legacy-shaped files in place — the assertions below then correctly
+# fail ("state/stack.env missing the pre-upgrade OP_PROJECT_NAME"), because
+# the stamp claimed a shape the fixture never actually wrote. 0 is the only
+# stamp consistent with what this fixture puts on disk, for every era it
+# fetches — it is what makes runHomeMigrations treat this as a real
+# (if maximally old) prior install rather than an absent one, without lying
+# about which migrations already happened.
+# Usage: smoke_seed_historical_schema_stamp <home>
+smoke_seed_historical_schema_stamp() {
+  local home="$1"
+  local stamp=0
+  mkdir -p "${home}/state"
+  printf '%s\n' "$stamp" > "${home}/state/schema-version"
+  echo "    stamping state/schema-version=${stamp} (a real prior install, not force-deleted to 'absent')"
+}
+
 SMOKE_ROOT="${OP_UPGRADE_SMOKE_HOME:-${ROOT_DIR}/.upgrade-smoke}"
 KEEP="${OP_UPGRADE_SMOKE_KEEP:-0}"
 
@@ -168,6 +204,14 @@ read -r -a VERSIONS <<<"${OP_UPGRADE_SMOKE_VERSIONS:-0.12.43 0.13.0-beta.13}"
 # so this must never collide with a real install — using the operator's own
 # project here would delete their live volumes.
 SMOKE_PROJECT="openpalm-upgrade-smoke-$$"
+
+# The pinned akm binary and its base node image, read from what actually
+# ships (same technique as akm-pin-integration-smoke.sh) — used below to
+# exercise the REAL pinned akm against each migrated home, not just a fresh
+# one. Mode 3's other named gap: "upgrade-path-smoke.sh never calls akm (its
+# one mention is a comment)".
+AKM_PIN="$(node -e 'process.stdout.write(require("./containers/assistant/tools/package.json").dependencies["akm-cli"])')"
+AKM_NODE_BASE="$(grep -m1 -oE '^FROM node:[0-9]+[a-z0-9.-]*' containers/assistant/Dockerfile | sed 's/^FROM //')"
 
 FAILURES=0
 fail() { echo "  FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
@@ -200,29 +244,40 @@ for version in "${VERSIONS[@]}"; do
     continue
   fi
 
+  # What the era actually shipped, recorded before we touch it, so the
+  # assertions below describe a real upgrade rather than a tautology.
+  had_system="no"; [ -d "${home}/system" ] && had_system="yes"
+  had_cache="no";  [ -d "${home}/cache" ]  && had_cache="yes"
+
+  # Stamp the schema THIS era would really have carried — never force-deleted
+  # (Mode 3; see smoke_seed_historical_schema_stamp) — before the legacy
+  # artifacts, which is the state a real install of this era actually left.
+  smoke_seed_historical_schema_stamp "$home"
+
   # A published skeleton is SEED CONTENT, not an install. Without the state a
   # real install carries, the migration gate reads the home as absent and
   # stamps it current without running anything — the assertions below would
   # then pass while testing nothing.
   smoke_seed_legacy_install_state "$home"
 
-  # What the era actually shipped, recorded before we touch it, so the
-  # assertions below describe a real upgrade rather than a tautology.
-  had_system="no"; [ -d "${home}/system" ] && had_system="yes"
-  had_cache="no";  [ -d "${home}/cache" ]  && had_cache="yes"
-
-  # The upgrade itself: the three layout steps a real `openpalm` run performs,
-  # in lifecycle.ts's order (applyHome). applyHomeSeed is part of the upgrade,
-  # not a decoration — the shipped-skill sweep is deliberately NOT a
-  # schema-gated migration, because it can only compare against system/skills
-  # once the seed has written it, so migrations alone would test half the move.
+  # The upgrade itself: the real steps a real `openpalm` run performs, in
+  # lifecycle.ts's order (applyHome) — runHomeMigrations, then applyHomeAssets
+  # (not just applyHomeSeed: applyHomeAssets is what a real update runs, and
+  # it also heals reconcileDuplicateBundles/ensureSystemBundle/retired-akm-key
+  # stripping, none of which applyHomeSeed alone exercises — Mode 3's second
+  # named gap). persistAkmConfig then seeds config/akm/config.json the same
+  # way SETUP would, so the akm exercise below has a real config to read
+  # (mirrors akm-pin-integration-smoke.sh's own driver).
   if ! OP_HOME="$home" bun -e "
-    import { ensureHomeDirs } from './packages/lib/src/index.ts';
+    import { ensureHomeDirs, createState, applyHomeAssets } from './packages/lib/src/index.ts';
     import { runHomeMigrations } from './packages/lib/src/control-plane/home-schema.ts';
-    import { applyHomeSeed } from './packages/lib/src/control-plane/ui-assets.ts';
+    import { persistAkmConfig } from './packages/lib/src/control-plane/setup.ts';
     ensureHomeDirs();
-    runHomeMigrations(process.env.OP_HOME);
-    await applyHomeSeed(process.env.OP_HOME);
+    await runHomeMigrations(process.env.OP_HOME);
+    await applyHomeAssets(createState());
+    persistAkmConfig(createState(), {
+      llm: { provider: 'openai-compatible', model: 'smoke-model', baseUrl: 'http://127.0.0.1:1/v1' },
+    });
   " 2>"${SMOKE_ROOT}/upgrade-${version}.err"; then
     fail "${version}: upgrade threw — $(tail -1 "${SMOKE_ROOT}/upgrade-${version}.err")"
     continue
@@ -339,6 +394,87 @@ for version in "${VERSIONS[@]}"; do
   done
 
   echo "    (era shipped system/: ${had_system})"
+
+  # ── 1b. Real pinned akm against THIS migrated home ─────────────────────────
+  # Mode 3: a migrated-but-never-exercised home is exactly the gap #558 M21
+  # predicted. Same technique as akm-pin-integration-smoke.sh (an exact-pin
+  # npm install under the assistant image's own node base, the same crontab
+  # shim) — reused against this era's just-migrated home instead of a fresh
+  # one, so the era's own leftover config/knowledge content is what akm reads.
+  if [[ -z "$AKM_PIN" || -z "$AKM_NODE_BASE" ]]; then
+    fail "${version}: could not read the akm pin (${AKM_PIN:-unset}) or node base (${AKM_NODE_BASE:-unset}) — skipping the akm exercise"
+  else
+    echo "    Exercising akm-cli@${AKM_PIN} on ${AKM_NODE_BASE} against the migrated home..."
+    AKM_OUT="${SMOKE_ROOT}/akm-${version}"
+    mkdir -p "$AKM_OUT"
+    set +e
+    docker run --rm \
+      -v "${home}/knowledge:/stash" \
+      -v "${home}/config/akm:/cfg-src:ro" \
+      -v "${AKM_OUT}:/out" \
+      "$AKM_NODE_BASE" bash -c '
+set -euo pipefail
+if ! npm i -g --silent --no-fund --no-audit "akm-cli@'"$AKM_PIN"'" >/tmp/install.log 2>&1; then
+  echo "INSTALL_FAILED" >&2
+  tail -20 /tmp/install.log >&2
+  exit 90
+fi
+export AKM_CONFIG_DIR=/tmp/cfg AKM_BUNDLE_DIR=/stash \
+       AKM_DATA_DIR=/tmp/d AKM_CACHE_DIR=/tmp/c AKM_STATE_DIR=/tmp/s \
+       PATH=/tmp/bin:$PATH
+mkdir -p /tmp/cfg /tmp/d /tmp/c /tmp/s /tmp/bin /tmp/spool
+cat > /tmp/bin/crontab <<"SHIM"
+#!/bin/sh
+f=/tmp/spool/crontab
+case "${1:--}" in
+  -l) cat "$f" 2>/dev/null; exit 0 ;;
+  -r) rm -f "$f" ;;
+  -)  cat > "$f" ;;
+  *)  cat "$1" > "$f" ;;
+esac
+SHIM
+chmod +x /tmp/bin/crontab
+cp /cfg-src/config.json /tmp/cfg/config.json
+timeout 120 akm --format json -q migrate status > /out/migrate.json 2>/out/migrate.err || true
+timeout 180 akm --format json -q task sync --dry-run --rebind > /out/sync.json 2>/out/sync.err || true
+' 2>"${AKM_OUT}/docker.err"
+    AKM_RC=$?
+    set -e
+
+    if [[ $AKM_RC -eq 90 ]]; then
+      fail "${version}: akm-cli@${AKM_PIN} does not install under ${AKM_NODE_BASE} — check engines.node"
+    elif [[ $AKM_RC -ne 0 ]]; then
+      fail "${version}: pinned-akm container exited ${AKM_RC} — $(tail -3 "${AKM_OUT}/docker.err")"
+    else
+      migrate_status=$(node -e "
+        try { console.log(JSON.parse(require('fs').readFileSync('${AKM_OUT}/migrate.json', 'utf8')).status); }
+        catch { console.log('(unparseable)'); }
+      ")
+      # Asserted on the JUST-MIGRATED home: this is precisely the check Mode 3
+      # says CI never ran — the real binary, against a real migrated home, not
+      # `akm --version`.
+      if [[ "$migrate_status" == "blocked" ]]; then
+        fail "${version}: real akm reports migrate status BLOCKED against the migrated home"
+      else
+        pass "${version}: real akm migrate status is '${migrate_status}' (not blocked) against the migrated home"
+      fi
+
+      # loadMarkdownTasks-equivalent: every task file that reconciles from
+      # this migrated home, counted via akm's own dry-run sync rather than
+      # re-implementing its parser here (countermeasure 4's stated guard).
+      reconciled=$(node -e "
+        try {
+          const r = JSON.parse(require('fs').readFileSync('${AKM_OUT}/sync.json', 'utf8'));
+          console.log((r.adds ?? []).length + (r.updates ?? []).length + (r.unchanged ?? []).length + (r.installed ?? []).length);
+        } catch { console.log(0); }
+      ")
+      if [[ "${reconciled:-0}" -ge 1 ]]; then
+        pass "${version}: real akm task sync reconciled ${reconciled} shipped task(s) from the migrated home"
+      else
+        fail "${version}: real akm task sync reconciled ZERO tasks from the migrated home"
+      fi
+    fi
+  fi
 done
 
 # ── 2. Retired-volume reaper against REAL Docker volumes ─────────────────────
