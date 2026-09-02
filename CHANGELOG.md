@@ -40,18 +40,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reference) before the retired keys are stripped; anything untranslatable is
   named in a warning, and `openpalm validate` now warns when an akm config has
   zero engines instead of reporting OK.
-- **Port migrations no longer revert an operator's `state/stack.env` port or
-  assign a port another instance already holds (#643).** An explicit
-  `OP_ASSISTANT_PORT`/`OP_UI_PORT` in the consolidated file survives a re-run
-  of the migration chain (which a rollback's restored schema-version
-  triggers), and a fresh default is probed host-wide and steps to the next
-  free port when a sibling install binds it.
-- **Root-owned files in `OP_HOME` no longer abort `openpalm update` (#641,
-  #642).** The backup snapshot skips an unreadable file it does not need and
-  records it in `.backup-complete`, failing loud only for the files
-  `openpalm rollback` restores; a leftover root-owned `.system-previous-*`
-  tree (a pre-0.13.1 guardian's `node_modules`) is warned about instead of
-  failing the already-completed update.
+- **A port migration never overwrites an operator's `state/stack.env` port
+  (#643).** `migrateLegacyDefaultPorts` carries an explicit
+  `OP_ASSISTANT_PORT`/`OP_UI_PORT` from the consolidated file through the
+  legacy-first merge instead of writing a default over it, so a re-run of the
+  migration chain (which a rollback's restored schema-version triggers) keeps
+  the value the operator set. A default is still just a default: a collision
+  with another instance surfaces as the daemon's own port error (#644).
+- **`openpalm update` starts by making the whole home the operator's again
+  (#641, #642).** The ownership repair walk now covers `system/` and any
+  leftover `.system-previous-*` staging tree, its "already repaired" marker
+  records the path set it covered so a release that widens the set re-walks,
+  and install/update run the walk unconditionally instead of trusting the
+  marker. A root-owned `system/guardian/node_modules` left by a pre-0.13
+  guardian or an operator's `sudo`-created `.bak` file is chowned back before
+  the backup and the system-tree swap, which stay strict and fail loudly.
 - **A stack pinned to a `rollback-generation-*` image tag now explains
   itself (#639).** The Recovery tab shows a read-only notice while any
   configured image is on a preserved rollback tag from a failed update,
@@ -72,14 +75,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (#644).** The bare `Recreate` Compose progress line is filtered out, and a
   per-service failure reason now carries the summarized compose stderr
   instead of a templated "did not become healthy".
-- **A home missing a compose secret file fails before Docker does (#632).**
-  The pre-activation secret audit checks that each resolved secret file
-  exists and names the secret, the path, and the remedy, instead of Docker's
-  opaque bind-mount error after `install --no-start`.
-- **`bun.lock` workspace versions are trued up at release stamp time
-  (#633).** `bun install --lockfile-only` never rewrites a workspace's own
-  version field; the release workflow now patches exactly those fields after
-  the bump.
+- **`install --no-start` without `--file` is rejected up front (#632).** The
+  flag only ever meant anything on the `--file` path; the wizard configures and
+  starts the stack in one step and was ignoring it, leaving a compose-looking
+  home with no secrets. The error names the headless route.
+- **The release stamp no longer patches `bun.lock` (#633).** bun never
+  rewrites or reads a workspace's own version field in the lockfile, so the
+  drift is cosmetic; the field values were trued up once and the shim removed.
 
 - **Preferred-model saves from the admin UI now persist — and clearing one
   actually clears it.** Three defects in the `opencode.json` write path
