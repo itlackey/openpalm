@@ -197,15 +197,30 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(run).toContain('renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`)');
 	});
 
-	test('CI and release preflight both typecheck Electron', () => {
-		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
-		const ci = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
-		expect(release).toContain('bun run --cwd packages/electron typecheck');
-		expect(ci).toContain('bun run --cwd packages/electron typecheck');
+	// #659: CI and release preflight cannot drift because they call the exact
+	// same reusable workflow (.github/workflows/gates.yml) instead of each
+	// hand-copying its own subset — so these two checks now assert that
+	// unification directly: both callers `uses:` gates.yml, and gates.yml
+	// itself carries the content that used to be hand-duplicated.
+	test('CI and release preflight both call the shared gates workflow', () => {
+		const ci = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')) as {
+			jobs: Record<string, { uses?: string }>;
+		};
+		const release = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { preflight: { uses?: string } };
+		};
+		const ciCaller = Object.values(ci.jobs).find((job) => job.uses === './.github/workflows/gates.yml');
+		expect(ciCaller).toBeTruthy();
+		expect(release.jobs.preflight.uses).toBe('./.github/workflows/gates.yml');
 	});
 
-	test('CI requires the real PowerShell installer contract on a Windows runner', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')) as {
+	test('the shared gates workflow typechecks Electron', () => {
+		const gates = readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8');
+		expect(gates).toContain('bun run --cwd packages/electron typecheck');
+	});
+
+	test('the shared gates workflow requires the real PowerShell installer contract on a Windows runner', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
 			jobs: Record<string, { 'runs-on': string; steps: Array<{ env?: Record<string, string>; run?: string }> }>;
 		};
 		const job = workflow.jobs['powershell-installer-tests'];
@@ -255,15 +270,15 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 	});
 
 	test('the release gate runs the UI vitest suites against the stamped candidate', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: { preflight: { steps: Array<{ name?: string; run?: string }> } };
+		// release.yml's preflight IS the shared gates workflow (see the
+		// "both call the shared gates workflow" test above), so this now reads
+		// gates.yml's ui-unit-tests job rather than a preflight-local step.
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
+			jobs: { 'ui-unit-tests': { steps: Array<{ name?: string; run?: string }> } };
 		};
-		const run = workflow.jobs.preflight.steps.find(
-			(step) => step.name === 'Install and test candidate'
-		)?.run;
-		if (!run) throw new Error('Missing preflight step: Install and test candidate');
-		expect(run).toContain('bun run --cwd packages/ui test:browsers');
-		expect(run).toContain('bun run ui:test:unit');
+		const steps = workflow.jobs['ui-unit-tests'].steps;
+		expect(steps.some((step) => step.run === 'bun run --cwd packages/ui test:browsers')).toBe(true);
+		expect(steps.some((step) => step.run === 'bun run ui:test:unit')).toBe(true);
 	});
 
 	test('the electron artifact upload carries the blockmaps the updater feed advertises', () => {

@@ -133,55 +133,42 @@ jobs:
           git bundle create "${RUNNER_TEMP}/release-candidate.bundle" release-candidate "^${BASE_SHA}"
           git bundle verify "${RUNNER_TEMP}/release-candidate.bundle"
           printf 'base_sha=%s\ncandidate_sha=%s\ncandidate_tree=%s\nsource_artifact=%s\n' "${BASE_SHA}" "${CANDIDATE_SHA}" "${CANDIDATE_TREE}" "${SOURCE_ARTIFACT}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ steps.bundle.outputs.source_artifact }}
-          path: ${{ runner.temp }}/release-candidate.bundle
-          compression-level: 0
-
-  preflight:
-    needs: candidate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore tested candidate
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - name: Validate an existing product tag
+        # Moved here (from the old standalone `preflight` job) when preflight
+        # became a call into gates.yml (#659): this needs only the git history
+        # already checked out for THIS job (fetch-depth: 0, above) plus the
+        # version/tree this job just computed — no candidate restore, no bun.
         env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-          CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
+          VERSION: ${{ steps.version.outputs.version }}
+          CANDIDATE_TREE: ${{ steps.bundle.outputs.candidate_tree }}
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
             git fetch --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
             test "$(git rev-parse "${VERSION}^{tree}")" = "${CANDIDATE_TREE}" || { echo "::error::Product tag ${VERSION} belongs to different source"; exit 1; }
           fi
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/upload-artifact@v7
         with:
-          bun-version: 1.3.14
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: Install and test candidate
-        run: |
-          bun install --frozen-lockfile
-          bun run test
-          bun run ui:check
-          # Playwright Chromium + system deps for Vitest browser mode — run
-          # through packages/ui where playwright is a devDependency (same as
-          # ci.yml's ui-unit-tests job) so the binary resolves.
-          bun run --cwd packages/ui test:browsers
-          bun run ui:test:unit
-          bun run --cwd packages/electron typecheck
-          bun run electron:test
+          name: ${{ steps.bundle.outputs.source_artifact }}
+          path: ${{ runner.temp }}/release-candidate.bundle
+          compression-level: 0
+
+  # #659: preflight used to hand-copy a SUBSET of ci.yml's quality-gates/
+  # ui-unit-tests content (missing every rootless/akm/upgrade-path/
+  # multi-instance smoke, Tier 4, and — like every OTHER release.yml job —
+  # Biome lint, despite docs/operations/release.md's checklist listing
+  # `bun run lint` as an automated gate release.yml never actually ran). Now
+  # it calls the exact same gates.yml ci.yml calls, against this candidate's
+  # restored source, so the two literally cannot drift again.
+  preflight:
+    needs: candidate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/gates.yml
+    with:
+      base_sha: ${{ needs.candidate.outputs.base_sha }}
+      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
+      source_artifact: ${{ needs.candidate.outputs.source_artifact }}
 
   # The compiled UI is identical for every consumer (assistant image, all three
   # Electron platforms, host assets), so it is built once here and downloaded
