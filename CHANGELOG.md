@@ -34,7 +34,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **akm-cli 0.9.8-beta.2 (from 0.9.7), in the assistant image and the Paperclip
+- **akm-cli 0.9.8-beta.3 (from 0.9.7), in the assistant image and the Paperclip
   plugin manifest.** akm's own delta: `akm upgrade --state-only` (akm#895, the
   fix OpenPalm's state-cutover helper now runs); `akm migrate` absorbs the
   remaining one-time cleanups (dead `.akm` residue, stale transaction journals,
@@ -42,8 +42,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   gone); task-migration snapshots are capped at five; `akm task sync` memoizes
   its npm probe (one spawn per process instead of one per call); a blocked v2
   task names the `command:` → `run:` + `shell:` rewrite it needs; a no-op
-  incremental `akm index` no longer costs minutes of CPU; `akm health` gains a
-  `data-dir-usage` advisory. **Upgrading is one-way for `data/akm/data/state.db`**:
+  incremental `akm index` no longer costs minutes of CPU, and its freshness
+  digest now covers every file so an edit with a restored mtime cannot go
+  unindexed; `akm health` gains a `data-dir-usage` advisory. beta.3 closed the
+  two defects this bump's verification found: `akm migrate apply` could not
+  clear a legacy `extraParams` config because it died on the very load error it
+  exists to fix, and `data-dir-usage` warned on an untouched install by counting
+  SQLite's `-wal`/`-shm` sidecars against their own databases. **Upgrading is
+  one-way for `data/akm/data/state.db`**:
   0.9.8 adds ledger migrations 025 and 026, and 0.9.7 refuses a database that
   carries them ("Refusing to open a database with a newer migration ledger:
   unknown migration ID 025-task-history-vocabulary-backfill"). `data/` is not in
@@ -53,7 +59,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `018-drop-dead-lane-schema` and the `configVersion "0.9.0"` config contract are
   unchanged. **Prerelease caveat:** the akm-opencode plugin (0.9.2202608290901,
   unchanged) selects its CLI by probing `akm --version` against `^0.9.2`, and
-  node-semver never lets a prerelease satisfy that range, so on this beta pin
+  node-semver never lets a prerelease satisfy that range, so on a beta pin
   the plugin skips the image's akm and falls back to the akm-cli 0.9.7 it
   bundles — which then refuses the state.db that 0.9.8 has already opened.
   Move the pin to the stable 0.9.8 (admitted by `^0.9.2` and `^0.9.7`) before
