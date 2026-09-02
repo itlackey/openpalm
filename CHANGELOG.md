@@ -5,7 +5,7 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.2] - 2026-09-02
 
 ### Changed
 
@@ -20,7 +20,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   end state and exits with a louder code when the automatic rollback did not
   fully recover (the stack is likely down), instead of the same generic hint
   and exit(1) for every failure.
-
+- **akm-cli 0.9.9 + akm-opencode 0.9.9202609021827 (from 0.9.8 and
+  0.9.8202609020939).** The whole akm lane moves together: the assistant
+  image's tool manifest, the Paperclip plugin manifest, and the assistant's
+  `opencode.jsonc` plugin spec. akm's delta for this repo: state.db
+  migrations are applied by `akm upgrade` and `akm migrate apply` themselves
+  (`akm upgrade --state-only` is gone, and nothing migrates on database
+  open), `akm health --format json` reports a pending state migration as its
+  own hard check, `akm task sync` reports failures under one `failures` key
+  in both modes and reads a supercronic `crontab` shim as an empty crontab
+  instead of failing the sync, and the bundling contract boot follows ships in
+  the package as `docs/integration/bundling-akm.md`. No new state.db
+  migration: a 0.9.8 home opens unchanged, and the plugin's `^0.9.8` range
+  admits 0.9.9 directly, so the plugin release is a lockfile resync only.
 
 - **Boot adopts akm-cli 0.9.9's boot contract, and subtracts the reach-around
   machinery OpenPalm grew because akm's migration used to be unreachable from
