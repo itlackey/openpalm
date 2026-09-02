@@ -264,9 +264,9 @@ check_port OP_API_PORT "$B_API_PORT" "$A_API_PORT"
 #     still absent) rather than reusing check_port. Before the fix this always
 #     failed: A holds 3820 live and B's OP_WORKSPACE_PORT stayed unset, so both
 #     effective values were 3820.
-a_workspace_effective=$(grep -E '^OP_WORKSPACE_PORT=' "${A_HOME}/state/stack.env" | tail -1 | cut -d= -f2-)
+a_workspace_effective=$({ grep -E '^OP_WORKSPACE_PORT=' "${A_HOME}/state/stack.env" || true; } | tail -1 | cut -d= -f2-)
 a_workspace_effective="${a_workspace_effective:-3820}"
-b_workspace_effective=$(grep -E '^OP_WORKSPACE_PORT=' "${B_HOME}/state/stack.env" | tail -1 | cut -d= -f2-)
+b_workspace_effective=$({ grep -E '^OP_WORKSPACE_PORT=' "${B_HOME}/state/stack.env" || true; } | tail -1 | cut -d= -f2-)
 b_workspace_effective="${b_workspace_effective:-3820}"
 if [[ "$b_workspace_effective" == "$a_workspace_effective" ]]; then
   fail "instance B's effective workspace port (${b_workspace_effective}) collides with instance A's (${a_workspace_effective}) — the update did not resolve the unseeded OP_WORKSPACE_PORT default"
