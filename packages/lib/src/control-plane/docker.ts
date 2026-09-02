@@ -2,7 +2,7 @@
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
-import { mapDockerError } from "./compose-errors.js";
+import { mapDockerError, summarizeComposeStderr } from "./compose-errors.js";
 
 export type DockerResult = {
   ok: boolean;
@@ -1115,6 +1115,16 @@ export async function applyStack(
     }
     const started: string[] = [];
     const failed: { service: string; reason: string }[] = [];
+    // #644: `ps -a` gives us WHICH service didn't come up (the row/state
+    // below), but not WHY — that lives only in `upResult.stderr`, which this
+    // branch used to ignore entirely once `ps` returned any rows. A reapply
+    // (`kind: "all"`) that fails one service out of a mostly-healthy stack
+    // took this path and reported a templated "did not become healthy" with
+    // the real Docker daemon error (a port conflict, a networking failure,
+    // …) dropped on the floor. Fold the same summarized stderr line the
+    // `rows.length === 0` branch above already surfaces into each per-service
+    // reason too, so the underlying cause travels with it.
+    const composeErrorLine = summarizeComposeStderr(upResult.stderr);
     for (const svc of targetServices) {
       const row = rows.find((r) => r.service === svc);
       if (isComposePsRowHealthy(row)) {
@@ -1126,7 +1136,8 @@ export async function applyStack(
         : row.health === "unhealthy"
           ? `container ${svc} is unhealthy`
           : `container ${svc} did not become healthy (state: ${row.state || "unknown"})`;
-      failed.push({ service: svc, reason: mapDockerError(rawReason).message });
+      const reasonWithCause = composeErrorLine ? `${rawReason}: ${composeErrorLine}` : rawReason;
+      failed.push({ service: svc, reason: mapDockerError(reasonWithCause).message });
     }
     return {
       ok: false,

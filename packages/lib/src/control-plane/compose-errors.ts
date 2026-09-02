@@ -61,9 +61,20 @@ const NETWORK_ERROR_RE = /(?:dial tcp|connection reset by peer|EOF|i\/o timeout|
  * line through as the operator-facing error. Worse, because the summary is the
  * FIRST unmatched line, a status line surviving the filter can mask the real
  * error further down the same stderr.
+ *
+ * `Recreate` (#644): every other in-progress/done pair is listed together
+ * (Creating/Created, Starting/Started, Stopping/Stopped, Removing/Removed,
+ * Pulling/Pulled) — this list had only the done half, `Recreated`. Compose
+ * emits the bare present-tense `Recreate` (not `Recreating`) the moment a
+ * `--force-recreate` up begins working on an existing container, one or more
+ * lines before `Recreated`/`Starting` and — on a real failure — the daemon
+ * error further down. Missing it meant that progress line, not the failure,
+ * was the FIRST unmatched line and thus the whole summary: a reapply's real
+ * cause (e.g. `Error response from daemon: ... port is already allocated`)
+ * was replaced by `Container <name> Recreate`, which names no problem.
  */
 const COMPOSE_PROGRESS_RE =
-  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreated|Skipped)\b/;
+  /^(?:\S+\s+){0,2}(?:Pulling fs layer|Pulling|Pulled|Waiting|Downloading|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists|Creating|Created|Starting|Started|Healthy|Stopping|Stopped|Removing|Removed|Recreate|Recreated|Skipped)\b/;
 
 /**
  * Summarise compose stderr in a single short line, suitable for log
