@@ -36,8 +36,9 @@ Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 > [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
 > for the decision record and migration.
 
-Lifecycle safety backups include `state/` and exclude `data/` and regenerable
-`cache/`. A service excluded that way takes its own credentials with it:
+Lifecycle safety backups include `state/` and exclude `data/`, regenerable
+`cache/`, and the operator's own regenerable `workspace/`. A service excluded
+that way takes its own credentials with it:
 `state/env/<service>.env` is left out alongside `data/<service>/`, so the pair
 is backed up and restored as one unit, and the snapshot's `.backup-complete`
 marker names each file it skipped. `uninstall --purge` removes every `OP_HOME`
