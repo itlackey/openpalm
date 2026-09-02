@@ -6,7 +6,7 @@
  * skip-existing copy, so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -148,6 +148,42 @@ describe("overwriteSystemTree", () => {
 		expect(updated).toContain("system/stack/portals.compose.yml");
 		expect(backupDir).not.toBeNull();
 	});
+});
+
+describe("#641/#642/#653 — a permission-denied file surfaces an actionable message, not a bare EACCES", () => {
+  it("names the exact path and the repair-ownership remedy instead of a bare EACCES", () => {
+    // Root bypasses DAC checks entirely (that is the whole reason
+    // repairRootOwnedBindMounts delegates to a sandboxed container instead of
+    // chowning directly), so a chmod 000 file is still fully readable/writable
+    // here and this path cannot be exercised as root. Run this file's tests
+    // as a non-root user (`runuser -u optest -- bun test ...`) to prove it —
+    // see the agent runbook.
+    if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+    seedSource("old\n");
+    overwriteSystemTree(sourceRoot, opHome);
+    const locked = join(opHome, MANAGED_FILES[0]);
+    // A file left un-writable by the current session (the #641/#642
+    // shape) — the owner itself can chmod it, but afterward even the owner
+    // cannot read/write it, exactly like a prior root-owned run's leftovers.
+    chmodSync(locked, 0o000);
+    try {
+      seedSource("new\n"); // a genuine skeleton change, so the overwrite proceeds
+      let thrown: unknown;
+      try {
+        overwriteSystemTree(sourceRoot, opHome);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).not.toContain("EACCES: permission denied"); // the bare, unhelpful original
+      expect(message).toContain(locked);
+      expect(message).toContain("openpalm repair-ownership");
+    } finally {
+      chmodSync(locked, 0o644); // restore so afterEach's rmSync can clean up
+    }
+  });
 });
 
 describe("AGENTS.md is a runtime extra, not a retirement", () => {

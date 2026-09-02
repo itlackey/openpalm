@@ -8,15 +8,10 @@ import {
   createLogger,
   reapAndLogRetiredVolumes,
   releaseInstallLock,
-  resolveConfigDir,
   resolveDataDir,
-  resolveStashDir,
-  resolveStateDir,
-  resolveSystemDir,
-  resolveWorkspaceDir,
   resolveBackupsDirFor,
-  resolveCacheDir,
   teardownRenamedProject,
+  OP_HOME_TREES,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 
@@ -71,36 +66,36 @@ export async function runUninstallAction(
     }
 
     if (args.purge) {
-      // C1: state/ and system/ must be purged too — otherwise a survivor
-      // state/stack.env (OP_SETUP_COMPLETE) or system/stack/core.compose.yml
-      // trips classifyLocalInstall and blocks the next plain `install`,
-      // contradicting the purge's own "all data removed" message.
-      // §G1: state/ also holds the delegated secrets (UI login password,
-      // guardian/API tokens, portal principals, bot credentials) that were
-      // moved OUT of the agent-reachable knowledge/ tree, under state/secrets/
-      // and state/env/. resolveStashDir() does not reach them — that is the
-      // point — so resolveStateDir() below is what keeps `--purge`'s "all data
-      // removed" message true instead of leaving every live credential on disk
-      // (Codex #5).
+      // #656 / lesson 24: the purge allowlist is DERIVED from the one tree
+      // manifest (OP_HOME_TREES, home.ts) instead of an independent
+      // hand-maintained list — purge missing a whole tree at introduction
+      // (docs G7, the retired `private/` incident below) is exactly the class
+      // of bug a manifest-derived list closes. C1: state/ and system/ must be
+      // purged too — otherwise a survivor state/stack.env (OP_SETUP_COMPLETE)
+      // or system/stack/core.compose.yml trips classifyLocalInstall and
+      // blocks the next plain `install`, contradicting the purge's own "all
+      // data removed" message. §G1: state/ also holds the delegated secrets
+      // (UI login password, guardian/API tokens, portal principals, bot
+      // credentials) that were moved OUT of the agent-reachable knowledge/
+      // tree, under state/secrets/ and state/env/ — knowledge/ does not reach
+      // them, which is what keeps `--purge`'s "all data removed" message true
+      // instead of leaving every live credential on disk (Codex #5).
       // dataDir owns the lifecycle lock, so it is removed LAST, only after
-      // every other destructive purge step has completed — state/ and
-      // system/ hold no lock or in-use handle so they are safe to go first.
+      // every other destructive purge step has completed — every other tree
+      // holds no lock or in-use handle so it is safe to go first.
+      const purgeTreeDirs = OP_HOME_TREES.filter((tree) => tree.inPurge && tree.name !== 'data').map((tree) =>
+        join(state.homeDir, tree.name),
+      );
       const dirs = [
-        resolveStateDir(),
-        resolveSystemDir(),
-        resolveConfigDir(),
-        resolveStashDir(),
-        resolveWorkspaceDir(),
-        resolveCacheDir(),
-        // The retired `private/` tree, named literally because no resolver
-        // reaches it anymore. `migrateOpHomeLayout` leaves it in place when the
-        // old and new copies of a credential disagree, or when it holds
-        // anything the relocation does not move (a subdirectory, a symlink, an
-        // operator's own file) — and in those states it still holds live
-        // credentials. Purge is an ALLOWLIST, so a tree missing from it is
-        // silently kept while the command reports "all data removed": G7,
-        // verbatim. Drop this once the supported upgrade floor passes schema
-        // 10, the same lifetime rule the MIGRATIONS entries follow.
+        ...purgeTreeDirs,
+        // The retired `private/` tree, named literally because no manifest
+        // entry reaches it anymore — it predates this layout. migrateOpHomeLayout
+        // leaves it in place when the old and new copies of a credential
+        // disagree, or when it holds anything the relocation does not move (a
+        // subdirectory, a symlink, an operator's own file) — and in those
+        // states it still holds live credentials. Drop this once the
+        // supported upgrade floor passes schema 10, the same lifetime rule
+        // the MIGRATIONS entries follow.
         join(state.homeDir, 'private'),
         resolveDataDir(),
       ];
