@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneState } from './types.js';
-import { stackEnvFile, hostIdentityFile } from './home.js';
+import { OP_HOME_TREES, stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
 import { detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
 import { discoverHomeBindMountSources } from './config-persistence.js';
@@ -49,6 +49,41 @@ function discoverSystemPreviousStagingDirs(homeDir: string): string[] {
   }
 }
 
+/**
+ * #656 / lesson 24: which top-level TREES are in ownership-repair scope comes
+ * from the one manifest (`OP_HOME_TREES`, home.ts) instead of a hardcoded
+ * list that has already drifted once — the `.system-previous-*` staging
+ * sweep landed as a one-off patch (408a03ea) adding what the hardcoded list
+ * had missed. `cache/` is deliberately excluded (`inRepair: false`): it is
+ * regenerable, and a recursive chown pass over it buys nothing.
+ *
+ * `data/` is `inRepair: true` too, but only SOME of its subdirectories are —
+ * that refinement (which services, not "all of data/") stays local to this
+ * module rather than growing the manifest into a second schema. `system/` is
+ * listed explicitly (not left to compose bind-mount discovery) because a
+ * pre-0.13.1 guardian's root-owned `system/guardian/node_modules` must be
+ * reachable even when the guardian profile is inactive (#641).
+ *
+ * Order matches {@link ownershipCanaryPaths}'s locked contract test.
+ */
+const TREE_PATHS_IN_ORDER: ReadonlyArray<readonly [string, (state: ControlPlaneState) => string[]]> = [
+  ['state', (state) => [`${state.homeDir}/state`]],
+  ['config', (state) => [state.configDir]],
+  ['knowledge', (state) => [`${state.homeDir}/knowledge`]],
+  ['workspace', (state) => [state.workspaceDir]],
+  [
+    'data',
+    (state) => [
+      `${state.dataDir}/assistant`,
+      `${state.dataDir}/guardian`,
+      `${state.dataDir}/portal`,
+      `${state.dataDir}/akm`,
+      `${state.dataDir}/logs`,
+    ],
+  ],
+  ['system', (state) => [`${state.homeDir}/system`]],
+];
+
 export function ownershipRepairPaths(
   state: ControlPlaneState,
   discoveredMounts: HomeBindMountSource[] = discoverHomeBindMountSources(state),
@@ -57,21 +92,10 @@ export function ownershipRepairPaths(
     .map((mount) => mount.path)
     .filter((path) => !overlapsRegenerableCachePath(state.homeDir, path));
   const deduped = [...new Set(discovered)];
+
+  const repairTreeNames = new Set(OP_HOME_TREES.filter((tree) => tree.inRepair).map((tree) => tree.name));
   const base = [
-    `${state.homeDir}/state`,
-    state.configDir,
-    `${state.homeDir}/knowledge`,
-    state.workspaceDir,
-    `${state.dataDir}/assistant`,
-    `${state.dataDir}/guardian`,
-    `${state.dataDir}/portal`,
-    `${state.dataDir}/akm`,
-    `${state.dataDir}/logs`,
-    // The CLI-managed tree an update renames and deletes (#641): a pre-0.13.1
-    // guardian's root-owned system/guardian/node_modules lives under here, and
-    // relying on system/guardian surfacing as a discovered compose bind mount
-    // only holds when the guardian profile is active.
-    `${state.homeDir}/system`,
+    ...TREE_PATHS_IN_ORDER.filter(([name]) => repairTreeNames.has(name)).flatMap(([, paths]) => paths(state)),
     ...discoverSystemPreviousStagingDirs(state.homeDir),
   ];
   return [...new Set([...base, ...deduped])];

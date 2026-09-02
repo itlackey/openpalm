@@ -15,7 +15,7 @@ import {
   HostSwapBlockedError,
 } from './ownership-reconcile.js';
 import { writeHostIdentity, readHostIdentity } from './host-identity.js';
-import { hostIdentityFile } from './home.js';
+import { hostIdentityFile, OP_HOME_TREES } from './home.js';
 
 let homeDir = '';
 let restoreIds: (() => void) | null = null;
@@ -130,6 +130,25 @@ describe('ownership canary paths', () => {
       expect(paths).toContain(durableBind);
       expect(paths).toContain(join(homeDir, 'root-secret'));
       expect(paths).not.toContain(homeDir);
+    }
+  });
+
+  // #656 / lesson 24: the base list is DERIVED from OP_HOME_TREES' inRepair
+  // flags, not an independent hardcoded list that can drift from it — this
+  // ties the manifest directly to what ownershipRepairPaths returns, rather
+  // than only proving the current (incidental) outcome.
+  test('the base tree list is exactly what OP_HOME_TREES.inRepair says (data/ excepted — it is subpath-refined)', () => {
+    const state = makeState();
+    const paths = ownershipRepairPaths(state);
+
+    for (const tree of OP_HOME_TREES) {
+      if (tree.name === 'data') continue; // refined to specific subpaths, not the whole tree
+      const wholeTreePath = join(homeDir, tree.name);
+      if (tree.inRepair) {
+        expect(paths).toContain(wholeTreePath);
+      } else {
+        expect(paths).not.toContain(wholeTreePath);
+      }
     }
   });
 });
