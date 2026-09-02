@@ -1,15 +1,15 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+// §655.1: `run` is docker.ts's own sanctioned execFile wrapper (dockerBin() +
+// captured stdout/stderr, no shell) — deep-imported the same way the
+// volume-ownership repair subsystem already reuses it (see its docstring in
+// docker.ts), instead of a raw execFile call with the "docker" literal.
+import { run as runDocker } from "@openpalm/lib/control-plane/docker.js";
 import { guardianRequired, readStackEnv, resolveComposeProjectName } from "@openpalm/lib";
 import { getRequestId, jsonResponse } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import type { RequestHandler } from "./$types";
 
-const execFileAsync = promisify(execFile);
-
 async function findGuardianContainerId(projectName: string): Promise<string | null> {
-  const { stdout } = await execFileAsync(
-    "docker",
+  const result = await runDocker(
     [
       "container",
       "ls",
@@ -21,9 +21,11 @@ async function findGuardianContainerId(projectName: string): Promise<string | nu
       "--format",
       "{{.ID}}",
     ],
-    { timeout: 5000 },
+    undefined,
+    5000,
   );
-  return stdout.trim().split("\n").find(Boolean) ?? null;
+  if (!result.ok) throw new Error(result.stderr || "docker container ls failed");
+  return result.stdout.trim().split("\n").find(Boolean) ?? null;
 }
 
 /**
@@ -63,8 +65,7 @@ export const GET: RequestHandler = async (event) => {
     if (!containerId) {
       return jsonResponse(503, { status: "unreachable", service: "guardian" }, requestId);
     }
-    const { stdout } = await execFileAsync(
-      "docker",
+    const inspectResult = await runDocker(
       [
         "container",
         "inspect",
@@ -72,9 +73,11 @@ export const GET: RequestHandler = async (event) => {
         "--format",
         "{{.State.Health.Status}}",
       ],
-      { timeout: 5000 },
+      undefined,
+      5000,
     );
-    const status = stdout.trim();
+    if (!inspectResult.ok) throw new Error(inspectResult.stderr || "docker container inspect failed");
+    const status = inspectResult.stdout.trim();
     if (status === "healthy") {
       return jsonResponse(200, { status: "ok", service: "guardian" }, requestId);
     }

@@ -4,8 +4,12 @@ import {
   resolveHostUiPort, STACK_DEFAULTS, resolveOpenPalmHome, workspacePortTarget,
   checkLifecycleDiskHeadroom, describeLifecycleDiskHeadroom, shouldBlockOnDiskHeadroom,
 } from "@openpalm/lib";
+// §655.1: `run` is docker.ts's own sanctioned execFile wrapper (dockerBin() +
+// captured stdout/stderr, no shell) — deep-imported the same way the
+// volume-ownership repair subsystem already reuses it (see its docstring in
+// docker.ts), instead of a fifth raw execFile call with the "docker" literal.
+import { run as runDocker } from "@openpalm/lib/control-plane/docker.js";
 import { createServer } from "node:net";
-import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
 
 /**
@@ -16,32 +20,21 @@ import type { RequestHandler } from "./$types";
  * cannot be queried, so the caller can degrade this from blocking to warning.
  */
 async function portHeldByOurContainer(port: number): Promise<"held" | "free" | "unreachable"> {
-  return new Promise((resolve) => {
-    const run = (attempt: number) => {
-      execFile(
-        "docker",
-        ["ps", "--format", "{{.Names}}\t{{.Ports}}"],
-        { timeout: 5_000 },
-        (err, stdout) => {
-          if (err) {
-            if (attempt === 0) return run(1);
-            return resolve("unreachable");
-          }
-          const lines = stdout.toString().split("\n").map((l) => l.trim()).filter(Boolean);
-          for (const line of lines) {
-            const [name, ports] = line.split("\t");
-            if (!name?.startsWith("openpalm-")) continue;
-            if (ports?.includes(`:${port}->`)) {
-              return resolve("held");
-            }
-          }
-          resolve("free");
-        },
-      );
-    };
-
-    run(0);
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await runDocker(["ps", "--format", "{{.Names}}\t{{.Ports}}"], undefined, 5_000);
+    if (!result.ok) {
+      if (attempt === 0) continue;
+      return "unreachable";
+    }
+    const lines = result.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const [name, ports] = line.split("\t");
+      if (!name?.startsWith("openpalm-")) continue;
+      if (ports?.includes(`:${port}->`)) return "held";
+    }
+    return "free";
+  }
+  return "unreachable";
 }
 
 // Check whether a TCP port is bindable on 127.0.0.1. Used to flag conflicts
