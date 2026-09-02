@@ -86,7 +86,7 @@ fail() { echo "  FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
 pass() { echo "  ok: $*"; }
 
 echo "=== install --file --no-start as the unprivileged operator ($(id -un)) ==="
-SPEC="$(mktemp)"
+SPEC="$(mktemp --suffix=.yaml)"
 cat > "$SPEC" <<'YAML'
 version: 2
 security:
