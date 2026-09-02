@@ -832,3 +832,46 @@ describe('openpalm doctor --prune-sessions / --sessions (S3 live wiring)', () =>
     }
   });
 });
+
+describe('openpalm doctor — port report wording distinguishes self-held from another process (#658)', () => {
+  test('a port held by OUR OWN container reads "available" + held-by-OpenPalm-itself, never a conflict', async () => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => lines.push(args.map(String).join(' '));
+    try {
+      const deps = baseDeps({
+        probeInstallPorts: async () => [
+          { port: 3810, service: 'assistant', blocking: true, available: true, ownership: 'ours' as const },
+        ],
+      });
+      await runDoctorAction({}, deps);
+      const line = lines.find((l) => l.includes('assistant'));
+      expect(line).toContain('available');
+      expect(line).toContain('held by OpenPalm itself');
+      expect(line).not.toContain('CONFLICT');
+      expect(line).not.toContain('held by another process');
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('a port genuinely held by ANOTHER process reads CONFLICT + held-by-another-process, distinct wording from self-held', async () => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => lines.push(args.map(String).join(' '));
+    try {
+      const deps = baseDeps({
+        probeInstallPorts: async () => [
+          { port: 3810, service: 'assistant', blocking: true, available: false, ownership: 'free' as const },
+        ],
+      });
+      await runDoctorAction({}, deps);
+      const line = lines.find((l) => l.includes('assistant'));
+      expect(line).toContain('CONFLICT');
+      expect(line).toContain('held by another process');
+      expect(line).not.toContain('held by OpenPalm itself');
+    } finally {
+      console.log = originalLog;
+    }
+  });
+});

@@ -8,9 +8,11 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
-import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
+import { composeConfigJsonSync, checkDocker, resolveComposeProjectName, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
 import { parseEnabledAddons, parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
+import { probeInstallPorts, type InstallPortTarget } from './port-probe.js';
+import { readStackEnv } from './secrets.js';
 import {
   ACCESS_ENV_KEYS,
   hasStoredAccessIntent,
@@ -25,7 +27,7 @@ import { writeSecret } from './secrets-files.js';
 import { needsWorkspaceLoopbackPublish } from './bind-warning.js';
 import { isVoiceLanAccessEnabled } from './voice-host-probes.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
+import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath, stackDirFor } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import {
@@ -67,6 +69,48 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
   return [legacyKnowledgeStackEnvFile(state.homeDir), legacyStateEnvFile(state.homeDir)].filter(existsSync);
 }
 
+/** Bounded forward scan (issue #658): how far past a busy default to look for a free port. */
+const DEFAULT_PORT_SCAN_RANGE = 20;
+
+/**
+ * Resolve a DEFAULT host port to one that is actually free right now, using
+ * the SAME host-aware prober `openpalm doctor` and the install wizard trust
+ * (port-probe.ts) rather than a second bind-probe implementation.
+ *
+ * Only ever called for a value a migration is about to WRITE AS A FALLBACK —
+ * never for an operator's explicit port, which the caller carries through
+ * untouched before this is reached. A port already published by THIS
+ * install's own compose project reads as free (never a false conflict, via
+ * `composeProject`); a genuinely occupied port is walked forward a bounded
+ * range and the first free one wins. `reserved` excludes a port this same
+ * migration run already assigned to a sibling service, so two defaults never
+ * collide with each other.
+ */
+async function resolveDefaultPort(
+  homeDir: string,
+  candidate: number,
+  service: string,
+  reserved: Set<number>,
+  dockerAvailable: boolean,
+): Promise<number> {
+  const composeProject = {
+    name: resolveComposeProjectName(readStackEnv(homeDir)),
+    workingDir: stackDirFor(homeDir),
+  };
+  const targets: InstallPortTarget[] = [];
+  for (let offset = 0; offset <= DEFAULT_PORT_SCAN_RANGE; offset++) {
+    targets.push({ port: candidate + offset, service, blocking: true });
+  }
+  const statuses = await probeInstallPorts(targets, { dockerAvailable, composeProject });
+  const free = statuses.find((s) => s.available && !reserved.has(s.port));
+  if (free) return free.port;
+  logger.warn(
+    `No free port found for ${service} within +${DEFAULT_PORT_SCAN_RANGE} of the default ${candidate}; using the default anyway`,
+    { candidate, service },
+  );
+  return candidate;
+}
+
 /**
  * Swap the retired default port pair before the refreshed Compose file is
  * validated. Existing fallback-generated stack.env files persisted assistant
@@ -76,8 +120,14 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Custom combinations retain their old effective values. If only one custom
  * port was persisted, the other old implicit default is materialized so the
  * corrected defaults do not silently move it.
+ *
+ * Issue #658: a DEFAULT value this migration is about to WRITE (never an
+ * explicit operator value carried through from the consolidated file) is
+ * probed first via {@link resolveDefaultPort} — a fresh legacy home landing
+ * on the bare default must not collide with whatever is already listening
+ * there.
  */
-export function migrateLegacyDefaultPorts(homeDir: string): boolean {
+export async function migrateLegacyDefaultPorts(homeDir: string): Promise<boolean> {
   const path = legacyKnowledgeStackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
@@ -106,9 +156,31 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
     const explicitAssistant = consolidated.OP_ASSISTANT_PORT?.trim();
     const explicitUi = consolidated.OP_UI_PORT?.trim();
 
-    updates.OP_ASSISTANT_PORT = explicitAssistant || String(STACK_DEFAULTS.ports.assistant);
-    updates.OP_UI_PORT = explicitUi || String(STACK_DEFAULTS.ports.ui);
+    // Only a value about to be written as the bare DEFAULT is probed — an
+    // explicit consolidated port is carried through untouched, never probed
+    // or moved. One `checkDocker()` up front, threaded through both probes,
+    // instead of one per candidate port.
+    const dockerAvailable = explicitAssistant && explicitUi ? true : (await checkDocker()).ok;
+    const reserved = new Set<number>();
+    if (explicitUi) {
+      updates.OP_UI_PORT = explicitUi;
+      reserved.add(Number(explicitUi));
+    } else {
+      const port = await resolveDefaultPort(homeDir, STACK_DEFAULTS.ports.ui, "ui", reserved, dockerAvailable);
+      updates.OP_UI_PORT = String(port);
+      reserved.add(port);
+    }
+    if (explicitAssistant) {
+      updates.OP_ASSISTANT_PORT = explicitAssistant;
+    } else {
+      const port = await resolveDefaultPort(homeDir, STACK_DEFAULTS.ports.assistant, "assistant", reserved, dockerAvailable);
+      updates.OP_ASSISTANT_PORT = String(port);
+    }
   } else {
+    // Materializing the OLD implicit default beside an explicit peer changes
+    // nothing about the port Compose's own fallback interpolation was already
+    // resolving — this only turns an implicit value into an explicit one — so
+    // there is no NEW collision to probe for here.
     if (!assistantPort) updates.OP_ASSISTANT_PORT = oldEffectiveAssistantPort;
     if (!uiPort) updates.OP_UI_PORT = oldEffectiveUiPort;
   }
@@ -182,8 +254,12 @@ export function migrateLegacyBindAddresses(homeDir: string): boolean {
  *
  * Only the retired PAIR is swapped. An absent value needs no write: the compose
  * fallbacks already resolve to the corrected defaults.
+ *
+ * Issue #658: both replacement values are bare DEFAULTs (the retired pair is
+ * always exactly 3800/3810, never an operator's own choice), so both are
+ * probed via {@link resolveDefaultPort} before writing.
  */
-export function migrateConsolidatedDefaultPorts(homeDir: string): boolean {
+export async function migrateConsolidatedDefaultPorts(homeDir: string): Promise<boolean> {
   const path = stackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
@@ -197,16 +273,22 @@ export function migrateConsolidatedDefaultPorts(homeDir: string): boolean {
   const isRetiredPair = assistantPort === "3800" && (uiPort === "3810" || !uiPort);
   if (!isRetiredPair) return false;
 
+  const dockerAvailable = (await checkDocker()).ok;
+  const reserved = new Set<number>();
+  const ui = await resolveDefaultPort(homeDir, STACK_DEFAULTS.ports.ui, "ui", reserved, dockerAvailable);
+  reserved.add(ui);
+  const assistant = await resolveDefaultPort(homeDir, STACK_DEFAULTS.ports.assistant, "assistant", reserved, dockerAvailable);
+
   const next = mergeEnvContent(content, {
-    OP_ASSISTANT_PORT: String(STACK_DEFAULTS.ports.assistant),
-    OP_UI_PORT: String(STACK_DEFAULTS.ports.ui),
+    OP_ASSISTANT_PORT: String(assistant),
+    OP_UI_PORT: String(ui),
   });
   if (next === content) return false;
 
   writeFileAtomic(path, next, 0o600);
   logger.warn("Swapped the retired default port pair in state/stack.env", {
-    assistant: STACK_DEFAULTS.ports.assistant,
-    ui: STACK_DEFAULTS.ports.ui,
+    assistant,
+    ui,
   });
   return true;
 }
