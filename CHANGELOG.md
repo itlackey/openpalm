@@ -34,6 +34,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`openpalm update` from 0.12.x no longer silently drops the akm LLM
+  engine (#645).** The retired `profiles.llm.*` block is translated into akm
+  0.9 `engines.*` (endpoint, model, provider, and an env-var `apiKey`
+  reference) before the retired keys are stripped; anything untranslatable is
+  named in a warning, and `openpalm validate` now warns when an akm config has
+  zero engines instead of reporting OK.
+- **Port migrations no longer revert an operator's `state/stack.env` port or
+  assign a port another instance already holds (#643).** An explicit
+  `OP_ASSISTANT_PORT`/`OP_UI_PORT` in the consolidated file survives a re-run
+  of the migration chain (which a rollback's restored schema-version
+  triggers), and a fresh default is probed host-wide and steps to the next
+  free port when a sibling install binds it.
+- **Root-owned files in `OP_HOME` no longer abort `openpalm update` (#641,
+  #642).** The backup snapshot skips an unreadable file it does not need and
+  records it in `.backup-complete`, failing loud only for the files
+  `openpalm rollback` restores; a leftover root-owned `.system-previous-*`
+  tree (a pre-0.13.1 guardian's `node_modules`) is warned about instead of
+  failing the already-completed update.
+- **Failed updates can be un-pinned from `rollback-generation-*` image tags
+  (#639).** New `openpalm unpin` command and a Recovery-tab banner with a
+  one-click clear share one lib function that clears only `rollback-`
+  prefixed values, so a deliberate operator pin is never touched.
+- **An older app refuses to manage a newer `OP_HOME` (#636).** Install,
+  update, upgrade, home-asset seeding, and `unpin` compare
+  `.skeleton-version` and `state/schema-version` against the running build
+  and refuse with an actionable message instead of rewriting `system/` or
+  advancing image pins backwards; `status`, `validate`, and `start` keep
+  working.
+- **The desktop self-updater never calls electron-updater's `install()`
+  twice (#635).** A second call after a quit-time install was a silent no-op
+  that jammed every later install for the process; it is now refused, and a
+  failed quit-time install is logged loudly.
+- **Reapply and deploy failures surface the Docker daemon's real error
+  (#644).** The bare `Recreate` Compose progress line is filtered out, and a
+  per-service failure reason now carries the summarized compose stderr
+  instead of a templated "did not become healthy".
+- **A home missing a compose secret file fails before Docker does (#632).**
+  The pre-activation secret audit checks that each resolved secret file
+  exists and names the secret, the path, and the remedy, instead of Docker's
+  opaque bind-mount error after `install --no-start`.
+- **`bun.lock` workspace versions are trued up at release stamp time
+  (#633).** `bun install --lockfile-only` never rewrites a workspace's own
+  version field; the release workflow now patches exactly those fields after
+  the bump.
+
 - **Preferred-model saves from the admin UI now persist — and clearing one
   actually clears it.** Three defects in the `opencode.json` write path
   (`packages/ui/src/lib/server/opencode/config.ts`), found together. First:

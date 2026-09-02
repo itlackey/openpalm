@@ -335,7 +335,7 @@ function migrateOpHomeLayout(homeDir: string): boolean {
  * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
  * env and writes the app-owned record, so it must follow it.
  */
-const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
+const MIGRATIONS: { since: number; run: (homeDir: string) => boolean | Promise<boolean> }[] = [
   // Layout: private/ → state/, plus the skeleton tree this release retired.
   // FIRST on purpose — see the docblock for why the credential move has to
   // precede the two knowledge/secrets sweeps below.
@@ -403,8 +403,13 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
  *
  * Returns whether anything actually changed on disk. An up-to-date home reads
  * one small file and returns — it never touches stack.env.
+ *
+ * Async because the port-default migrations (issue #643) probe host-wide
+ * port availability before writing a value the operator never set; every
+ * other migration here stays synchronous and simply resolves immediately
+ * under the `await`.
  */
-export function runHomeMigrations(homeDir: string): boolean {
+export async function runHomeMigrations(homeDir: string): Promise<boolean> {
   const recorded = readHomeSchemaVersion(homeDir);
   if (recorded >= HOME_SCHEMA_VERSION) return false;
 
@@ -417,7 +422,7 @@ export function runHomeMigrations(homeDir: string): boolean {
   let changed = false;
   for (const migration of MIGRATIONS) {
     if (migration.since < recorded) continue;
-    if (migration.run(homeDir)) changed = true;
+    if (await migration.run(homeDir)) changed = true;
   }
 
   writeHomeSchemaVersion(homeDir, HOME_SCHEMA_VERSION);

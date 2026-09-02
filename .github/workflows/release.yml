@@ -111,6 +111,7 @@ jobs:
           node scripts/bump-unit.mjs
           UNIT=electron node scripts/bump-unit.mjs
           bun install --lockfile-only
+          node scripts/sync-lockfile-versions.mjs
       - name: Commit and bundle candidate
         id: bundle
         env:

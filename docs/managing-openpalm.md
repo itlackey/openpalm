@@ -312,6 +312,27 @@ offline; `{"upgraded":false}` means there was nothing to do. Boot never runs
 this for you: applying a destructive migration stays an explicit operator
 action, the same rule that keeps your task files unrewritten at boot.
 
+### A failed update leaves the stack pinned to a rollback image
+
+**A failed update pins your images to a preserved rollback tag, not to
+`latest`.** Before a failed update can mutate anything, OpenPalm retags each
+running image as `<namespace>/<service>:rollback-generation-<id>` and points
+`state/stack.env` at those tags, so the automatic recovery above restarts the
+exact images that were running before — never a `latest` that might not match
+your restored config. If `update` keeps failing, every attempt repeats this,
+so the stack stays correctly pinned to whichever rollback generation is
+newest; it never drifts to a stale one, but the pin also never clears itself.
+Run `openpalm unpin` once the underlying problem is fixed (bad connectivity, a
+bad tag, disk space, …) to release the pin and let the next `update`/`start`
+pull the normal release tag again — it only edits `state/stack.env` and never
+touches a version you set yourself (a value without the `rollback-` prefix),
+so run `update` afterward to actually apply it:
+
+```bash
+openpalm unpin
+openpalm update
+```
+
 ### Desktop app updates
 
 The desktop app updates as one complete application — shell and UI together —

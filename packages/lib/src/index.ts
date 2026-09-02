@@ -390,12 +390,15 @@ export {
   RETIRED_TOOL_VERSION_KEYS,
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
+  assertHomeNotNewerThanApp,
+  clearRollbackPins,
+  detectHomeVersionSkew,
   isVersionKey,
   readVersions,
   stripRetiredToolVersions,
   writeVersions,
 } from "./control-plane/versions.js";
-export type { VersionKey } from "./control-plane/versions.js";
+export type { ClearRollbackPinsResult, HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
@@ -456,7 +459,7 @@ export {
 
 // ── Install-port probing (C2) ──────────────────────────────────────────────
 export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
-export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, isHostPortAvailableForUs, pickAvailableHostPort, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
 
 // ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
 export type {

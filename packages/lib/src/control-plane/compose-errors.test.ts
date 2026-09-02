@@ -94,6 +94,32 @@ describe("summarizeComposeStderr", () => {
     // instead of a progress line masquerading as a diagnosis.
     expect(summarizeComposeStderr("voice Pulling\nvoice Pulled\n")).toBe("");
   });
+
+  // Regression (#644): a real `--force-recreate` reapply failed, and the
+  // operator-facing error was reduced to `Container <proj>-assistant-1
+  // Recreate` — the compose PROGRESS line, not the Docker daemon error a
+  // manual `docker compose up -d assistant` immediately revealed (a port
+  // conflict). Every other in-progress/done verb pair here is listed
+  // together (Creating/Created, Starting/Started, Stopping/Stopped,
+  // Removing/Removed) but `Recreate` (compose's bare present-tense verb, not
+  // `Recreating`) had only its past tense `Recreated` covered, so it was the
+  // FIRST unmatched line and became the whole summary — hiding the real
+  // `Error response from daemon: ...` line further down the same stderr.
+  it("skips the Recreate progress line and reports the real daemon error below it", () => {
+    const stderr = [
+      "Container proj-assistant-1 Recreate",
+      "Container proj-assistant-1 Recreated",
+      "Container proj-assistant-1 Starting",
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    ].join("\n");
+    expect(summarizeComposeStderr(stderr)).toBe(
+      "Error response from daemon: failed to set up container networking: driver failed " +
+        "programming external connectivity on endpoint proj-assistant-1: failed to bind host " +
+        "port 127.0.0.1:3810/tcp: address already in use",
+    );
+  });
 });
 
 describe("mapDockerError", () => {

@@ -7,10 +7,10 @@
  * #391; everything advisory is surfaced as a non-blocking warning. The
  * function never shells out and never reads schemas.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { stateSecretsDir } from "./home.js";
 import { readSecret } from "./secrets-files.js";
-import { stackEnvPath } from "./paths.js";
+import { akmConfigPath, stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
 
 // Stack-scoped env keys that must always exist and carry a non-empty value
@@ -51,5 +51,39 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     }
   }
 
+  const akmWarning = checkAkmEngines(state);
+  if (akmWarning) warnings.push(akmWarning);
+
   return { ok: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Advisory-only (never blocks `ok`): an existing akm config with no
+ * `engines` entries leaves the assistant with no configured LLM — a state
+ * that used to pass silently, including right after a 0.12.x -> 0.13.x
+ * upgrade dropped `profiles.llm.*` with nothing translating it forward
+ * (issue #645). Not promoted to an error: akm 0.9 itself treats zero
+ * configured engines as a supported state and falls back to `opencode-sdk`
+ * when the `opencode` binary is present, so failing `openpalm validate`
+ * closed here would block a deploy that akm does not consider broken.
+ * Skipped entirely when the config file does not exist yet — nothing to
+ * warn about before setup has ever written one.
+ */
+function checkAkmEngines(state: ControlPlaneState): string | undefined {
+  const configPath = akmConfigPath(state);
+  if (!existsSync(configPath)) return undefined;
+  let config: unknown;
+  try {
+    config = JSON.parse(readFileSync(configPath, "utf-8"));
+  } catch {
+    // Unparseable akm config is a real problem, but not this check's problem
+    // to report — akm itself fails closed and names the parse error.
+    return undefined;
+  }
+  if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+  const engines = (config as Record<string, unknown>).engines;
+  const engineCount =
+    engines && typeof engines === "object" && !Array.isArray(engines) ? Object.keys(engines).length : 0;
+  if (engineCount > 0) return undefined;
+  return `WARNING: no akm engines configured in ${configPath} — the assistant has no LLM engine unless opencode itself is configured`;
 }

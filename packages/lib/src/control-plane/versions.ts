@@ -17,9 +17,10 @@
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { writeFileAtomic } from './fs-atomic.js';
 import { parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
-import { stackEnvFile } from './home.js';
+import { HOME_SCHEMA_VERSION, readHomeSchemaVersion, stackEnvFile } from './home.js';
+import { readSkeletonVersion } from './ui-assets.js';
 import type { ControlPlaneState } from './types.js';
-import { normalizeVersion, PLATFORM_VERSION } from './versioning.js';
+import { compareComparableVersions, isComparableSemver, normalizeVersion, PLATFORM_VERSION } from './versioning.js';
 
 /** Docker image tags — one per deployable OpenPalm image. */
 export const SERVICE_VERSION_KEYS = [
@@ -83,6 +84,73 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 	'OP_GUARDIAN_NPMRC',
 	'OP_GUARDIAN_NPMRC_FILE'
 ] as const;
+
+// ── Version-skew guard (#636) ────────────────────────────────────────────────
+//
+// An OP_HOME is written by whichever app last ran install/update against it —
+// `.skeleton-version` (ui-assets.ts) and `state/schema-version` (home.ts) both
+// record that. Nothing used to compare those stamps against the CODE now
+// running before writing to the home, so an older app (e.g. a desktop build
+// stuck mid-self-update, #635) pointed at a home a newer app had already
+// upgraded would silently downgrade it: `advanceManagedImageVersions` and
+// `clearRollbackPins` both default their target to THIS build's
+// `PLATFORM_VERSION`, and `applyHomeSeed` unconditionally overwrites `system/`
+// and re-stamps `.skeleton-version` from THIS build's skeleton — all three
+// moving a newer home backwards with no operator confirmation.
+//
+// This is that comparison, done once. `newer` is true when either stamp says
+// the home was written by a build ahead of this one; every caller that would
+// mutate managed files, version pins, or the version stamps themselves must
+// check it FIRST and refuse before touching anything. A missing or
+// non-semver `.skeleton-version` (fresh install, a pre-stamp home) never
+// trips it — `isComparableSemver` guards that — and neither does an equal or
+// older home, which is the normal upgrade direction and must stay unguarded.
+
+export type HomeVersionSkew = {
+	/** True when the home was written by a build newer than the one running now. */
+	newer: boolean;
+	/** `.skeleton-version` stamped into the home, or null when absent/unparseable. */
+	homeSkeletonVersion: string | null;
+	/** This build's platform version (bare semver). */
+	runningPlatformVersion: string;
+	/** Recorded OP_HOME layout schema version (0 when unrecorded). */
+	homeSchemaVersion: number;
+	/** This build's OP_HOME layout schema version. */
+	runningSchemaVersion: number;
+};
+
+/** Compare the home's recorded version stamps against the code running now. */
+export function detectHomeVersionSkew(state: ControlPlaneState): HomeVersionSkew {
+	const homeSkeletonVersion = readSkeletonVersion(state.homeDir);
+	const homeSchemaVersion = readHomeSchemaVersion(state.homeDir);
+	const skeletonNewer =
+		isComparableSemver(homeSkeletonVersion) &&
+		compareComparableVersions(homeSkeletonVersion as string, PLATFORM_VERSION) > 0;
+	const schemaNewer = homeSchemaVersion > HOME_SCHEMA_VERSION;
+	return {
+		newer: skeletonNewer || schemaNewer,
+		homeSkeletonVersion,
+		runningPlatformVersion: PLATFORM_VERSION,
+		homeSchemaVersion,
+		runningSchemaVersion: HOME_SCHEMA_VERSION
+	};
+}
+
+/**
+ * Refuse to continue when `state.homeDir` was written by a newer OpenPalm than
+ * the one running now. Call this BEFORE any managed-file write, version-pin
+ * advance, or version-stamp write — see the module docblock above.
+ */
+export function assertHomeNotNewerThanApp(state: ControlPlaneState): void {
+	const skew = detectHomeVersionSkew(state);
+	if (!skew.newer) return;
+	const homeLabel = skew.homeSkeletonVersion ?? `schema ${skew.homeSchemaVersion}`;
+	throw new Error(
+		`OP_HOME (${state.homeDir}) was set up by OpenPalm ${homeLabel}, but this app is ${skew.runningPlatformVersion}. ` +
+			'Refusing to overwrite managed files, advance image versions, or downgrade this home. ' +
+			`Update this app to ${homeLabel} or later, then try again.`
+	);
+}
 
 // ── Version configuration ────────────────────────────────────────────────────
 
@@ -207,6 +275,72 @@ export function writeManagedVersions(state: ControlPlaneState, updates: Record<s
  * that failure back to the field that caused it.
  */
 const VOICE_VARIANT_SUFFIX_RE = /-(?:cpu|cu\d+|rocm\d+)$/i;
+
+export type ClearRollbackPinsResult = {
+	/** Keys that carried a `rollback-` pin and were just advanced off it. */
+	cleared: Partial<Record<VersionKey, { from: string; to: string }>>;
+	/** Every other key's current value (default, moving tag, or a genuine operator pin), left untouched. */
+	kept: Partial<Record<VersionKey, string>>;
+};
+
+/**
+ * Clear rollback-generation-* pins that {@link restoreRunningImageIds}
+ * (image-snapshots.ts) writes into every SERVICE_VERSION_KEY on EVERY failed
+ * performUpgrade/runDeploy attempt (it runs as the snapshot-rollback catch's
+ * preserveImages callback). Nothing else ever un-pins that value: the only
+ * OTHER code that clears a `rollback-` value is advanceManagedImageVersions,
+ * and it only runs earlier in the SAME upgrade attempt, before the failure
+ * that re-pins it — so a repeatedly-failing upgrade never releases the pin on
+ * its own (#639).
+ *
+ * Distinguishing rule (decided here, once, rather than per caller): a
+ * `rollback-` prefixed value is by construction never an operator-typed pin
+ * -- no CLI flag or UI field accepts that shape, only restoreRunningImageIds
+ * writes it -- and it always pairs with a BLANK OP_MANAGED_* marker, the
+ * exact shape writeVersions leaves after a genuine operator pin. The marker
+ * alone can't tell the two apart; only the `rollback-` prefix can. So this
+ * clears purely on that prefix, regardless of the marker's state, and it
+ * never touches a key whose value lacks the prefix -- a deliberate operator
+ * pin, a release default, or a moving tag -- no matter what its marker says.
+ *
+ * Mirrors the target selection advanceManagedImageVersions's own rollback arm
+ * already uses (platform version for assistant/guardian/portal,
+ * VERSION_DEFAULTS.OP_VOICE_VERSION for voice) and, like writeManagedVersions,
+ * re-stamps the OP_MANAGED_* marker to match the new value so a later release
+ * still recognizes the key as managed and advances it.
+ *
+ * Does not touch Compose or containers — the caller (CLI `unpin` command, or
+ * the admin UI's dedicated clear action) is responsible for telling the
+ * operator to run `openpalm update`/`start` afterward to apply the change.
+ */
+export function clearRollbackPins(
+	state: ControlPlaneState,
+	targetPlatformVersion = PLATFORM_VERSION
+): ClearRollbackPinsResult {
+	// #636: a rollback-generation-* pin is cleared TO targetPlatformVersion,
+	// which defaults to this build's own PLATFORM_VERSION — the same
+	// downgrade shape advanceManagedImageVersions guards against, so this
+	// needs the identical check before it writes anything.
+	assertHomeNotNewerThanApp(state);
+	const current = parseEnvFile(stackEnvFile(state.homeDir));
+	const updates: Record<string, string> = {};
+	const cleared: ClearRollbackPinsResult['cleared'] = {};
+	const kept: ClearRollbackPinsResult['kept'] = {};
+	for (const key of SERVICE_VERSION_KEYS) {
+		const value = current[key]?.trim() ?? '';
+		if (!value.startsWith('rollback-')) {
+			kept[key] = value || VERSION_DEFAULTS[key];
+			continue;
+		}
+		const markerKey = MANAGED_VERSION_MARKERS[key];
+		const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
+		updates[key] = target;
+		updates[markerKey] = target;
+		cleared[key] = { from: value, to: target };
+	}
+	writeVersionState(state, updates);
+	return { cleared, kept };
+}
 
 function writeVersionEntries(
 	state: ControlPlaneState,

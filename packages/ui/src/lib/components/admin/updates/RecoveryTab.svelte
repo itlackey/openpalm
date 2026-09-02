@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { BackupSummaryView } from '$lib/api.js';
+  import type { BackupSummaryView, VersionKey } from '$lib/api.js';
   import {
     fetchBackups,
     pruneBackups,
@@ -8,6 +8,9 @@
     dismissSecretStripNotice as apiDismissSecretStripNotice,
     fetchInstallLockStatus,
     clearInstallLock,
+    fetchVersions,
+    clearRollbackPin,
+    isRollbackPin,
     type InstallLockStatusView,
   } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
@@ -36,11 +39,33 @@
   let unlocking = $state<ActionHandle<{ removed: boolean }> | null>(null);
   let unlockCleared = $state(false);
 
+  // #639 — a failed update pins state/stack.env to a preserved rollback-*
+  // image tag (never `latest`) so automatic recovery restarts exactly what
+  // was running before; nothing else releases that pin. Distinct from a
+  // deliberate operator pin, which never carries the `rollback-` prefix.
+  const versionsRes = resource(async () => (await fetchVersions()).configured);
+  let rollbackPinnedKeys = $derived(
+    (Object.entries(versionsRes.data ?? {}) as [VersionKey, string][])
+      .filter(([, value]) => isRollbackPin(value))
+      .map(([key]) => key),
+  );
+  let clearingPin = $state<ActionHandle<unknown> | null>(null);
+  let pinCleared = $state(false);
+
   onMount(() => {
     void backupsRes.reload();
     void secretNoticeRes.reload();
     void installLockRes.reload();
+    void versionsRes.reload();
   });
+
+  async function onClearRollbackPin(): Promise<void> {
+    const run = runAction(() => clearRollbackPin(), { fallback: 'Failed to clear the rollback pin.' });
+    clearingPin = run;
+    const res = await run.result;
+    if (res) pinCleared = true;
+    await versionsRes.reload();
+  }
 
   async function onClearLock(): Promise<void> {
     const run = runAction(() => clearInstallLock(), { fallback: 'Failed to clear the lock.' });
@@ -132,6 +157,37 @@
         <div class="stuck-notice-text">
           <p class="stuck-notice-title">Cleared</p>
           <p>The stuck operation was cleared. You can run an update again.</p>
+        </div>
+      </div>
+    {/if}
+
+    {#if rollbackPinnedKeys.length > 0}
+      <!-- #639: a failed update pinned the stack to a preserved rollback image tag. -->
+      <div class="stuck-notice" role="status">
+        <div class="stuck-notice-text">
+          <p class="stuck-notice-title">Stack pinned to a rollback image</p>
+          <p>
+            A previous failed update left {rollbackPinnedKeys.join(', ')} pointed at the image that
+            was preserved for automatic recovery, not the normal release tag. This is different
+            from a deliberate version pin you set yourself — it just needs clearing so the next
+            update can move forward. Clearing only edits <code>state/stack.env</code>; run an
+            update afterward to apply it.
+          </p>
+        </div>
+        <button
+          class="btn btn-sm btn-primary"
+          onclick={onClearRollbackPin}
+          disabled={clearingPin?.loading ?? false}
+          aria-busy={clearingPin?.loading ?? false}
+        >
+          {#if clearingPin?.loading}<Spinner /> Clearing…{:else}Clear pin{/if}
+        </button>
+      </div>
+    {:else if pinCleared}
+      <div class="stuck-notice stuck-notice-ok" role="status">
+        <div class="stuck-notice-text">
+          <p class="stuck-notice-title">Cleared</p>
+          <p>The rollback pin was cleared. Run an update to apply the normal release tag.</p>
         </div>
       </div>
     {/if}
