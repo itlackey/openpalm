@@ -95,7 +95,7 @@ bun run portal:slack:dev   # Runs slack portal dev server
 ./scripts/dev-setup.sh --seed-env       # Creates .dev/ dirs, seeds configs
 
 # Setup wizard (dev)
-bun run wizard:dev                      # Runs `install --no-start` in a throwaway temp OP_HOME (OP_IMAGE_TAG=dev)
+bun run wizard:dev                      # Runs `install` in a throwaway temp OP_HOME (OP_IMAGE_TAG=dev)
 ```
 
 ### Tests

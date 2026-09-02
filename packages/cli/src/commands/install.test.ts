@@ -17,7 +17,7 @@
  * error into `process.exit(1)` — taking the entire test run down with it.
  */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
@@ -138,6 +138,75 @@ describe('bootstrapInstall — seed-phase install lock (C10/B10)', () => {
         bootstrapInstall({ force: false, version: '1.0.0', noStart: false, noOpen: true, assumeYes: false }),
       ).rejects.toThrow(/install_in_progress/);
       expect(ensureHomeDirsCalled).toBe(false);
+    });
+  });
+});
+
+// ── #632: --no-start only has meaning on the --file path ───────────────────
+//
+// The wizard both configures (mints every secret) and deploys in one step —
+// prepareInstallFiles deliberately never mints secrets (C1 in install.ts),
+// because performSetup is documented as the sole minter. Silently honoring
+// --no-start on the wizard path used to leave a compose-looking home with no
+// secrets and nothing telling the operator, whose first symptom was an opaque
+// Docker bind-source error at the next `docker compose up`. Fixes #632 for
+// real, replacing the secret-audit existence-check band-aid (reverted).
+describe('bootstrapInstall — --no-start requires --file (#632)', () => {
+  test('rejects --no-start without --file, before anything touches OP_HOME', async () => {
+    await withInteractiveTempHome(async (tempHome) => {
+      mock.module('@openpalm/lib', () => ({
+        ...realLib,
+        hasAnyStackEnvFile: () => false,
+        hasMaterializedLocalInstall: () => false,
+        // Not reached once the guard fires — mocked only so this test stays
+        // fast and deterministic if it is ever run against pre-fix code
+        // (see the file-copy regression proof), where the real Docker probe
+        // would otherwise run.
+        ensureDockerReady: async () => ({ ok: false, message: 'mock: docker not reachable' }),
+      }));
+
+      const { bootstrapInstall } = await import(`${installModuleUrl}?t=${Math.random()}`);
+      await expect(
+        bootstrapInstall({ force: false, noStart: true, noOpen: true, assumeYes: false }),
+      ).rejects.toThrow(
+        '--no-start requires --file: the setup wizard configures and starts the stack in one ' +
+          'step. For a non-interactive install that must not start containers, write a setup ' +
+          'config and pass --file <path> --no-start (see docs/operations/manual-headless-install.md).',
+      );
+
+      // The guard runs before homeDir is even resolved, so a rejected call
+      // must leave OP_HOME exactly as withInteractiveTempHome created it:
+      // an empty directory, not a half-written home.
+      expect(readdirSync(tempHome)).toEqual([]);
+    });
+  });
+
+  test('--file with --no-start still passes validation (reaches past the new guard)', async () => {
+    await withInteractiveTempHome(async (tempHome) => {
+      mock.module('@openpalm/lib', () => ({
+        ...realLib,
+        hasAnyStackEnvFile: () => false,
+        hasMaterializedLocalInstall: () => false,
+        // Same short-circuit the seed-phase lock test above uses: fail fast at
+        // lock acquisition, well before prepareInstallFiles/performSetup, so
+        // this stays a unit test of validation order rather than a full
+        // (mocked-Docker-free, since --file + --no-start skips it) install.
+        acquireInstallLock: () => null,
+        releaseInstallLock: () => {},
+      }));
+
+      const { bootstrapInstall } = await import(`${installModuleUrl}?t=${Math.random()}`);
+      // Rejects for the UNRELATED, controlled reason (lock held) — proving it
+      // got past the --no-start/--file guard rather than tripping it.
+      await expect(
+        bootstrapInstall({
+          force: false,
+          noStart: true,
+          noOpen: true,
+          assumeYes: false,
+          file: join(tempHome, 'spec.json'),
+        }),
+      ).rejects.toThrow(/install_in_progress/);
     });
   });
 });
