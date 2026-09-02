@@ -21,6 +21,7 @@ import {
   restoreSnapshot,
   snapshotCurrentState,
 } from "./rollback.js";
+import { DELEGATED_SECRET_NAMES } from "./secrets-migration.js";
 import type { ControlPlaneState } from "./types.js";
 
 function makeState(home: string): ControlPlaneState {
@@ -303,6 +304,49 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     expect(existsSync(join(rollbackDir, target))).toBe(true);
     // The pointer target survives IN ADDITION to the three newest generations.
     restoreSnapshot(state, target);
+  });
+
+  test("#669 restoreSnapshot puts a delegated secret back in knowledge/secrets/ after the migration relocated it mid-update", () => {
+    const name = [...DELEGATED_SECRET_NAMES][0] ?? "op_guardian_admin_token";
+    const oldPath = join(home, "knowledge", "secrets", name);
+    const newPath = join(home, "state", "secrets", name);
+    writeFileSync(oldPath, "pre-upgrade-token\n");
+
+    // Snapshot BEFORE the migration runs — the pre-upgrade layout (secret
+    // still only in knowledge/secrets/).
+    snapshotCurrentState(state);
+
+    // Simulate migrateDelegatedSecretsToStateDir relocating it as part of the
+    // SAME (later-failing) update: copy to state/secrets/, remove the
+    // knowledge/secrets/ original.
+    mkdirSync(join(home, "state", "secrets"), { recursive: true, mode: 0o700 });
+    writeFileSync(newPath, "pre-upgrade-token\n", { mode: 0o600 });
+    rmSync(oldPath);
+
+    restoreSnapshot(state);
+
+    // The reverted (pre-upgrade) compose still expects the secret sourced
+    // from knowledge/secrets/ — restoring it there is what makes the rolled
+    // back home startable again. The already-migrated copy in state/secrets/
+    // is left in place, never deleted.
+    expect(readFileSync(oldPath, "utf-8")).toBe("pre-upgrade-token\n");
+    expect(readFileSync(newPath, "utf-8")).toBe("pre-upgrade-token\n");
+  });
+
+  test("#669 restoreSnapshot does not fabricate a delegated secret that never existed in knowledge/secrets/", () => {
+    const name = [...DELEGATED_SECRET_NAMES][0] ?? "op_guardian_admin_token";
+    const newPath = join(home, "state", "secrets", name);
+
+    // A home already past the migration when the snapshot is taken — the
+    // secret lives only in state/secrets/, nothing in knowledge/secrets/.
+    mkdirSync(join(home, "state", "secrets"), { recursive: true, mode: 0o700 });
+    writeFileSync(newPath, "already-migrated-token\n", { mode: 0o600 });
+    snapshotCurrentState(state);
+
+    restoreSnapshot(state);
+
+    expect(existsSync(join(home, "knowledge", "secrets", name))).toBe(false);
+    expect(readFileSync(newPath, "utf-8")).toBe("already-migrated-token\n");
   });
 
   test("restoring a legacy flat snapshot leaves other live system/ subtrees intact", () => {

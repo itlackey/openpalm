@@ -31,7 +31,7 @@ import {
 	composeConfigServices,
 	buildComposePreflightError
 } from './docker.js';
-import { activateStack } from './activation.js';
+import { activateStack, isPreMutationRefusal } from './activation.js';
 import {
 	checkLifecycleDiskHeadroom,
 	describeLifecycleDiskHeadroom,
@@ -343,6 +343,24 @@ export async function restoreSnapshotAndApplyStack(
 	await reapplyRestoredStack(state);
 }
 
+// ── Rollback-recovery-failure marker (#667) ─────────────────────────────────
+//
+// `runWithSnapshotRollback` already appends "...automatic rollback did not
+// fully recover..." to the thrown error's MESSAGE when its own recovery
+// attempt (restoreSnapshot / reapplyRestoredStack) fails — the worst outcome,
+// since it means the upgrade failed AND the stack was left down, not merely
+// reverted to its previous version. `openpalm update` (packages/cli) needs to
+// tell that apart from an ordinary "upgrade failed, rollback succeeded"
+// result to pick the right exit code and print the right end state, without
+// pattern-matching that prose. Same tagged-Error technique as
+// activation.ts's `isPreMutationRefusal`.
+const ROLLBACK_RECOVERY_FAILED = Symbol('openpalm.rollbackRecoveryFailed');
+
+/** True when the automatic rollback that followed a failed apply did NOT fully recover — the stack may be left down. */
+export function isRollbackRecoveryFailure(error: unknown): boolean {
+	return Boolean(error && typeof error === 'object' && (error as Record<symbol, unknown>)[ROLLBACK_RECOVERY_FAILED] === true);
+}
+
 async function runWithSnapshotRollback(
 	state: ControlPlaneState,
 	run: () => Promise<void>,
@@ -364,10 +382,19 @@ async function runWithSnapshotRollback(
 			lifecycleLogger.error('failed to restore lifecycle snapshot', { error: message });
 			recoveryFailures.push(`snapshot restore failed: ${message}`);
 		}
-		try {
-			await preserveImages?.();
-		} catch (imageError) {
-			lifecycleLogger.error('failed to preserve pre-upgrade images', { error: String(imageError) });
+		// #664: a refusal that never got past runComposeActivation's pre-mutation
+		// gate (lock, `compose config` resolution, the secret-boundary audit)
+		// never pulled or recreated anything — restoreSnapshot above already put
+		// state/stack.env's version pins back exactly as they were. Running
+		// preserveImages here anyway is what re-pins them to a synthetic
+		// `rollback-<generation>` tag and leaves an ever-growing `docker image
+		// tag` behind for a deploy that never touched a container.
+		if (!isPreMutationRefusal(error)) {
+			try {
+				await preserveImages?.();
+			} catch (imageError) {
+				lifecycleLogger.error('failed to preserve pre-upgrade images', { error: String(imageError) });
+			}
 		}
 		const reapplyStack =
 			typeof shouldReapplyStack === 'function' ? shouldReapplyStack() : shouldReapplyStack;
@@ -385,6 +412,7 @@ async function runWithSnapshotRollback(
 		// apply AND that the automatic rollback did not fully recover.
 		if (recoveryFailures.length > 0 && error instanceof Error) {
 			error.message = `${error.message} Additionally, automatic rollback did not fully recover: ${recoveryFailures.join('; ')}`;
+			Object.defineProperty(error, ROLLBACK_RECOVERY_FAILED, { value: true, enumerable: false, configurable: true });
 		}
 		throw error;
 	}

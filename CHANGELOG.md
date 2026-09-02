@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **#662 `openpalm update` refuses when this CLI is older than the release it is
+  about to deploy.** Minimum-viable fix (not the self-update/re-exec
+  redesign): compares the CLI's own version against the target platform
+  version before touching anything, names `openpalm self-update` in the
+  refusal, and accepts `--allow-version-skew` to proceed anyway. A newer (or
+  equal) CLI — the normal upgrade direction — stays unguarded.
+- **#667 `openpalm update` exits 0 when both the upgrade and the automatic
+  rollback fail.** The command now prints one final line naming the actual
+  end state and exits with a louder code when the automatic rollback did not
+  fully recover (the stack is likely down), instead of the same generic hint
+  and exit(1) for every failure.
+
 
 - **Boot adopts akm-cli 0.9.9's boot contract, and subtracts the reach-around
   machinery OpenPalm grew because akm's migration used to be unreachable from
@@ -66,6 +78,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **#664 a refused `openpalm update` no longer re-pins the stack or re-tags
+  images.** A refusal that never got past the pre-deploy gate (lock,
+  `compose config`, the secret-boundary audit — no Docker mutation attempted)
+  no longer re-tags the still-running images to a synthetic
+  `rollback-<generation>` value or leaves `state/stack.env`'s version pins
+  disturbed; the snapshot restore already put them back exactly as found.
+- **#669 a failed `openpalm update` rollback now restores delegated secrets
+  alongside the reverted compose files.** The rollback snapshot now also
+  captures and restores each delegated secret's pre-upgrade `knowledge/secrets/`
+  copy, so a rollback that reverts to pre-migration compose files no longer
+  leaves the home referencing a secret file that only exists in the
+  post-migration `state/secrets/` location.
 - **#663 — secret-audit remediation named a path the assistant entrypoint
   never sources.** `auditStackEnv`/`auditComposeSecrets` (`packages/lib/src/control-plane/secret-audit.ts`)
   told operators to put a secret-like value in `knowledge/env/user.env`,

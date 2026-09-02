@@ -152,6 +152,43 @@ export function assertHomeNotNewerThanApp(state: ControlPlaneState): void {
 	);
 }
 
+// ── CLI-vs-target version-skew guard (#662) ─────────────────────────────────
+//
+// #636 (above) stops an OLDER app from silently rewriting a NEWER home. #662
+// is the same hazard from the other direction: `openpalm update` deploys
+// image tags pinned to `targetVersion` (defaulting to THIS build's
+// `PLATFORM_VERSION` — see `advanceManagedImageVersions`'s default), but
+// nothing ever compared that target against the CLI binary actually doing the
+// deploying. A CLI whose own package version trails the release it is about
+// to pin the stack to finishes `update` having created exactly the stale
+// control-plane / current-home pair #636 guards against on the NEXT run — an
+// old CLI now "successfully" managing a newer stack. `openpalm self-update`
+// is the fix; this only needs to catch the case and say so before deploying
+// anything, per #662's own "minimum viable" option (not a self-update/re-exec
+// redesign).
+//
+// The CLI's OWN version and the target are supplied by the caller (`update.ts`
+// owns the CLI package.json read and the `--allow-version-skew` override;
+// this package only owns the comparison), and only a genuinely OLDER,
+// comparable CLI trips it — an equal or newer CLI is the normal, unguarded
+// upgrade direction, and a non-semver value (a dev build) never trips it.
+
+export type CliVersionSkew = {
+	/** True when `cliVersion` is older than `targetVersion` — an old CLI about to deploy a newer stack. */
+	older: boolean;
+	cliVersion: string;
+	targetVersion: string;
+};
+
+/** Compare the CLI's own version against the release version `openpalm update` is about to deploy. */
+export function detectCliVersionSkew(cliVersion: string, targetVersion: string = PLATFORM_VERSION): CliVersionSkew {
+	const older =
+		isComparableSemver(cliVersion) &&
+		isComparableSemver(targetVersion) &&
+		compareComparableVersions(cliVersion, targetVersion) < 0;
+	return { older, cliVersion, targetVersion };
+}
+
 // ── Version configuration ────────────────────────────────────────────────────
 
 /**

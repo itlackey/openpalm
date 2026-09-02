@@ -10,7 +10,21 @@ import { join, dirname } from "node:path";
 import { pruneBackupDirs, timestampDirName } from "./backup.js";
 import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
 import { reconcileRemoteAccess } from "./remote-apply.js";
+import { DELEGATED_SECRET_NAMES } from "./secrets-migration.js";
 import type { ControlPlaneState } from "./types.js";
+
+/**
+ * #669: the delegated-secret relocation (secrets-migration.ts) moves each
+ * name out of `knowledge/secrets/` into `state/secrets/` as part of the same
+ * managed-file apply a generation snapshot is taken for. Snapshotting these
+ * paths alongside the OLD compose files is what lets a rollback put the two
+ * back in sync: the restored (pre-upgrade) compose still declares secrets
+ * sourced from `knowledge/secrets/`, so restoring the pre-migration copy
+ * there — never touching whatever the migration already wrote to
+ * `state/secrets/` — is what makes the reverted home startable again, without
+ * re-deleting or otherwise disturbing the state/secrets copy.
+ */
+const DELEGATED_SECRET_PATHS = [...DELEGATED_SECRET_NAMES].map((name) => `knowledge/secrets/${name}`);
 
 /** Files that are tracked for rollback (relative to homeDir).
  *  Only config/ system files are included — user-editable config files
@@ -28,6 +42,7 @@ const SNAPSHOT_FILES = [
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
   ".skeleton-version",
+  ...DELEGATED_SECRET_PATHS,
 ];
 const SYSTEM_TREE = "system";
 

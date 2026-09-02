@@ -384,6 +384,7 @@ export {
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
   buildComposeFileList,
+  isRollbackRecoveryFailure,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
 
@@ -394,13 +395,14 @@ export {
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
   assertHomeNotNewerThanApp,
+  detectCliVersionSkew,
   detectHomeVersionSkew,
   isVersionKey,
   readVersions,
   stripRetiredToolVersions,
   writeVersions,
 } from "./control-plane/versions.js";
-export type { HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
+export type { CliVersionSkew, HomeVersionSkew, VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
