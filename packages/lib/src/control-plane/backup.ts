@@ -1,6 +1,10 @@
-import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
+import { cpSync, type Dirent, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
+import { errMessage } from "./errors.js";
 import { resolveBackupsDirFor, stateEnvDir } from "./home.js";
+import { createLogger } from "../logger.js";
+
+const logger = createLogger("backup");
 
 export function timestampDirName(now = new Date()): string {
   return now.toISOString().replace(/[:.]/g, "-");
@@ -70,6 +74,96 @@ export function resolveBackupScope(homeDir: string): BackupScope {
     },
     skippedCredentials,
   };
+}
+
+/**
+ * Relative-to-home paths this backup exists to protect — the same files
+ * `openpalm rollback` actually restores (rollback.ts's SNAPSHOT_FILES, minus
+ * the auth.json copy it deliberately never restores automatically). An
+ * unreadable copy of one of these is not a stray operator artifact to warn
+ * past (#642) — it is the backup's whole reason to exist, so staging fails
+ * loud, naming the exact path, instead of shipping a snapshot missing the one
+ * file a restore would need.
+ */
+const REQUIRED_BACKUP_PATHS: ReadonlySet<string> = new Set([
+  "state/stack.env",
+  "state/schema-version",
+  "config/stack/custom.compose.yml",
+  ".skeleton-version",
+]);
+
+export interface BackupSkipWarning {
+  /** Absolute source path that could not be read. */
+  path: string;
+  /** The read error's message. */
+  error: string;
+}
+
+function requiredOrWarn(
+  source: string,
+  homeDir: string,
+  err: unknown,
+  warnings: BackupSkipWarning[],
+): void {
+  const rel = relative(homeDir, source);
+  if (REQUIRED_BACKUP_PATHS.has(rel)) {
+    throw new Error(
+      `Backup staging cannot read ${source}, which "openpalm rollback" depends on (${errMessage(err)}). ` +
+        "This is usually a file made root-owned by a manual `sudo` edit — fix its ownership/permissions " +
+        "(e.g. `sudo chown $(id -u):$(id -g) " +
+        `${source}\`) and retry.`,
+    );
+  }
+  warnings.push({ path: source, error: errMessage(err) });
+}
+
+/**
+ * Copy `source` into `target`, walking directories by hand rather than one
+ * blind `cpSync(..., { recursive: true })`. An operator-created root-owned
+ * file anywhere under OP_HOME (e.g. a `sudo cp state/stack.env
+ * state/stack.env.bak` left behind before a hand edit, #642) previously threw
+ * EACCES on the FIRST unreadable entry and aborted `openpalm update` entirely
+ * — after migrations had already run. Per-entry handling means one unreadable
+ * file is recorded in `warnings` and skipped; the rest of the backup still
+ * completes. A file this backup actually needs (REQUIRED_BACKUP_PATHS) is the
+ * one exception: that fails loud, naming the path, rather than shipping a
+ * snapshot silently missing it.
+ */
+function copyTreeTolerant(
+  source: string,
+  target: string,
+  scope: BackupScope,
+  homeDir: string,
+  warnings: BackupSkipWarning[],
+): void {
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(source);
+  } catch (err) {
+    requiredOrWarn(source, homeDir, err, warnings);
+    return;
+  }
+  if (!stats.isDirectory()) {
+    try {
+      cpSync(source, target);
+    } catch (err) {
+      requiredOrWarn(source, homeDir, err, warnings);
+    }
+    return;
+  }
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(source, { withFileTypes: true });
+  } catch (err) {
+    requiredOrWarn(source, homeDir, err, warnings);
+    return;
+  }
+  mkdirSync(target, { recursive: true });
+  for (const entry of entries) {
+    const childSource = join(source, entry.name);
+    if (!scope.includes(childSource)) continue;
+    copyTreeTolerant(childSource, join(target, entry.name), scope, homeDir, warnings);
+  }
 }
 
 /**
@@ -227,9 +321,9 @@ export interface BackupOpenPalmHomeOptions {
   /** Fraction of destination free space the backup may consume before it's refused (default 0.8, see {@link checkBackupFreeSpace}). */
   threshold?: number;
   /**
-   * Test seam: override the per-entry copy primitive (defaults to `fs.cpSync`).
-   * Lets tests deterministically simulate a mid-copy failure without mocking
-   * `node:fs` globally.
+   * Test seam: override the per-entry copy primitive (defaults to
+   * {@link copyTreeTolerant}). Lets tests deterministically simulate a
+   * mid-copy failure without mocking `node:fs` globally.
    */
   copyEntry?: (source: string, target: string) => void;
 }
@@ -287,9 +381,10 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   rmSync(stagingDir, { recursive: true, force: true });
   mkdirSync(stagingDir, { recursive: true });
 
+  const warnings: BackupSkipWarning[] = [];
   const copyEntry =
     options.copyEntry ??
-    ((source: string, target: string) => cpSync(source, target, { recursive: true, filter: scope.includes }));
+    ((source: string, target: string) => copyTreeTolerant(source, target, scope, homeDir, warnings));
 
   let copiedAny = false;
   try {
@@ -319,10 +414,18 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   // dir (cleaned up by the next call's cleanupStaleStaging, or manually) —
   // never a half-written directory at the name callers/listBackupDirs expect.
   //
-  // The marker also NAMES the credentials the scope left out (§5). Whoever
-  // restores this snapshot months from now is the person who needs to know
-  // that a service's login secret is not in it, and the marker travels with
-  // the snapshot; a log line at backup time does not.
+  // The marker also NAMES the credentials the scope left out (§5), and (#642)
+  // any file the copy could not read — an operator-owned root file this
+  // backup skipped rather than aborting for. Whoever restores this snapshot
+  // months from now is the person who needs to know what is missing from it,
+  // and the marker travels with the snapshot; a log line at backup time does
+  // not.
+  if (warnings.length > 0) {
+    logger.warn("backup skipped unreadable file(s)", {
+      count: warnings.length,
+      paths: warnings.map((w) => w.path)
+    });
+  }
   writeFileSync(
     join(stagingDir, BACKUP_COMPLETE_MARKER),
     [
@@ -333,6 +436,14 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
             "Skipped — these belong to a service whose data/ tree is out of scope,",
             "and are restored with it (see docs/backup-restore.md):",
             ...scope.skippedCredentials.map((path) => `  ${relative(homeDir, path)}`),
+          ]
+        : []),
+      ...(warnings.length > 0
+        ? [
+            "",
+            "Skipped — unreadable (likely root-owned from a manual `sudo` edit;",
+            "fix ownership/permissions and back up manually if you need this file):",
+            ...warnings.map((w) => `  ${relative(homeDir, w.path)}: ${w.error}`),
           ]
         : []),
     ].join("\n"),
