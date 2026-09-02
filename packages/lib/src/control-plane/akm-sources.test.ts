@@ -457,6 +457,58 @@ describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
     expect(stripRetiredAkmConfigKeys(state)).toBe(false);
   });
 
+  it("issue #645: translates a 0.12.x profiles.llm.default into engines.default instead of dropping it into engines: {}", () => {
+    // The exact reported shape: a 0.12.x-era config upgraded in place. Before
+    // the fix, stripRetiredAkmConfigKeys deleted `profiles` and stamped
+    // configVersion "0.9.0" without ever reading it, leaving `engines: {}` —
+    // structurally valid, silently useless.
+    writeFileSync(opConfigPath, JSON.stringify({
+      profiles: {
+        llm: {
+          default: {
+            endpoint: "https://api.openai.com/v1/chat/completions",
+            model: "gpt-4o-mini",
+            provider: "openai",
+            apiKey: "sk-live-legacy-secret-abc123",
+          },
+        },
+      },
+      defaults: { llm: "default" },
+      bundles: { openpalm: { path: "/stash", writable: true } },
+      defaultBundle: "openpalm",
+    }, null, 2));
+
+    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    expect(cfg.profiles).toBeUndefined();
+    // The whole point: an engine now exists instead of `engines: {}`.
+    expect(cfg.engines).toEqual({
+      default: { kind: "llm", endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini", provider: "openai" },
+    });
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe("default");
+    expect((cfg.defaults as Record<string, unknown>).llm).toBeUndefined();
+    // A literal apiKey is never carried over: akm 0.9's engine schema requires
+    // an env-var reference ($VAR), and config/akm/config.json is non-secret.
+    expect((cfg.engines as Record<string, Record<string, unknown>>).default.apiKey).toBeUndefined();
+  });
+
+  it("issue #645: never overwrites a live engine with the same name as a legacy profile", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      profiles: { llm: { default: { endpoint: "https://old/v1/chat/completions", model: "old-model" } } },
+      engines: { default: { kind: "llm", endpoint: "https://new/v1/chat/completions", model: "new-model" } },
+      bundles: { openpalm: { path: "/stash", writable: true } },
+      defaultBundle: "openpalm",
+      configVersion: "0.9.0",
+    }, null, 2));
+
+    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    expect(cfg.profiles).toBeUndefined();
+    expect(cfg.engines).toEqual({ default: { kind: "llm", endpoint: "https://new/v1/chat/completions", model: "new-model" } });
+  });
+
   it("leaves an unparseable config alone rather than destroying it", () => {
     writeFileSync(opConfigPath, "{ not json");
     expect(stripRetiredAkmConfigKeys(state)).toBe(false);
