@@ -609,27 +609,37 @@ Every mount and secret source in the managed compose files now uses
 `${OP_HOME:?}`, so Compose fails loudly instead of resolving those paths against
 an empty `OP_HOME`.
 
-### Your own tasks are not rewritten, and some shapes stop running
+### Your own tasks are converted at boot, and a rewritten file is backed up
 
 `retirePreV4SeededTasks` only considers the names this release ships, so a task
-you wrote is never renamed and never rewritten — the three retired filenames in
-section 2 aside, which are deleted by name. That is a guarantee about the file,
-not about whether it still runs.
+you wrote is never renamed by it — the three retired filenames in section 2
+aside, which are deleted by name.
 
-Usually it does. akm 0.9.7 reads a `version: 2` or `version: 3` task file by
-running the same deterministic planners `akm migrate apply` uses, converting it
-to v4 in memory and proceeding with a one-line deprecation warning on stderr.
-Your pre-v4 automations keep firing on their existing schedules, and nothing
-about them has to change on upgrade day.
+**This is a policy reversal from 0.13.0/0.13.1.** Those releases left a
+`version: 2` or `version: 3` task file you wrote exactly as written, reading it
+through an in-memory conversion shim and nudging you to run
+`akm migrate apply` yourself. From 0.13.2 the assistant runs
+`akm migrate apply` on every boot — offline, idempotent — and that plan now
+converts your own task files the same way it converts everything else. Before
+rewriting a file, akm copies the original into its own backup directory under
+the assistant's akm data dir (`data/akm/data/backups/task-v3/` or
+`.../task-v4/`, five most recent kept per file) — that is where to recover the
+pre-conversion copy, not a `.pre-v4` suffix (that convention is only for the
+shipped task files section 2 retired). Your pre-v4 automations keep firing on
+their existing schedules throughout; nothing about their *behavior* changes on
+upgrade day, only the file on disk.
 
-The exception is a file those planners cannot convert deterministically — a v2
-command with no single unambiguous v4 reading. A YAML argv array is one, having
-no portable shell string; so is any command whose quoting, shell operators, or
-command resolution would mean something else under v4's literal-argv semantics.
-akm refuses rather than guesses. That source is excluded from the reconcile and
-named in the run's failure list, and **that one task stops being scheduled**.
-Every source that did compile still reconciles, so the rest of your automations
-are unaffected.
+The exception is a file akm cannot convert deterministically — a v2 command
+with no single unambiguous v4 reading. A YAML argv array is one, having no
+portable shell string; so is any command whose quoting, shell operators, or
+command resolution would mean something else under v4's literal-argv
+semantics. akm refuses rather than guesses, leaves that file untouched, and
+names it in the migrate plan's `blockers` — the assistant's boot log prints
+each one and the boot marker records `migrate 1 blocked: <n>`. That source is
+also excluded from `akm task sync`'s reconcile and named again in the run's
+failure list, and **that one task stops being scheduled** until you convert
+it by hand. Every source that did compile — yours and the shipped set — still
+reconciles, so the rest of your automations are unaffected.
 
 Check after the upgrade, with the project name from section 1:
 
@@ -641,57 +651,39 @@ docker compose -p <project> exec assistant akm migrate status
 `--dry-run` writes nothing, but it exits non-zero whenever the plan contains a
 removal — read the `failures` array, not the exit status. (The key is `failures`
 under `--dry-run`; a real `akm task sync` calls the same list `failed`.) An
-empty `failures` and a `migrate status` of `ready` is the clean result. A name
-in `failures` is a task of yours that is no longer scheduled: convert that file
-to `version: 4` — the grammar is under *Automations* in
-`docs/managing-openpalm.md` — or let
-`akm migrate apply` rewrite it where it can.
+empty `failures` and a `migrate status` of `current` is the clean result after
+boot has already converted anything pending. A name in `failures` is a task of
+yours that is no longer scheduled: convert that file to `version: 4` by hand —
+the grammar is under *Automations* in `docs/managing-openpalm.md` — since a
+file named here is, by definition, one `akm migrate apply` already tried and
+could not convert deterministically.
 
-### akm's state database waits for a deliberate cutover
+### akm's state database migrates in the same boot-time plan
 
-akm 0.9.6 and later ship one state.db migration they classify `historical-destructive`
-(`018-drop-dead-lane-schema`: it drops two dead-lane cache tables and one
-retired column left behind by lanes the 0.9.0 refactor deleted), and it never
-applies that class during an ordinary managed open. On a home whose state.db
-predates it — any 0.12.x home with a used improve pipeline — every boot after
-this upgrade has `akm health` exit 78 with "Unable to open state.db: Refusing
-to apply historical destructive state migration…", and every state.db surface
-(events, proposals, task history, improve ledgers, workflow runs) fails to
-open until the cutover runs. Task files, search, and chat are unaffected. The
-boot marker records it as `health 78` on a 0.13.0 image, and as
-`health 78 state-upgrade-pending` from 0.13.1.
+akm 0.9.6 and later ship state.db migrations they classify
+`historical-destructive` (`018-drop-dead-lane-schema` is the first: it drops
+two dead-lane cache tables and one retired column left behind by lanes the
+0.9.0 refactor deleted) — the kind an ordinary managed open refuses to apply
+on its own. From akm 0.9.9 / OpenPalm 0.13.2, `akm migrate apply` folds this
+class into the same one plan as the task-file conversion above: it takes a
+verified sibling safety copy first
+(`state.db.pre-018-drop-dead-lane-schema.<timestamp>.<uuid>.bak` — `VACUUM
+INTO`, then `PRAGMA quick_check` and a ledger check before anything mutates),
+then applies the pending migrations. It is idempotent and fully offline, runs
+automatically at every boot, and needs no operator action — there is no
+separate cutover command any more.
 
-Do not run the first command akm's message names. `akm upgrade --force` is the
-package self-updater: inside the container it needs GitHub egress, runs
-`npm install -g akm-cli@latest` — which the image-baked install forbids and
-the container user cannot write anyway — and only reaches the state.db step
-after that install succeeds. It cannot work here. The second one it names from
-akm 0.9.8 on, `akm upgrade --state-only`, is the offline cutover and is what
-the helper below runs.
+On a 0.13.0 or 0.13.1 image (predating this fold-in), a home whose state.db
+predates 018 — any 0.12.x home with a used improve pipeline — instead has
+`akm health` exit 78 with "Unable to open state.db: Refusing to apply
+historical destructive state migration…" until the cutover runs by hand; see
+that release's copy of this document for the exact command. Upgrading to
+0.13.2 resolves it automatically on the next boot.
 
-Run the cutover deliberately, with the project name from section 1:
-
-```bash
-docker compose -p <project> exec assistant openpalm-akm-state-upgrade
-```
-
-That helper ships in images from 0.13.1 (it runs `akm upgrade --state-only`).
-On a 0.13.0 image, whose akm 0.9.6 predates that flag, run the same step
-directly against the image's pinned akm:
-
-```bash
-docker compose -p <project> exec assistant node --input-type=module -e 'const m = await import("/opt/openpalm/tools/node_modules/akm-cli/dist/core/state-db.js"); console.log(JSON.stringify(m.upgradeHistoricalStateDatabase()))'
-```
-
-Either way it is akm's own machinery: a verified sibling safety copy is
-written first (`state.db.pre-018-drop-dead-lane-schema.<timestamp>.<uuid>.bak`
-— `VACUUM INTO`, then
-`PRAGMA quick_check` and a ledger check before anything mutates), then the
-pending migrations apply, 018 through the current end of the ledger. The
-command is idempotent — `{"upgraded":false}` means there was nothing to do —
-and fully offline. Verify afterwards:
-`docker compose -p <project> exec assistant akm health` exits 0 (or 4, a
-warning) and its first hard check reports `state-db-schema: pass`.
+Verify afterwards: `docker compose -p <project> exec assistant akm health`
+exits 0 (or 4, a warning); a still-pending state migration surfaces there as
+its own hard check (`state-db-migrations`, listing the pending migration ids)
+rather than a refusal to open.
 
 ### Published host ports move, and it is not opt-out
 

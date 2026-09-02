@@ -11,8 +11,10 @@ admin process. It cannot run stack lifecycle operations.
 - OpenCode on container port `4096`
 - Image-baked `@openpalm/ui` on container port `3000`
 - `supercronic`
-- `akm migrate status` (and, when pending, the crash-resumable `akm migrate
-  apply`) at boot — akm 0.9 no longer auto-migrates its database on open
+- `akm migrate apply` at boot — offline, idempotent, applies every pending
+  migration (config lift, state.db, task v2/v3 → v4 conversion, residue
+  sweeps) in one plan, including operator-authored task files (backed up
+  under akm's data dir first)
 - `akm task sync` at boot and every 60 seconds
 
 The UI reaches OpenCode through its same-origin `/oc` proxy. The default host

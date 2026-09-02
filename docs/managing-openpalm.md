@@ -228,18 +228,33 @@ their own placement rules (`output:` only on a command target, `with:` only on
 Upgrading from a pre-0.13.0 home: the task files OpenPalm ships are rewritten
 to v4 for you, with your old copy kept alongside as `<name>.yml.pre-v4` — three
 of the four on a home upgraded from a released 0.12.x, since
-`session-maintenance.yml` is new in 0.13.0 and has nothing to displace. Tasks
-you wrote yourself are left exactly as they are: akm reads a declared
-`version: 2` or `version: 3` file by converting it in memory and warning, and
-`akm migrate apply` rewrites it permanently when the conversion is
-deterministic. The assistant's boot check records this pending state honestly
-— `migrate 0 ready operator-apply-pending` in its boot marker, with a log line
-pointing here — but by design never runs the apply for you: your files stay as
-written until you convert them. Two cases are not converted — a file with no `version:` key at
-all (read as a malformed v4 document) and a v2 shape whose meaning would change
-under v4, such as a `command:` argv array. Either way only that file is
-affected: `akm task sync` excludes it, names it in the run's failures, and
-reconciles every other task.
+`session-maintenance.yml` is new in 0.13.0 and has nothing to displace.
+
+**Tasks you wrote yourself are converted too, at the next boot.** This
+reverses the 0.13.0/0.13.1 promise that an operator's own `version: 2` or
+`version: 3` task file was left exactly as written until you ran
+`akm migrate apply` by hand. From 0.13.2 the assistant runs
+`akm migrate apply` on every boot (it is offline and idempotent), and that
+plan now includes your own task files, not just the ones OpenPalm ships.
+Before it rewrites anything, akm copies the original to its own backup
+directory (`data/akm/data/backups/task-v3/` or `.../task-v4/` depending on
+which conversion ran, five most recent kept per file) — that is where to find
+the pre-conversion copy, not `<name>.yml.pre-v4` (that suffix is only for the
+shipped set above). The boot marker
+(`/tmp/openpalm-akm-boot.status` inside the assistant) records the outcome
+honestly: `migrate 0 current` when nothing was pending, `migrate 0 applied`
+when files were converted.
+
+A file akm cannot convert deterministically — no `version:` key at all (read
+as a malformed v4 document), or a v2 shape whose meaning would change under
+v4, such as a `command:` argv array — is left untouched rather than guessed
+at. That file, and only that file, is named in the plan's blockers, logged by
+the boot check, and recorded as `migrate 1 blocked: <n>` in the boot marker;
+`akm task sync` excludes it from the reconcile and names it again in the
+run's failures, while every other task file — yours and the shipped set —
+still reconciles. Convert a blocked file by hand to the v4 grammar above, or
+run `akm migrate apply` again after fixing its shape; it is safe to run
+anytime and only ever touches files it can convert deterministically.
 
 Task commands execute inside the assistant container. They cannot run host
 lifecycle commands such as `openpalm update`, `openpalm status`, or
@@ -312,30 +327,23 @@ mixed-version stack is never left behind. An installed stack continues running
 offline; only the update itself needs the network. See
 [System Requirements → Network requirements](system-requirements.md#network-requirements).
 
-### akm's state database cutover after an update
+### akm's state database migrates automatically at boot
 
-An update that bumps the bundled akm can leave akm's state database
+An update that bumps the bundled akm can ship a state database
 (`data/akm/data/state.db` — events, proposals, task history, improve ledgers,
-workflow runs) one deliberate step behind: akm never applies a migration it
-classifies as destructive during an ordinary open. When that happens the
-assistant boots degraded — `akm health` exits 78, the boot marker
-(`/tmp/openpalm-akm-boot.status` inside the assistant) records
-`health 78 state-upgrade-pending`, and the boot log names the fix. Tasks,
-search, and chat keep working; the state.db surfaces above are down until you
-run the cutover:
-
-```bash
-docker compose -p <project> exec assistant openpalm-akm-state-upgrade
-```
-
-This runs `akm upgrade --state-only` against the image's own akm (never the
-plain `akm upgrade`, which is the package self-updater and cannot run in the
-image-baked container): a verified sibling safety copy —
-`state.db.pre-<migration>.<timestamp>.<uuid>.bak` — is written first, then the
-pending migrations apply. It is idempotent and fully offline; `"upgraded":
-false` with "state.db is already current" means there was nothing to do. Boot
-never runs this for you: applying a destructive migration stays an explicit
-operator action, the same rule that keeps your task files unrewritten at boot.
+workflow runs) migration akm classifies as destructive — one that an ordinary
+open refuses to apply on its own. `akm migrate apply`, which the assistant
+runs on every boot, includes these in the same plan as everything else: it
+takes a verified sibling safety copy first
+(`state.db.pre-<migration>.<timestamp>.<uuid>.bak` — `VACUUM INTO`, then a
+`PRAGMA quick_check` and a ledger check before anything mutates), then applies
+the pending migrations. It is idempotent and fully offline, so there is no
+separate cutover step and nothing for you to run by hand; the boot marker
+(`/tmp/openpalm-akm-boot.status` inside the assistant) records `migrate 0
+applied` when this ran. Verify with
+`docker compose -p <project> exec assistant akm health`, which exits 0 (or 4,
+a warning); a still-pending state migration shows up there as its own hard
+check (`state-db-migrations`) rather than a refusal to open.
 
 akm's state.db upgrades are one-way. Once the assistant's akm opens the
 database, an older akm refuses it (`Refusing to open a database with a newer

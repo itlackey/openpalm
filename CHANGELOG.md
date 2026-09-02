@@ -7,6 +7,63 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+
+- **Boot adopts akm-cli 0.9.9's boot contract, and subtracts the reach-around
+  machinery OpenPalm grew because akm's migration used to be unreachable from
+  a bundled install.** The assistant entrypoint's `run_akm_migration_check`
+  now runs `akm migrate apply` once — offline, idempotent, takes its own
+  safety copies — instead of parsing `akm migrate status`'s JSON, special-
+  casing a `ready` plan into a "never apply, just nudge" policy, and retrying
+  `apply` a second time on a nonzero exit. It records `migrate <rc> current`
+  / `applied` when the plan succeeds, `migrate 1 blocked: <n>` (logging each
+  blocker from the plan's `blockers[]`) when a file is genuinely
+  unconvertible, and `migrate <rc> failed` on a crash — then always runs
+  `akm task sync --rebind` and `akm health`, exactly as before. Deleted along
+  with it: the `openpalm-akm-state-upgrade` helper
+  (`containers/assistant/akm-state-upgrade.sh` and its Dockerfile `COPY`),
+  the boot marker's `state-upgrade-pending` detail, and the
+  `grep -qF 'Run \`akm upgrade --force\`'` health-output scrape that fed it —
+  akm 0.9.9's `akm health --format json` reports a pending state migration as
+  its own hard check (`state-db-migrations`) instead of refusing to open, so
+  there is nothing left to grep for.
+
+- **Policy reversal: boot now converts operator-authored task files to task
+  source v4, not just the ones OpenPalm ships.** 0.13.0 and 0.13.1 promised
+  a `version: 2`/`version: 3` file you wrote yourself was "left exactly as
+  [it is]" until you ran `akm migrate apply` by hand. Folding the migration
+  into every boot (above) means that promise no longer holds: your files are
+  converted automatically. akm backs up every file it rewrites first, under
+  its own data dir (`data/akm/data/backups/task-v3/` and `.../task-v4/`,
+  five most recent kept per file) — that is where to find a pre-conversion
+  copy, not a `.pre-v4` suffix (that convention is unchanged for the shipped
+  task files retired at upgrade time). A file akm cannot convert
+  deterministically is still left untouched and named in the plan's
+  `blockers`, the boot log, and the boot marker (`migrate 1 blocked: <n>`);
+  `akm task sync` continues to exclude it and name it again in the run's
+  `failures`, so an unconvertible file costs only its own schedule.
+  `docs/managing-openpalm.md` and `docs/operations/upgrade-0.12-to-0.13.md`
+  are updated to say this plainly, including where the backups live and how
+  to convert a blocked file by hand.
+
+- **#666 — a stale `/opt/openpalm` mount shadowing the image-baked akm is now
+  a loud boot marker instead of a mystery `INVALID_CONFIG_FILE` from every
+  akm subcommand.** Before running any migration, boot compares `akm
+  --version` against the `akm-cli` version this image pins
+  (`containers/assistant/tools/package.json`) and records `akm-version 0` on
+  a match or `akm-version 1 <got> expected <pin>` on a mismatch, logging the
+  likely cause — a custom compose overlay or leftover `assistant-artifacts`
+  volume mount from a pre-#585 install still mounting something over
+  `/opt/openpalm`. Non-fatal, matching every other boot check. Investigation
+  found no gap in the shipped compose files or the managed-tree overwrite
+  that runs on every `openpalm update` — neither declares or preserves a
+  volume there — so the mount, when it exists, lives in the user-owned
+  `config/stack/custom.compose.yml` this repo's lifecycle code is
+  constitutionally forbidden from rewriting; this check makes the resulting
+  drift diagnosable rather than attempting to reseed a file this repo does
+  not own.
+
 ### Fixed
 
 - **#663 — secret-audit remediation named a path the assistant entrypoint

@@ -1,30 +1,25 @@
 /**
- * The assistant boot must report akm's task-file migration state truthfully —
- * and must never rewrite operator task files while doing it.
+ * The assistant boot adopts akm-cli 0.9.9's boot contract for any bundler
+ * (docs/plans/0.9.9-coordinated-release.md §1): pin an exact akm-cli, run
+ * `akm migrate apply` at boot (offline, idempotent, takes its own safety
+ * copies, applies every pending migration in one plan — including task
+ * v2/v3 -> v4 conversion, now covering OPERATOR-authored files, not just the
+ * shipped set), and read `akm health --format json`.
  *
- * `akm migrate status` (akm-cli 0.9.6; byte-identical in 0.9.7) exits 0 for BOTH of its clean plan
- * states: "current" (nothing to convert) and "ready" (task files pending that
- * `akm migrate apply` would rewrite). Only a "blocked" plan earns exit 1
- * (dist/commands/migrate-cli.js sets the exit code iff the combined status is
- * "blocked"). The entrypoint used to read exit 0 as "current" unconditionally,
- * so a home with an operator-authored `version: 2` task recorded
- * `migrate 0 current` every boot while akm itself warned "run `akm migrate
- * apply`" every time it read the file — the marker contradicted the logs
- * forever.
+ * This is a policy reversal from 0.13.0/0.13.1: those releases promised an
+ * operator's own task files were "left exactly as they are" until the
+ * operator ran `akm migrate apply` by hand. 0.13.2 runs it at every boot
+ * instead — akm backs every rewritten file up under its own data dir first
+ * and skips (never guesses at) a file it cannot convert deterministically,
+ * naming it in the plan's `blockers`. These tests execute the real
+ * entrypoint functions against a fake `akm`, so the new behavior is pinned
+ * by what the shell actually does, not by prose.
  *
- * The fix parses the plan's `status` field. The one thing it must NOT do is
- * auto-apply: by boot time the only convertible files left are
- * operator-authored (`retirePreV4SeededTasks` already rewrote the shipped set
- * during the upgrade), and docs/managing-openpalm.md plus
- * docs/operations/upgrade-0.12-to-0.13.md ("Your own tasks are not rewritten")
- * promise those files stay as written until the operator converts them. These
- * tests execute the real entrypoint functions against a fake `akm`, so the
- * promise is pinned by behavior, not by prose.
- *
- * The second describe covers the health step's sibling contract: recognizing
- * akm's deliberate state.db cutover refusal (exit 78) and pointing at the
- * image-pinned `openpalm-akm-state-upgrade` helper — again reporting only,
- * never remediating at boot.
+ * The second describe covers the #666 version-pin check
+ * (`check_akm_version_pin`): a stale `/opt/openpalm` mount that shadows the
+ * image-baked akm with an old one is reported as a boot marker instead of
+ * surfacing only as a mystery `INVALID_CONFIG_FILE` from every akm
+ * subcommand.
  */
 import { describe, expect, it } from 'bun:test';
 import { spawnSync } from 'node:child_process';
@@ -45,12 +40,15 @@ function extractShellFunction(name: string): string {
 const FAKE_AKM = `#!/usr/bin/env bash
 printf 'akm %s\\n' "$*" >> "$AKM_CALL_LOG"
 case "$1 \${2:-}" in
-  "migrate status")
-    [ -n "\${FAKE_STATUS_JSON:-}" ] && printf '%s\\n' "$FAKE_STATUS_JSON"
-    exit "\${FAKE_STATUS_RC:-0}"
+  "--version ")
+    printf '%s\\n' "\${FAKE_VERSION:-0.9.9}"
+    exit 0
     ;;
-  "migrate apply") exit "\${FAKE_APPLY_RC:-0}" ;;
-  "task sync") exit 0 ;;
+  "migrate apply")
+    [ -n "\${FAKE_APPLY_JSON:-}" ] && printf '%s\\n' "$FAKE_APPLY_JSON"
+    exit "\${FAKE_APPLY_RC:-0}"
+    ;;
+  "task sync") exit "\${FAKE_TASK_SYNC_RC:-0}" ;;
   "health ")
     [ -n "\${FAKE_HEALTH_ERR:-}" ] && printf '%s\\n' "$FAKE_HEALTH_ERR" >&2
     exit "\${FAKE_HEALTH_RC:-0}"
@@ -63,15 +61,21 @@ type BootRun = { marker: string; calls: string[]; stderr: string };
 
 /**
  * Run the REAL run_akm_migration_check (plus the helpers it calls) under the
- * entrypoint's own shell options, against a fake `akm` whose status plan and
- * exit codes the caller controls.
+ * entrypoint's own shell options, against a fake `akm` whose apply plan,
+ * version, and exit codes the caller controls. `AKM_TOOLS_PACKAGE_JSON`
+ * always points inside the sandbox tmpdir; omitting `packageJson` leaves that
+ * path non-existent, so the version-pin check has nothing to compare against
+ * and records nothing — matching a plain test/dev environment where
+ * `/opt/openpalm` does not exist at all.
  */
 function runMigrationCheck(env: {
-  statusJson?: string;
-  statusRc?: number;
+  applyJson?: string;
   applyRc?: number;
+  taskSyncRc?: number;
   healthRc?: number;
   healthErr?: string;
+  version?: string;
+  packageJson?: string;
 }): BootRun {
   const dir = mkdtempSync(join(tmpdir(), 'akm-migrate-boot-'));
   const akmPath = join(dir, 'akm');
@@ -82,10 +86,17 @@ function runMigrationCheck(env: {
   writeFileSync(marker, '');
   writeFileSync(callLog, '');
 
+  // Always a path under this tmpdir — non-existent by default, so the
+  // version-pin check's "no pin resolved" branch is exercised the same way a
+  // plain dev/test environment (no /opt/openpalm at all) would hit it.
+  const packageJsonPath = join(dir, 'akm-pin-package.json');
+  if (env.packageJson !== undefined) writeFileSync(packageJsonPath, env.packageJson);
+
   const script = [
     'set -euo pipefail',
     extractShellFunction('run_akm_command'),
     extractShellFunction('record_akm_boot_status'),
+    extractShellFunction('check_akm_version_pin'),
     extractShellFunction('run_akm_migration_check'),
     'run_akm_migration_check',
   ].join('\n');
@@ -97,11 +108,13 @@ function runMigrationCheck(env: {
       PATH: `${dir}:${process.env.PATH ?? ''}`,
       AKM_BOOT_STATUS_FILE: marker,
       AKM_CALL_LOG: callLog,
-      FAKE_STATUS_JSON: env.statusJson ?? '',
-      FAKE_STATUS_RC: String(env.statusRc ?? 0),
+      AKM_TOOLS_PACKAGE_JSON: packageJsonPath,
+      FAKE_APPLY_JSON: env.applyJson ?? '',
       FAKE_APPLY_RC: String(env.applyRc ?? 0),
+      FAKE_TASK_SYNC_RC: String(env.taskSyncRc ?? 0),
       FAKE_HEALTH_RC: String(env.healthRc ?? 0),
       FAKE_HEALTH_ERR: env.healthErr ?? '',
+      FAKE_VERSION: env.version ?? '0.9.9',
     },
   });
   // The check is deliberately non-fatal (#474): whatever akm reports, the
@@ -111,73 +124,91 @@ function runMigrationCheck(env: {
   return { marker: readFileSync(marker, 'utf8'), calls, stderr: result.stderr };
 }
 
-const READY_PLAN = JSON.stringify({
+const CURRENT_PLAN = JSON.stringify({ schemaVersion: 1, status: 'current', blockers: [] });
+const APPLIED_PLAN = JSON.stringify({
   schemaVersion: 1,
-  status: 'ready',
+  status: 'current',
   blockers: [],
-  taskV3Migration: { changed: 1, skipped: 4, blocked: 0 },
-  taskV4Migration: { changed: 0, skipped: 5, blocked: 0 },
+  applied: 1,
+  taskV4Applied: 1,
+  stateMigrations: { applied: [] },
+});
+const BLOCKED_PLAN = JSON.stringify({
+  schemaVersion: 1,
+  status: 'blocked',
+  blockers: ['knowledge/tasks/legacy-argv.yml: argv-array-has-no-portable-shell-string'],
 });
 
-describe('assistant entrypoint — akm migrate boot check', () => {
-  it('records `ready` truthfully and NEVER auto-applies over operator task files', () => {
-    const run = runMigrationCheck({ statusJson: READY_PLAN, statusRc: 0 });
-    expect(run.marker).toBe('migrate 0 ready operator-apply-pending\nhealth 0\n');
-    expect(run.calls).toEqual(['akm migrate status', 'akm health']);
-    // The log line must hand the operator the remedy the marker points at.
-    expect(run.stderr).toContain("run 'akm migrate apply'");
+describe('assistant entrypoint — akm migrate apply boot flow', () => {
+  it('applies once, syncs tasks, and probes health on a plan with nothing pending', () => {
+    const run = runMigrationCheck({ applyJson: CURRENT_PLAN, applyRc: 0 });
+    expect(run.marker).toBe('migrate 0 current\ntask-sync 0\nhealth 0\n');
+    expect(run.calls).toEqual(['akm migrate apply', 'akm task sync --rebind', 'akm health']);
   });
 
-  it('records `current` when the plan says current', () => {
-    const run = runMigrationCheck({
-      statusJson: JSON.stringify({ schemaVersion: 1, status: 'current', blockers: [] }),
-      statusRc: 0,
-    });
-    expect(run.marker).toBe('migrate 0 current\nhealth 0\n');
-    expect(run.calls).toEqual(['akm migrate status', 'akm health']);
+  it('treats exit 0 with no plan printed as current (nothing to report)', () => {
+    const run = runMigrationCheck({ applyJson: '', applyRc: 0 });
+    expect(run.marker).toBe('migrate 0 current\ntask-sync 0\nhealth 0\n');
   });
 
-  it('treats exit 0 with no plan as current (the CLI prints nothing when both generations have nothing to report)', () => {
-    const run = runMigrationCheck({ statusJson: '', statusRc: 0 });
-    expect(run.marker).toBe('migrate 0 current\nhealth 0\n');
-  });
-
-  it('records an unexpected exit-0 status verbatim instead of laundering it into current', () => {
-    const run = runMigrationCheck({
-      statusJson: JSON.stringify({ schemaVersion: 1, status: 'blocked' }),
-      statusRc: 0,
-    });
-    expect(run.marker).toBe('migrate 0 blocked\nhealth 0\n');
-    expect(run.calls).toEqual(['akm migrate status', 'akm health']);
-  });
-
-  it('records unparseable exit-0 output without touching anything', () => {
-    const run = runMigrationCheck({ statusJson: 'not json at all', statusRc: 0 });
-    expect(run.marker).toBe('migrate 0 unparseable\nhealth 0\n');
-    expect(run.calls).toEqual(['akm migrate status', 'akm health']);
-  });
-
-  it('still runs the crash-resumable apply on a non-zero status exit', () => {
-    const run = runMigrationCheck({ statusJson: '', statusRc: 1, applyRc: 0 });
+  it('records `applied` when the plan reports files were converted — INCLUDING operator task files, never leaving them untouched', () => {
+    const run = runMigrationCheck({ applyJson: APPLIED_PLAN, applyRc: 0 });
     expect(run.marker).toBe('migrate 0 applied\ntask-sync 0\nhealth 0\n');
-    expect(run.calls).toEqual([
-      'akm migrate status',
-      'akm migrate apply',
-      'akm task sync --rebind',
-      'akm health',
-    ]);
+    expect(run.calls).toEqual(['akm migrate apply', 'akm task sync --rebind', 'akm health']);
+    // The policy reversal (B3): no promise that operator files are left alone,
+    // and the log says the rewritten files were backed up.
+    expect(run.stderr).not.toContain('leaves your files as written');
+    expect(run.stderr).toContain('backed up');
   });
 
-  it('records a failed apply as degraded (exit code preserved) and keeps booting', () => {
-    const run = runMigrationCheck({ statusJson: '', statusRc: 1, applyRc: 7 });
-    expect(run.marker).toBe('migrate 7 apply-failed\nhealth 0\n');
-    // Retried once, never synced tasks, still probed health: boot went on.
-    expect(run.calls).toEqual([
-      'akm migrate status',
-      'akm migrate apply',
-      'akm migrate apply',
-      'akm health',
-    ]);
+  it('records an unexpected exit-0 status verbatim instead of laundering it', () => {
+    const run = runMigrationCheck({
+      applyJson: JSON.stringify({ schemaVersion: 1, status: 'mystery' }),
+      applyRc: 0,
+    });
+    expect(run.marker).toBe('migrate 0 mystery\ntask-sync 0\nhealth 0\n');
+  });
+
+  it('records unparseable exit-0 output without crashing', () => {
+    const run = runMigrationCheck({ applyJson: 'not json at all', applyRc: 0 });
+    expect(run.marker).toBe('migrate 0 unparseable\ntask-sync 0\nhealth 0\n');
+  });
+
+  it('records a blocked plan with the blocker count, and logs each blocker', () => {
+    const run = runMigrationCheck({ applyJson: BLOCKED_PLAN, applyRc: 1 });
+    expect(run.marker).toBe('migrate 1 blocked: 1\ntask-sync 0\nhealth 0\n');
+    expect(run.calls).toEqual(['akm migrate apply', 'akm task sync --rebind', 'akm health']);
+    expect(run.stderr).toContain('legacy-argv.yml: argv-array-has-no-portable-shell-string');
+  });
+
+  it('records a blocked plan with zero blockers named as blocked: 0 rather than crashing', () => {
+    const run = runMigrationCheck({
+      applyJson: JSON.stringify({ schemaVersion: 1, status: 'blocked', blockers: [] }),
+      applyRc: 1,
+    });
+    expect(run.marker).toBe('migrate 1 blocked: 0\ntask-sync 0\nhealth 0\n');
+  });
+
+  it('records a crash exit as failed and keeps booting (never retries)', () => {
+    const run = runMigrationCheck({ applyJson: '', applyRc: 70 });
+    expect(run.marker).toBe('migrate 70 failed\ntask-sync 0\nhealth 0\n');
+    // Exactly one apply call — the old double-apply retry is gone.
+    expect(run.calls).toEqual(['akm migrate apply', 'akm task sync --rebind', 'akm health']);
+  });
+
+  it('runs task sync and health even when apply itself failed', () => {
+    const run = runMigrationCheck({ applyJson: '', applyRc: 70, taskSyncRc: 3, healthRc: 4 });
+    expect(run.marker).toBe('migrate 70 failed\ntask-sync 3\nhealth 4\n');
+  });
+
+  it('never calls `akm migrate status` — apply is the only migrate verb boot uses', () => {
+    const run = runMigrationCheck({ applyJson: CURRENT_PLAN, applyRc: 0 });
+    expect(run.calls.some((c) => c.includes('migrate status'))).toBe(false);
+  });
+
+  it('every akm task sync call passes --rebind (a test ratchet this file keeps)', () => {
+    const run = runMigrationCheck({ applyJson: CURRENT_PLAN, applyRc: 0 });
+    expect(run.calls).toContain('akm task sync --rebind');
   });
 
   it('the boot flow actually invokes the function these cases model', () => {
@@ -185,86 +216,68 @@ describe('assistant entrypoint — akm migrate boot check', () => {
   });
 });
 
-/**
- * The health step's one canned remedy: akm refusing to open state.db until its
- * historical-destructive schema cutover is applied deliberately (`akm health`
- * exit 78). The first remedy inside akm's own message — `akm upgrade --force` —
- * is the package SELF-UPDATER and cannot work in the image-baked container
- * (GitHub egress + `npm install -g`); akm 0.9.8 added the offline
- * `akm upgrade --state-only` for exactly this case (akm#895). Boot must (a)
- * recognize the refusal, (b) point at the image-pinned helper that runs that
- * supported command, and (c) NEVER run the cutover itself: akm reserves this
- * migration class for explicit intent, and boot granting it automatically
- * would extend that grant to every future destructive migration an image bump
- * ships.
- */
-const STATE_UPGRADE_REFUSAL = JSON.stringify({
-  ok: false,
-  error:
-    'Unable to open state.db: Refusing to apply historical destructive state migration ' +
-    '018-drop-dead-lane-schema during an ordinary managed open. Run `akm upgrade --force` ' +
-    'to create a sibling state.db safety copy and apply it deliberately, ' +
-    'or `akm upgrade --state-only` where akm cannot reinstall itself (container/global install).',
-  code: 'INVALID_CONFIG_FILE',
+describe('assistant entrypoint — #666 akm version-pin check', () => {
+  const PINNED_PACKAGE_JSON = JSON.stringify({ dependencies: { 'akm-cli': '0.9.9' } });
+
+  it('records a match when the akm on PATH equals the image pin', () => {
+    const run = runMigrationCheck({
+      applyJson: CURRENT_PLAN,
+      version: '0.9.9',
+      packageJson: PINNED_PACKAGE_JSON,
+    });
+    expect(run.marker).toBe('akm-version 0\nmigrate 0 current\ntask-sync 0\nhealth 0\n');
+    expect(run.calls[0]).toBe('akm --version');
+  });
+
+  it('records a mismatch and names both versions, without blocking boot', () => {
+    const run = runMigrationCheck({
+      applyJson: CURRENT_PLAN,
+      version: '0.8.14',
+      packageJson: PINNED_PACKAGE_JSON,
+    });
+    expect(run.marker).toBe('akm-version 1 0.8.14 expected 0.9.9\nmigrate 0 current\ntask-sync 0\nhealth 0\n');
+    expect(run.stderr).toContain("akm --version reports '0.8.14'");
+    expect(run.stderr).toContain('akm-cli 0.9.9');
+    expect(run.stderr).toContain('stale /opt/openpalm mount');
+  });
+
+  it('checks the version BEFORE running migrate apply', () => {
+    const run = runMigrationCheck({
+      applyJson: CURRENT_PLAN,
+      version: '0.8.14',
+      packageJson: PINNED_PACKAGE_JSON,
+    });
+    expect(run.calls).toEqual(['akm --version', 'akm migrate apply', 'akm task sync --rebind', 'akm health']);
+  });
+
+  it('records nothing when no pin file is resolvable — no false positive', () => {
+    // No `packageJson` fixture: AKM_TOOLS_PACKAGE_JSON stays at its real,
+    // absent-in-this-sandbox default.
+    const run = runMigrationCheck({ applyJson: CURRENT_PLAN });
+    expect(run.marker).toBe('migrate 0 current\ntask-sync 0\nhealth 0\n');
+    expect(run.calls.some((c) => c === 'akm --version')).toBe(false);
+  });
+
+  it('records nothing when the pin file has no akm-cli dependency', () => {
+    const run = runMigrationCheck({
+      applyJson: CURRENT_PLAN,
+      packageJson: JSON.stringify({ dependencies: {} }),
+    });
+    expect(run.marker).toBe('migrate 0 current\ntask-sync 0\nhealth 0\n');
+  });
 });
 
-describe('assistant entrypoint — akm health state-upgrade detection', () => {
-  const CURRENT_PLAN = JSON.stringify({ schemaVersion: 1, status: 'current', blockers: [] });
-
-  it('marks the pending deliberate cutover and points at the helper — without running it', () => {
-    const run = runMigrationCheck({
-      statusJson: CURRENT_PLAN,
-      statusRc: 0,
-      healthRc: 78,
-      healthErr: STATE_UPGRADE_REFUSAL,
-    });
-    expect(run.marker).toBe('migrate 0 current\nhealth 78 state-upgrade-pending\n');
-    // No remediation call of any kind — reporting only.
-    expect(run.calls).toEqual(['akm migrate status', 'akm health']);
-    expect(run.stderr).toContain('openpalm-akm-state-upgrade');
+describe('assistant entrypoint — the deleted state-upgrade reach-around stays deleted', () => {
+  it('never mentions the removed helper or the old grep-on-error-text remedy', () => {
+    expect(entrypoint).not.toContain('openpalm-akm-state-upgrade');
+    expect(entrypoint).not.toContain('state-upgrade-pending');
+    expect(entrypoint).not.toContain('Run `akm upgrade --force`');
+    expect(entrypoint).not.toContain('upgrade --state-only');
   });
 
-  it('leaves other health failures undecorated', () => {
-    const run = runMigrationCheck({
-      statusJson: CURRENT_PLAN,
-      statusRc: 0,
-      healthRc: 70,
-      healthErr: '{"ok": false, "error": "something else entirely"}',
-    });
-    expect(run.marker).toBe('migrate 0 current\nhealth 70\n');
-    expect(run.stderr).not.toContain('openpalm-akm-state-upgrade');
-  });
-
-  it('the image bakes the helper the boot log names', () => {
+  it('the image no longer bakes the retired helper script', () => {
     const dockerfile = readFileSync(join(repoRoot, 'containers/assistant/Dockerfile'), 'utf8');
-    expect(dockerfile).toContain(
-      'COPY containers/assistant/akm-state-upgrade.sh /usr/local/bin/openpalm-akm-state-upgrade',
-    );
-    expect(dockerfile).toContain('chmod +x /usr/local/bin/openpalm-akm-state-upgrade');
-  });
-
-  it('the helper runs the supported offline cutover and never the self-updater', () => {
-    const helper = readFileSync(
-      join(repoRoot, 'containers/assistant/akm-state-upgrade.sh'),
-      'utf8',
-    );
-    // Whole-line comment stripping mirrors the ratchet style in
-    // image-baked-contract.test.ts: comments may explain the history, code
-    // is what ships.
-    const codeLines = helper.split('\n').filter((l) => !/^\s*#/.test(l));
-    // The helper hands off with a single `exec`; that line IS the remedy.
-    const execLines = codeLines.filter((l) => /^\s*exec\b/.test(l));
-    expect(execLines).toHaveLength(1);
-    // The state-only form (akm#895) — the plain self-updater needs the network
-    // and a writable global install, neither of which the container has.
-    expect(execLines[0]).toContain('"$AKM_BIN"');
-    expect(execLines[0]).toContain('upgrade --state-only');
-    expect(execLines[0]).not.toContain('--force');
-    expect(codeLines.filter((l) => /--force/.test(l))).toEqual([]);
-    // It drives the image-pinned binary, never a reimplementation of akm's
-    // internals (the pre-0.9.8 helper imported dist/core/state-db.js directly).
-    expect(helper).toContain('/opt/openpalm/tools/node_modules/.bin/akm');
-    expect(helper).not.toContain('dist/core');
-    expect(helper).not.toContain('upgradeHistoricalStateDatabase');
+    expect(dockerfile).not.toContain('akm-state-upgrade');
+    expect(dockerfile).not.toContain('openpalm-akm-state-upgrade');
   });
 });

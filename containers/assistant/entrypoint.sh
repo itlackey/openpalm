@@ -398,10 +398,16 @@ run_akm_command() {
 # records what actually happened so a degraded-but-up assistant can be
 # reported. Degraded is a correct state; unreported is the bug.
 #
-# One line per step, "<step> <exit> [detail]", in boot order (migrate,
-# task-sync, health, supercronic); a step that never ran is simply absent. It
-# lives in /tmp so it describes THIS boot only and never persists.
+# One line per step, "<step> <exit> [detail]", in boot order (akm-version,
+# migrate, task-sync, health, supercronic); a step that never ran is simply
+# absent. It lives in /tmp so it describes THIS boot only and never persists.
 AKM_BOOT_STATUS_FILE="/tmp/openpalm-akm-boot.status"
+
+# The akm-cli version this image pins (containers/assistant/tools/package.json,
+# baked to this exact path by the Dockerfile). Overridable so the version-pin
+# check below can be driven against a fixture file in tests without touching
+# the real image path.
+AKM_TOOLS_PACKAGE_JSON="${AKM_TOOLS_PACKAGE_JSON:-/opt/openpalm/tools/package.json}"
 
 reset_akm_boot_status() {
   # Truncate once, before the first record, so a restart cannot inherit the
@@ -428,48 +434,85 @@ record_akm_boot_status() {
   } 2>/dev/null || true
 }
 
-run_akm_migration_check() {
-  # `akm migrate` (0.9.6+) is the task-file converter: it inspects/rewrites
-  # task-v2 and task-v3 YAML under the stash to task source v4 (0.9.8 folds
-  # its other one-time cleanups — dead `.akm` residue, stale transaction
-  # journals, the legacy `extraParams` config lift — into the same plan and
-  # `status` field). Run the check
-  # HERE — as the opencode user, with output surfaced to docker logs — so any
-  # rewrite that does happen runs under the correct uid (root-owned files in
-  # the bind-mounted stash are the chown-clobber class of bug) and its outcome
-  # is visible instead of being swallowed by the silenced `akm task sync`
-  # call below.
-  # Idempotent (`migrate status` is read-only; `migrate apply` no-ops /
-  # resumes to convergence) and non-fatal: a migration hiccup must never
-  # block the assistant from starting. (#474)
-  #
-  # Exit-code contract, verified against akm-cli 0.9.6 and unchanged through
-  # 0.9.8-beta.2, the 0.13.1 pin (dist/commands/
-  # migrate-cli.js sets a non-zero exit code iff the combined plan status is
-  # "blocked"): exit 0 covers BOTH clean plan states — "current" (nothing to
-  # convert) and "ready" (files pending that `akm migrate apply` would
-  # rewrite) — exit 1 is "blocked", and anything else is a crash or config
-  # error. The exit code alone cannot distinguish "done" from "apply would
-  # change files", so on success parse the plan's `status` field instead of
-  # trusting 0. (Output defaults to JSON; no --format flag, so a flag-parsing
-  # regression can never shunt a healthy status call onto the apply path.)
+check_akm_version_pin() {
+  # #666: /opt/openpalm (tools/ and skeleton/) is an image-baked path with no
+  # volume mount in any release-shipped compose file (E2/S2) — but a home
+  # whose OWN config/stack/custom.compose.yml still re-declares a volume
+  # there (a pre-#585 install, back when boot-time npm install/bun update
+  # needed one to survive container recreation) keeps that mount alive
+  # forever: config/ is user-owned and lifecycle code never rewrites it. The
+  # result is a container running THIS image while every akm invocation
+  # actually resolves an akm from whatever was last written into that stale
+  # volume — reported upstream as a config a newer akm migrated forward that
+  # an old, shadowed akm binary cannot parse (INVALID_CONFIG_FILE from every
+  # subcommand, no hint why). Compare the akm actually on PATH against this
+  # image's own pin BEFORE running anything that depends on it, so the
+  # mismatch is one loud boot-time line instead of a mystery crash per
+  # command. Non-fatal and read-only: an operator's own compose overlay is
+  # not this entrypoint's to fix.
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
 
-  echo "entrypoint: checking akm task-file migration state (akm migrate status)..." >&2
-  local status_json="" status_rc=0 plan_status=""
-  status_json="$(run_akm_command akm migrate status)" || status_rc=$?
-  # The plan used to stream straight to stderr; keep it in docker logs so the
-  # marker line recorded below always has its evidence next to it.
-  [ -z "$status_json" ] || printf '%s\n' "$status_json" >&2
+  local expected=""
+  if [ -f "$AKM_TOOLS_PACKAGE_JSON" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      expected="$(jq -r '.dependencies["akm-cli"] // empty' "$AKM_TOOLS_PACKAGE_JSON" 2>/dev/null)"
+    elif command -v node >/dev/null 2>&1; then
+      expected="$(node -p "(require('$AKM_TOOLS_PACKAGE_JSON').dependencies || {})['akm-cli'] || ''" 2>/dev/null)"
+    fi
+  fi
+  # No pin resolved (missing file, missing jq AND node, malformed JSON) is not
+  # evidence of a mismatch — there is nothing to compare against, so record
+  # nothing rather than invent a false positive.
+  [ -n "$expected" ] || return 0
 
-  if [ "$status_rc" = "0" ]; then
-    if [ -z "$status_json" ]; then
+  local got=""
+  got="$(run_akm_command akm --version 2>/dev/null | tr -d '[:space:]')"
+  if [ "$got" = "$expected" ]; then
+    record_akm_boot_status akm-version 0
+  else
+    echo "warning: akm --version reports '${got:-<empty>}' but this image pins akm-cli $expected — a stale /opt/openpalm mount (a custom compose overlay predating #585, or a pre-#585 assistant-artifacts volume) is likely shadowing the image-baked akm; continuing startup" >&2
+    record_akm_boot_status akm-version 1 "$got expected $expected"
+  fi
+}
+
+run_akm_migration_check() {
+  # akm-cli 0.9.9's boot contract (three lines, any bundler can follow them):
+  # pin an exact akm-cli, run `akm migrate apply` at boot, read `akm health
+  # --format json`. `akm migrate apply` (offline, idempotent, takes its own
+  # safety copies) applies every pending migration in one plan — legacy
+  # config lift, state.db migrations (including the historical-destructive
+  # ones an ordinary open refuses), task v2/v3 -> v4 conversion, residue
+  # sweeps — and prints ONE JSON plan on stdout. Run it HERE, as the
+  # opencode user, with output surfaced to docker logs — so any rewrite it
+  # does runs under the correct uid (root-owned files in the bind-mounted
+  # stash are the chown-clobber class of bug) and its outcome is visible
+  # instead of being swallowed by the silenced `akm task sync` call below.
+  #
+  # Exit 0 unless the plan is genuinely blocked (exit 1); anything else is a
+  # crash or config error. Non-fatal either way: a migration hiccup must
+  # never block the assistant from starting (#474).
+  if ! command -v akm >/dev/null 2>&1; then return 0; fi
+
+  check_akm_version_pin
+
+  echo "entrypoint: applying akm migrations (akm migrate apply)..." >&2
+  local apply_json="" rc=0
+  apply_json="$(run_akm_command akm migrate apply)" || rc=$?
+  # Keep the plan in docker logs so the marker line recorded below always has
+  # its evidence next to it.
+  [ -z "$apply_json" ] || printf '%s\n' "$apply_json" >&2
+
+  if [ "$rc" = "0" ]; then
+    local plan_status=""
+    if [ -z "$apply_json" ]; then
       # Exit 0 with no plan printed is the CLI's "nothing to report" shape.
       plan_status="current"
     elif command -v jq >/dev/null 2>&1; then
       # `tostring` keeps a malformed (non-string) status value on one line so
       # it cannot smuggle extra lines into the one-line-per-step marker.
-      plan_status="$(printf '%s\n' "$status_json" | jq -r '(.status // "missing-status-key") | tostring' 2>/dev/null)" || plan_status="unparseable"
+      # `apply` re-inspects after converting, so a successful plan always says
+      # "current"; whether THIS run changed anything is in its counts.
+      plan_status="$(printf '%s\n' "$apply_json" | jq -r 'if .status == "current" and (((.applied // 0) + (.taskV4Applied // 0)) > 0 or ((.stateMigrations.applied // []) | length) > 0) then "applied" else ((.status // "missing-status-key") | tostring) end' 2>/dev/null)" || plan_status="unparseable"
       [ -n "$plan_status" ] || plan_status="unparseable"
       plan_status=${plan_status//$'\n'/ }
     else
@@ -478,108 +521,63 @@ run_akm_migration_check() {
     fi
     case "$plan_status" in
       current)
-        echo "entrypoint: akm migration state is current" >&2
+        echo "entrypoint: akm migrations are current" >&2
         record_akm_boot_status migrate 0 current
         ;;
-      ready)
-        # DESIGN DECISION: boot never runs `akm migrate apply` on a "ready"
-        # plan. By boot time the only convertible files left are
-        # operator-authored tasks (`retirePreV4SeededTasks` already rewrote
-        # the shipped set during the upgrade, keeping `.pre-v4` copies), and
-        # the 0.13.0 docs promise those files stay exactly as written until
-        # the OPERATOR converts them — docs/managing-openpalm.md ("Tasks you
-        # wrote yourself are left exactly as they are") and
-        # docs/operations/upgrade-0.12-to-0.13.md ("Your own tasks are not
-        # rewritten", which calls a `ready` status the clean post-upgrade
-        # result). akm reads v2/v3 files by converting them in memory, so the
-        # tasks still run; its per-read stderr warning is the deliberate
-        # nudge toward an operator-initiated `akm migrate apply`. This state
-        # used to be misrecorded as `migrate 0 current`, which hid why that
-        # warning repeated every boot; record the real state instead.
-        echo "entrypoint: akm migrate status is 'ready' — operator task files are pending conversion to task source v4. Boot leaves your files as written (by design); run 'akm migrate apply' in this container to rewrite them permanently, or convert them to version: 4 by hand (docs/managing-openpalm.md, Automations)." >&2
-        record_akm_boot_status migrate 0 "ready operator-apply-pending"
+      applied)
+        # This run converted or migrated something. akm backs every rewritten
+        # file up under its own data dir (backups/task-v3|v4, five kept) and
+        # skips a file it cannot convert deterministically, naming it in the
+        # plan's `blockers` and excluding it from the reconcile.
+        echo "entrypoint: akm migrate apply applied pending migrations (rewritten files were backed up first)" >&2
+        record_akm_boot_status migrate 0 applied
         ;;
       *)
-        # Exit 0 promises current-or-ready; anything else here is a violated
-        # contract ("blocked" with exit 0, garbage output, a missing key).
-        # Record it verbatim rather than laundering it into "current", and
-        # touch nothing.
-        echo "entrypoint: akm migrate status exited 0 with unexpected plan status '$plan_status'; leaving task files untouched" >&2
+        # Exit 0 promises a current plan; anything else here is a violated
+        # contract (garbage output, a missing key). Record it verbatim rather
+        # than laundering it into "current".
+        echo "entrypoint: akm migrate apply exited 0 with unexpected plan status '$plan_status'" >&2
         record_akm_boot_status migrate 0 "$plan_status"
         ;;
     esac
+  elif [ "$rc" = "1" ]; then
+    # "blocked": at least one file akm refuses to convert deterministically.
+    # Every other source in the plan still applied — only the named files
+    # are unaffected — so this is a degraded boot, not a failed one.
+    local blocker_count=0
+    if command -v jq >/dev/null 2>&1 && [ -n "$apply_json" ]; then
+      while IFS= read -r blocker; do
+        [ -n "$blocker" ] || continue
+        blocker_count=$((blocker_count + 1))
+        echo "entrypoint: akm migrate blocker: $blocker" >&2
+      done < <(printf '%s\n' "$apply_json" | jq -r '.blockers[]? | tostring' 2>/dev/null)
+    fi
+    echo "warning: akm migrate apply blocked ($blocker_count file(s) left unconverted); akm task sync excludes them and names them in its failures — continuing startup" >&2
+    record_akm_boot_status migrate 1 "blocked: $blocker_count"
   else
-    # Non-zero: exit 1 is a "blocked" plan — some file akm refuses to convert
-    # deterministically. Apply is all-or-nothing (akm 0.9.x) and will fail
-    # loudly here, which is correct: a blocked file means one operator task is
-    # silently unscheduled, and `migrate 1 apply-failed` is what surfaces that
-    # as a degraded boot. Any other code is a crash or an interrupted prior
-    # apply, for which the crash-resumable apply is the recovery path.
-    # OpenPalm writes the 0.9-shape config itself, so no --config is needed; a
-    # second apply is harmless when the first one only staged a generated
-    # config. Rebind the scheduler entries afterwards so installed cron rows
-    # re-capture the current binary/spelling.
-    echo "entrypoint: akm migration pending — running akm migrate apply..." >&2
-    local rc=0
-    run_akm_command akm migrate apply >&2 || rc=$?
-    if [ "$rc" != "0" ]; then
-      # Reset before the retry: `|| rc=$?` only assigns when the command FAILS,
-      # so without this a failed first attempt followed by a successful retry
-      # would leave rc holding the first attempt's code — reporting a migrated,
-      # working akm as a failure.
-      rc=0
-      run_akm_command akm migrate apply >&2 || rc=$?
-    fi
-    if [ "$rc" = "0" ]; then
-      echo "entrypoint: akm migrate apply complete" >&2
-      record_akm_boot_status migrate 0 applied
-      local rebind_rc=0
-      run_akm_command akm task sync --rebind >&2 || rebind_rc=$?
-      if [ "$rebind_rc" != "0" ]; then
-        echo "warning: akm task sync --rebind failed after migration; continuing" >&2
-      fi
-      record_akm_boot_status task-sync "$rebind_rc"
-    else
-      echo "warning: akm migrate apply failed (exit $rc); akm commands may fail until it succeeds — continuing startup" >&2
-      record_akm_boot_status migrate "$rc" apply-failed
-    fi
+    echo "warning: akm migrate apply failed (exit $rc); akm commands may fail until it succeeds — continuing startup" >&2
+    record_akm_boot_status migrate "$rc" failed
   fi
 
+  # Rebind the scheduler entries so installed cron rows re-capture the
+  # current binary/spelling, whatever the migrate outcome above.
+  local rebind_rc=0
+  run_akm_command akm task sync --rebind >&2 || rebind_rc=$?
+  record_akm_boot_status task-sync "$rebind_rc"
+
   # Health probe (0 = ok, 4 = health warn) — surfaces db problems loudly at
-  # boot without blocking startup. Both streams are captured and re-printed
-  # (akm's ok:false envelope goes to stderr), so the one failure with a canned
-  # in-image remedy can be recognized below instead of scrolling by unnamed.
+  # boot without blocking startup. akm health --format json reports a
+  # pending state migration as its own hard check (state-db-migrations)
+  # rather than refusing to open, so there is nothing left here to grep for.
   local health_out="" hrc=0
   health_out="$(run_akm_command akm health 2>&1)" || hrc=$?
   [ -z "$health_out" ] || printf '%s\n' "$health_out" >&2
   if [ "$hrc" = "0" ] || [ "$hrc" = "4" ]; then
     echo "entrypoint: akm health check complete (exit $hrc)" >&2
-    record_akm_boot_status health "$hrc"
   else
     echo "warning: akm health check failed (exit $hrc); continuing startup" >&2
-    if printf '%s\n' "$health_out" | grep -qF 'Run `akm upgrade --force`'; then
-      # akm is refusing to open state.db until its historical-destructive
-      # schema cutover is applied deliberately (exit 78; every state.db
-      # surface — events, proposals, task history, improve ledgers, workflow
-      # runs — is down until then). The FIRST remedy inside akm's message,
-      # `akm upgrade --force`, does NOT work in this container: it is the
-      # package self-updater (GitHub egress + `npm install -g`, both
-      # off-limits in an image-baked install) and only reaches the state step
-      # after a successful package install. The second, `akm upgrade
-      # --state-only` (akm 0.9.8, akm#895), is offline and installs nothing;
-      # the image-pinned helper is the operator-facing name for that call.
-      # DESIGN DECISION: boot only reports this state, it never applies it.
-      # akm reserves this migration class for explicit intent — a boot that
-      # granted that intent automatically would extend it to every FUTURE
-      # destructive migration an image bump ships, sight unseen. OpenPalm
-      # keeps the intent operator-shaped, exactly like the operator task-file
-      # rule in the `ready` branch above.
-      echo "entrypoint: akm's state.db is waiting for its one-time deliberate schema cutover — run 'openpalm-akm-state-upgrade' (akm upgrade --state-only) in this container to apply it (a verified sibling safety copy is created first; see docs/operations/upgrade-0.12-to-0.13.md)" >&2
-      record_akm_boot_status health "$hrc" state-upgrade-pending
-    else
-      record_akm_boot_status health "$hrc"
-    fi
   fi
+  record_akm_boot_status health "$hrc"
 }
 
 persist_akm_bundle_dir_fallback() {
