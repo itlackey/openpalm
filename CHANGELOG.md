@@ -15,16 +15,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `018-drop-dead-lane-schema`) during an ordinary open: `akm health` exits 78
   on every boot and every state.db surface — events, proposals, task history,
   improve ledgers, workflow runs — fails to open until the cutover runs. The
-  remedy akm's own error names, `akm upgrade --force`, is the package
+  first remedy akm's error named, `akm upgrade --force`, is the package
   SELF-UPDATER and cannot work inside the container: it needs GitHub egress,
   runs `npm install -g akm-cli@latest` (forbidden by the image-baked model and
   EACCES for the container user anyway), and only reaches the state.db step
-  after that install succeeds — verified against the 0.9.6 sources, byte-
-  identical in 0.9.7, which expose the state step
-  (`upgradeHistoricalStateDatabase`) to the self-updater alone. The image now bakes a helper that drives that machinery directly:
+  after that install succeeds. Reported upstream as akm#895; akm 0.9.8 fixed
+  it with `akm upgrade --state-only`, which applies the pending state.db
+  migrations offline and installs nothing. The image bakes a helper that runs
+  exactly that against the image-pinned akm:
   a verified sibling safety copy first (`VACUUM INTO` + `quick_check` + ledger
-  check), then the pending migrations; idempotent and fully offline, rehearsed
-  end-to-end on the built image. Boot recognizes the refusal in `akm health`'s
+  check), then the pending migrations; idempotent and fully offline. Boot recognizes the refusal in `akm health`'s
   output, records `health 78 state-upgrade-pending` in the boot marker, and
   logs the helper's name — and deliberately never runs it: akm reserves this
   migration class for explicit intent, and a boot that granted that intent
@@ -34,6 +34,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **akm-cli 0.9.8-beta.2 (from 0.9.7), in the assistant image and the Paperclip
+  plugin manifest.** akm's own delta: `akm upgrade --state-only` (akm#895, the
+  fix OpenPalm's state-cutover helper now runs); `akm migrate` absorbs the
+  remaining one-time cleanups (dead `.akm` residue, stale transaction journals,
+  the legacy `extraParams` config lift — `akm health --clean-dead-residue` is
+  gone); task-migration snapshots are capped at five; `akm task sync` memoizes
+  its npm probe (one spawn per process instead of one per call); a blocked v2
+  task names the `command:` → `run:` + `shell:` rewrite it needs; a no-op
+  incremental `akm index` no longer costs minutes of CPU; `akm health` gains a
+  `data-dir-usage` advisory. **Upgrading is one-way for `data/akm/data/state.db`**:
+  0.9.8 adds ledger migrations 025 and 026, and 0.9.7 refuses a database that
+  carries them ("Refusing to open a database with a newer migration ledger:
+  unknown migration ID 025-task-history-vocabulary-backfill"). `data/` is not in
+  an OpenPalm backup, so an operator who may roll back across this bump
+  snapshots state.db first — the snapshot command is in
+  `docs/managing-openpalm.md`. The `historical-destructive` gate on
+  `018-drop-dead-lane-schema` and the `configVersion "0.9.0"` config contract are
+  unchanged. **Prerelease caveat:** the akm-opencode plugin (0.9.2202608290901,
+  unchanged) selects its CLI by probing `akm --version` against `^0.9.2`, and
+  node-semver never lets a prerelease satisfy that range, so on this beta pin
+  the plugin skips the image's akm and falls back to the akm-cli 0.9.7 it
+  bundles — which then refuses the state.db that 0.9.8 has already opened.
+  Move the pin to the stable 0.9.8 (admitted by `^0.9.2` and `^0.9.7`) before
+  the release tag; the CLI-side verification below was done on the beta.
 - **CI and release run the same gates (#659).** The gate jobs live in
   `.github/workflows/gates.yml` (`workflow_call`) and both `ci.yml` and
   `release.yml`'s preflight invoke it, so the release pipeline cannot run

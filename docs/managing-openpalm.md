@@ -304,13 +304,23 @@ run the cutover:
 docker compose -p <project> exec assistant openpalm-akm-state-upgrade
 ```
 
-This drives akm's own machinery directly (never `akm upgrade`, which is the
-package self-updater and cannot run in the image-baked container): a verified
-sibling safety copy — `state.db.pre-<migration>.<timestamp>.<uuid>.bak` — is
-written first, then the pending migrations apply. It is idempotent and fully
-offline; `{"upgraded":false}` means there was nothing to do. Boot never runs
-this for you: applying a destructive migration stays an explicit operator
-action, the same rule that keeps your task files unrewritten at boot.
+This runs `akm upgrade --state-only` against the image's own akm (never the
+plain `akm upgrade`, which is the package self-updater and cannot run in the
+image-baked container): a verified sibling safety copy —
+`state.db.pre-<migration>.<timestamp>.<uuid>.bak` — is written first, then the
+pending migrations apply. It is idempotent and fully offline; `"upgraded":
+false` with "state.db is already current" means there was nothing to do. Boot
+never runs this for you: applying a destructive migration stays an explicit
+operator action, the same rule that keeps your task files unrewritten at boot.
+
+akm's state.db upgrades are one-way. Once the assistant's akm opens the
+database, an older akm refuses it (`Refusing to open a database with a newer
+migration ledger`), and `data/` is not part of an OpenPalm backup. If you may
+roll the stack back across an akm bump, snapshot the file first:
+
+```bash
+docker compose -p <project> exec assistant sqlite3 /opt/akm/data/state.db "VACUUM INTO '/opt/akm/data/state.db.pre-upgrade.bak'"
+```
 
 ### A failed update leaves the stack pinned to a rollback image
 

@@ -188,20 +188,23 @@ describe('assistant entrypoint — akm migrate boot check', () => {
 /**
  * The health step's one canned remedy: akm refusing to open state.db until its
  * historical-destructive schema cutover is applied deliberately (`akm health`
- * exit 78). The advice inside akm's own message — `akm upgrade --force` — is
- * the package SELF-UPDATER and cannot work in the image-baked container
- * (GitHub egress + `npm install -g`), so boot must (a) recognize the refusal,
- * (b) point at the image-pinned helper that drives akm's cutover directly, and
- * (c) NEVER run the cutover itself: akm reserves this migration class for
- * explicit intent, and boot granting it automatically would extend that grant
- * to every future destructive migration an image bump ships.
+ * exit 78). The first remedy inside akm's own message — `akm upgrade --force` —
+ * is the package SELF-UPDATER and cannot work in the image-baked container
+ * (GitHub egress + `npm install -g`); akm 0.9.8 added the offline
+ * `akm upgrade --state-only` for exactly this case (akm#895). Boot must (a)
+ * recognize the refusal, (b) point at the image-pinned helper that runs that
+ * supported command, and (c) NEVER run the cutover itself: akm reserves this
+ * migration class for explicit intent, and boot granting it automatically
+ * would extend that grant to every future destructive migration an image bump
+ * ships.
  */
 const STATE_UPGRADE_REFUSAL = JSON.stringify({
   ok: false,
   error:
     'Unable to open state.db: Refusing to apply historical destructive state migration ' +
     '018-drop-dead-lane-schema during an ordinary managed open. Run `akm upgrade --force` ' +
-    'to create a sibling state.db safety copy and apply it deliberately.',
+    'to create a sibling state.db safety copy and apply it deliberately, ' +
+    'or `akm upgrade --state-only` where akm cannot reinstall itself (container/global install).',
   code: 'INVALID_CONFIG_FILE',
 });
 
@@ -240,16 +243,28 @@ describe('assistant entrypoint — akm health state-upgrade detection', () => {
     expect(dockerfile).toContain('chmod +x /usr/local/bin/openpalm-akm-state-upgrade');
   });
 
-  it('the helper drives akm state machinery directly and never the self-updater', () => {
+  it('the helper runs the supported offline cutover and never the self-updater', () => {
     const helper = readFileSync(
       join(repoRoot, 'containers/assistant/akm-state-upgrade.sh'),
       'utf8',
     );
-    expect(helper).toContain('upgradeHistoricalStateDatabase');
-    // Comments may (and do) explain why `akm upgrade` is wrong; code must
-    // never invoke it. Whole-line comment stripping mirrors the ratchet style
-    // in image-baked-contract.test.ts.
+    // Whole-line comment stripping mirrors the ratchet style in
+    // image-baked-contract.test.ts: comments may explain the history, code
+    // is what ships.
     const codeLines = helper.split('\n').filter((l) => !/^\s*#/.test(l));
-    expect(codeLines.filter((l) => /\bakm upgrade\b/.test(l))).toEqual([]);
+    // The helper hands off with a single `exec`; that line IS the remedy.
+    const execLines = codeLines.filter((l) => /^\s*exec\b/.test(l));
+    expect(execLines).toHaveLength(1);
+    // The state-only form (akm#895) — the plain self-updater needs the network
+    // and a writable global install, neither of which the container has.
+    expect(execLines[0]).toContain('"$AKM_BIN"');
+    expect(execLines[0]).toContain('upgrade --state-only');
+    expect(execLines[0]).not.toContain('--force');
+    expect(codeLines.filter((l) => /--force/.test(l))).toEqual([]);
+    // It drives the image-pinned binary, never a reimplementation of akm's
+    // internals (the pre-0.9.8 helper imported dist/core/state-db.js directly).
+    expect(helper).toContain('/opt/openpalm/tools/node_modules/.bin/akm');
+    expect(helper).not.toContain('dist/core');
+    expect(helper).not.toContain('upgradeHistoricalStateDatabase');
   });
 });

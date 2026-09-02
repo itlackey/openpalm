@@ -273,7 +273,7 @@ for version in "${VERSIONS[@]}"; do
     import { runHomeMigrations } from './packages/lib/src/control-plane/home-schema.ts';
     import { persistAkmConfig } from './packages/lib/src/control-plane/setup.ts';
     ensureHomeDirs();
-    runHomeMigrations(process.env.OP_HOME);
+    await runHomeMigrations(process.env.OP_HOME);
     await applyHomeAssets(createState());
     persistAkmConfig(createState(), {
       llm: { provider: 'openai-compatible', model: 'smoke-model', baseUrl: 'http://127.0.0.1:1/v1' },
