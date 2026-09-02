@@ -77,17 +77,17 @@ describe('a fresh install leaves compose-published ports to the host-aware apply
     }
 
     const assistant = HOST_PORT_DEFAULTS.find((d) => d.key === 'OP_ASSISTANT_PORT');
-    expect(assistant).toBeDefined();
+    if (!assistant) throw new Error('OP_ASSISTANT_PORT is missing from HOST_PORT_DEFAULTS');
     // A sibling instance already holds the assistant default.
-    listener = Bun.serve({ port: assistant!.default, hostname: '127.0.0.1', fetch: () => new Response('busy') });
+    listener = Bun.serve({ port: assistant.default, hostname: '127.0.0.1', fetch: () => new Response('busy') });
 
     await ensureHostPortDefaults(createState());
 
     const after = readFileSync(stackEnvPath, 'utf-8');
     const persisted = /^OP_ASSISTANT_PORT=(\d+)$/m.exec(after)?.[1];
     expect(persisted, 'the busy assistant default is persisted to a free port').toBeDefined();
-    expect(Number(persisted)).not.toBe(assistant!.default);
-    expect(Number(persisted)).toBeGreaterThan(assistant!.default);
+    expect(Number(persisted)).not.toBe(assistant.default);
+    expect(Number(persisted)).toBeGreaterThan(assistant.default);
     // Free defaults stay absent: absence still means "the release default".
     expect(after).not.toMatch(/^OP_UI_PORT=/m);
     expect(after).not.toMatch(/^OP_WORKSPACE_PORT=/m);
