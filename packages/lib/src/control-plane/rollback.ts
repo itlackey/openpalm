@@ -7,7 +7,7 @@
  */
 import { mkdirSync, copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { timestampDirName } from "./backup.js";
+import { pruneBackupDirs, timestampDirName } from "./backup.js";
 import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
 import { reconcileRemoteAccess } from "./remote-apply.js";
 import type { ControlPlaneState } from "./types.js";
@@ -43,6 +43,13 @@ const FLAT_SNAPSHOT_GENERATION = '.';
 export type SnapshotGeneration = string;
 let snapshotSequence = 0;
 const SNAPSHOT_GENERATIONS_KEPT = 3;
+/**
+ * #657 pt.2: `-pre-rollback` safety snapshots (below) were "never pruned by
+ * anything" (backups.ts) — a stack that keeps failing and retrying `openpalm
+ * rollback` wrote one every time with nothing capping the run. Same N plain
+ * timestamp safety snapshots keep (install.ts's `--force` retention).
+ */
+const PRE_ROLLBACK_BACKUPS_KEPT = 3;
 const GENERATION_PATTERN = /^generation-(\d+)-\d+-\d+$/;
 
 /**
@@ -172,6 +179,12 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
     safeCopy(join(state.homeDir, rel), join(preRollbackDir, rel));
   }
   safeCopyTree(join(state.homeDir, SYSTEM_TREE), join(preRollbackDir, SYSTEM_TREE));
+
+  // #657 pt.2: cap the -pre-rollback namespace so a stack that keeps failing
+  // and retrying `openpalm rollback` cannot grow data/backups/ unbounded —
+  // scoped to this one namespace only, so it never touches plain timestamp,
+  // -pre-update, or ui-*/skeleton-* snapshots.
+  pruneBackupDirs(state.homeDir, PRE_ROLLBACK_BACKUPS_KEPT, "pre-rollback");
 
   // Restore known files (excludes auth.json — see RESTORE_FILES)
   for (const rel of RESTORE_FILES) {
