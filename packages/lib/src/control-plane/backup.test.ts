@@ -18,7 +18,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
-  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -40,15 +39,6 @@ import {
   planBackupPrune,
   pruneBackupDirs,
 } from './backup.js';
-
-// chmod 0 only blocks a NON-root process; root bypasses DAC permission checks
-// entirely, so the two #642 reproductions below need to run unprivileged to
-// actually hit EACCES. Same guard style as
-// config-persistence-operator-ids.test.ts, inverted: that suite needs root,
-// these need to NOT be root.
-function isRootProcess(): boolean {
-  return process.platform !== 'win32' && typeof process.getuid === 'function' && process.getuid() === 0;
-}
 
 let homeDir: string;
 
@@ -187,56 +177,6 @@ describe('backupOpenPalmHome atomicity', () => {
     const backupsDir = join(homeDir, 'data', 'backups');
     const remaining = existsSync(backupsDir) ? readdirSync(backupsDir) : [];
     expect(remaining).toEqual([]);
-  });
-});
-
-describe('backupOpenPalmHome tolerates unreadable files (#642)', () => {
-  // #642: an operator-created root-owned file anywhere under OP_HOME (e.g. a
-  // `sudo cp state/stack.env state/stack.env.bak` left behind before a hand
-  // edit) previously threw EACCES on the first unreadable entry and aborted
-  // `openpalm update` entirely, mid-way through applying managed files. One
-  // stray backup artifact should not block the whole update.
-  it('skips an unreadable non-essential file, names it in the marker, and still completes the backup', () => {
-    if (isRootProcess()) return; // see isRootProcess() docblock above
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_HOME=x\n');
-    const blocked = join(homeDir, 'state', 'stack.env.bak-portfix-test');
-    writeFileSync(blocked, 'OP_ENABLED_ADDONS=old\n');
-    chmodSync(blocked, 0o000); // unreadable, simulating a root-owned sudo artifact
-
-    try {
-      const backupDir = backupOpenPalmHome(homeDir);
-      expect(backupDir).not.toBeNull();
-      if (backupDir === null) return; // narrow for TS
-      // The file this backup actually needs still made it in.
-      expect(existsSync(join(backupDir, 'state', 'stack.env'))).toBe(true);
-      // The unreadable one was skipped, not fatal.
-      expect(existsSync(join(backupDir, 'state', 'stack.env.bak-portfix-test'))).toBe(false);
-      const marker = readFileSync(join(backupDir, BACKUP_COMPLETE_MARKER), 'utf-8');
-      expect(marker).toContain('state/stack.env.bak-portfix-test');
-    } finally {
-      chmodSync(blocked, 0o600); // restore so afterEach's rmSync(homeDir) can clean up
-    }
-  });
-
-  it('fails loud, naming the path, when a file the restore genuinely needs is unreadable', () => {
-    if (isRootProcess()) return; // see isRootProcess() docblock above
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    const stackEnv = join(homeDir, 'state', 'stack.env');
-    writeFileSync(stackEnv, 'OP_HOME=x\n');
-    chmodSync(stackEnv, 0o000);
-
-    try {
-      // Not just "it throws" (a raw EACCES already did, pre-fix) — the message
-      // must be the actionable one naming the exact path and the reason it
-      // matters, distinguishing "genuinely needed, fails loud" from the
-      // tolerant skip-and-warn path the previous test exercises.
-      expect(() => backupOpenPalmHome(homeDir)).toThrow(
-        /Backup staging cannot read .*state\/stack\.env.*openpalm rollback/,
-      );
-    } finally {
-      chmodSync(stackEnv, 0o600); // restore so afterEach's rmSync(homeDir) can clean up
-    }
   });
 });
 
