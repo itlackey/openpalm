@@ -11,7 +11,7 @@ import {
 	resolveStackDir,
 	ensureHomeDirs
 } from './home.js';
-import { ensureSecrets, ensureOpenCodeConfig } from './secrets.js';
+import { ensureSecrets, ensureOpenCodeConfig, readStackEnv } from './secrets.js';
 import { runHomeMigrations } from './home-schema.js';
 import { reconcileRemoteAccess } from './remote-apply.js';
 import {
@@ -484,7 +484,11 @@ export async function performUpgrade(
 					throw new Error(renameTeardown.warning ?? 'Project rename teardown failed.');
 				}
 
-				const result = await activateStack(state, { kind: 'all' }, { pull: 'always' }, { lock });
+				// A dev tag is a local build that was never pushed anywhere, so an explicit
+				// `compose pull` can only fail; fold any fetch into `up` the way runDeploy
+				// (deploy.ts) already does. Every published tag pulls first.
+				const isDevTag = (readStackEnv(state.homeDir).OP_ASSISTANT_VERSION ?? '').startsWith('dev');
+				const result = await activateStack(state, { kind: 'all' }, { pull: isDevTag ? 'missing' : 'always' }, { lock });
 				if (!result.ok) {
 					containersMutated = containersMutated || result.pullFailed !== true;
 					throw new Error(result.error ?? 'Failed to apply stack');

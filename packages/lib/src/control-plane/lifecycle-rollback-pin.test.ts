@@ -206,3 +206,56 @@ describe('a rollback-generation-* pin from a failed performUpgrade releases itse
 		}
 	});
 });
+
+describe('performUpgrade pull policy follows the image tag', () => {
+	// A dev tag is a local build no registry has; an explicit `compose pull`
+	// can only fail. runDeploy already folds the fetch into `up` for that case
+	// (deploy.ts isDevTag); performUpgrade must agree, or `openpalm update`
+	// against a dev image dies at the pull step before touching the stack.
+	for (const [tag, expectedPull] of [
+		['dev', 'missing'],
+		['0.13.0', 'always']
+	] as const) {
+		test(`a ${tag} tag requests pull:'${expectedPull}'`, async () => {
+			const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-pull-policy-'));
+			try {
+				await withUpgradeEnv(homeDir, async () => {
+					mkdirSync(join(homeDir, 'state'), { recursive: true });
+					writeFileSync(
+						join(homeDir, 'state', 'stack.env'),
+						[
+							`OP_ASSISTANT_VERSION=${tag}`,
+							`OP_GUARDIAN_VERSION=${tag}`,
+							`OP_PORTAL_VERSION=${tag}`,
+							'OP_MANAGED_ASSISTANT_VERSION=',
+							'OP_MANAGED_GUARDIAN_VERSION=',
+							'OP_MANAGED_PORTAL_VERSION=',
+							'OP_VOICE_VERSION=latest',
+							'OP_MANAGED_VOICE_VERSION=latest',
+							''
+						].join('\n')
+					);
+
+					const docker = fakeDockerClient();
+					const seen: Array<{ pull?: string } | undefined> = [];
+					const activateStackMock = mock(async (_state: unknown, _scope: unknown, opts?: { pull?: string }) => {
+						seen.push(opts);
+						return { ok: true };
+					});
+					mock.module('./docker.js', () => ({ ...realDocker, realDockerClient: docker }));
+					mock.module('./activation.js', () => ({ ...realActivation, activateStack: activateStackMock }));
+
+					const { performUpgrade, createState } = await import(
+						`./lifecycle.js?pull-policy-test=${Math.random()}`
+					);
+					await performUpgrade(createState());
+
+					expect(seen).toHaveLength(1);
+					expect(seen[0]?.pull).toBe(expectedPull);
+				});
+			} finally {
+				rmSync(homeDir, { recursive: true, force: true });
+			}
+		});
+	}
+});

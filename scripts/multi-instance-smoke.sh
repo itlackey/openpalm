@@ -23,27 +23,6 @@
 #      project — never a project literally named "openpalm" (#650), and
 #      never A's.
 #
-# CI environment note — the docker-pull shim below. `performUpgrade`
-# (packages/lib/src/control-plane/lifecycle.ts) always requests
-# `pull: 'always'` from activateStack, unlike the wizard/install deploy path
-# (deploy.ts), which skips the explicit pull for a `dev`-tagged image
-# (`isDevTag`). The images this smoke (and the rest of CI's quality-gates
-# job) exercises are LOCAL `:dev` builds that were never pushed to any
-# registry by design (see rootless-smoke-fixture.sh) — `docker compose pull`
-# for them always fails with "manifest unknown"/"not found", independent of
-# anything this smoke is actually testing (verified by hand: a real
-# `openpalm update` run against a freshly-seeded dev-tagged home fails at
-# exactly that pull, before ever reaching the assertions below). Real
-# releases never hit this: `openpalm update` in production always names a
-# published version tag, and `pull: 'always'` is the correct, intended
-# behavior there. So this script points OP_DOCKER_BIN at a tiny wrapper that
-# no-ops a `compose ... pull ...` call (the requested images are already
-# loaded in this job) and forwards every other invocation to the real
-# `docker` unchanged. This is a CI-environment accommodation, not a behavior
-# this smoke asserts on. See this repo's PR/report notes for the small,
-# out-of-scope source fix that would remove the need for the shim entirely:
-# give performUpgrade the same isDevTag pull-skip deploy.ts already has.
-#
 # Run explicitly (needs the openpalm/{assistant,guardian}:dev images already
 # built, e.g. via rootless-smoke-fixture.sh's smoke_build_images, or set
 # OP_ROOTLESS_SMOKE_SKIP_BUILD=0 to build them here):
@@ -111,19 +90,19 @@ teardown_project() {
   docker volume ls -q --filter "label=com.docker.compose.project=${project}" 2>/dev/null | xargs -r docker volume rm >/dev/null 2>&1 || true
 }
 
-SHIM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/multi-instance-smoke.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/multi-instance-smoke.XXXXXX")"
 
 cleanup() {
   if [[ "$KEEP" == "1" ]]; then
     echo "Keeping isolated smoke homes at ${A_HOME} and ${B_HOME} (--keep)"
-    rm -rf "$SHIM_DIR"
+    rm -rf "$WORK_DIR"
     return
   fi
   teardown_project "$A_PROJECT" "$A_HOME"
   teardown_project "$B_PROJECT" "$B_HOME"
   docker run --rm -v "$(dirname "$A_HOME"):/smoke-parent" alpine sh -c \
     'rm -rf "/smoke-parent/$1" "/smoke-parent/$2"' _ "$(basename "$A_HOME")" "$(basename "$B_HOME")" >/dev/null 2>&1 || true
-  rm -rf "$SHIM_DIR"
+  rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
 
@@ -158,25 +137,6 @@ printf '%s\n' "$PRIOR_SCHEMA" > "$B_HOME/state/schema-version"
 echo "=== Building images (reused across CI's quality-gates smokes) ==="
 smoke_build_images assistant guardian
 
-# See the CI-environment note in the file header: `openpalm update`'s
-# performUpgrade always pull:'always's, which fails hard against a local-only
-# :dev tag. No-op `compose ... pull ...`; forward everything else untouched.
-REAL_DOCKER="$(command -v docker)"
-DOCKER_SHIM="${SHIM_DIR}/docker"
-cat > "$DOCKER_SHIM" <<SHIM
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "\${1:-}" == "compose" ]]; then
-  for arg in "\$@"; do
-    if [[ "\$arg" == "pull" ]]; then
-      echo "docker-shim: no-op pull (locally-built :dev image, never pushed to any registry)" >&2
-      exit 0
-    fi
-  done
-fi
-exec "$REAL_DOCKER" "\$@"
-SHIM
-chmod +x "$DOCKER_SHIM"
 
 echo "=== Bringing up instance A and leaving it live ==="
 compose_for "$A_HOME" "$A_PROJECT" up -d assistant >/dev/null
@@ -210,19 +170,19 @@ mkdir -p "${B_HOME}/data"
 printf '%s\n%s\n' "$$" "$(date +%s000)" > "${B_HOME}/data/.install.lock"
 
 set +e
-OP_HOME="$B_HOME" OP_DOCKER_BIN="$DOCKER_SHIM" bun -e "
+OP_HOME="$B_HOME" bun -e "
   import { runUpgradeAction } from './packages/cli/src/commands/update.ts';
   await runUpgradeAction();
-" >"${SHIM_DIR}/attempt1.out" 2>"${SHIM_DIR}/attempt1.err"
+" >"${WORK_DIR}/attempt1.out" 2>"${WORK_DIR}/attempt1.err"
 ATTEMPT1_RC=$?
 set -e
 
 if [[ $ATTEMPT1_RC -eq 0 ]]; then
   fail "attempt 1 succeeded despite a held install lock — the lock is not being respected"
-elif grep -qi 'install is already in progress' "${SHIM_DIR}/attempt1.err"; then
+elif grep -qi 'install is already in progress' "${WORK_DIR}/attempt1.err"; then
   pass "attempt 1 correctly refused: install lock held"
 else
-  fail "attempt 1 failed for an unexpected reason: $(tail -3 "${SHIM_DIR}/attempt1.err")"
+  fail "attempt 1 failed for an unexpected reason: $(tail -3 "${WORK_DIR}/attempt1.err")"
 fi
 rm -f "${B_HOME}/data/.install.lock"
 
@@ -230,13 +190,13 @@ echo "=== Operator writes an override into B's state/stack.env between attempts 
 printf '\nOP_SMOKE_RETRY_MARKER=operator-set-between-attempts\n' >> "${B_HOME}/state/stack.env"
 
 echo "=== Attempt 2 (the real retry): openpalm update on B, with A still live ==="
-OP_HOME="$B_HOME" OP_DOCKER_BIN="$DOCKER_SHIM" bun -e "
+OP_HOME="$B_HOME" bun -e "
   import { runUpgradeAction } from './packages/cli/src/commands/update.ts';
   await runUpgradeAction();
-" >"${SHIM_DIR}/attempt2.out" 2>"${SHIM_DIR}/attempt2.err"
+" >"${WORK_DIR}/attempt2.out" 2>"${WORK_DIR}/attempt2.err"
 ATTEMPT2_RC=$?
 if [[ $ATTEMPT2_RC -ne 0 ]]; then
-  cat "${SHIM_DIR}/attempt2.out" "${SHIM_DIR}/attempt2.err" >&2
+  cat "${WORK_DIR}/attempt2.out" "${WORK_DIR}/attempt2.err" >&2
   fail "attempt 2 (the real retry) failed"
 else
   pass "attempt 2 (the real retry) completed"
@@ -315,8 +275,8 @@ fi
 
 # 6. openpalm.sh, invoked from B's home, resolves to B's OWN compose project —
 #    never the bare "openpalm" default and never A's (#650).
-sh_config_json="${SHIM_DIR}/openpalm-sh-config.json"
-if OP_HOME="$B_HOME" bash -c "cd '$B_HOME' && ./openpalm.sh compose config --format json" >"$sh_config_json" 2>"${SHIM_DIR}/openpalm-sh-config.err"; then
+sh_config_json="${WORK_DIR}/openpalm-sh-config.json"
+if OP_HOME="$B_HOME" bash -c "cd '$B_HOME' && ./openpalm.sh compose config --format json" >"$sh_config_json" 2>"${WORK_DIR}/openpalm-sh-config.err"; then
   sh_project=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf-8')).name || '')" "$sh_config_json" 2>/dev/null || true)
   if [[ "$sh_project" == "$B_PROJECT" ]]; then
     pass "openpalm.sh invoked from B's home resolved project '${sh_project}' (B's own)"
@@ -327,7 +287,7 @@ if OP_HOME="$B_HOME" bash -c "cd '$B_HOME' && ./openpalm.sh compose config --for
     fail "openpalm.sh invoked from B's home resolved to the bare default or instance A's project — #650 regression"
   fi
 else
-  fail "openpalm.sh compose config failed from B's home: $(cat "${SHIM_DIR}/openpalm-sh-config.err")"
+  fail "openpalm.sh compose config failed from B's home: $(cat "${WORK_DIR}/openpalm-sh-config.err")"
 fi
 
 echo
