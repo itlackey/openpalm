@@ -459,7 +459,7 @@ export {
 
 // ── Install-port probing (C2) ──────────────────────────────────────────────
 export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
-export { checkPortAvailable, portHeldByOurContainer, isHostPortAvailableForUs, pickAvailableHostPort, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts, workspacePortTarget } from "./control-plane/port-probe.js";
 
 // ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
 export type {

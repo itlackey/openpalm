@@ -240,7 +240,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// the file is absent, which on a pre-consolidation home is every time — so
 	// running it first left the migration merging a stub over the operator's real
 	// state and reporting a completed install as unconfigured.
-	await runHomeMigrations(state.homeDir);
+	runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
 	await applyHomeAssets(state);
 	// Make the `remote` addon's generated serve config match its persisted state
@@ -312,7 +312,7 @@ async function applyManagedFiles(
 	// snapshot may capture no stack env at all; every migration below the
 	// consolidation is value-preserving, so there is nothing to roll back.)
 	const generation = snapshotCurrentState(state);
-	await runHomeMigrations(state.homeDir);
+	runHomeMigrations(state.homeDir);
 	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
 	advanceManagedImageVersions(state, previousPlatformVersion);
 	await applyHome(state);

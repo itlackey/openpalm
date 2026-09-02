@@ -8,8 +8,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, chownSync, rmSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
-import { composeConfigJsonSync, resolveComposeProjectName, type ComposeConfigJsonResult } from "./docker.js";
-import { isHostPortAvailableForUs, pickAvailableHostPort } from "./port-probe.js";
+import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
 import { parseEnabledAddons, parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
 import {
@@ -26,7 +25,7 @@ import { writeSecret } from './secrets-files.js';
 import { needsWorkspaceLoopbackPublish } from './bind-warning.js';
 import { isVoiceLanAccessEnabled } from './voice-host-probes.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath, stackDirFor } from "./home.js";
+import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import {
@@ -77,17 +76,8 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * Custom combinations retain their old effective values. If only one custom
  * port was persisted, the other old implicit default is materialized so the
  * corrected defaults do not silently move it.
- *
- * Issue #643: materializing the CORRECTED defaults is itself a fresh port
- * assignment for a home that never configured one — on a host running
- * several OpenPalm instances, the default this writes can already be bound by
- * a sibling install, and writing it blind is how the next `docker compose up`
- * fails with "port is already allocated" instead of ever starting. Before
- * writing a default, {@link pickAvailableHostPort} confirms it is actually
- * free (or already ours) and steps to the next candidate otherwise — the
- * same host-wide check `openpalm doctor` already performs for install ports.
  */
-export async function migrateLegacyDefaultPorts(homeDir: string): Promise<boolean> {
+export function migrateLegacyDefaultPorts(homeDir: string): boolean {
   const path = legacyKnowledgeStackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
@@ -103,11 +93,8 @@ export async function migrateLegacyDefaultPorts(homeDir: string): Promise<boolea
   const updates: Record<string, string> = {};
 
   if ((!hasAssistantPort && !hasUiPort) || (oldEffectiveAssistantPort === "3800" && oldEffectiveUiPort === "3810")) {
-    const composeProject = { name: resolveComposeProjectName(parsed), workingDir: stackDirFor(homeDir) };
-    updates.OP_ASSISTANT_PORT = String(
-      await pickAvailableHostPort(STACK_DEFAULTS.ports.assistant, composeProject),
-    );
-    updates.OP_UI_PORT = String(await pickAvailableHostPort(STACK_DEFAULTS.ports.ui, composeProject));
+    updates.OP_ASSISTANT_PORT = String(STACK_DEFAULTS.ports.assistant);
+    updates.OP_UI_PORT = String(STACK_DEFAULTS.ports.ui);
   } else {
     if (!assistantPort) updates.OP_ASSISTANT_PORT = oldEffectiveAssistantPort;
     if (!uiPort) updates.OP_UI_PORT = oldEffectiveUiPort;
@@ -182,20 +169,8 @@ export function migrateLegacyBindAddresses(homeDir: string): boolean {
  *
  * Only the retired PAIR is swapped. An absent value needs no write: the compose
  * fallbacks already resolve to the corrected defaults.
- *
- * Issue #643: the docblock above already named the risk this used to run
- * into unguarded — "clobbering an operator who had deliberately chosen 3800
- * for the assistant" — which is exactly what happens when that choice was
- * made to dodge a SIBLING OpenPalm instance already holding the corrected
- * default (3810) on a shared host: the swap moved the operator's working,
- * explicit config onto the very port it was chosen to avoid, and the next
- * `docker compose up` failed with "port is already allocated". Before
- * swapping, confirm the target is actually free (or already ours) via
- * {@link isHostPortAvailableForUs}; if not, the operator's current value is
- * left in place rather than reverted — it is evidently the reason this
- * install still runs.
  */
-export async function migrateConsolidatedDefaultPorts(homeDir: string): Promise<boolean> {
+export function migrateConsolidatedDefaultPorts(homeDir: string): boolean {
   const path = stackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
@@ -208,9 +183,6 @@ export async function migrateConsolidatedDefaultPorts(homeDir: string): Promise<
   // implicit (its old default was 3810).
   const isRetiredPair = assistantPort === "3800" && (uiPort === "3810" || !uiPort);
   if (!isRetiredPair) return false;
-
-  const composeProject = { name: resolveComposeProjectName(parsed), workingDir: stackDirFor(homeDir) };
-  if (!(await isHostPortAvailableForUs(STACK_DEFAULTS.ports.assistant, composeProject))) return false;
 
   const next = mergeEnvContent(content, {
     OP_ASSISTANT_PORT: String(STACK_DEFAULTS.ports.assistant),

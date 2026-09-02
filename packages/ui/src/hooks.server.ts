@@ -56,17 +56,11 @@ let migrationsDone = false;
 // Schema-gated and idempotent: an up-to-date home reads one small version file
 // and returns. Non-fatal — a home that cannot be migrated must still serve,
 // degraded, rather than refuse to boot.
-//
-// Async since issue #643: the port-default migrations now probe host-wide
-// port availability before writing a value the operator never set. Awaited at
-// the module-level call site below (before loadProcessEnv()) so a home still
-// mid-migration is never read from — the exact race the old process-local
-// port shim (see the comment further down) existed to paper over.
-async function migrateHome(): Promise<void> {
+function migrateHome(): void {
   if (migrationsDone) return;
   migrationsDone = true;
   try {
-    await runHomeMigrations(resolveOpenPalmHome());
+    runHomeMigrations(resolveOpenPalmHome());
   } catch (err) {
     logger.error("home migration failed", { error: String(err) });
   }
@@ -137,7 +131,7 @@ function loadProcessEnv(): void {
 // nothing in stack.env to explain it. Its two triggers also disagreed with the
 // disk migration's at the edges. The real migration now runs here, once, before
 // anything reads the home, so the request path can simply trust the disk.
-await migrateHome();
+migrateHome();
 loadProcessEnv();
 // OpenCode's web UI, at an origin root, behind this app's login. Called from
 // every launch mode because every launch mode loads this module, and a no-op
