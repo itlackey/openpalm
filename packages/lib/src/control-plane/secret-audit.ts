@@ -188,7 +188,7 @@ export function auditStackEnv(env: Record<string, string>, label = 'stack.env'):
     if (isSecretLikeKey(key)) {
       issues.push(issue(
         'stack-env-secret-key',
-        `${label} must not contain secret-like key ${key}; store it as a narrowly granted file secret and expose ${key}_FILE, or, if the consumer reads it from the environment (akm engines, for example), put it in knowledge/env/user.env, which the assistant entrypoint sources at startup.`,
+        `${label} must not contain secret-like key ${key}; store it as a narrowly granted file secret and expose ${key}_FILE, or, for a CLI/cron consumer that reads it from the environment (an akm engine, for example), put it in knowledge/env/user.env and invoke that command through \`akm env run user -- <command>\` — the assistant entrypoint does not source that file into any process.`,
         `${label}:${key}`,
       ));
     }
@@ -228,7 +228,7 @@ export function auditComposeSecrets(
       ) {
         issues.push(issue(
           'compose-secret-env-var',
-          `service ${serviceName} environment key ${key} is secret-like; expose only ${key}_FILE, or, if the consumer reads it from the environment (akm engines, for example), put it in knowledge/env/user.env, which the assistant entrypoint sources at startup.`,
+          `service ${serviceName} environment key ${key} is secret-like; expose only ${key}_FILE, or, for a CLI/cron consumer that reads it from the environment (an akm engine, for example), put it in knowledge/env/user.env and invoke that command through \`akm env run user -- <command>\` — the assistant entrypoint does not source that file into any process.`,
           `services.${serviceName}.environment.${key}`,
         ));
       }

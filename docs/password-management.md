@@ -50,6 +50,13 @@ This is the AKM user env backing file. It is:
 - never passed to Docker Compose or inherited by the OpenCode server process
 - preserved by normal lifecycle operations
 
+`akm env run user -- <command>` only reaches that one subprocess. It does not
+reach the in-process akm-opencode plugin — the assistant's own OpenCode
+session has no supported route to a credential from this file until
+[akm#905](https://github.com/itlackey/akm/issues/905) lands. A `run:` task
+(supercronic, its own subprocess) can use the wrapper today; the assistant's
+own chat session cannot.
+
 ## `state/stack.env`
 
 `state/stack.env` is the sole Compose `--env-file`. It contains only

@@ -83,6 +83,37 @@ function augmentPathForGuiLaunch(): void {
 }
 augmentPathForGuiLaunch();
 
+// ── --version / --help (openpalm#673) ────────────────────────────────────────
+// A packaged AppImage (or any other launcher) has no way to ask an installed
+// build its own version without running it — `--version` used to launch a
+// full second GUI instance instead of printing anything. That instance then
+// has to be killed by hand, and on Linux the AppImage wrapper process owns the
+// squashfs mount every instance runs from: killing the wrong process tears
+// that mount out from under any OTHER running instance, which SIGBUSes on its
+// next page fault.
+//
+// Handled synchronously here, before the single-instance lock, before
+// app.whenReady(), before any window or UI server: app.exit() (unlike
+// app.quit()) exits immediately without emitting before-quit/will-quit or
+// waiting for anything, so nothing below this block ever runs for either
+// flag — there is no window for a second instance to contend with either.
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  console.log(app.getVersion());
+  app.exit(0);
+} else if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(
+    [
+      `OpenPalm ${app.getVersion()}`,
+      '',
+      'Usage: openpalm [options]',
+      '',
+      '  --version, -v  Print the installed version and exit',
+      '  --help, -h     Show this help and exit',
+    ].join('\n'),
+  );
+  app.exit(0);
+}
+
 // ── File logging (no extra deps) ─────────────────────────────────────────────
 // Finder-launched apps have no attached terminal, so console output is lost.
 // Tee the app's own console.* and the UI child's stdout/stderr to a log file

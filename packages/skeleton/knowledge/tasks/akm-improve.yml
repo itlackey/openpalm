@@ -5,6 +5,13 @@ tags:
   - openpalm
   - akm
 timeout: 3600000
+# If your defaults.llmEngine needs a credential (any hosted-model engine),
+# wrap the command so it runs with knowledge/env/user.env injected into this
+# subprocess: change `run:` to
+#   akm env run user -- akm improve --skip-if-locked --timeout-ms 3600000
+# See docs/managing-openpalm.md#automations. This route only reaches a
+# subprocess — it has no bearing on the in-process akm-opencode plugin
+# (unsupported until akm#905).
 run: akm improve --skip-if-locked --timeout-ms 3600000
 shell: sh
 schedule: '0 3 * * *'

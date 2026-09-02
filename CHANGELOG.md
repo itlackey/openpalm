@@ -9,6 +9,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **#663 — secret-audit remediation named a path the assistant entrypoint
+  never sources.** `auditStackEnv`/`auditComposeSecrets` (`packages/lib/src/control-plane/secret-audit.ts`)
+  told operators to put a secret-like value in `knowledge/env/user.env`,
+  "which the assistant entrypoint sources at startup" — that file is
+  deliberately *not* sourced (AGENTS.md, `containers/assistant/entrypoint.sh` G1).
+  The remediation now names the route that actually works for a CLI/cron
+  consumer: `akm env run user -- <command>`. Docs that describe engine
+  credentials (`AGENTS.md`, `docs/managing-openpalm.md`,
+  `docs/password-management.md`, `docs/operations/secrets-env-migration.md`)
+  now say plainly that the **in-process** akm-opencode plugin has no supported
+  credential route until [akm#905](https://github.com/itlackey/akm/issues/905)
+  lands, and the shipped `akm-improve.yml` task carries a comment showing the
+  `akm env run` wrapper form for an engine that needs a key.
+- **#665 — Slack portal socket-mode keepalive threw `undici.ping is not a
+  function` every ~7s, tearing the connection down forever.** Root cause:
+  `require("undici")` under Bun always resolves to Bun's own built-in
+  reimplementation, never the real npm `undici` package that
+  `@slack/socket-mode` declares and that this repo installs — Bun's shim has
+  no standalone `ping()` export. `packages/portal-slack/src/undici-ping-shim.ts`
+  patches that missing function onto the shared `undici` module object,
+  delegating to Bun's own `WebSocket#ping()` instance method, before
+  `@slack/bolt`'s socket-mode client starts its keepalive loop.
+- **#672 — the tier-5 e2e lane (`bun run test:t5`) could not run on a host
+  with a local OpenPalm install**, since the isolated stack always published
+  the default `OP_WORKSPACE_PORT` (3820) and setting that variable directly
+  was refused by the harness's own inherited-override tripwire.
+  `scripts/dev-e2e-test.sh` adds `OP_E2E_WORKSPACE_PORT` (default 3896)
+  alongside the six port overrides that already existed and sets
+  `OP_WORKSPACE_PORT` in the isolated stack's `state/stack.env` from it — the
+  raw variable stays refused for everything else.
+- **#673 — the desktop AppImage's `--version` launched a second full GUI
+  instance instead of printing a version.** `packages/electron/src/main.ts`
+  now checks `--version`/`-v` and `--help`/`-h` synchronously, before the
+  single-instance lock or `app.whenReady()`, and prints and exits via
+  `app.exit(0)` without ever creating a window.
 - **`update`/`install` no longer delete a running service `--remove-orphans`
   never had a reason to touch (#668).** The single Compose driver
   (`applyStack`, `docker.ts`) dropped `--remove-orphans` from the full-stack

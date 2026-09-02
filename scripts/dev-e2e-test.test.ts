@@ -166,6 +166,9 @@ describe('dev E2E environment safety guard', () => {
   test('allows only explicit E2E inputs', () => {
     expect(validateEnvironment('OP_E2E_HOME')).toEqual({ exitCode: 0, stderr: '' });
     expect(validateEnvironment('OP_E2E_PROJECT_NAME')).toEqual({ exitCode: 0, stderr: '' });
+    // #672: the tier-5 e2e stack needs its own workspace-port override so it
+    // can run beside a local OpenPalm install (which binds the default 3820).
+    expect(validateEnvironment('OP_E2E_WORKSPACE_PORT')).toEqual({ exitCode: 0, stderr: '' });
   });
 
   test('rejects inherited OpenPalm and Compose overrides', () => {
@@ -174,6 +177,10 @@ describe('dev E2E environment safety guard', () => {
       'OP_ASSISTANT_BIND_ADDRESS',
       'COMPOSE_PROFILES',
       'COMPOSE_PROJECT_NAME',
+      // #672: only the harness-owned OP_E2E_WORKSPACE_PORT may set this —
+      // an inherited/direct OP_WORKSPACE_PORT stays refused, same as every
+      // other raw compose override.
+      'OP_WORKSPACE_PORT',
     ]) {
       const result = validateEnvironment(name);
       expect(result.exitCode, name).not.toBe(0);

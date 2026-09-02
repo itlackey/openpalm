@@ -17,6 +17,13 @@ import {
   type StreamSlackClient,
 } from "./stream-render.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
+import { ensureUndiciPing } from "./undici-ping-shim.ts";
+
+// The keepalive fix for openpalm#665 needs to be in place before the
+// SocketModeClient's ping-monitor interval first fires (after Slack opens
+// the socket) — well before that, module load is enough, and it's a no-op
+// wherever `undici.ping` already exists (a real Node/undici runtime).
+ensureUndiciPing();
 
 const log = createLogger("portal-slack");
 

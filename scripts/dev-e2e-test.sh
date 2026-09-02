@@ -34,7 +34,7 @@ validate_e2e_environment() {
     case "$name" in
       OP_E2E_HOME | OP_E2E_UI_PORT | OP_E2E_ASSISTANT_PORT | OP_E2E_CONTAINER_UI_PORT | \
         OP_E2E_GUARDIAN_PORT | OP_E2E_GUARDIAN_ADMIN_PORT | OP_E2E_API_PORT | \
-        OP_E2E_PROJECT_NAME) ;;
+        OP_E2E_WORKSPACE_PORT | OP_E2E_PROJECT_NAME) ;;
       OP_* | COMPOSE_*)
         echo "Refusing inherited Compose override: ${name}" >&2
         return 1
@@ -115,6 +115,12 @@ CONTAINER_UI_PORT="${OP_E2E_CONTAINER_UI_PORT:-3892}"
 GUARDIAN_PORT="${OP_E2E_GUARDIAN_PORT:-3893}"
 GUARDIAN_ADMIN_PORT="${OP_E2E_GUARDIAN_ADMIN_PORT:-3894}"
 API_PORT="${OP_E2E_API_PORT:-3895}"
+# #672: core.compose.yml always publishes OP_WORKSPACE_PORT (default 3820,
+# the same default a local OpenPalm install binds), so an isolated e2e stack
+# needs its own value here rather than inheriting that default. Setting
+# OP_WORKSPACE_PORT itself stays refused by validate_e2e_environment above —
+# only this harness-owned variable can move it.
+WORKSPACE_PORT="${OP_E2E_WORKSPACE_PORT:-3896}"
 ADMIN_URL="http://127.0.0.1:${ADMIN_PORT}"
 UI_PASSWORD="e2e-test-password"
 UI_PID=""
@@ -174,6 +180,7 @@ smoke_write_stack_env \
 cat >>"${OP_E2E_HOME}/state/stack.env" <<EOF
 OP_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
 OP_HOST_UI_PORT=${ADMIN_PORT}
+OP_WORKSPACE_PORT=${WORKSPACE_PORT}
 OP_ENABLED_ADDONS=api
 COMPOSE_PROFILES=addon.api
 OP_ASSISTANT_BIND_ADDRESS=127.0.0.1

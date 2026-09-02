@@ -88,6 +88,14 @@ The two runtime secret areas have different trust boundaries:
 assistant entrypoint does not source it, so arbitrary user-env values do not
 enter the OpenCode server or every tool subprocess.
 
+That route works for a CLI or scheduled (`run:`) command, which runs as its
+own subprocess. It does **not** reach the in-process akm-opencode plugin — the
+assistant's own OpenCode session has no supported way to receive a credential
+until [akm#905](https://github.com/itlackey/akm/issues/905) (an engine→env-store
+binding) lands. An engine configured under `defaults.llmEngine` that needs an
+`apiKey` works from a wrapped `run:` task today (see
+[Automations](#automations)) but not from the assistant's own chat session.
+
 `state/stack.env` is non-secret. Never put passwords, tokens, API keys, or
 credential JSON there. See [Password & Secret Management](password-management.md).
 
@@ -161,6 +169,22 @@ run: akm health
 shell: sh
 schedule: "0 4 * * 0"
 ```
+
+A `run:` command that drives an engine needing an API key (for example the
+shipped `akm-improve.yml`, which uses `defaults.llmEngine`) does not get a
+credential for free — `akm task sync` runs it through supercronic as a plain
+subprocess, so it needs the same wrapper any CLI/cron caller uses:
+
+```yaml
+version: 4
+description: Nightly memory consolidation
+run: akm env run user -- akm improve --skip-if-locked --timeout-ms 3600000
+shell: sh
+schedule: "0 3 * * *"
+```
+
+This injects `knowledge/env/user.env` into that one subprocess only; it has no
+bearing on the in-process akm-opencode plugin (see [Secrets](#secrets)).
 
 ### Workflow Task
 

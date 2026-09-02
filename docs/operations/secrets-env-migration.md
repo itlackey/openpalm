@@ -19,6 +19,12 @@ at `/stash`.
 The Assistant entrypoint does not source `knowledge/env/user.env`. Raw Docker
 Compose does not perform `OP_HOME` migrations.
 
+`knowledge/env/user.env` reaches a CLI/cron command only when that command is
+wrapped with `akm env run user -- <command>` (a subprocess). The in-process
+akm-opencode plugin — the assistant's own OpenCode session — has no supported
+route to a credential from this file until
+[akm#905](https://github.com/itlackey/akm/issues/905) lands.
+
 ## Supported Upgrade Path
 
 1. Make a full external backup of `OP_HOME`, including `state/`,

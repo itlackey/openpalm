@@ -58,6 +58,15 @@ describe('auditStackEnv', () => {
       OPENAI_BASE_URL: 'http://localhost:11434/v1',
     })).toEqual([]);
   });
+
+  it('remediation names the working akm env run route, not entrypoint sourcing (#663)', () => {
+    const [issue] = auditStackEnv({ OPENAI_API_KEY: 'sk-test' });
+    // The assistant entrypoint deliberately does not source knowledge/env/user.env
+    // (AGENTS.md, containers/assistant/entrypoint.sh G1) — remediation text must
+    // never claim otherwise, and must point at the route that actually works.
+    expect(issue.message).not.toMatch(/entrypoint sources/);
+    expect(issue.message).toContain('akm env run user -- <command>');
+  });
 });
 
 describe('auditComposeSecrets', () => {
@@ -75,6 +84,18 @@ services:
       'compose-service-env-file',
       'compose-secret-env-var',
     ]);
+  });
+
+  it('compose-secret-env-var remediation names akm env run, not entrypoint sourcing (#663)', () => {
+    const issues = auditComposeSecrets(`
+services:
+  assistant:
+    environment:
+      OPENAI_API_KEY: secret
+`);
+    const envVarIssue = issues.find((entry) => entry.code === 'compose-secret-env-var');
+    expect(envVarIssue?.message).not.toMatch(/entrypoint sources/);
+    expect(envVarIssue?.message).toContain('akm env run user -- <command>');
   });
 
   it('accepts *_FILE environment variables and in-boundary secret grants', () => {
