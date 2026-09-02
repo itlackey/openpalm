@@ -65,6 +65,7 @@ describe('parseAkmStats', () => {
         advisories: ['Semantic search needs attention.', 'proposal backlog'],
       },
       boot: null,
+      scheduler: null,
       index: {
         entryCount: 42,
         lastBuiltAt: '2026-06-10T12:00:00.000Z',
@@ -108,6 +109,90 @@ describe('parseAkmStats', () => {
       boot: null,
       reason: 'AKM stats unavailable on this host.',
     });
+  });
+});
+
+describe('scheduler (task-fail-rate advisory, #677)', () => {
+  test('surfaces a warn check, including the named worst offender', () => {
+    const stats = parseAkmStats(
+      JSON.stringify({
+        status: 'warn',
+        advisories: [
+          {
+            name: 'task-fail-rate',
+            status: 'warn',
+            message:
+              'Cron task fail rate warning: task "nightly-digest" fails 100.0% of its 45 run(s) ≥ 5% — inspect failed runs (ok=false) for early-exit/harness errors.',
+            evidence: {
+              taskFailRate: 0.32,
+              taskRowCount: 140,
+              threshold: 0.05,
+              worstTaskFailRate: { taskId: 'nightly-digest', rate: 1, rows: 45 },
+            },
+          },
+        ],
+        improve: {},
+      }),
+      JSON.stringify({ version: '0.9.9' }),
+      JSON.stringify({ proposals: [] }),
+    );
+
+    expect(stats.available).toBe(true);
+    if (!stats.available) throw new Error('expected available stats');
+    expect(stats.scheduler).toEqual({
+      degraded: true,
+      taskFailRate: 0.32,
+      taskRowCount: 140,
+      worst: { taskId: 'nightly-digest', rate: 1, rows: 45 },
+      message:
+        'Cron task fail rate warning: task "nightly-digest" fails 100.0% of its 45 run(s) ≥ 5% — inspect failed runs (ok=false) for early-exit/harness errors.',
+    });
+  });
+
+  test('surfaces a pass check with no worst offender', () => {
+    const stats = parseAkmStats(
+      JSON.stringify({
+        status: 'pass',
+        advisories: [
+          {
+            name: 'task-fail-rate',
+            status: 'pass',
+            message: 'Cron task fail rate 1.0% across 140 task(s) since 24h (below 5% threshold).',
+            evidence: {
+              taskFailRate: 0.01,
+              taskRowCount: 140,
+              threshold: 0.05,
+              worstTaskFailRate: null,
+            },
+          },
+        ],
+        improve: {},
+      }),
+      JSON.stringify({ version: '0.9.9' }),
+      JSON.stringify({ proposals: [] }),
+    );
+
+    expect(stats.available).toBe(true);
+    if (!stats.available) throw new Error('expected available stats');
+    expect(stats.scheduler).toEqual({
+      degraded: false,
+      taskFailRate: 0.01,
+      taskRowCount: 140,
+      worst: null,
+      message: 'Cron task fail rate 1.0% across 140 task(s) since 24h (below 5% threshold).',
+    });
+  });
+
+  test('is null when the check is absent from the report (older akm image)', () => {
+    const stats = parseAkmStats(
+      JSON.stringify({ status: 'pass', advisories: [], improve: {} }),
+      JSON.stringify({ version: '0.8.7' }),
+      JSON.stringify({ proposals: [] }),
+    );
+
+    expect(stats.available).toBe(true);
+    if (!stats.available) throw new Error('expected available stats');
+    expect(stats.scheduler).toBeNull();
   });
 });
 

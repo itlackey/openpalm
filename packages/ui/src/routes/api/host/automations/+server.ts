@@ -13,7 +13,7 @@ import {
   requireCapability,
   getRequestId,
 } from "$lib/server/helpers.js";
-import { loadAutomations } from "@openpalm/lib";
+import { loadAutomations, fetchTaskHistoryLastRuns } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -23,6 +23,12 @@ export const GET: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
+
+  // #677: per-task last-run status, from ONE `akm task history` call. The
+  // automation `name` IS the akm task id (see executeAutomation). Best-effort
+  // — any failure already yields {} from fetchTaskHistoryLastRuns, so the
+  // listing itself never fails because history did.
+  const lastRuns = await fetchTaskHistoryLastRuns(state);
 
   const automations = loadAutomations(state.stashDir).map((c) => ({
     name: c.name,
@@ -37,6 +43,7 @@ export const GET: RequestHandler = async (event) => {
     },
     on_failure: c.on_failure,
     fileName: c.fileName,
+    lastRun: lastRuns[c.name] ?? null,
   }));
 
   return jsonResponse(200, { automations }, requestId);

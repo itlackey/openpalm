@@ -9,6 +9,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **#677 a scheduled task that fails every run is no longer invisible outside
+  `akm health`.** Cron task failures only ever surfaced inside `akm health`
+  advisories — reachable only by `docker exec`-ing into the assistant — so a
+  task that failed every run for a full day left the Automations tab
+  showing nothing wrong, `openpalm update` succeeding, and the boot marker
+  reporting `task-sync 0` (sync worked; the runs it scheduled didn't). Two
+  surfaces now carry that signal into the UI: `GET /api/host/automations`
+  reads one `akm task history` call and adds each automation's `lastRun`
+  (status, timestamp, exit code) — rendered as a badge on the Automations
+  tab next to Enabled/Disabled — and the AKM stats panel's `boot` field
+  gains a sibling `scheduler` field parsed from `akm health`'s
+  `task-fail-rate` advisory, shown next to the boot-degraded note. A
+  notification path for repeated failures is deliberately out of scope here
+  — this closes the visibility gap, not the alerting one.
+
 - **#675 a stray `config/{assistant,guardian}/opencode.jsonc` from before
   the pair moved into `system/` was stranding the assistant without its own
   instructions.** `migrateRetiredSkeletonFiles` (`since: 6`) was supposed

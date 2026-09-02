@@ -561,6 +561,14 @@ export {
   readAutomationLogs,
 } from "./control-plane/scheduler.js";
 
+// ── Task history → per-task last-run (Automations tab, #677) ─────────────
+export type { TaskHistoryRow, TaskLastRun } from "./control-plane/task-last-run.js";
+export {
+  parseTaskHistoryRows,
+  computeLastRunsByTaskId,
+  fetchTaskHistoryLastRuns,
+} from "./control-plane/task-last-run.js";
+
 // ── Model Runner (local provider detection) ─────────────────────────────
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";

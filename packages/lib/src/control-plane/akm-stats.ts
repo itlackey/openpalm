@@ -16,6 +16,21 @@ type AkmBootStep = { step: string; exit: number; detail: string | null };
 
 type AkmBoot = { degraded: boolean; steps: AkmBootStep[] } | null;
 
+/**
+ * `akm health`'s `task-fail-rate` advisory (#677), rolled into the same
+ * stats surface as `boot` so a scheduler that's failing silently (containers
+ * healthy, `openpalm update` fine, boot marker clean) is visible without
+ * `docker exec`-ing into the assistant to run `akm health` by hand. `null`
+ * when the check is absent from the report (e.g. an older akm image).
+ */
+type AkmScheduler = {
+  degraded: boolean;
+  taskFailRate: number | null;
+  taskRowCount: number | null;
+  worst: { taskId: string; rate: number; rows: number } | null;
+  message: string | null;
+} | null;
+
 export type AkmStats =
   | {
       available: false;
@@ -34,6 +49,7 @@ export type AkmStats =
         advisories: string[];
       };
       boot: AkmBoot;
+      scheduler: AkmScheduler;
       index: {
         entryCount: number | null;
         lastBuiltAt: string | null;
@@ -128,6 +144,46 @@ function advisoryMessage(value: unknown): string | null {
   return asString(record.message) ?? asString(record.name);
 }
 
+/**
+ * Find one named check inside `health.advisories` (or `health.hardChecks`,
+ * defensively — `task-fail-rate` is registered as an advisory today, but
+ * this doesn't hardcode which array it lives in).
+ */
+function findHealthCheck(health: Json | null, name: string): Json | null {
+  const arrays = [asArray(health?.advisories), asArray(health?.hardChecks)];
+  for (const list of arrays) {
+    for (const entry of list) {
+      const record = asRecord(entry);
+      if (record && asString(record.name) === name) return record;
+    }
+  }
+  return null;
+}
+
+/** `null` when `akm health` didn't report a `task-fail-rate` check at all. */
+function parseScheduler(health: Json | null): AkmScheduler {
+  const check = findHealthCheck(health, 'task-fail-rate');
+  if (!check) return null;
+
+  const evidence = asRecord(check.evidence);
+  const worstRaw = asRecord(evidence?.worstTaskFailRate);
+  const worst = worstRaw
+    ? {
+        taskId: asString(worstRaw.taskId) ?? '',
+        rate: asNumber(worstRaw.rate) ?? 0,
+        rows: asNumber(worstRaw.rows) ?? 0,
+      }
+    : null;
+
+  return {
+    degraded: asString(check.status) === 'warn',
+    taskFailRate: asNumber(evidence?.taskFailRate),
+    taskRowCount: asNumber(evidence?.taskRowCount),
+    worst,
+    message: asString(check.message),
+  };
+}
+
 /** akm health exits 4 for "warn", which the entrypoint already treats as acceptable. */
 function stepDegraded(step: AkmBootStep): boolean {
   if (step.step === 'health') return step.exit !== 0 && step.exit !== 4;
@@ -199,6 +255,7 @@ export function parseAkmStats(
         .filter((entry): entry is string => entry !== null),
     },
     boot: parseBootMarker(bootStdout),
+    scheduler: parseScheduler(health),
     index: {
       entryCount: asNumber(indexStats?.entryCount),
       lastBuiltAt: asString(indexStats?.lastBuiltAt),

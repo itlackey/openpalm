@@ -140,6 +140,13 @@ export type AutomationActionInfo = {
   agent?: string;
 };
 
+/** akm task history's newest row for this automation's task id (#677). `null` when akm couldn't be reached. */
+export type AutomationLastRun = {
+  status: string;
+  at: string | null;
+  exitCode: number | null;
+};
+
 export type AutomationInfo = {
   name: string;
   description: string;
@@ -149,6 +156,7 @@ export type AutomationInfo = {
   action: AutomationActionInfo;
   on_failure: 'log' | 'audit';
   fileName: string;
+  lastRun: AutomationLastRun | null;
 };
 
 export type AutomationsResponse = {

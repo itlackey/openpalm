@@ -186,6 +186,15 @@ type AkmBoot = {
   steps: Array<{ step: string; exit: number; detail: string | null }>;
 } | null;
 
+/** `akm health`'s `task-fail-rate` advisory (#677). `null` when the check is absent from the report. */
+type AkmScheduler = {
+  degraded: boolean;
+  taskFailRate: number | null;
+  taskRowCount: number | null;
+  worst: { taskId: string; rate: number; rows: number } | null;
+  message: string | null;
+} | null;
+
 export type AkmKnowledgeStats =
   // `boot` is on BOTH variants deliberately: a boot broken badly enough that
   // akm itself cannot answer is exactly when the boot record matters most.
@@ -198,6 +207,7 @@ export type AkmKnowledgeStats =
         advisories: string[];
       };
       boot: AkmBoot;
+      scheduler: AkmScheduler;
       index: {
         entryCount: number | null;
         lastBuiltAt: string | null;

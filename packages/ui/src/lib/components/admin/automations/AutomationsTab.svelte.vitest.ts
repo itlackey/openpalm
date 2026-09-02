@@ -22,7 +22,8 @@ const data = {
 			enabled: true,
 			action: { type: 'assistant' as const, content: 'Summarize' },
 			on_failure: 'log' as const,
-			fileName: 'daily-summary.yml'
+			fileName: 'daily-summary.yml',
+			lastRun: null
 		}
 	]
 };

@@ -191,6 +191,21 @@
     }
   }
 
+  /** #677: the per-task last-run badge; `null` renders nothing. One tone decision drives both text and class. */
+  function lastRunBadge(
+    automation: NonNullable<AutomationsResponse['automations']>[number],
+  ): { label: string; tone: 'ok' | 'danger' | 'neutral' } | null {
+    const lastRun = automation.lastRun;
+    if (!lastRun) return null;
+    if (lastRun.status === 'active') return { label: 'Last run: running', tone: 'neutral' };
+    if (lastRun.status === 'failed' || (lastRun.exitCode !== null && lastRun.exitCode !== 0)) {
+      const label = lastRun.exitCode !== null ? `Last run: failed (exit ${lastRun.exitCode})` : 'Last run: failed';
+      return { label, tone: 'danger' };
+    }
+    if (lastRun.status === 'completed') return { label: 'Last run: ok', tone: 'ok' };
+    return { label: `Last run: ${lastRun.status}`, tone: 'neutral' };
+  }
+
   function describeAction(automation: NonNullable<AutomationsResponse['automations']>[number]): string {
     switch (automation.action.type) {
       case 'assistant':
@@ -232,6 +247,7 @@
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation (automation.name)}
+          {@const lastRun = lastRunBadge(automation)}
           <div class="automation-card">
             <div class="automation-row">
               <div class="automation-main">
@@ -241,6 +257,15 @@
                     {automation.enabled ? 'Enabled' : 'Disabled'}
                   </span>
                   <span class="badge badge-type">{automation.action.type}</span>
+                  {#if lastRun}
+                    <span
+                      class="badge"
+                      class:badge-enabled={lastRun.tone === 'ok'}
+                      class:badge-danger={lastRun.tone === 'danger'}
+                      class:badge-type={lastRun.tone === 'neutral'}
+                      title={automation.lastRun?.at ?? undefined}
+                    >{lastRun.label}</span>
+                  {/if}
                 </div>
                 {#if automation.description}
                   <div class="automation-desc">{automation.description}</div>
@@ -510,6 +535,10 @@
 
   .badge.badge-disabled {
     color: var(--s-ink-3);
+  }
+
+  .badge.badge-danger {
+    color: var(--s-seal);
   }
 
   .badge-type {

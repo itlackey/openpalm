@@ -40,6 +40,18 @@
 		return status === 'pass' ? 'Healthy' : status === 'warn' ? 'Warnings' : 'Unknown';
 	}
 
+	/**
+	 * #677: one-line summary of `akm health`'s `task-fail-rate` advisory —
+	 * shown next to the boot-marker note in the same style, since a scheduler
+	 * that's failing silently is otherwise only visible via `docker exec` +
+	 * `akm health`.
+	 */
+	function schedulerSummary(scheduler: { taskFailRate: number | null; taskRowCount: number | null }): string {
+		if (scheduler.taskRowCount === null || scheduler.taskRowCount === 0) return 'Scheduled tasks: no runs yet.';
+		const pct = scheduler.taskFailRate === null ? '—' : `${(scheduler.taskFailRate * 100).toFixed(1)}%`;
+		return `Scheduled tasks: ${pct} failures across ${scheduler.taskRowCount} runs.`;
+	}
+
 	onMount(() => {
 		void load();
 	});
@@ -78,6 +90,9 @@
 			<span class={`stats-badge ${stats.health.status === 'warn' ? 'stats-badge-warn' : stats.health.status === 'unknown' ? 'stats-badge-unknown' : ''}`}>{healthLabel(stats.health.status)}</span>
 			{#if stats.boot?.degraded}
 				<p class="section-note">Assistant boot degraded — {stats.boot.steps.map((entry) => `${entry.step} exit ${entry.exit}`).join(', ')}</p>
+			{/if}
+			{#if stats.scheduler}
+				<p class="section-note">{stats.scheduler.degraded ? (stats.scheduler.message ?? 'Scheduled task fail rate warning.') : schedulerSummary(stats.scheduler)}</p>
 			{/if}
 			{#if stats.health.advisories.length > 0}
 				<ul class="stats-advisories">
