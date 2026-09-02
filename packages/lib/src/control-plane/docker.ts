@@ -782,7 +782,10 @@ export async function composePs(
   }
 
   const args = buildComposeArgs(options);
-  args.push("ps", "--format", "json");
+  // `-a` for the same reason applyStack's diagnostic uses it: a one-shot that
+  // has already exited is absent from a bare `ps`, and every caller here is
+  // deciding whether a service came up.
+  args.push("ps", "-a", "--format", "json");
 
   return run(args, undefined);
 }
@@ -794,7 +797,7 @@ export async function composePs(
  * stale one left over from a PREVIOUS `up` under the same service name (see
  * {@link newlyObservedRows}).
  */
-export type ComposePsRow = { service: string; state: string; health: string; id: string };
+export type ComposePsRow = { service: string; state: string; health: string; id: string; exitCode: number | null };
 
 /**
  * Parse `compose ps --format json` stdout (one JSON object per line, or a
@@ -824,6 +827,7 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
           state: String(obj.State ?? ""),
           health: String(obj.Health ?? ""),
           id: String(obj.ID ?? ""),
+          exitCode: typeof obj.ExitCode === "number" ? obj.ExitCode : null,
         });
       }
     } catch {
@@ -834,7 +838,14 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
 }
 
 export function isComposePsRowHealthy(row: ComposePsRow | undefined): boolean {
-  if (row?.state.toLowerCase() !== 'running') return false;
+  if (!row) return false;
+  const state = row.state.toLowerCase();
+  // A one-shot that ran to completion is a SUCCESS, not a failure. Compose
+  // services like paperclip-locale do their work and exit 0; they can never be
+  // "running", so judging them by that alone reported a service that had done
+  // exactly what it was supposed to as a failed deploy.
+  if (state === 'exited') return row.exitCode === 0;
+  if (state !== 'running') return false;
   const health = row.health.toLowerCase();
   return health === '' || health === 'healthy';
 }
@@ -1080,7 +1091,12 @@ export async function applyStack(
   //      `rawStderr` let a caller with its own stderr translation (the voice
   //      addon) distinguish "up never came up" from "some service unhealthy".
   if (!upResult.ok) {
-    const psArgs = [...base, "ps", "--format", "json"];
+    // `-a` is load-bearing: without it compose ps lists only RUNNING
+    // containers, so a one-shot that already exited 0 is absent and the loop
+    // below reports "container for service X not found after up" — a failed
+    // deploy manufactured from a service that succeeded. Verified against a
+    // live stack: paperclip-locale is missing from `ps` and present in `ps -a`.
+    const psArgs = [...base, "ps", "-a", "--format", "json"];
     const psResult = await docker.run(psArgs, { timeoutMs: 15_000, env: envOverrides });
     const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
     if (rows.length === 0) {

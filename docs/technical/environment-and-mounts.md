@@ -310,7 +310,6 @@ There is one Guardian OpenAI-compatible listener and one host publication.
 | `GUARDIAN_RECONCILE_INTERVAL_MS` | `300000` (5 minutes) | Orphan-session reconciliation cadence; `0` disables periodic sweeps |
 | `GUARDIAN_OPENAI_PORT` | `8182` | Single compatible API listener |
 | `OPENAI_COMPAT_API_KEY_FILE` | `/run/secrets/op_api_key` | Client API key; missing key fails closed |
-| `OP_GUARDIAN_NPM_VERSION` | Image version when unset | Guardian thin-host package override |
 
 Only explicit `0`, `false`, `no`, or `off` values (case-insensitive) disable
 content validation. Suspicious messages escalate to the moderator; moderator

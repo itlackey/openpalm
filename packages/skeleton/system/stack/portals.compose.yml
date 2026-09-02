@@ -113,14 +113,11 @@ services:
       GUARDIAN_DIRECT_PORT: "3830"
       GUARDIAN_ADMIN_PORT: "3831"
       OP_ASSISTANT_URL: http://assistant:4096
-      # The guardian npm package version is baked into the image at build time
-      # (GUARDIAN_VERSION), so no version env is required to boot. Set
-      # OP_GUARDIAN_NPM_VERSION only to override the npm package version — e.g. to
-      # pin a private package or a version that differs from the image's baked
-      # version (semver ranges are supported here). Empty resolves to the baked
-      # GUARDIAN_VERSION in the entrypoint. The Docker image tag is controlled
-      # separately by OP_GUARDIAN_VERSION on the `image:` line above.
-      OP_GUARDIAN_NPM_VERSION: ${OP_GUARDIAN_NPM_VERSION:-}
+      # The guardian package is baked into the image and there is no env that
+      # can replace it. The boot-time npm override that used to live here
+      # (OP_GUARDIAN_NPM_VERSION) silently downgraded correct images from a
+      # stale key no one could see — see the entrypoint header. The Docker
+      # image tag is OP_GUARDIAN_VERSION on the `image:` line above.
       # MANAGED guardian config (instructions/server/permission) lives in
       # OP_HOME/system/guardian, bind-mounted here as OPENCODE_CONFIG_DIR.
       OPENCODE_CONFIG_DIR: /etc/opencode

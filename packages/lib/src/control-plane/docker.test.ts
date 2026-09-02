@@ -9,6 +9,7 @@ import {
   detectExistingProject,
   dockerBin,
   ensureDockerReady,
+  isComposePsRowHealthy,
   isProjectOurs,
   meetsComposeWaitFloor,
   parseComposePsRows,
@@ -457,8 +458,8 @@ describe("parseComposePsRows (`compose ps --format json` parser)", () => {
       JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy" }),
     ].join("\n");
     expect(parseComposePsRows(stdout)).toEqual([
-      { service: "assistant", state: "running", health: "", id: "" },
-      { service: "guardian", state: "running", health: "unhealthy", id: "" },
+      { service: "assistant", state: "running", health: "", id: "", exitCode: null },
+      { service: "guardian", state: "running", health: "unhealthy", id: "", exitCode: null },
     ]);
   });
 
@@ -480,9 +481,34 @@ describe("parseComposePsRows (`compose ps --format json` parser)", () => {
       { Service: "guardian", State: "exited", Health: "" },
     ]);
     expect(parseComposePsRows(stdout)).toEqual([
-      { service: "assistant", state: "running", health: "", id: "" },
-      { service: "guardian", state: "exited", health: "", id: "" },
+      { service: "assistant", state: "running", health: "", id: "", exitCode: null },
+      { service: "guardian", state: "exited", health: "", id: "", exitCode: null },
     ]);
+  });
+
+  it("captures ExitCode, so a completed one-shot can be told from a crash", () => {
+    const stdout = [
+      JSON.stringify({ Service: "paperclip-locale", State: "exited", Health: "", ExitCode: 0 }),
+      JSON.stringify({ Service: "broken", State: "exited", Health: "", ExitCode: 1 }),
+    ].join("\n");
+    const rows = parseComposePsRows(stdout);
+    expect(rows[0].exitCode).toBe(0);
+    expect(rows[1].exitCode).toBe(1);
+  });
+
+  // The live bug: `compose ps` WITHOUT -a omits exited containers, so a one-shot
+  // that had already done its job and exited 0 was reported as "container for
+  // service X not found after up" — a failed deploy manufactured from a success,
+  // which then rolled the stack back and pinned it to rollback- image tags.
+  it("treats a one-shot that exited 0 as healthy, and a nonzero exit as not", () => {
+    const ok = parseComposePsRows(
+      JSON.stringify({ Service: "paperclip-locale", State: "exited", Health: "", ExitCode: 0 }),
+    )[0];
+    const bad = parseComposePsRows(
+      JSON.stringify({ Service: "broken", State: "exited", Health: "", ExitCode: 1 }),
+    )[0];
+    expect(isComposePsRowHealthy(ok)).toBe(true);
+    expect(isComposePsRowHealthy(bad)).toBe(false);
   });
 
   // D6: the interim deploy poll (deploy.ts's startInterimStatusPoll) tells a
@@ -491,7 +517,7 @@ describe("parseComposePsRows (`compose ps --format json` parser)", () => {
   it("captures the container ID (used to tell a fresh container from a stale one)", () => {
     const stdout = JSON.stringify({ ID: "abc123", Service: "assistant", State: "running", Health: "" });
     expect(parseComposePsRows(stdout)).toEqual([
-      { service: "assistant", state: "running", health: "", id: "abc123" },
+      { service: "assistant", state: "running", health: "", id: "abc123", exitCode: null },
     ]);
   });
 });

@@ -67,7 +67,21 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 	'OP_TOOL_AKM_VERSION',
 	'OP_TOOL_CLAUDE_CODE_VERSION',
 	'OP_TOOL_CODEX_VERSION',
-	'OP_TOOL_OPENCODE_VERSION'
+	'OP_TOOL_OPENCODE_VERSION',
+	// The one that proved the docblock above literally true. The pre-0.13
+	// release model WROTE this key; 554b79bc removed the writer and left the
+	// value behind on every upgraded home. The guardian entrypoint honoured it,
+	// discarding its correct image-baked package to install that old version
+	// from npm on every boot — which predated 0.13.0's always-on OpenCode auth,
+	// so the guardian 401'd, disabled its own proxy, answered /health/ready
+	// with 503, failed its healthcheck, and took every stack update down with
+	// it for months. The override no longer exists in the entrypoint; this
+	// sweep is what removes the stale row that was driving it.
+	'OP_GUARDIAN_NPM_VERSION',
+	'OP_GUARDIAN_PACKAGE',
+	'OP_GUARDIAN_ENTRY',
+	'OP_GUARDIAN_NPMRC',
+	'OP_GUARDIAN_NPMRC_FILE'
 ] as const;
 
 // ── Version configuration ────────────────────────────────────────────────────

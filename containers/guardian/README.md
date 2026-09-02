@@ -104,13 +104,27 @@ Never expose the admin listener.
 | `GUARDIAN_ADMIN_TOKEN_FILE` | Required for admin calls | Admin bearer-token file |
 | `GUARDIAN_MCP_TOKEN_FILE` | Required for MCP | MCP bearer-token file |
 
-## Downstream Overrides
+## No runtime package overrides
 
-The shipped stack does not need runtime package configuration. Downstream
-distributions may set `OP_GUARDIAN_NPM_VERSION`, `OP_GUARDIAN_PACKAGE`, and
-`OP_GUARDIAN_ENTRY`, optionally with a private-registry npmrc. Doing so replaces
-the image-reviewed default package path and may require a registry install on
-container recreation.
+The image bakes exactly one guardian, built from the candidate source, and the
+entrypoint runs that. `OP_GUARDIAN_NPM_VERSION`, `OP_GUARDIAN_PACKAGE`,
+`OP_GUARDIAN_ENTRY` and the private-registry npmrc path are **removed**, not
+deprecated.
+
+They were removed because the indirection was load-bearing in the wrong
+direction. The pre-0.13 release model wrote `OP_GUARDIAN_NPM_VERSION` into
+`state/stack.env`; 554b79bc removed that writer without sweeping the key; every
+upgraded home therefore kept a stale value, and the entrypoint honoured it by
+discarding its correct baked package and installing that old version from npm
+on every boot. The downgraded guardian predated 0.13.0's always-on OpenCode
+auth, so it 401'd, disabled its own proxy, answered `/health/ready` with 503,
+failed its healthcheck, and took every stack update down with it for months —
+invisibly, because the operator-facing error was "container for service discord
+not found after up".
+
+To ship a different guardian, build a different image. That is a reviewable,
+versioned artifact; an env var that silently swaps the trust boundary's code at
+boot is not.
 
 ## Development
 

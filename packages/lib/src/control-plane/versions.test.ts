@@ -230,6 +230,37 @@ describe('retired OP_TOOL_*_VERSION keys', () => {
 		expect(after).toContain('OP_PROJECT_NAME=splinter');
 	});
 
+	// The incident: the pre-0.13 release model wrote OP_GUARDIAN_NPM_VERSION,
+	// 554b79bc removed the writer, and the stale row made the guardian discard
+	// its correct image-baked package and install an old version from npm on
+	// every boot — breaking every stack update for months. The override is gone
+	// from the entrypoint; this sweep removes the row that drove it.
+	it('sweeps the retired guardian package-override keys', () => {
+		writeFileSync(
+			envPath(),
+			[
+				'OP_GUARDIAN_VERSION=0.13.0',
+				'OP_GUARDIAN_NPM_VERSION=0.12.52',
+				'OP_GUARDIAN_PACKAGE=@openpalm/guardian',
+				'OP_GUARDIAN_ENTRY=src/server.ts',
+				'OP_GUARDIAN_NPMRC_FILE=/run/secrets/npmrc',
+				'OP_PROJECT_NAME=splinter',
+				''
+			].join('\n')
+		);
+
+		expect(stripRetiredToolVersions(home.state)).toBe(true);
+
+		const after = readFileSync(envPath(), 'utf-8');
+		expect(after).not.toContain('OP_GUARDIAN_NPM_VERSION');
+		expect(after).not.toContain('OP_GUARDIAN_PACKAGE');
+		expect(after).not.toContain('OP_GUARDIAN_ENTRY');
+		expect(after).not.toContain('OP_GUARDIAN_NPMRC');
+		// The image tag is a different key and must survive.
+		expect(after).toContain('OP_GUARDIAN_VERSION=0.13.0');
+		expect(after).toContain('OP_PROJECT_NAME=splinter');
+	});
+
 	it('is a no-op on an env that never had them', () => {
 		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.13.0\n');
 		expect(stripRetiredToolVersions(home.state)).toBe(false);

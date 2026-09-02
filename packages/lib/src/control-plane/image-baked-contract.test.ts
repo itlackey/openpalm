@@ -28,13 +28,14 @@ function codeLines(source: string): string[] {
 }
 
 describe('entrypoints do not install packages at boot', () => {
-  // The guardian is the one exception: install_artifact exists so a downstream
-  // distribution can pin OP_GUARDIAN_NPM_VERSION to something the image did not
-  // bake. The default path has no installer call at all.
+  // No exceptions any more. The guardian used to carve one out for
+  // install_artifact + OP_GUARDIAN_NPM_VERSION, and that override is exactly
+  // how a stale env key silently downgraded a correct image and broke every
+  // stack update for months. Every entrypoint now runs what the image baked.
   const cases: Array<{ file: string; allowInstallArtifact: boolean }> = [
     { file: 'containers/assistant/entrypoint.sh', allowInstallArtifact: false },
     { file: 'containers/portal/start.sh', allowInstallArtifact: false },
-    { file: 'containers/guardian/entrypoint.sh', allowInstallArtifact: true },
+    { file: 'containers/guardian/entrypoint.sh', allowInstallArtifact: false },
   ];
 
   for (const { file, allowInstallArtifact } of cases) {
