@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { chmodSync, copyFileSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -46,7 +47,13 @@ function posixShellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-async function downloadVerifiedBinary(version: string, artifact: string): Promise<string> {
+/**
+ * Download a release artifact and verify it against the release's published
+ * sha256 checksums. Exported (#674) so `openpalm update`'s phase-1
+ * CLI-currency check can reuse the same download/verify path instead of
+ * duplicating it — `openpalm self-update` itself keeps calling it as before.
+ */
+export async function downloadVerifiedBinary(version: string, artifact: string): Promise<string> {
   const tempDir = await mkdtemp(join(tmpdir(), 'openpalm-self-update-'));
   const artifactPath = join(tempDir, artifact);
   const binaryUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${artifact}`;
@@ -94,6 +101,28 @@ async function schedulePosixReplacement(sourcePath: string, targetPath: string):
     stderr: 'ignore',
   });
   proc.unref();
+}
+
+/**
+ * Replace `execPath` with `tempBinary` synchronously, in place (#674). Unlike
+ * `schedulePosixReplacement` above — which defers the swap to a detached
+ * script running AFTER this process exits, because `self-update` hands back
+ * control to the still-running old binary — `openpalm update`'s phase-1 check
+ * re-execs into the replaced binary itself, so the swap must be visible
+ * before that re-exec runs, not after.
+ *
+ * Copies to `<execPath>.new` in the SAME directory first (a plain rename
+ * can't cross filesystems, and the temp download lives under the system tmp
+ * dir) and only then `renameSync`s over `execPath`. A rename over a POSIX
+ * executable that is currently running is safe: the running process keeps
+ * its own open inode; the new name just starts pointing at the new file for
+ * whoever execs it next.
+ */
+export function replaceExecutableInPlace(tempBinary: string, execPath: string): void {
+  const staged = `${execPath}.new`;
+  copyFileSync(tempBinary, staged);
+  chmodSync(staged, 0o755);
+  renameSync(staged, execPath);
 }
 
 export default defineCommand({

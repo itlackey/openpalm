@@ -1,15 +1,24 @@
 import { defineCommand } from 'citty';
-import { join } from 'node:path';
+import { accessSync, constants as fsConstants } from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   performUpgrade,
   classifyLocalInstall,
   createState,
   detectCliVersionSkew,
+  isComparableSemver,
   isRollbackRecoveryFailure,
   type ControlPlaneState,
 } from '@openpalm/lib';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { seedSkeletonFromEmbedded } from '../lib/embedded-assets.ts';
+import { resolveLatestReleaseTag } from '../lib/github.ts';
+import {
+  canReplaceCurrentExecutable,
+  downloadVerifiedBinary,
+  replaceExecutableInPlace,
+  resolveCliArtifactName,
+} from './self-update.ts';
 
 // #667: distinct from the CLI's generic exit(1) (defineAction) — this command
 // needs a LOUDER code for the specific case that lied about success before:
@@ -27,13 +36,22 @@ export default defineCommand({
     allowVersionSkew: {
       type: 'boolean',
       description:
-        'Proceed even when this CLI is older than the release it is about to deploy (see `openpalm self-update`).',
+        'Proceed even when this CLI cannot be brought current before deploying (see phase 1 below).',
+      default: false,
+    },
+    noSelfUpdate: {
+      type: 'boolean',
+      description:
+        'Skip the CLI-currency check entirely and run the stack upgrade with this CLI as-is (0.13.2 behavior).',
       default: false,
     },
   },
   async run({ args }) {
     try {
-      await runUpgradeAction({ allowVersionSkew: !!args.allowVersionSkew });
+      await runUpgradeAction({
+        allowVersionSkew: !!args.allowVersionSkew,
+        noSelfUpdate: !!args.noSelfUpdate,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const outcome = describeUpgradeFailure(err);
@@ -58,6 +76,12 @@ export type UpgradeFailureOutcome = {
  * `process.exit`.
  */
 export function describeUpgradeFailure(err: unknown): UpgradeFailureOutcome {
+  if (err instanceof CliCurrencyError) {
+    return {
+      exitCode: 1,
+      finalStateLine: 'End state: nothing was changed — the update stopped before touching the stack.',
+    };
+  }
   if (isRollbackRecoveryFailure(err)) {
     return {
       exitCode: EXIT_STACK_DOWN,
@@ -73,28 +97,166 @@ export function describeUpgradeFailure(err: unknown): UpgradeFailureOutcome {
   };
 }
 
-/**
- * #662: refuse before touching anything (B8/#664's own rule) when this CLI is
- * OLDER than the release it is about to pin the stack to — the update
- * command's normal successful outcome would otherwise be an old CLI newly
- * managing a newer stack, exactly the pairing #636's downgrade guard treats
- * as dangerous from the other direction. A newer (or equal) CLI is the
- * ordinary upgrade direction and stays unguarded. Split out from
- * runUpgradeAction so the comparison is testable without driving a full
- * (Docker-dependent) upgrade.
- */
-export function assertCliVersionAllowsUpgrade(cliVersion: string, allowVersionSkew: boolean): void {
-  const skew = detectCliVersionSkew(cliVersion);
-  if (!skew.older || allowVersionSkew) return;
-  throw new Error(
-    `This openpalm CLI is ${skew.cliVersion}, older than the ${skew.targetVersion} release it is about to deploy. ` +
-      'Run `openpalm self-update` first, then retry `openpalm update` — or pass --allow-version-skew to proceed anyway.',
-  );
+// ── Phase 1: make the CLI current before it deploys anything (#674) ─────────
+//
+// #662 (the guard this replaces) compared `cliPkg.version` against
+// `PLATFORM_VERSION` — in a compiled binary both are stamped from the SAME
+// build, so an old CLI's own guard could never see itself as old; it only
+// ever caught a dev checkout with a hand-edited package.json. The real fix
+// is to make an old CLI current FIRST, then run the ordinary (now unguarded)
+// upgrade with a binary that is no longer old. `performUpgrade` pins images
+// to ITS OWN `PLATFORM_VERSION` (`advanceManagedImageVersions`'s default), so
+// this is what actually prevents an old CLI from deploying an old stack —
+// #662's comparison alone never could.
+
+export type EnsureCliCurrentResult =
+  | { action: 'skip' }
+  | { action: 'current' }
+  /** Phase 1 could not run to completion but `--allow-version-skew` was set; `reason` is the one-line warning to print before proceeding with the CLI as-is. */
+  | { action: 'fallback'; reason: string }
+  /** The binary was replaced and re-exec'd; the caller MUST `process.exit(exitCode)` — this process's own copy of the CLI is now stale. */
+  | { action: 'reexec'; exitCode: number };
+
+export type EnsureCliCurrentDeps = {
+  resolveLatestTag: () => Promise<string | null>;
+  downloadBinary: (tag: string) => Promise<string>;
+  replaceExecutable: (tempBinary: string, execPath: string) => void;
+  reexec: (argv: string[]) => number;
+  canReplace: (execPath: string) => boolean;
+  canWriteDir: (dir: string) => boolean;
+  platform: NodeJS.Platform;
+  execPath: string;
+};
+
+function defaultCanWriteDir(dir: string): boolean {
+  try {
+    accessSync(dir, fsConstants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function runUpgradeAction(opts: { allowVersionSkew?: boolean } = {}): Promise<void> {
+function defaultReexec(argv: string[]): number {
+  const child = Bun.spawnSync([process.execPath, ...argv], {
+    stdio: ['inherit', 'inherit', 'inherit'],
+  });
+  return child.exitCode ?? 1;
+}
+
+export const defaultEnsureCliCurrentDeps: EnsureCliCurrentDeps = {
+  resolveLatestTag: () => resolveLatestReleaseTag(),
+  downloadBinary: (tag) => downloadVerifiedBinary(tag, resolveCliArtifactName()),
+  replaceExecutable: replaceExecutableInPlace,
+  reexec: defaultReexec,
+  canReplace: canReplaceCurrentExecutable,
+  canWriteDir: defaultCanWriteDir,
+  platform: process.platform,
+  execPath: process.execPath,
+};
+
+/** Thrown by phase 1 (#674): the update stopped before touching the stack, so no rollback hint applies. */
+export class CliCurrencyError extends Error {}
+
+/**
+ * #674 phase 1. Resolves the latest published release, and when this CLI is
+ * OLDER than it, replaces the installed binary in place and re-execs into it
+ * with the original argv — so by the time phase 2 (the stack upgrade) runs,
+ * it is always running the CLI it is about to deploy, never an older one.
+ *
+ * Every failure mode short of a successful replace+reexec returns `fallback`
+ * (when `opts.allowVersionSkew`) or throws (otherwise) — callers that don't
+ * want the throw-based abort pass `allowVersionSkew: true` and print the
+ * returned warning themselves. Nothing here touches the stack; a thrown
+ * error is safe to surface before `performUpgrade` runs.
+ */
+export async function ensureCliCurrent(
+  opts: { allowVersionSkew?: boolean; noSelfUpdate?: boolean; cliVersion?: string } = {},
+  deps: Partial<EnsureCliCurrentDeps> = {},
+): Promise<EnsureCliCurrentResult> {
+  if (opts.noSelfUpdate) return { action: 'skip' };
+
+  const d: EnsureCliCurrentDeps = { ...defaultEnsureCliCurrentDeps, ...deps };
+  const cliVersion = opts.cliVersion ?? cliPkg.version;
+
+  // A dev/unstamped CLI version (not comparable semver) can never be judged
+  // "older" — skip the network round-trip entirely rather than resolve a tag
+  // only to find the comparison was always going to be a no-op.
+  if (!isComparableSemver(cliVersion)) return { action: 'current' };
+
+  const abortOrFallback = (reason: string): EnsureCliCurrentResult => {
+    if (opts.allowVersionSkew) return { action: 'fallback', reason };
+    throw new CliCurrencyError(
+      `${reason} Pass --no-self-update to run \`openpalm update\` with this CLI as-is, ` +
+        'or --allow-version-skew to proceed anyway despite the failed check.',
+    );
+  };
+
+  const tag = await d.resolveLatestTag().catch(() => null);
+  if (!tag) return abortOrFallback('Unable to resolve the latest OpenPalm release to check this CLI against.');
+
+  const skew = detectCliVersionSkew(cliVersion, tag);
+  if (!skew.older) return { action: 'current' };
+
+  if (d.platform === 'win32') {
+    return abortOrFallback(
+      'Self-update is not supported on Windows because a running executable cannot be replaced reliably. ' +
+        'Run setup.ps1 --cli-only to refresh the CLI binary first.',
+    );
+  }
+  if (!d.canReplace(d.execPath)) {
+    return abortOrFallback(
+      `${d.execPath} is not a standalone OpenPalm binary (a bun-run checkout). Reinstall with setup.sh --cli-only first.`,
+    );
+  }
+  const execDir = dirname(d.execPath);
+  if (!d.canWriteDir(execDir)) {
+    return abortOrFallback(`Cannot write to ${execDir} to replace the CLI binary. Reinstall with setup.sh --cli-only, or fix permissions on that directory.`);
+  }
+
+  console.log(`This CLI is ${cliVersion}; updating it to ${tag} before upgrading the stack...`);
+  let tempBinary: string;
+  try {
+    tempBinary = await d.downloadBinary(tag);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return abortOrFallback(`Failed to download the ${tag} CLI release: ${message}`);
+  }
+
+  try {
+    d.replaceExecutable(tempBinary, d.execPath);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return abortOrFallback(`Failed to replace the CLI binary at ${d.execPath}: ${message}`);
+  }
+
+  // The replaced binary is the verified `tag` build, so its own phase 1 has
+  // nothing left to do: re-run the original command with it skipped, which
+  // also rules out a self-update loop by construction.
+  const argv = process.argv.slice(2);
+  const exitCode = d.reexec(argv.includes('--no-self-update') ? argv : [...argv, '--no-self-update']);
+  return { action: 'reexec', exitCode };
+}
+
+export async function runUpgradeAction(
+  opts: { allowVersionSkew?: boolean; noSelfUpdate?: boolean } = {},
+): Promise<void> {
   const state = resolveUpgradeState();
-  assertCliVersionAllowsUpgrade(cliPkg.version, !!opts.allowVersionSkew);
+
+  const cliResult = await ensureCliCurrent({
+    allowVersionSkew: !!opts.allowVersionSkew,
+    noSelfUpdate: !!opts.noSelfUpdate,
+  });
+  if (cliResult.action === 'reexec') {
+    process.exit(cliResult.exitCode);
+  }
+  // Only a knowingly-proceeded-anyway older CLI ('fallback') still warrants
+  // the self-update hint at the end — an unguarded run ('skip'/'current') is
+  // already on the CLI it is about to deploy, so there is nothing to hint at.
+  const stillOlderCli = cliResult.action === 'fallback';
+  if (stillOlderCli) {
+    console.warn(`Warning: ${cliResult.reason} Proceeding with the current (older) CLI.`);
+  }
 
   console.log('Updating stack...');
   // A compiled binary ships its skeleton INSIDE the executable — materialize it
@@ -114,7 +276,7 @@ export async function runUpgradeAction(opts: { allowVersionSkew?: boolean } = {}
   // running `openpalm`/`openpalm admin` supervisor materializes it into
   // data/ui on its next spawn. Updating the CLI itself means replacing the
   // binary (see the install docs), not downloading a separate UI release.
-  console.log('Update complete. To update the CLI itself, install a newer openpalm binary.');
+  console.log(stillOlderCli ? 'Update complete. To update the CLI itself, install a newer openpalm binary.' : 'Update complete.');
 }
 
 export function resolveUpgradeState(): ControlPlaneState {

@@ -5,6 +5,37 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **#674 `openpalm update` is now two phases: make the CLI current, then
+  upgrade the stack.** 0.13.2's #662 guard compared the CLI's own version
+  against `PLATFORM_VERSION` — in a compiled binary both are stamped from the
+  same build, so that comparison could never actually trip; it only ever
+  caught a dev checkout with a hand-edited `package.json`. `update` now
+  resolves the latest published release first and compares the running CLI
+  against THAT tag. When the CLI is older, it downloads the verified release
+  binary, replaces the installed executable in place, and re-execs itself
+  with the original arguments before doing anything else — so the stack
+  upgrade that follows always runs on the CLI it is about to deploy, never an
+  older one (`performUpgrade` pins images to its own `PLATFORM_VERSION`, which
+  is what actually caused the stale-stack hazard #662 was after). The re-exec
+  carries `--no-self-update`, so the new binary goes straight to the stack
+  upgrade and a self-update loop is ruled out by construction. `--no-self-update`
+  on the command line skips this phase entirely and reproduces 0.13.2's
+  `update` behavior exactly.
+  `--allow-version-skew` now covers phase 1 as well as phase 2: when resolving
+  the target release, downloading, verifying, or replacing the binary fails —
+  or the install can't be replaced at all (Windows, a `bun`-run checkout, an
+  executable directory the process can't write to) — it prints a one-line
+  warning naming the problem and proceeds with the current CLI instead of
+  aborting. Without either flag, any phase-1 failure aborts before the stack
+  is touched with an end-state line saying nothing was changed (not the
+  rollback hint), and the message names both flags. The final "Update complete."
+  line only grows the old CLI-update hint when the upgrade actually ran with a
+  knowingly older CLI (i.e. under `--allow-version-skew`'s fallback).
+
 ## [0.13.2] - 2026-09-02
 
 ### Changed

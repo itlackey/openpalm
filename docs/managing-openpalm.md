@@ -313,10 +313,18 @@ openpalm rollback
 openpalm backups prune --keep 3
 ```
 
-`openpalm update` refreshes managed assets and reapplies the configured stack.
-`data/ui/` is a materialization directory rewritten from the CLI's own
-embedded UI build when the version stamp differs; it is not an independent
-update target. The assistant-served UI is part of the assistant image.
+`openpalm update` runs in two phases. First it checks whether this CLI is
+older than the latest published release and, if so, downloads and installs
+that release's binary in place and re-execs itself before doing anything
+else — so the stack upgrade always runs on a current CLI rather than an old
+one deploying an old stack. Only then does it refresh managed assets and
+reapply the configured stack. Pass `--no-self-update` to skip the CLI check
+and upgrade the stack with the CLI you already have, or `--allow-version-skew`
+to proceed with the current CLI if the check itself cannot complete (no
+network, an unreplaceable install). `data/ui/` is a materialization directory
+rewritten from the CLI's own embedded UI build when the version stamp
+differs; it is not an independent update target. The assistant-served UI is
+part of the assistant image.
 
 **Updating requires internet access to the container registry.** `update`
 pulls every managed image before starting anything, so it cannot run on a host
