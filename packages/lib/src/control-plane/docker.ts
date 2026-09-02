@@ -614,6 +614,34 @@ export function composeUpTimeoutMs(): number {
 }
 
 /**
+ * Bound on how much recent stderr {@link runComposeStreaming} keeps for
+ * classification (§655.2). 64 KiB comfortably holds many minutes of Compose
+ * progress lines plus the daemon error that follows them — this is a
+ * classification aid, not a log store, so older bytes are dropped rather than
+ * grown without limit.
+ */
+export const COMPOSE_STREAM_STDERR_BUFFER_BYTES = 64 * 1024;
+
+/**
+ * Append `chunk` to `buffer`, keeping only the last {@link maxBytes} bytes.
+ * Pure and exported so the bound is unit-testable without spawning a process.
+ * Trims by BYTES (Buffer.byteLength), not JS string length, so multi-byte
+ * UTF-8 stderr (a path or image tag with non-ASCII characters) is bounded
+ * correctly rather than merely by character count.
+ */
+export function appendBoundedStderr(buffer: string, chunk: string, maxBytes: number): string {
+  const combined = buffer + chunk;
+  if (Buffer.byteLength(combined, "utf-8") <= maxBytes) return combined;
+  // Drop from the front until the tail fits — a real Compose failure line
+  // survives at the END of the stream, so what's cut is the oldest progress
+  // noise, never the failure itself (unless a single non-error run produces
+  // more than maxBytes of stderr with no failure at all, which is not the
+  // case this buffer exists to classify).
+  const asBuffer = Buffer.from(combined, "utf-8");
+  return asBuffer.subarray(asBuffer.length - maxBytes).toString("utf-8");
+}
+
+/**
  * Run `docker compose <args>` streaming stdio to the parent (interactive).
  *
  * The capturing {@link run} helper is wrong for user-facing CLI commands (`up`,
@@ -621,6 +649,19 @@ export function composeUpTimeoutMs(): number {
  * the ONE stdio-inheriting compose runner — the CLI shares it instead of
  * re-implementing the spawn. Node-compatible (`node:child_process` spawn), so it
  * works under both Bun and Node.
+ *
+ * §655.2: stdout is still inherited (the operator needs live progress), but
+ * stderr is a TEE, not an either/or choice — every chunk is written straight
+ * through to the parent's stderr (so nothing about what the operator sees
+ * changes) AND appended to a bounded ring buffer
+ * ({@link COMPOSE_STREAM_STDERR_BUFFER_BYTES}). On a non-zero exit, the
+ * buffered stderr is run through {@link mapDockerError} — the SAME
+ * translation `applyStack` already gives install/update — so a `start`,
+ * `restart`, `rollback`, `addon`, or `uninstall` failure (everything routed
+ * through {@link runComposeStreaming} via `activateComposeCommand`) gets a
+ * classified, actionable message instead of the bare
+ * `docker compose <args> failed with exit code N` this used to reject with,
+ * which carried nothing `mapDockerError` could classify.
  *
  * Rejects on a spawn error or non-zero exit. `timeoutMs`, when set, SIGTERM-kills
  * a run that exceeds the budget (pass {@link composeUpTimeoutMs} for `up`, which
@@ -632,19 +673,84 @@ export function runComposeStreaming(
   opts: { timeoutMs?: number } = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(dockerBin(), ["compose", ...args], { stdio: "inherit" });
+    const child = spawn(dockerBin(), ["compose", ...args], {
+      stdio: ["inherit", "inherit", "pipe"],
+    });
+    let stderrBuffer = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      // Tee, not either/or: the operator still sees live progress on their
+      // terminal, and the same bytes feed the bounded classification buffer.
+      process.stderr.write(chunk);
+      stderrBuffer = appendBoundedStderr(stderrBuffer, chunk.toString("utf-8"), COMPOSE_STREAM_STDERR_BUFFER_BYTES);
+    });
+
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       timer = setTimeout(() => { child.kill("SIGTERM"); }, opts.timeoutMs);
     }
+
+    // Settling is driven off "exit", not "close" — see the two comments
+    // below for why either one ALONE is wrong now that stderr is a real pipe
+    // rather than "inherit" (it was a byte-identical no-op change before
+    // this stderr tee existed, since inherited stdio creates no pipes for
+    // Node to wait on either way).
+    let settled = false;
+    let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function finish(): void {
+      if (settled || !exitInfo) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      const { code, signal } = exitInfo;
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      // `code` is null when the process was killed by a signal (our own
+      // SIGTERM timeout, or an external kill) rather than exiting on its
+      // own — say so instead of the misleading "exited with code null".
+      const outcome = code !== null ? `exited with code ${code}` : `was killed by signal ${signal}`;
+      const mapped = mapDockerError(
+        `${stderrBuffer}\ndocker compose ${args.join(" ")} ${outcome}`,
+      );
+      reject(new Error(mapped.message));
+    }
+
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
       reject(err);
     });
-    child.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`docker compose ${args.join(" ")} failed with exit code ${code}`));
+
+    // "close" waits for every stdio stream to fully end before firing — which
+    // hangs FOREVER if `docker compose` (or an OP_DOCKER_BIN shim) leaves an
+    // orphaned descendant holding the stderr pipe's write end open: the
+    // direct child is reaped immediately, but the pipe is not, since
+    // something else still has it open. That silently defeats the timeout
+    // above (verified: a killed child whose grandchild still holds the pipe
+    // never reaches "close" at all). "exit" fires as soon as THIS process
+    // ends, independent of its stdio handles, so the timeout is an actual
+    // bound again.
+    //
+    // But "exit" alone can race ahead of the OS pipe buffer: a burst of
+    // stderr larger than the pipe's buffer can still be sitting unread when
+    // the process has already terminated (verified: 4000 lines of stderr
+    // written just before `exit` reliably arrived with the buffer still
+    // empty). So on "exit", finish immediately if the stream already drained
+    // (`readableEnded`), otherwise give it one short grace window — long
+    // enough for the ordinary "still catching up on already-written bytes"
+    // case, short enough to still bound the pathological orphaned-descendant
+    // case instead of waiting on it forever.
+    child.stderr?.on("end", finish);
+    child.on("exit", (code, signal) => {
+      exitInfo = { code, signal };
+      if (child.stderr === null || child.stderr.readableEnded) {
+        finish();
+      } else {
+        graceTimer = setTimeout(finish, 200);
+      }
     });
   });
 }
