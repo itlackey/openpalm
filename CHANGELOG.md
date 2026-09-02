@@ -32,6 +32,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bump ships. Operator docs cover the upgrade-time symptom and the remedy,
   including a fallback invocation for 0.13.0 images that predate the helper.
 
+### Changed
+
+- **CI and release run the same gates (#659).** The gate jobs live in
+  `.github/workflows/gates.yml` (`workflow_call`) and both `ci.yml` and
+  `release.yml`'s preflight invoke it, so the release pipeline cannot run
+  fewer checks than a pull request. Check names are now `gates / …`.
+- **Two new test lanes (#652, #653).** `multi-instance-smoke.sh` updates
+  instance B beside a live instance A and asserts ports, project name, and an
+  operator override survive; `cross-uid-smoke.sh` plants root-owned files
+  and runs the real ownership repair, system swap, and backup as the
+  unprivileged runner, and the root-gated identity tests now execute under
+  `sudo` and fail loudly if skipped. `upgrade-path-smoke.sh` runs
+  `applyHomeAssets` and the pinned akm binary and keeps the historical
+  `schema-version` stamp. Tier 5 explicitly does not gate a release.
+
 ### Fixed
 
 - **`openpalm update` from 0.12.x no longer silently drops the akm LLM
@@ -40,13 +55,49 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reference) before the retired keys are stripped; anything untranslatable is
   named in a warning, and `openpalm validate` now warns when an akm config has
   zero engines instead of reporting OK.
-- **A port migration never overwrites an operator's `state/stack.env` port
-  (#643).** `migrateLegacyDefaultPorts` carries an explicit
-  `OP_ASSISTANT_PORT`/`OP_UI_PORT` from the consolidated file through the
-  legacy-first merge instead of writing a default over it, so a re-run of the
-  migration chain (which a rollback's restored schema-version triggers) keeps
-  the value the operator set. A default is still just a default: a collision
-  with another instance surfaces as the daemon's own port error (#644).
+- **Port migrations are host-aware and never overwrite an operator's port
+  (#643, #658).** `migrateLegacyDefaultPorts` carries an explicit
+  `OP_ASSISTANT_PORT`/`OP_UI_PORT` from `state/stack.env` through the
+  legacy-first merge instead of writing a default over it, and a DEFAULT is
+  only written after `probeInstallPorts` (the prober `doctor` and the wizard
+  already trust) confirms it is free or held by this install's own
+  containers, stepping to the next free port otherwise. `doctor` now says
+  "held by another process" for a genuine collision.
+- **Upgrade heals are versioned migrations (#654).** The akm retired-key strip
+  (with the `profiles.llm` → `engines` translation), duplicate-bundle
+  reconcile, and system-bundle registration moved out of the every-launch
+  sweep in `applyHomeAssets` into `MIGRATIONS` at schema 12, each with its own
+  test; the UI test that asserted the data loss now asserts the translation.
+  Every migration is replay-safe: re-running the chain after a rollback
+  restores `schema-version` leaves operator edits untouched (#657).
+- **Backups are scoped by one manifest and no longer storm on retries (#656,
+  #648, #657).** `OP_HOME_TREES` declares every top-level tree with its
+  owner, durability, and whether backup, purge, and ownership repair cover
+  it; a test fails when `ensureHomeDirs` and the manifest disagree.
+  `workspace/` is out of the backup, an unchanged home is not re-snapshotted
+  (content hash recorded in `.backup-complete`), `-pre-rollback` snapshots are
+  capped like the rest, and `openpalm backups list` exists. An EACCES from
+  the backup or the system swap now names the path and `openpalm
+  repair-ownership`.
+- **One docker boundary (#655, #644).** `runComposeStreaming` tees stderr
+  into a bounded buffer and classifies a non-zero exit through the same
+  `mapDockerError` path install/update use, so `start`/`restart`/`rollback`/
+  `addon` failures carry the daemon's cause. The four raw `docker` spawns in
+  the UI and CLI go through `dockerBin()`, guarded by a test. The progress
+  filter was audited against a real Compose v5 daemon (kill, pause, restart,
+  build, attach verbs added), and a port conflict is classified whichever
+  side of the phrase the daemon prints the port on.
+- **`openpalm.sh`/`openpalm.ps1` are rendered from the control plane
+  (#650).** Every reconcile writes them with the exact resolved overlay list
+  and project name; the script refuses to run under a different `OP_HOME` or
+  with no recorded project instead of defaulting to `openpalm` and starting a
+  duplicate stack.
+- **`openpalm update` against a dev-tagged image no longer dies at the
+  pull.** `performUpgrade` folds the fetch into `up` for a `dev` tag exactly
+  as `runDeploy` does.
+- **The secret-boundary audit names `knowledge/env/user.env` (#649)** as the
+  destination for a credential an in-container tool reads from the
+  environment, alongside the `<KEY>_FILE` remedy.
 - **`openpalm update` starts by making the whole home the operator's again
   (#641, #642).** The ownership repair walk now covers `system/` and any
   leftover `.system-previous-*` staging tree, its "already repaired" marker
