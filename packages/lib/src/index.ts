@@ -91,7 +91,9 @@ export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/ad
 export { detectRootlessDocker, dockerHasNvidiaRuntime, isVoiceLanAccessEnabled } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
+export type { HomeTree, HomeTreeOwner, HomeTreeDurability } from "./control-plane/home.js";
 export {
+  OP_HOME_TREES,
   resolveOpenPalmHome,
   resolveConfigDir,
   resolveStashDir,
