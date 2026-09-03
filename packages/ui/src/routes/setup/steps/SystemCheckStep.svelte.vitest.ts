@@ -94,3 +94,56 @@ describe('SystemCheckStep — auto-advance respects blocking conflicts', () => {
     await vi.waitFor(() => expect(setupState.systemCheckPassed).toBe(true));
   });
 });
+
+// #678 — the acceptance lane's "System Check blocks on a port conflict" item.
+// Two things the auto-advance tests above do NOT cover, and that were never
+// verified by hand either: the CONTROL's disabled state (the warning text can
+// render while the button stays clickable — that is the failure that matters),
+// and the RECOVERY half, which is what an operator who quits the offending
+// program and clicks Retry actually depends on.
+describe('SystemCheckStep — a blocking conflict disables Continue, and Retry clears it (#678)', () => {
+  const CONFLICT = {
+    ...BASE_OK,
+    ports: [
+      { port: 3800, service: 'ui', available: false, blocking: true },
+      { port: 3810, service: 'assistant', available: true, blocking: true },
+    ],
+  };
+  const CLEARED = {
+    ...BASE_OK,
+    ports: [
+      { port: 3800, service: 'ui', available: true, blocking: true },
+      { port: 3810, service: 'assistant', available: true, blocking: true },
+    ],
+  };
+
+  test('Continue is disabled and the conflict is named while the port is held', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(CONFLICT)));
+
+    render(SystemCheckStep);
+
+    const continueButton = page.getByRole('button', { name: /continue/i });
+    await expect.element(continueButton).toBeDisabled();
+    await expect.element(page.getByText(/another program is using this port/i).first()).toBeVisible();
+    expect(setupState.systemCheckPassed).toBe(false);
+  });
+
+  test('Retry re-enables Continue once the port is free', async () => {
+    let responses = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(responses++ === 0 ? CONFLICT : CLEARED)),
+    );
+
+    render(SystemCheckStep);
+
+    const continueButton = page.getByRole('button', { name: /continue/i });
+    await expect.element(continueButton).toBeDisabled();
+
+    await page.getByRole('button', { name: /retry checks/i }).click();
+
+    await expect.element(continueButton).toBeEnabled();
+    await expect(page.getByText(/another program is using this port/i).first().query()).not.toBeInTheDocument();
+  });
+});
+
