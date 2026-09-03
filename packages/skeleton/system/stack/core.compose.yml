@@ -35,7 +35,7 @@
 services:
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.13.3}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.13.4}
     restart: unless-stopped
     # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
     # driver is unbounded, which contributed to the production disk incident.
