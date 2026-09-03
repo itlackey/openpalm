@@ -34,11 +34,21 @@
 # normal operation, or pass the overlay yourself:
 # ./openpalm.sh compose -f system/stack/guardian.compose.api.yml up -d
 #
-# Deriving that decision here would mean a second implementation of it, in
-# shell, reading a dotenv file whose values have several legal spellings. The
-# attempt diverged from the app in ~30 ways, most of them publishing a host
-# port the app leaves closed, so it was removed rather than shipped. See
-# issue #628.
+# Deriving that decision here would mean a second implementation of it in
+# shell. The attempt diverged from the app in ~30 ways, most of them publishing
+# a host port the app leaves closed, so it was removed rather than shipped: the
+# rendered copy bakes the app's own resolved list in as data instead.
+#
+# Reading a VALUE out of state/stack.env, if you need one, is now two lines
+# (#628). Every value the app writes there is either bare or wrapped in single
+# quotes, and nothing else:
+#
+#   raw=$(grep -E "^KEY=" state/stack.env | tail -1 | cut -d= -f2-)
+#   case "$raw" in "'"*"'") value="${raw:1:${#raw}-2}";; *) value="$raw";; esac
+#
+# Last occurrence wins, which is what dotenv, docker compose and `source` all
+# do. A value that grammar cannot hold is refused at the write, so it never
+# reaches this file.
 #
 # Usage:
 #   ./openpalm.sh up            Start the stack (detached)

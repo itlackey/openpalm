@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { parseEnvContent, mergeEnvContent, removeEnvKey } from "./env.js";
+import { parseEnvContent, mergeEnvContent, removeEnvKey, UnrepresentableEnvValueError } from "./env.js";
 
 // ── Special character round-trips ────────────────────────────────────────
-// Values written by mergeEnvContent (which uses quoteEnvValue internally)
-// must survive a parseEnvContent round-trip — the same path admin tokens
-// and API keys follow when written to secrets.env and read back.
+// Values written by mergeEnvContent must survive a parseEnvContent round-trip.
+// mergeEnvContent writes files DOCKER COMPOSE reads, so since #628 it uses the
+// compose-safe grammar: bare or single-quoted, and a refusal for the rest.
+// env-grammar-parity.test.ts asserts these same values against a real
+// `docker compose config`, which is the reader that actually matters.
 
 describe("special characters in env values", () => {
   /** Write a value via mergeEnvContent, parse it back, assert identity. */
@@ -32,14 +34,25 @@ describe("special characters in env values", () => {
     roundTrip("TOKEN", '"quoted"');
   });
 
-  it("round-trips values containing single quotes", () => {
-    roundTrip("TOKEN", "it's a token");
-    roundTrip("TOKEN", "don't stop");
+  // #628: a compose-read file cannot hold these, so the write is refused
+  // naming the key rather than producing a file Compose rejects whole — or,
+  // worse, one this app and Compose read differently. Multi-line material
+  // (PEMs, keys) belongs in a file secret, and free text in user.env, which
+  // keeps the richer dotenv grammar because Compose never reads it.
+  it("refuses values containing single quotes, naming the key", () => {
+    expect(() => mergeEnvContent("", { TOKEN: "it's a token" })).toThrow(UnrepresentableEnvValueError);
+    expect(() => mergeEnvContent("", { TOKEN: "it's a token" })).toThrow(/TOKEN/);
   });
 
-  it("round-trips values containing newlines", () => {
-    roundTrip("CERT", "line1\nline2");
-    roundTrip("CERT", "a\nb\nc");
+  it("refuses values containing newlines, naming the key", () => {
+    expect(() => mergeEnvContent("", { CERT: "line1\nline2" })).toThrow(UnrepresentableEnvValueError);
+    expect(() => mergeEnvContent("", { CERT: "line1\nline2" })).toThrow(/CERT/);
+  });
+
+  it("refuses a value ending in a backslash, which compose rejects file-wide", () => {
+    expect(() => mergeEnvContent("", { OP_HOME: "C:\\Users\\op\\" })).toThrow(
+      UnrepresentableEnvValueError,
+    );
   });
 
   it("round-trips values with + and / (base64 characters)", () => {

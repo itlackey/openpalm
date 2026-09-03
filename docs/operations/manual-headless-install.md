@@ -186,6 +186,16 @@ The managed Compose files are placed in `system/stack/`; only
 `config/stack/custom.compose.yml` is user-owned. `state/stack.env` is the sole
 Compose env file.
 
+Its grammar is deliberately small, because Docker Compose, dotenv and `bash
+source` all have to agree on it (#628). A value is written **bare**, or wrapped
+in **single quotes** when it contains `#`, `$`, a quote, a backslash or padding
+— and nothing else. To read one back, take the LAST line matching the key (what
+all three readers do) and drop a leading and trailing single quote if both are
+present. Values that neither shape can hold — a line break, a trailing
+backslash, an embedded single quote — are refused when written rather than
+stored in a shape the readers disagree about; multi-line material belongs in a
+file secret under `knowledge/secrets/` or `state/secrets/`.
+
 Baseline generated secret material includes:
 
 ```text
