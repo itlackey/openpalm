@@ -18,7 +18,6 @@
  */
 import { assertRootInstallAllowed, resolveOperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
-import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 import type { ControlPlaneState } from "./types.js";
 
 export function generateFallbackSystemEnv(state: ControlPlaneState): string {
@@ -43,11 +42,9 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
-    "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
-    // The compose files reference these as ${OP_*_VERSION:?}, so a value is
-    // required for every image. `openpalm update` overwrites the platform ones
-    // with the release it deploys (#679).
-    ...SERVICE_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
+    "# Image tags come from the compose files this release ships (#679). Add an",
+    "# OP_<SERVICE>_VERSION row here ONLY to pin one — the row is the pin, and",
+    "# removing it goes back to following releases.",
     "",
     "# ── Enabled addons (comma-separated; managed via the Add-ons UI / CLI) ──",
     "OP_ENABLED_ADDONS=",

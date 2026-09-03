@@ -16,9 +16,12 @@ export function applyChanges(): Promise<void> {
 }
 
 export type VersionsResponse = {
-	configured: Record<VersionKey, string>;
-	/** Images `openpalm update` leaves alone — read from OP_PINNED_IMAGES (#679). */
-	pinned: VersionKey[];
+	/** Rows present in state/stack.env — i.e. the pins. Absent key = not pinned. */
+	pins: Partial<Record<VersionKey, string>>;
+	/** Pin, or the release default the shipped compose file carries. */
+	resolved: Record<VersionKey, string>;
+	/** Image refs actually running, keyed by compose service. null = docker unreachable. */
+	running: Record<string, string> | null;
 };
 
 export async function fetchVersions(): Promise<VersionsResponse> {
@@ -26,20 +29,13 @@ export async function fetchVersions(): Promise<VersionsResponse> {
 	return (await response.json()) as VersionsResponse;
 }
 
-/** `pinned`, when given, is the COMPLETE pin list — omitting a key unpins it. */
-export async function patchVersions(
-	versions: Partial<Record<VersionKey, string>>,
-	pinned?: VersionKey[]
-): Promise<void> {
+/** An EMPTY tag clears that image's pin, so it follows releases again (#679). */
+export async function patchVersions(versions: Partial<Record<VersionKey, string>>): Promise<void> {
 	await requireOk(
 		await request('PATCH', '/api/host/versions', {
-			...(Object.keys(versions).length > 0 ? { versions } : {}),
-			...(pinned ? { pinned } : {})
+			...(Object.keys(versions).length > 0 ? { versions } : {})
 		})
 	);
 }
 
-/** A `rollback-` tag is never operator-typed (#639) — only restoreRunningImageIds writes that shape. */
-export function isRollbackPin(value: string | undefined): boolean {
-	return !!value?.startsWith('rollback-');
-}
+

@@ -10,7 +10,7 @@ function state(homeDir: string): ControlPlaneState {
 }
 
 describe('immutable running image snapshots', () => {
-  test('captures container image IDs and restores them as local immutable tags', async () => {
+  test('captures container image IDs and restores them by pinning the tags that were running', async () => {
     const home = mkdtempSync(join(tmpdir(), 'openpalm-image-snapshot-'));
     try {
       mkdirSync(join(home, 'state'), { recursive: true });
@@ -31,13 +31,23 @@ describe('immutable running image snapshots', () => {
       await restoreRunningImageIds(state(home), images, 'generation-1', docker);
       expect(images.assistant?.imageId).toBe('sha256:assistant');
       expect(calls[0]).toContain('custom-project');
-      expect(calls.some((args) => args.join(' ').includes('image tag sha256:assistant example/assistant:rollback-generation-1'))).toBe(true);
-      expect(calls.some((args) => args.join(' ').includes('image tag sha256:portal example/portal:rollback-generation-1'))).toBe(true);
-      expect(calls.some((args) => args.join(' ').includes('image tag sha256:voice example/voice:rollback-generation-1-cpu'))).toBe(true);
+
+      // #679: recovery pins the REAL tags that were running, not a synthetic
+      // `rollback-generation-*` alias. A real release tag is still pullable, is
+      // recognisable to the operator, needs no string-sniffing by three other
+      // call sites, and leaves no orphan local tags behind.
       const restoredEnv = readFileSync(join(home, 'state', 'stack.env'), 'utf8');
-      expect(restoredEnv).toContain('OP_ASSISTANT_VERSION=rollback-generation-1');
-      expect(restoredEnv).toContain('OP_PORTAL_VERSION=rollback-generation-1');
-      expect(restoredEnv).toContain('OP_VOICE_VERSION=rollback-generation-1');
+      expect(restoredEnv).toContain('OP_ASSISTANT_VERSION=0.13.0');
+      expect(restoredEnv).toContain('OP_PORTAL_VERSION=0.13.0');
+      expect(restoredEnv).not.toContain('rollback-generation-');
+      // Voice's key holds the BASE tag; compose appends the accelerator suffix.
+      expect(restoredEnv).toContain('OP_VOICE_VERSION=0.13.0');
+
+      // An exact release tag still names the same bytes, so it needs no
+      // re-tagging. Only a MOVING alias could have been repointed by the failed
+      // attempt's pull — here, voice's variant tag.
+      expect(calls.some((args) => args.join(' ').includes('image tag sha256:assistant'))).toBe(false);
+      expect(calls.some((args) => args.join(' ').includes('image tag sha256:voice example/voice:0.13.0-cpu'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

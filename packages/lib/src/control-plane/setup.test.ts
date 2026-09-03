@@ -699,74 +699,58 @@ describe('performSetup', () => {
 		expect(result.error).toBeDefined();
 	});
 
-	// ── Per-image version reconcile (A1: stop preserving a stale pinned tag) ──
-	// state/stack.env is the one env file, and the sole pin location.
+	// ── Image tags (#679) ─────────────────────────────────────────────────
+	// A row in state/stack.env is a PIN and nothing else creates one. Setup
+	// writes rows only for an explicitly supplied tag; a blank field writes
+	// nothing, so the stack follows the tags the release baked into its compose
+	// files.
 	const stateEnvPath = () => join(homeDir, 'state', 'stack.env');
 
-	it('blank imageTag resets stale per-image pins to the exact platform version', async () => {
-		// Simulate an OP_HOME carrying now-stale per-image version pins.
-		writeFileSync(
-			stateEnvPath(),
-			[
-				'OP_SETUP_COMPLETE=false',
-				'OP_ASSISTANT_VERSION=v0.11.1',
-				'OP_GUARDIAN_VERSION=v0.11.1',
-				''
-			].join('\n')
-		);
+	it('a blank imageTag writes no version rows at all', async () => {
 		const result = await performSetup(makeValidSpec()); // no imageTag => blank
 		expect(result.ok).toBe(true);
 		const env = readFileSync(stateEnvPath(), 'utf-8');
-		// Each image rides its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade).
-		expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-		expect(env).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-		expect(env).not.toMatch(/_VERSION=v0\.11\.1/);
+		expect(env).not.toMatch(/^OP_ASSISTANT_VERSION=/m);
+		expect(env).not.toMatch(/^OP_GUARDIAN_VERSION=/m);
+		expect(env).not.toMatch(/^OP_PORTAL_VERSION=/m);
 	});
 
-	it('a non-empty imageTag pins platform images but leaves voice on its variant-aware channel', async () => {
+	// The old code wrote all four rows on every setup run. Because the wizard
+	// prefilled its (invisible) image-tag field with PLATFORM_VERSION, that
+	// pinned every GUI install to its install version, permanently, with no
+	// operator action and nothing displaying it.
+	it('a blank imageTag does not manufacture a pin from the platform version', async () => {
+		const result = await performSetup(makeValidSpec());
+		expect(result.ok).toBe(true);
+		expect(readFileSync(stateEnvPath(), 'utf-8')).not.toContain(PLATFORM_VERSION);
+	});
+
+	it('a non-empty imageTag pins platform images and leaves voice alone', async () => {
 		const result = await performSetup(makeValidSpec({ imageTag: 'v0.11.1' }));
 		expect(result.ok).toBe(true);
 		const env = readFileSync(stateEnvPath(), 'utf-8');
 		expect(env).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.1$/m);
 		expect(env).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.1$/m);
 		expect(env).toMatch(/^OP_PORTAL_VERSION=v0\.11\.1$/m);
-		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+		// Voice ships on its own cadence with variant-suffixed tags, so a
+		// platform tag would name an image that was never published.
+		expect(env).not.toMatch(/^OP_VOICE_VERSION=v0\.11\.1$/m);
 	});
 
 	it('imageTag is trimmed before writing', async () => {
 		const result = await performSetup(makeValidSpec({ imageTag: '  dev  ' }));
 		expect(result.ok).toBe(true);
-		const env = readFileSync(stateEnvPath(), 'utf-8');
-		expect(env).toMatch(/^OP_ASSISTANT_VERSION=dev$/m);
+		expect(readFileSync(stateEnvPath(), 'utf-8')).toMatch(/^OP_ASSISTANT_VERSION=dev$/m);
 	});
 
-	it('fresh install with blank imageTag writes exact platform versions', async () => {
-		// beforeEach's stub stack.env has no per-image version pins.
+	it('a blank imageTag on a rerun leaves an existing pin exactly where it is', async () => {
+		writeFileSync(
+			stateEnvPath(),
+			['OP_SETUP_COMPLETE=false', 'OP_ASSISTANT_VERSION=v0.11.1', ''].join('\n')
+		);
 		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);
-		const env = readFileSync(stateEnvPath(), 'utf-8');
-		expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-	});
-
-	it('records an explicit imageTag for assistant, guardian, and portal only', async () => {
-		const result = await performSetup(makeValidSpec({ imageTag: 'v0.11.1' }));
-		expect(result.ok).toBe(true);
-		const env = readFileSync(stateEnvPath(), 'utf-8');
-		for (const key of ['ASSISTANT', 'GUARDIAN', 'PORTAL']) {
-			expect(env).toMatch(new RegExp(`^OP_${key}_VERSION=v0\\.11\\.1$`, 'm'));
-		}
-		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
-	});
-
-	it('blank imageTag pins the coordinated platform images and leaves voice on its channel', async () => {
-		const result = await performSetup(makeValidSpec()); // no imageTag => blank
-		expect(result.ok).toBe(true);
-		const env = readFileSync(stateEnvPath(), 'utf-8');
-		expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-		expect(env).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-		expect(env).toMatch(new RegExp(`^OP_PORTAL_VERSION=${reEscape(PLATFORM_VERSION)}$`, 'm'));
-		// Voice tags are variant-suffixed, not platform semver.
-		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+		expect(readFileSync(stateEnvPath(), 'utf-8')).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.1$/m);
 	});
 
 	it('K2: an operator-pinned OP_VOICE_VERSION survives a setup rerun instead of being reset to latest', async () => {

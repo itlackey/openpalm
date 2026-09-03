@@ -52,6 +52,7 @@ import {
 } from './config-persistence.js';
 import { migrateChatAddonRemoval, migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
+import { PLATFORM_VERSION } from './versioning.js';
 import { migrateDelegatedSecretsToStateDir } from './secrets-migration.js';
 import { migrateLegacyPaperclipEnv } from './paperclip.js';
 import { ensureSystemBundle, reconcileDuplicateBundles, stripRetiredAkmConfigKeys } from './akm-sources.js';
@@ -433,6 +434,94 @@ function migrateOpHomeLayout(homeDir: string): boolean {
 }
 
 /**
+ * #679 — v13 -> v14. Move image-tag resolution out of `state/stack.env` and
+ * into the compose files the release ships, then delete every version row the
+ * app ever wrote.
+ *
+ * BOTH HALVES ARE DONE HERE, COMPOSE FIRST, and that is not stylistic:
+ *
+ * - Deleting the rows while the live tree still says `${OP_ASSISTANT_VERSION:?}`
+ *   would brick every compose invocation on this home.
+ * - The obvious alternative — skip unless the tree is already rewritten — can
+ *   never fire: on the update path `runHomeMigrations` runs BEFORE
+ *   `applyHome`/`overwriteSystemTree` (lifecycle.ts), so the tree is always
+ *   still the old one here, and `writeHomeSchemaVersion` below stamps
+ *   unconditionally, so a migration that declined would never get a second
+ *   chance.
+ * - Doing the rewrite here removes the ordering dependency entirely, which
+ *   matters because `runHomeMigrations` is also reached from three paths that
+ *   never seed the skeleton at all (the UI child's startup, `openpalm ui`
+ *   standalone, and an Electron launch whose seed failed non-fatally).
+ *
+ * Compose-first also means a crash between the halves leaves the rows in place
+ * beside a rewritten file, which still boots — the rows simply keep winning
+ * until the next run.
+ *
+ * DELETION IS UNCONDITIONAL, AND THAT IS THE POINT. The only way to tell "the
+ * operator pinned this" from "a past release wrote this" is to compare the
+ * value against PLATFORM_VERSION, `.skeleton-version`, or the markers — and
+ * that comparison IS the bug, four times over (#471, #537, #639, #679). A
+ * `.skeleton-version` comparison would classify the live #679 instance
+ * (OP_ASSISTANT_VERSION=0.13.1 beside a stale marker) as a deliberate pin and
+ * leave it frozen; a marker comparison would turn every #639 home's four
+ * `rollback-generation-*` rows into permanent pins. So: no value is inspected,
+ * every row goes, and each cleared value is logged. An operator with a real pin
+ * loses it once, visibly, and re-sets it in one edit — where a falsely
+ * PRESERVED pin is invisible and is exactly what cost this project #679.
+ */
+function migrateImageVersionsToComposeDefaults(homeDir: string): boolean {
+  let changed = false;
+
+  // Half 1: the live compose files, so the defaults exist before the rows go.
+  for (const file of ['core.compose.yml', 'portals.compose.yml']) {
+    const path = join(homeDir, 'system', 'stack', file);
+    if (!existsSync(path)) continue;
+    const before = readFileSync(path, 'utf-8');
+    const after = before.replace(
+      /\$\{(OP_(?:ASSISTANT|GUARDIAN|PORTAL)_VERSION):\?[^}]*\}/g,
+      (_match, key) => `\${${key}:-${PLATFORM_VERSION}}`,
+    );
+    if (after !== before) {
+      writeFileAtomic(path, after, 0o600);
+      changed = true;
+    }
+  }
+
+  // Half 2: every version row the app wrote, plus the retired shadow keys.
+  const envPath = stackEnvFile(homeDir);
+  if (!existsSync(envPath)) return changed;
+  const content = readFileSync(envPath, 'utf-8');
+  const parsed = parseEnvContent(content);
+  // A `dev` tag is the ONE value kept, and the exception is safe for a reason
+  // the other candidates are not: no release has ever written `dev` into these
+  // keys, so keeping it cannot preserve a false pin at a release version, which
+  // is the failure shape (#471, #537, #639, #679). It can only have come from a
+  // human or from dev tooling, and it names a locally built image no registry
+  // has — clearing it would repoint a developer's or a smoke run's stack at
+  // published images mid-run.
+  const isLocalDevTag = (key: string) => (parsed[key]?.trim() ?? '').startsWith('dev');
+  const doomed = [
+    ...SERVICE_VERSION_KEYS.filter((key) => !isLocalDevTag(key)),
+    'OP_MANAGED_ASSISTANT_VERSION',
+    'OP_MANAGED_GUARDIAN_VERSION',
+    'OP_MANAGED_PORTAL_VERSION',
+    'OP_MANAGED_VOICE_VERSION',
+    'OP_PINNED_IMAGES',
+  ].filter((key) => Object.hasOwn(parsed, key));
+  if (doomed.length === 0) return changed;
+
+  let next = content;
+  for (const key of doomed) next = removeEnvKey(next, key);
+  if (next === content) return changed;
+  writeFileAtomic(envPath, next, 0o600);
+  logger.warn(
+    'image tags now come from the compose files this release ships; cleared the stored version rows. Re-pin from Admin > Updates if you were deliberately holding a version.',
+    { cleared: Object.fromEntries(doomed.map((key) => [key, parsed[key] ?? ''])) },
+  );
+  return true;
+}
+
+/**
  * Migrations that bring a home up FROM the version in `since`.
  *
  * Array order is the run order and is independent of `since`. The first two
@@ -539,6 +628,12 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean | Promise<b
   // in the table because it depends on nothing above it and nothing below it
   // depends on it.
   { since: 12, run: migrateShadowingOpencodeUserConfig },
+  // #679: image tags move into the compose files. `since: 13` — the old
+  // HOME_SCHEMA_VERSION — because every home stamped anywhere from 0 to 13
+  // still carries the rows this deletes, and 13 is the smallest `since` that
+  // covers that whole range. Last in the table: nothing above it writes a
+  // version row any more, and nothing below it depends on one.
+  { since: 13, run: migrateImageVersionsToComposeDefaults },
 ];
 
 /**

@@ -8,9 +8,9 @@ import {
   detectCliVersionSkew,
   isComparableSemver,
   isRollbackRecoveryFailure,
-  readPinnedImages,
-  readVersions,
-  SERVICE_VERSION_KEYS,
+  buildComposeOptions,
+  probeRunningImages,
+  readVersionPins,
   versionKeyToService,
   type ControlPlaneState,
 } from '@openpalm/lib';
@@ -280,22 +280,43 @@ export async function runUpgradeAction(
   // running `openpalm`/`openpalm admin` supervisor materializes it into
   // data/ui on its next spawn. Updating the CLI itself means replacing the
   // binary (see the install docs), not downloading a separate UI release.
-  // #679: say what is now running, and say which images this update left
-  // alone. "Update complete." with no versions is how an update that advanced
-  // NOTHING passed for a successful one on a live stack, release after release.
-  const deployed = readVersions(state);
-  const pinned = readPinnedImages(state);
-  console.log(
-    `Images: ${SERVICE_VERSION_KEYS.map(
-      (key) => `${versionKeyToService(key)} ${deployed[key]}${pinned.has(key) ? ' (pinned)' : ''}`,
-    ).join(', ')}`,
-  );
-  if (pinned.size > 0) {
-    console.log(
-      `Pinned images are not updated. Clear the pin in Admin > Updates, or remove it from OP_PINNED_IMAGES in state/stack.env.`,
-    );
-  }
+  await reportDeployedImages(state);
   console.log(stillOlderCli ? 'Update complete. To update the CLI itself, install a newer openpalm binary.' : 'Update complete.');
+}
+
+/**
+ * Say which images are running, read from the daemon (#679).
+ *
+ * An update that advanced nothing used to be indistinguishable from one that
+ * worked: the only output was "Update complete." A live instance sat frozen on
+ * 0.13.1 for months behind that line. This reports the containers themselves —
+ * not the value the code just wrote — and says so loudly when it cannot.
+ */
+async function reportDeployedImages(state: ControlPlaneState): Promise<void> {
+  const pins = readVersionPins(state);
+  const probe = await probeRunningImages(buildComposeOptions(state));
+  if (!probe.ok) {
+    console.warn(`Warning: could not read the running images to confirm what was deployed (${probe.error}). Run \`openpalm status\` to check.`);
+    return;
+  }
+  const services = Object.keys(probe.images).sort();
+  if (services.length === 0) {
+    console.warn('Warning: no containers are running after the update. Run `openpalm status`.');
+    return;
+  }
+  const pinnedServices = new Set(
+    (Object.keys(pins) as (keyof typeof pins)[]).map((key) => versionKeyToService(key)),
+  );
+  console.log('Running images:');
+  for (const service of services) {
+    // A portal container's service name is the adapter (discord/slack); the pin
+    // that governs it is the portal image's.
+    const pinned = pinnedServices.has(service) || (probe.images[service]?.includes('/portal:') && pinnedServices.has('portal'));
+    console.log(`  ${service}  ${probe.images[service]}${pinned ? '  (pinned in state/stack.env)' : ''}`);
+  }
+  if (pinnedServices.size > 0) {
+    console.log('Pinned images are not moved by updates. Clear the tag in Admin > Updates, or delete the row from state/stack.env, to follow releases again.');
+  }
 }
 
 export function resolveUpgradeState(): ControlPlaneState {

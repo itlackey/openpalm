@@ -56,6 +56,42 @@ export function compareSemver(a, b) {
   return 0;
 }
 
+/**
+ * Stamp `version` into a compose file's image-tag defaults (in place).
+ *
+ * The tag an OpenPalm release deploys IS the `:-` default inside the compose
+ * file that release ships (#679) — `system/stack/` is overwritten from the
+ * packaged skeleton on every update, so delivering the compose topology and
+ * delivering the tag are the same copy. There is no separate "advance the
+ * image versions" step left to silently skip.
+ *
+ * OP_VOICE_VERSION is deliberately NOT matched: voice tags are
+ * accelerator-variant suffixed and ship on their own cadence, so no release
+ * may ever stamp a platform version into that position.
+ *
+ * Throws when nothing matched, so an unstamped release fails the run instead
+ * of shipping compose files pointing at the previous version.
+ */
+export function setComposeImageTags(file, version) {
+  if (!parseSemver(version)) {
+    throw new Error(`version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${version}'`);
+  }
+  const before = readFileSync(file, 'utf-8');
+  let count = 0;
+  const after = before.replace(
+    /\$\{(OP_(?:ASSISTANT|GUARDIAN|PORTAL)_VERSION):-[^}]*\}/g,
+    (_match, key) => {
+      count += 1;
+      return `\${${key}:-${version}}`;
+    },
+  );
+  if (count === 0) {
+    throw new Error(`No image-tag defaults found to stamp in ${file}`);
+  }
+  writeFileSync(file, after);
+  return count;
+}
+
 /** Stamp `version` into a package.json file (in place). Returns the new version. */
 export function setVersion(file, version) {
   if (!parseSemver(version)) {

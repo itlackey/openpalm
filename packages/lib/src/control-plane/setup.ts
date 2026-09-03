@@ -14,8 +14,7 @@ import { enableHostAkmSharing, disableHostAkmSharing } from './host-akm-sharing.
 import { addHostStashToOpenpalmConfig } from './akm-sources.js';
 import { PROVIDER_KEY_MAP } from '../provider-constants.js';
 import { buildAkmEndpoint } from './akm-endpoints.js';
-import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS, writeVersions } from './versions.js';
-import { PLATFORM_VERSION } from './versioning.js';
+import { SERVICE_VERSION_KEYS, writeVersions } from './versions.js';
 import { ensureHomeDirs } from './home.js';
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
 import {
@@ -588,27 +587,24 @@ export async function performSetup(
 		// single try/catch so that a disk-full or permission-denied mid-way returns a
 		// clean error rather than leaving a broken half-installed ~/.openpalm/.
 		try {
-			// Image tags, reconciled on every setup run. A non-empty Advanced
-			// image-tag field sets the platform images to that exact tag, kept
-			// verbatim ("latest" included); a blank one uses this release's tag.
-			// Either way it is just a value in state/stack.env, which the next
-			// `openpalm update` overwrites with the release it deploys (#679).
+			// Image tags. Setup writes a row ONLY when the operator supplied an
+			// explicit tag (`openpalm install --version X`, or the wizard's
+			// Advanced field) — that row is a pin, and it is the only thing that
+			// makes one. A blank field writes nothing at all, so the stack
+			// follows the tags this release baked into its compose files (#679).
 			//
-			// Voice is excluded from the platform tag: its images are
-			// accelerator-variant suffixed (`latest-cpu`, `v1.4.0-cu121`) and ship
-			// on their own cadence, so a bare PLATFORM_VERSION would resolve to an
-			// image that was never published. It tracks `latest` unless the
-			// operator has set something else, which a rerun must not stomp.
-			const existingVoiceVersion = readStackEnv(state.homeDir).OP_VOICE_VERSION?.trim();
+			// The old code wrote all four rows unconditionally. Combined with the
+			// wizard prefilling the field with PLATFORM_VERSION, that pinned every
+			// GUI install to its install version, invisibly, forever.
 			const trimmedTag = imageTag?.trim();
-			const updates: Record<string, string> = {
-				OP_VOICE_VERSION: existingVoiceVersion || VERSION_DEFAULTS.OP_VOICE_VERSION
-			};
-			for (const key of SERVICE_VERSION_KEYS) {
-				if (key === 'OP_VOICE_VERSION') continue;
-				updates[key] = trimmedTag || PLATFORM_VERSION;
+			if (trimmedTag) {
+				writeVersions(
+					state,
+					Object.fromEntries(
+						SERVICE_VERSION_KEYS.filter((key) => key !== 'OP_VOICE_VERSION').map((key) => [key, trimmedTag])
+					)
+				);
 			}
-			writeVersions(state, updates);
 
 			// NOTE: host-akm sharing no longer repoints the container's primary stash
 			// (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is

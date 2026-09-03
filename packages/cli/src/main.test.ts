@@ -319,7 +319,7 @@ describe('cli main', () => {
 		}
 	});
 
-	it('platform image versions default to the exact host release', async () => {
+	it('a plain install pins nothing: images follow the tags the release ships', async () => {
 		// Mock the GitHub redirect to fail so the install ref falls back to the
 		// packaged platform version.
 		globalThis.fetch = mock(async () => {
@@ -339,12 +339,16 @@ describe('cli main', () => {
 
 		try {
 			await main(['install', '--no-start', '--file', specFile]);
-			// state/stack.env is the sole pin location.
+			// #679: a row in state/stack.env is a PIN, so an install that was not
+			// asked to pin writes none. The tag each image runs is the `:-` default
+			// in the compose files this release ships, which the next update
+			// replaces wholesale — there is no stored value that can outrank it and
+			// no "advance the versions" step that can be skipped.
 			const stateEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
-			expect(stateEnv).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${PLATFORM_VERSION}$`, 'm'));
-			expect(stateEnv).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${PLATFORM_VERSION}$`, 'm'));
-			expect(stateEnv).toMatch(new RegExp(`^OP_PORTAL_VERSION=${PLATFORM_VERSION}$`, 'm'));
-			expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
+			expect(stateEnv).not.toMatch(/^OP_ASSISTANT_VERSION=/m);
+			expect(stateEnv).not.toMatch(/^OP_GUARDIAN_VERSION=/m);
+			expect(stateEnv).not.toMatch(/^OP_PORTAL_VERSION=/m);
+			expect(stateEnv).not.toMatch(/^OP_VOICE_VERSION=/m);
 			// Typing `openpalm install` answers "does this machine host a stack".
 			// Recorded during file preparation, not after a successful deploy, so
 			// an interrupted install still explains why its artifacts are there —
@@ -377,7 +381,10 @@ describe('cli main', () => {
 			expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
 			expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
 			expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
-			expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
+			// Voice ships on its own cadence with variant-suffixed tags, so a
+			// platform pin must not reach it — and with no row it simply follows
+			// the compose default.
+			expect(stateEnv).not.toMatch(/^OP_VOICE_VERSION=v0\.11\.0$/m);
 		} finally {
 			rmSync(base, { recursive: true, force: true });
 		}

@@ -897,6 +897,43 @@ export async function composePs(
 }
 
 /**
+ * The image ref each service is ACTUALLY running, straight from the daemon.
+ *
+ * #679's floor: an update that deployed nothing looked exactly like one that
+ * worked, because the only thing reported was the value the code had just
+ * written. This reads the containers instead. `ok: false` when the daemon
+ * could not be asked at all, which callers must report rather than swallow —
+ * a check that silently degrades to "fine" is the failure it is meant to catch.
+ */
+export async function probeRunningImages(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] },
+): Promise<{ ok: true; images: Record<string, string> } | { ok: false; error: string }> {
+  const args = buildComposeArgs(options);
+  args.push("ps", "-a", "--format", "json");
+  const result = await run(args, undefined);
+  if (!result.ok) {
+    return { ok: false, error: dockerFailureText(result).trim() || "docker compose ps failed" };
+  }
+  const images: Record<string, string> = {};
+  for (const line of result.stdout.trim().split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      for (const entry of Array.isArray(parsed) ? parsed : [parsed]) {
+        const obj = entry as Record<string, unknown>;
+        const service = String(obj.Service ?? "");
+        const image = String(obj.Image ?? "");
+        if (service && image) images[service] = image;
+      }
+    } catch {
+      // Ignore an unparsable row; a missing service shows as absent, not as ok.
+    }
+  }
+  return { ok: true, images };
+}
+
+/**
  * One row of `compose ps --format json` output, reduced to what callers need.
  * `id` is the container ID — empty string when the JSON carried no `ID` field
  * (older Compose). Used to tell a freshly (re)created container apart from a

@@ -3,8 +3,7 @@ import { json } from '@sveltejs/kit';
 import {
 	detectHostOpenCode,
 	createLogger,
-	hostAkmStashPath,
-	PLATFORM_VERSION
+	hostAkmStashPath
 } from '@openpalm/lib';
 import type { RequestHandler } from './$types';
 
@@ -21,7 +20,6 @@ export const GET: RequestHandler = () => {
 			providerCount: status.providerCount,
 			credentialCount: status.credentialCount,
 			modelPreferences: status.modelPreferences,
-			imageTag: PLATFORM_VERSION,
 			hostAkmAvailable
 		});
 	} catch (err) {
@@ -32,7 +30,6 @@ export const GET: RequestHandler = () => {
 			detected: false,
 			providerCount: 0,
 			credentialCount: 0,
-			imageTag: PLATFORM_VERSION,
 			hostAkmAvailable: false,
 			warning: `Could not detect host OpenCode state: ${message}`
 		});
