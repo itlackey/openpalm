@@ -5,6 +5,92 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-09-03
+
+### Fixed
+
+- **#679 `openpalm update` reported "Update complete." while deploying
+  nothing, and would have done so on every future release.** A live
+  instance upgraded 0.13.1 -> 0.13.3: the home migrated, all three
+  containers were recreated, and the images never moved. Four
+  `OP_*_VERSION` keys carried four `OP_MANAGED_*_VERSION` shadow keys, and
+  the *relationship between the pair* encoded whether an update was allowed
+  to advance that image — equal meant release-managed, blank meant operator
+  pin, and present-but-different meant a state nobody writes deliberately,
+  which was silently skipped forever. That instance was in the third state,
+  and no operator had pinned anything.
+
+  The rule is now: **an image runs the tag the release baked into its own
+  `system/stack/*.compose.yml` as a Compose `:-` default, unless
+  `state/stack.env` carries a row for it — in which case the row wins.**
+  Presence of the row IS the pin; absence means "follow the release".
+  Nothing records which one a value is, because the app never writes a
+  version row, so a row can only have come from a human. `system/stack/` is
+  already overwritten from the packaged skeleton on every update, so
+  shipping the compose topology and shipping the tag are the same copy —
+  there is no "advance the image versions" step left that can be skipped.
+
+  Deleted: the four marker keys (now swept from `stack.env`),
+  `advanceManagedImageVersions` and its legacy heuristic,
+  `writeManagedVersions`, and setup's pinned/managed split. Added: the
+  release stamp (the compose defaults and `PLATFORM_VERSION` are written
+  from one `VERSION` in one run, with a CI guardrail that they agree), the
+  **unpin**, which did not exist from any surface, and an `openpalm update`
+  that closes by naming the images that are actually RUNNING, read from the
+  daemon.
+
+- **Every GUI install was silently pinned at its install version.** The
+  setup wizard prefilled its image-tag field with `PLATFORM_VERSION` and
+  nothing in the UI was ever bound to that field, while setup wrote all four
+  version rows unconditionally. Setup now writes a row only for an
+  explicitly supplied tag. This likely produced more "my upgrade did
+  nothing" reports than #679 itself.
+
+- **#639 rollback no longer mints synthetic `rollback-generation-*` tags.**
+  Recovery pins the real tags that were running: re-pullable, recognisable,
+  no string-sniffing in three other call sites, no orphan local tags, and
+  voice included — the old self-clearing skipped voice unconditionally, so
+  nothing ever cleared it. The trade, stated plainly: the operator clears
+  that pin, and `openpalm update` names it on every run until they do.
+
+- **#628 the app and `docker compose` read the same env file differently.**
+  `state/stack.env` had three legal value spellings, and the third —
+  double-quoted with backslash escapes — was not merely awkward for a
+  non-JS reader: written for a Windows path, the app read `C:\\Users\\op\\`
+  back while Compose read `C:\Users\op\`. Same bytes, two values, no error
+  from either. Separately, `mergeEnvContent` rewrote the FIRST occurrence of
+  a duplicated key while dotenv, Compose and `bash source` all take the
+  LAST, so an app write to such a file was silently read back as the stale
+  value. Compose-read files now have two shapes (bare, or single-quoted),
+  last-occurrence-wins, and a refusal naming the key for values neither
+  shape can hold — Compose fails `--env-file` whole-file, so a silent bad
+  value takes the home down. `user.env`, which Compose never reads, keeps
+  the richer grammar.
+
+### Changed
+
+- **#678 the manual acceptance lane is automated where it was never
+  actually manual.** Two of its five items closed by deletion: one was
+  already covered by existing tests, and the install phase sequence needs no
+  stack at all, so it now runs on every CI run rather than in a tier-5 lane
+  that has to be invoked — a gate that never runs is not a gate. The port
+  conflict check split: the DOM gating (Continue disabled, and the recovery
+  half nobody had verified) is a component test; the probe stays a stack
+  test. OAuth consent, the Tailscale second-device pass, and the desktop
+  artifacts remain a human release smoke.
+
+- `akm-cli` 0.9.9 -> 0.9.10 (`akm task history <id>` now filters to that
+  task instead of silently ignoring the positional id, which made healthy
+  scheduled tasks read as `never_run`). Cleared all nine steps of the akm
+  bump gate, including a real stack boot with the RUNNING `akm --version`
+  confirmed before any downstream result was read.
+
+- The upgrade-path smoke — the only lane that tests homes this build did not
+  create — now asserts the new contract on real prior installs: no version
+  rows survive, no stale markers, the live compose files carry the release
+  default, and `docker compose` itself resolves the release tag. Verified on
+  published 0.12.43 and 0.13.0-beta.13 homes.
+
 ## [0.13.3] - 2026-09-02
 
 ### Fixed
