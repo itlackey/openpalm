@@ -392,6 +392,10 @@ export {
 export {
   RETIRED_STACK_ENV_KEYS,
   SERVICE_VERSION_KEYS,
+  PINNED_IMAGES_KEY,
+  readPinnedImages,
+  writePinnedImages,
+  versionKeyToService,
   VERSION_DEFAULTS,
   assertHomeNotNewerThanApp,
   detectCliVersionSkew,

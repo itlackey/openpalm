@@ -126,6 +126,18 @@
 
 	const busy = $derived(operation !== null);
 
+	// #679: an image is pinned or it isn't, and the operator can see which.
+	// Before, typing ANY tag here silently pinned all four images forever —
+	// the pin was inferred from a shadow key, so nothing could show it.
+	let pinned = $state(new Set<VersionKey>());
+
+	function togglePin(key: VersionKey, on: boolean): void {
+		const next = new Set(pinned);
+		if (on) next.add(key);
+		else next.delete(key);
+		pinned = next;
+	}
+
 	onMount(() => {
 		inElectron = typeof window.openpalm !== 'undefined';
 		void loadUpdaterState();
@@ -142,6 +154,7 @@
 		try {
 			const data = await fetchVersions();
 			configured = { ...data.configured };
+			pinned = new Set(data.pinned ?? []);
 		} catch (error) {
 			loadError = `Failed to load versions: ${error instanceof Error ? error.message : String(error)}`;
 		} finally {
@@ -201,9 +214,15 @@
 		operation = { kind: 'configuration' };
 		notice = null;
 		try {
-			await patchVersions(versions);
+			await patchVersions(versions, [...pinned]);
 			configured = versions;
-			notice = { tone: 'success', text: 'Configured image tags saved.' };
+			notice = {
+				tone: 'success',
+				text:
+					pinned.size > 0
+						? 'Configured image tags saved. Pinned images will not be changed by updates.'
+						: 'Configured image tags saved.'
+			};
 		} catch (error) {
 			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
 		} finally {
@@ -338,6 +357,16 @@
 										bind:value={configured[field.key]}
 										aria-label={field.key}
 									/>
+									<span class="pin-toggle">
+										<input
+											type="checkbox"
+											checked={pinned.has(field.key)}
+											onchange={(event) =>
+												togglePin(field.key, (event.currentTarget as HTMLInputElement).checked)}
+											aria-label={`Pin ${field.label}`}
+										/>
+										<span>Pin — updates leave this image alone</span>
+									</span>
 								</label>
 							{/each}
 						</div>
@@ -537,6 +566,20 @@
 	}
 
 	.section-heading,
+	.pin-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--s-sp-2);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+	}
+
+	.pin-toggle input {
+		width: auto;
+		min-height: 0;
+	}
+
 	.version-field code {
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark);

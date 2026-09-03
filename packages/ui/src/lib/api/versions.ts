@@ -17,6 +17,8 @@ export function applyChanges(): Promise<void> {
 
 export type VersionsResponse = {
 	configured: Record<VersionKey, string>;
+	/** Images `openpalm update` leaves alone — read from OP_PINNED_IMAGES (#679). */
+	pinned: VersionKey[];
 };
 
 export async function fetchVersions(): Promise<VersionsResponse> {
@@ -24,10 +26,15 @@ export async function fetchVersions(): Promise<VersionsResponse> {
 	return (await response.json()) as VersionsResponse;
 }
 
-export async function patchVersions(versions: Partial<Record<VersionKey, string>>): Promise<void> {
+/** `pinned`, when given, is the COMPLETE pin list — omitting a key unpins it. */
+export async function patchVersions(
+	versions: Partial<Record<VersionKey, string>>,
+	pinned?: VersionKey[]
+): Promise<void> {
 	await requireOk(
 		await request('PATCH', '/api/host/versions', {
-			...(Object.keys(versions).length > 0 ? { versions } : {})
+			...(Object.keys(versions).length > 0 ? { versions } : {}),
+			...(pinned ? { pinned } : {})
 		})
 	);
 }

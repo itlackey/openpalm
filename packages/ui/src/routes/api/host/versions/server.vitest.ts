@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
@@ -41,7 +41,7 @@ describe('GET /api/host/versions', () => {
 		).toBe(401);
 	});
 
-	test('returns only configured image tags', async () => {
+	test('returns the configured image tags and the pin list', async () => {
 		const response = await GET(event('GET') as Parameters<typeof GET>[0]);
 
 		expect(response.status).toBe(200);
@@ -51,8 +51,22 @@ describe('GET /api/host/versions', () => {
 				OP_GUARDIAN_VERSION: PLATFORM_VERSION,
 				OP_PORTAL_VERSION: PLATFORM_VERSION,
 				OP_VOICE_VERSION: 'latest'
-			}
+			},
+			pinned: []
 		});
+	});
+
+	// #679: the pin is one explicit bit per image, so the UI can show it —
+	// the marker protocol it replaces could not be displayed at all.
+	test('reports a pinned image', async () => {
+		const state = getState();
+		const stackEnv = join(state.homeDir, 'state', 'stack.env');
+		mkdirSync(join(state.homeDir, 'state'), { recursive: true });
+		appendFileSync(stackEnv, '\nOP_PINNED_IMAGES=assistant\n');
+
+		const response = await GET(event('GET') as Parameters<typeof GET>[0]);
+
+		expect((await response.json()).pinned).toEqual(['OP_ASSISTANT_VERSION']);
 	});
 });
 
@@ -83,10 +97,8 @@ describe('PATCH /api/host/versions', () => {
 		// The untouched services keep the seeded default rather than disappearing:
 		// the compose files reference every version as ${OP_*_VERSION:?}, so a
 		// stack.env missing one fails `compose up` outright. What matters is that
-		// PATCH did not CHANGE them, and that each still carries its
-		// OP_MANAGED_<SERVICE>_VERSION marker — the pair is what marks a value as
-		// a release-managed default rather than an operator's explicit pin, and
-		// only marked values are advanced by a later update.
+		// PATCH did not CHANGE them, and that no OP_MANAGED_* shadow row comes
+		// back — a pin is recorded in OP_PINNED_IMAGES now (#679).
 		const parsed = Object.fromEntries(
 			content
 				.split('\n')

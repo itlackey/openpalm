@@ -19,7 +19,8 @@ const versionsResponse = {
 		OP_GUARDIAN_VERSION: 'latest',
 		OP_PORTAL_VERSION: 'latest',
 		OP_VOICE_VERSION: '0.13.0'
-	}
+	},
+	pinned: []
 };
 
 function service(service: string, state: string, image: string, health: string): ServiceEntry {
@@ -113,14 +114,51 @@ describe('UpdatesTab', () => {
 		await page.getByRole('button', { name: 'Save advanced settings' }).click();
 
 		await vi.waitFor(() => {
-			expect(patchVersions).toHaveBeenCalledWith({
-				OP_ASSISTANT_VERSION: '100.0.0',
-				OP_GUARDIAN_VERSION: 'latest',
-				OP_PORTAL_VERSION: 'latest',
-				OP_VOICE_VERSION: '0.13.0'
-			});
+			expect(patchVersions).toHaveBeenCalledWith(
+				{
+					OP_ASSISTANT_VERSION: '100.0.0',
+					OP_GUARDIAN_VERSION: 'latest',
+					OP_PORTAL_VERSION: 'latest',
+					OP_VOICE_VERSION: '0.13.0'
+				},
+				[]
+			);
 		});
 		expect(applyServiceUpdate).not.toHaveBeenCalled();
+	});
+
+	// #679: typing a tag here used to pin all four images forever, via a shadow
+	// key nothing displayed. The pin is now a checkbox, and saving sends the
+	// complete list — so unchecking one genuinely unpins it.
+	test('pinning an image is an explicit checkbox, sent as the complete pin list', async () => {
+		renderUpdates();
+
+		await page.getByText('Advanced image tags').click();
+		await page.getByRole('checkbox', { name: 'Pin Assistant image' }).click();
+		await page.getByRole('button', { name: 'Save advanced settings' }).click();
+
+		await vi.waitFor(() => {
+			expect(patchVersions).toHaveBeenCalledWith(expect.anything(), ['OP_ASSISTANT_VERSION']);
+		});
+	});
+
+	test('an existing pin is shown as checked, and unchecking it unpins', async () => {
+		vi.mocked(fetchVersions).mockResolvedValue({
+			...versionsResponse,
+			pinned: ['OP_ASSISTANT_VERSION']
+		});
+		renderUpdates();
+
+		await page.getByText('Advanced image tags').click();
+		const pin = page.getByRole('checkbox', { name: 'Pin Assistant image' });
+		await expect.element(pin).toBeChecked();
+
+		await pin.click();
+		await page.getByRole('button', { name: 'Save advanced settings' }).click();
+
+		await vi.waitFor(() => {
+			expect(patchVersions).toHaveBeenCalledWith(expect.anything(), []);
+		});
 	});
 
 	test('unsubscribes the desktop updater state listener on unmount (E5)', async () => {

@@ -8,8 +8,10 @@ import {
   detectCliVersionSkew,
   isComparableSemver,
   isRollbackRecoveryFailure,
+  readPinnedImages,
   readVersions,
   SERVICE_VERSION_KEYS,
+  versionKeyToService,
   type ControlPlaneState,
 } from '@openpalm/lib';
 import cliPkg from '../../package.json' with { type: 'json' };
@@ -278,13 +280,21 @@ export async function runUpgradeAction(
   // running `openpalm`/`openpalm admin` supervisor materializes it into
   // data/ui on its next spawn. Updating the CLI itself means replacing the
   // binary (see the install docs), not downloading a separate UI release.
-  // #679: say what is now running. "Update complete." with no versions is how
-  // an update that silently advanced NOTHING passed for a successful one on a
-  // live stack, release after release.
+  // #679: say what is now running, and say which images this update left
+  // alone. "Update complete." with no versions is how an update that advanced
+  // NOTHING passed for a successful one on a live stack, release after release.
   const deployed = readVersions(state);
+  const pinned = readPinnedImages(state);
   console.log(
-    `Images: ${SERVICE_VERSION_KEYS.map((key) => `${key.slice('OP_'.length).replace('_VERSION', '').toLowerCase()} ${deployed[key]}`).join(', ')}`,
+    `Images: ${SERVICE_VERSION_KEYS.map(
+      (key) => `${versionKeyToService(key)} ${deployed[key]}${pinned.has(key) ? ' (pinned)' : ''}`,
+    ).join(', ')}`,
   );
+  if (pinned.size > 0) {
+    console.log(
+      `Pinned images are not updated. Clear the pin in Admin > Updates, or remove it from OP_PINNED_IMAGES in state/stack.env.`,
+    );
+  }
   console.log(stillOlderCli ? 'Update complete. To update the CLI itself, install a newer openpalm binary.' : 'Update complete.');
 }
 

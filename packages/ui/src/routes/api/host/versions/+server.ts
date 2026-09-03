@@ -1,4 +1,11 @@
-import { readVersions, SERVICE_VERSION_KEYS, writeVersions } from '@openpalm/lib';
+import {
+	readPinnedImages,
+	readVersions,
+	SERVICE_VERSION_KEYS,
+	writePinnedImages,
+	writeVersions,
+	type VersionKey
+} from '@openpalm/lib';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
 	errorResponse,
@@ -29,7 +36,10 @@ export const GET: RequestHandler = async (event) => {
 	return jsonResponse(
 		200,
 		{
-			configured: readVersions(state)
+			configured: readVersions(state),
+			// #679: which images `openpalm update` will leave alone. One bit per
+			// image, read straight from OP_PINNED_IMAGES — not inferred.
+			pinned: [...readPinnedImages(state)]
 		},
 		requestId
 	);
@@ -45,7 +55,7 @@ export const PATCH: RequestHandler = async (event) => {
 	const parsedBody = await parseJsonBody(event.request);
 	if ('error' in parsedBody) return jsonBodyError(parsedBody, requestId);
 
-	const unknownKey = Object.keys(parsedBody.data).find((key) => key !== 'versions');
+	const unknownKey = Object.keys(parsedBody.data).find((key) => key !== 'versions' && key !== 'pinned');
 	if (unknownKey) {
 		return errorResponse(
 			400,
@@ -85,14 +95,32 @@ export const PATCH: RequestHandler = async (event) => {
 		}
 	}
 
-	if (Object.keys(versions).length === 0) {
+	// `pinned` is the complete pin list, not a delta: omitting a key unpins it,
+	// which is what makes the checkbox state and the stored state the same thing.
+	let pinned: VersionKey[] | null = null;
+	if (parsedBody.data.pinned !== undefined) {
+		const value = parsedBody.data.pinned;
+		if (!Array.isArray(value) || value.some((key) => !VERSION_KEYS.has(key as string))) {
+			return errorResponse(
+				400,
+				'invalid_pinned',
+				'pinned must be an array of version keys',
+				{},
+				requestId
+			);
+		}
+		pinned = value as VersionKey[];
+	}
+
+	if (Object.keys(versions).length === 0 && pinned === null) {
 		return errorResponse(400, 'invalid_body', 'Provide versions', {}, requestId);
 	}
 
 	const state = getState();
 	return withAdminUpdateLock(state, requestId, () => {
 		try {
-			writeVersions(state, versions);
+			if (Object.keys(versions).length > 0) writeVersions(state, versions);
+			if (pinned !== null) writePinnedImages(state, pinned);
 			return jsonResponse(200, { ok: true }, requestId);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

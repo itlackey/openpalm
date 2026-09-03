@@ -47,6 +47,47 @@ export function isVersionKey(key: string): key is VersionKey {
 }
 
 /**
+ * Images the operator has pinned: `OP_PINNED_IMAGES=assistant,guardian`.
+ * `openpalm update` deploys the release to every image EXCEPT these.
+ *
+ * This replaces the OP_MANAGED_*_VERSION markers (#679), which stored the same
+ * one bit per image as a RELATIONSHIP between two version strings — equal meant
+ * managed, blank meant pinned, and unequal meant nothing anyone wrote on
+ * purpose, which silently froze a live stack on 0.13.1 while every `openpalm
+ * update` reported success. A pin is one bit, so it is stored as one bit, in
+ * one key, naming the images it applies to. There is no state it can be in that
+ * does not read as exactly what it means.
+ */
+export const PINNED_IMAGES_KEY = 'OP_PINNED_IMAGES';
+
+/** `OP_ASSISTANT_VERSION` <-> `assistant`. The list names services, not env keys. */
+export function versionKeyToService(key: VersionKey): string {
+	return key.slice('OP_'.length).replace('_VERSION', '').toLowerCase();
+}
+
+function serviceToVersionKey(service: string): VersionKey | null {
+	const key = `OP_${service.trim().toUpperCase()}_VERSION`;
+	return isVersionKey(key) ? key : null;
+}
+
+/** Parse OP_PINNED_IMAGES. Unknown names are ignored, not fatal. */
+export function readPinnedImages(state: ControlPlaneState): Set<VersionKey> {
+	const raw = parseEnvFile(stackEnvFile(state.homeDir))[PINNED_IMAGES_KEY] ?? '';
+	const pinned = new Set<VersionKey>();
+	for (const name of raw.split(',')) {
+		const key = serviceToVersionKey(name);
+		if (key) pinned.add(key);
+	}
+	return pinned;
+}
+
+/** Replace the pin list wholesale — the operator's checkbox state IS the list. */
+export function writePinnedImages(state: ControlPlaneState, keys: Iterable<VersionKey>): void {
+	const services = SERVICE_VERSION_KEYS.filter((key) => new Set(keys).has(key)).map(versionKeyToService);
+	writeVersionState(state, { [PINNED_IMAGES_KEY]: services.join(',') });
+}
+
+/**
  * Tool-version keys retired when tool management moved to a per-container
  * `package.json` + `bun update` (b9478492, 2026-06-22).
  *
@@ -220,7 +261,36 @@ export function ensureVersionDefaults(state: ControlPlaneState): void {
 		if (current[key] === undefined) missing[key] = VERSION_DEFAULTS[key];
 	}
 	writeVersionState(state, missing);
+	migrateManagedMarkersToPinList(state);
 	stripRetiredStackEnvKeys(state);
+}
+
+/**
+ * One-shot: carry pins recorded in the retired OP_MANAGED_*_VERSION markers
+ * over to {@link PINNED_IMAGES_KEY}, so an operator's existing pin survives the
+ * markers being deleted (#679).
+ *
+ * The old encoding, read once and then thrown away:
+ *   marker BLANK          -> writeVersions wrote it: a deliberate operator pin.
+ *   marker EQUAL to value -> release-managed.
+ *   marker DIFFERENT      -> nobody wrote this on purpose. It is the drift that
+ *                            silently froze image updates while reporting
+ *                            success, so it is NOT carried over as a pin.
+ *
+ * Skipped entirely once OP_PINNED_IMAGES exists, so it can never re-derive pins
+ * from stale rows and undo a later unpin.
+ */
+function migrateManagedMarkersToPinList(state: ControlPlaneState): void {
+	const path = stackEnvFile(state.homeDir);
+	if (!existsSync(path)) return;
+	const current = parseEnvFile(path);
+	if (current[PINNED_IMAGES_KEY] !== undefined) return;
+	const markers = SERVICE_VERSION_KEYS.map((key) => [key, `OP_MANAGED_${versionKeyToService(key).toUpperCase()}_VERSION`] as const);
+	if (!markers.some(([, marker]) => current[marker] !== undefined)) return;
+	const pinned = markers
+		.filter(([key, marker]) => current[marker]?.trim() === '' && (current[key]?.trim() ?? '') !== '')
+		.map(([key]) => key);
+	writePinnedImages(state, pinned);
 }
 
 /** Drop {@link RETIRED_STACK_ENV_KEYS} from `state/stack.env`. No-op once clean. */
@@ -242,39 +312,49 @@ export function stripRetiredStackEnvKeys(state: ControlPlaneState): boolean {
  * Set every platform image to the release this app IS. Called by the update
  * lifecycle; returns what it wrote so `openpalm update` can print it.
  *
- * There is no "is this a pin?" question to answer here anymore (#679). The tag
- * an update deploys is this release's tag — including over a `rollback-*` tag
- * from a previous failed upgrade, and including over a tag someone set by hand,
- * which is the honest meaning of "update": move to the current release. Anyone
- * who wants a different image edits the key afterwards, and it holds until the
- * next update.
+ * An unpinned image gets this release's tag — including over a `rollback-*`
+ * tag left by a previous failed upgrade, and over a stale tag a past release
+ * wrote. Pins are read from OP_PINNED_IMAGES and honoured, and every skipped
+ * image is reported back to the caller so the operator is told it was skipped
+ * (#679: silence is what made a frozen stack look like a successful upgrade).
  *
- * Two values are left alone, both because writing a release tag over them
- * would point compose at an image that does not exist:
+ * Three things are left alone, and `update` names every one of them in its
+ * output — a skipped image must never again be indistinguishable from an
+ * updated one (#679):
  *
+ * - An image the operator PINNED (`OP_PINNED_IMAGES`). That is the whole point
+ *   of a pin, and it is one explicit bit, not an inference.
  * - Voice. Its tags are accelerator-variant suffixed (`latest-cpu`,
  *   `v1.4.0-cu121`) and it ships on its own cadence, so no bare
  *   platform-version voice image is ever published.
  * - A `dev` tag. That is a local build no registry has; an update that
  *   repointed it at a published tag would silently replace the images a
  *   developer (and the smoke scripts) built and are running.
- *
- * Both are properties of the VALUE, checkable by looking at it. Neither needs
- * a second key recording what the first key is allowed to do.
  */
+export type DeployedImageVersions = {
+	/** Keys written to the release version. */
+	updated: Record<string, string>;
+	/** Keys left as they were, and why — for `update` to print. */
+	skipped: Array<{ key: VersionKey; version: string; reason: 'pinned' | 'voice' | 'dev' }>;
+};
+
 export function setPlatformImageVersions(
 	state: ControlPlaneState,
 	targetPlatformVersion = PLATFORM_VERSION
-): Record<string, string> {
-	const updates: Record<string, string> = {};
+): DeployedImageVersions {
 	const current = parseEnvFile(stackEnvFile(state.homeDir));
+	const pinned = readPinnedImages(state);
+	const updated: Record<string, string> = {};
+	const skipped: DeployedImageVersions['skipped'] = [];
 	for (const key of SERVICE_VERSION_KEYS) {
-		if (key === 'OP_VOICE_VERSION') continue;
-		if ((current[key]?.trim() ?? '').startsWith('dev')) continue;
-		updates[key] = targetPlatformVersion;
+		const version = current[key]?.trim() || VERSION_DEFAULTS[key];
+		if (pinned.has(key)) skipped.push({ key, version, reason: 'pinned' });
+		else if (key === 'OP_VOICE_VERSION') skipped.push({ key, version, reason: 'voice' });
+		else if (version.startsWith('dev')) skipped.push({ key, version, reason: 'dev' });
+		else updated[key] = targetPlatformVersion;
 	}
-	writeVersionState(state, updates);
-	return updates;
+	writeVersionState(state, updated);
+	return { updated, skipped };
 }
 
 /**

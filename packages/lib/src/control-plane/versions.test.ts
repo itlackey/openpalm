@@ -10,7 +10,9 @@ import {
 	readVersions,
 	ensureVersionDefaults,
 	setPlatformImageVersions,
-	stripRetiredStackEnvKeys
+	stripRetiredStackEnvKeys,
+	readPinnedImages,
+	writePinnedImages
 } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 import { PLATFORM_VERSION } from './versioning.js';
@@ -185,13 +187,100 @@ describe('version configuration', () => {
 		expect(versions.OP_GUARDIAN_VERSION).toBe('dev');
 	});
 
-	it('reports what it wrote, so update can print the versions it deployed', () => {
-		const written = setPlatformImageVersions(home.state, '0.13.1');
-		expect(written).toEqual({
+	it('reports what it wrote AND what it skipped, so update can print both', () => {
+		const result = setPlatformImageVersions(home.state, '0.13.1');
+		expect(result.updated).toEqual({
 			OP_ASSISTANT_VERSION: '0.13.1',
 			OP_GUARDIAN_VERSION: '0.13.1',
 			OP_PORTAL_VERSION: '0.13.1'
 		});
+		expect(result.skipped).toEqual([
+			{ key: 'OP_VOICE_VERSION', version: 'latest', reason: 'voice' }
+		]);
+	});
+
+	// The feature the marker protocol was there to provide, restored as one
+	// explicit bit: an operator pin holds across updates, and the update says
+	// out loud that it held.
+	it('honours an operator pin and reports it as skipped', () => {
+		writeFileSync(
+			join(home.state.homeDir, 'state', 'stack.env'),
+			[
+				'OP_ASSISTANT_VERSION=0.13.1',
+				'OP_GUARDIAN_VERSION=0.13.1',
+				'OP_PORTAL_VERSION=0.13.1',
+				'OP_PINNED_IMAGES=assistant',
+				''
+			].join('\n')
+		);
+
+		const result = setPlatformImageVersions(home.state, '0.13.3');
+
+		const versions = readVersions(home.state);
+		expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.1');
+		expect(versions.OP_GUARDIAN_VERSION).toBe('0.13.3');
+		expect(result.skipped).toContainEqual({
+			key: 'OP_ASSISTANT_VERSION',
+			version: '0.13.1',
+			reason: 'pinned'
+		});
+	});
+
+	it('unpinning lets the next update move the image again', () => {
+		writeFileSync(
+			join(home.state.homeDir, 'state', 'stack.env'),
+			'OP_ASSISTANT_VERSION=0.13.1\nOP_PINNED_IMAGES=assistant\n'
+		);
+		setPlatformImageVersions(home.state, '0.13.3');
+		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.13.1');
+
+		writePinnedImages(home.state, []);
+		setPlatformImageVersions(home.state, '0.13.3');
+
+		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.13.3');
+	});
+
+	// #679 migration: an operator pin recorded in the retired markers (blank
+	// marker) must survive their deletion. A DIVERGENT marker is the drift that
+	// froze updates while reporting success — it was never an operator's
+	// choice, so it must NOT come across as a pin.
+	it('carries a real marker pin into the pin list, and divergent drift not at all', () => {
+		writeFileSync(
+			join(home.state.homeDir, 'state', 'stack.env'),
+			[
+				'OP_ASSISTANT_VERSION=0.12.9',
+				'OP_MANAGED_ASSISTANT_VERSION=',
+				'OP_GUARDIAN_VERSION=0.13.1',
+				'OP_MANAGED_GUARDIAN_VERSION=0.13.0',
+				'OP_PORTAL_VERSION=0.13.1',
+				'OP_MANAGED_PORTAL_VERSION=0.13.1',
+				''
+			].join('\n')
+		);
+
+		ensureVersionDefaults(home.state);
+
+		expect(readPinnedImages(home.state)).toEqual(new Set(['OP_ASSISTANT_VERSION']));
+		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(content).not.toContain('OP_MANAGED_');
+		expect(content).toContain('OP_PINNED_IMAGES=assistant');
+
+		setPlatformImageVersions(home.state, '0.13.3');
+		const versions = readVersions(home.state);
+		expect(versions.OP_ASSISTANT_VERSION).toBe('0.12.9');
+		expect(versions.OP_GUARDIAN_VERSION).toBe('0.13.3');
+		expect(versions.OP_PORTAL_VERSION).toBe('0.13.3');
+	});
+
+	it('never re-derives pins once the pin list exists', () => {
+		writeFileSync(
+			join(home.state.homeDir, 'state', 'stack.env'),
+			'OP_ASSISTANT_VERSION=0.12.9\nOP_MANAGED_ASSISTANT_VERSION=\nOP_PINNED_IMAGES=\n'
+		);
+
+		ensureVersionDefaults(home.state);
+
+		expect(readPinnedImages(home.state).size).toBe(0);
 	});
 
 	// The compose services append `-cpu` / `-cu121` / `-rocm6` themselves, so
