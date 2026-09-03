@@ -302,6 +302,56 @@ for version in "${VERSIONS[@]}"; do
     fail "${version}: schema is ${actual_schema}, expected ${expected_schema}"
   fi
 
+  # #679: image tags come from the compose file the release ships, and a row
+  # in stack.env is an operator PIN. An upgraded home must therefore end with
+  # NO version rows — the ones past releases wrote are what silently outranked
+  # the release and froze a live instance on 0.13.1 while every `openpalm
+  # update` reported success. This is the only lane that tests homes this build
+  # did not create, so it is the only place that can prove the migration works
+  # on a real prior install.
+  if grep -qE '^OP_(ASSISTANT|GUARDIAN|PORTAL|VOICE)_VERSION=' "${home}/state/stack.env" 2>/dev/null; then
+    fail "${version}: version rows survived the upgrade: $(grep -E '^OP_[A-Z]+_VERSION=' "${home}/state/stack.env" | tr '\n' ' ')"
+  else
+    pass "${version}: no image-version rows left in stack.env (unpinned = follows the release)"
+  fi
+  if grep -q 'OP_MANAGED_' "${home}/state/stack.env" 2>/dev/null; then
+    fail "${version}: retired OP_MANAGED_* markers survived the upgrade"
+  else
+    pass "${version}: retired OP_MANAGED_* markers swept"
+  fi
+
+  # The other half of the same migration: the LIVE compose files must carry the
+  # `:-` default, or removing the rows above would leave `${OP_*_VERSION:?}`
+  # with nothing to resolve and every compose command on this home would die.
+  if grep -qE 'OP_ASSISTANT_VERSION:\?' "${home}/system/stack/core.compose.yml" 2>/dev/null; then
+    fail "${version}: core.compose.yml still requires OP_ASSISTANT_VERSION after upgrade"
+  else
+    pass "${version}: compose files carry the release default"
+  fi
+
+  # And the proof that matters, from the daemon rather than from our own files:
+  # what tag does `docker compose` actually resolve for this migrated home?
+  # `|| true` on BOTH the compose call and the grep: this runs under
+  # `set -euo pipefail`, so a compose failure or a grep that matches nothing
+  # would kill the whole smoke instead of failing this one assertion — which
+  # is exactly what it did the first time this check was added.
+  # OP_HOME comes from the environment for a real invocation too (the app
+  # exports it before shelling out), so supply it here rather than expecting
+  # the migrated stack.env to carry it.
+  compose_config="$(OP_HOME="${home}" docker compose \
+    -f "${home}/system/stack/core.compose.yml" \
+    --env-file "${home}/state/stack.env" \
+    config 2>&1 || true)"
+  resolved_image="$(printf '%s' "$compose_config" \
+    | grep -oE 'image: [^[:space:]]*/assistant:[^[:space:]]*' \
+    | head -1 | cut -d: -f3 || true)"
+  expected_tag="$(smoke_platform_version)"
+  if [ "$resolved_image" = "$expected_tag" ]; then
+    pass "${version}: compose resolves assistant to ${resolved_image} (this release)"
+  else
+    fail "${version}: compose resolves assistant to '${resolved_image}', expected ${expected_tag} (compose said: $(printf '%s' "$compose_config" | tail -3 | tr '\n' ' '))"
+  fi
+
   # The stack env must have MOVED to state/, carrying the operator's values.
   # Checking the value (not just the file) is what distinguishes a real
   # migration from a freshly-generated default.

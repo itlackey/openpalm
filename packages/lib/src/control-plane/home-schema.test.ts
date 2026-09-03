@@ -163,7 +163,7 @@ describe('an existing home migrates exactly once', () => {
     expect(existsSync(legacyStateEnvFile(homeDir))).toBe(false);
   });
 
-  test('a version in the knowledge file is dropped, because it recorded the last applied release rather than a pin', async () => {
+  test('every stored version row is dropped: the tag now comes from the compose file the release ships', async () => {
     mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(
@@ -176,10 +176,15 @@ describe('an existing home migrates exactly once', () => {
     await runHomeMigrations(homeDir);
 
     const merged = readFileSync(stackEnvFile(homeDir), 'utf-8');
-    // Promoting this would have frozen the install at its current image.
-    expect(merged).not.toContain('OP_ASSISTANT_VERSION=0.12.33');
-    // A real pin, recorded in the app-owned file, survives.
-    expect(merged).toContain('OP_GUARDIAN_VERSION=0.13.0');
+    // #679: the v13->v14 migration clears EVERY version row, without inspecting
+    // any value. Both of these were written by past releases, and no comparison
+    // available here can tell such a row from an operator's pin —
+    // `.skeleton-version`, PLATFORM_VERSION and the markers have each been
+    // tried, and each shipped a freeze (#471, #537, #639, #679). So the rows go,
+    // each cleared value is logged, and an operator with a real pin re-sets it
+    // once, visibly. A falsely PRESERVED pin is invisible, and that is #679.
+    expect(merged).not.toMatch(/^OP_ASSISTANT_VERSION=/m);
+    expect(merged).not.toMatch(/^OP_GUARDIAN_VERSION=/m);
   });
 
   test('a bootstrap stub at the target never overrides the operator real state', async () => {

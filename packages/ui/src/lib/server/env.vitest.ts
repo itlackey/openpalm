@@ -145,10 +145,11 @@ describe('mergeEnvContent', () => {
     expect(parsed.MSG).toBe('say "hello"');
   });
 
-  test('quotes values containing newlines via double quotes', () => {
-    const result = mergeEnvContent('', { CERT: 'line1\nline2' });
-    const parsed = parseEnvContent(result);
-    expect(parsed.CERT).toBe('line1\nline2');
+  // #628: mergeEnvContent writes files docker compose reads, and no shape of
+  // that grammar holds a line break. Refused at the write, naming the key,
+  // rather than written in a shape the readers disagree about.
+  test('refuses values containing newlines', () => {
+    expect(() => mergeEnvContent('', { CERT: 'line1\nline2' })).toThrow(/CERT/);
   });
 
   test('quotes values with leading/trailing spaces', () => {
@@ -182,10 +183,9 @@ describe('mergeEnvContent', () => {
     expect(result).toContain("KEY='val#ue'");
   });
 
-  test('falls back to double quotes when value contains single quotes', () => {
-    const result = mergeEnvContent('', { KEY: "it's#here" });
-    expect(result).toContain('KEY="it\'s#here"');
-    const parsed = parseEnvContent(result);
-    expect(parsed.KEY).toBe("it's#here");
+  // The double-quoted shape this used to fall back to is exactly the one
+  // dotenv and docker compose read differently (#628), so it no longer exists.
+  test('refuses a value containing a single quote', () => {
+    expect(() => mergeEnvContent('', { KEY: "it's#here" })).toThrow(/KEY/);
   });
 });

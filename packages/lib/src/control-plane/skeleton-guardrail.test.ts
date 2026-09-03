@@ -11,6 +11,7 @@ import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { VERSION_DEFAULTS } from "./versions.js";
+import { PLATFORM_VERSION } from "./versioning.js";
 import { loadMarkdownTasks, TASK_SOURCE_V4_VERSION } from "./markdown-task.js";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
@@ -134,16 +135,39 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "guardian", "opencode.jsonc"))).toBe(false);
   });
 
-  test('stack compose assets use a per-image OP_*_VERSION pin (no OP_IMAGE_TAG cascade)', () => {
+  // #679: THE release-stamp guardrail. The tag a release deploys is the `:-`
+  // default in the compose files it ships, so an unstamped release would ship
+  // pointing at the PREVIOUS version and every install would silently deploy
+  // old images — #679's blast radius, relocated. `setComposeImageTags`
+  // (scripts/set-version.mjs) writes these from the same VERSION that stamps
+  // packages/lib/package.json, which is where PLATFORM_VERSION comes from; this
+  // is the check that the two actually agree in the committed tree.
+  test('shipped compose files default every platform image to THIS release', () => {
     const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
     const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
 
-    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_VERSION:?OP_ASSISTANT_VERSION is required}');
-    expect(channelsCompose).toContain('portal:${OP_PORTAL_VERSION:?OP_PORTAL_VERSION is required}');
-    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_VERSION:?OP_GUARDIAN_VERSION is required}');
+    expect(coreCompose).toContain(`assistant:\${OP_ASSISTANT_VERSION:-${PLATFORM_VERSION}}`);
+    expect(channelsCompose).toContain(`portal:\${OP_PORTAL_VERSION:-${PLATFORM_VERSION}}`);
+    expect(channelsCompose).toContain(`guardian:\${OP_GUARDIAN_VERSION:-${PLATFORM_VERSION}}`);
+
+    // No platform image may go back to `:?`: a required variable with no row in
+    // stack.env (the normal, unpinned state now) aborts every compose call.
+    expect(coreCompose).not.toMatch(/OP_ASSISTANT_VERSION:\?/);
+    expect(channelsCompose).not.toMatch(/OP_(?:PORTAL|GUARDIAN)_VERSION:\?/);
+
     // The old single-tag cascade must be gone.
     expect(coreCompose).not.toContain('OP_IMAGE_TAG');
     expect(channelsCompose).not.toContain('OP_IMAGE_TAG');
+  });
+
+  // Voice ships on its own cadence with accelerator-variant tags, so no bare
+  // platform-version voice image is ever published. The stamper's regex omits
+  // OP_VOICE_VERSION for exactly this reason; this proves it stayed omitted.
+  test('the release stamp never reaches the voice tag', () => {
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
+
+    expect(servicesCompose).toContain('voice:${OP_VOICE_VERSION:-latest}-cpu');
+    expect(servicesCompose).not.toContain(`OP_VOICE_VERSION:-${PLATFORM_VERSION}`);
   });
 
   test('third-party addon images (ollama) are pinned by exact version + digest, never :latest', () => {

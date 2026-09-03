@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realDocker from './docker.js';
 import * as realActivation from './activation.js';
-import { readVersions } from './versions.js';
+import { readVersionPins } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 
 const realActivateStack = realActivation.activateStack;
@@ -239,16 +239,15 @@ describe('performUpgrade leaves version pins and running images untouched on a p
 				const state = createState();
 				await expect(performUpgrade(state)).rejects.toThrow(/secret-boundary audit failed/);
 
-				// The refusal must leave version pins exactly as they were — no
-				// synthetic rollback-generation-* re-pin for a deploy that never
-				// touched a container.
-				const versions = readVersions(state);
-				expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.0');
-				expect(versions.OP_GUARDIAN_VERSION).toBe('0.13.0');
-				expect(versions.OP_PORTAL_VERSION).toBe('0.13.0');
-
+				// #664: a refusal that never got past the pre-mutation gate must
+				// write NOTHING. It touched no container, so it has no images to
+				// preserve and no pin to create — a deploy that changed nothing
+				// must not leave state behind saying otherwise. Asserted on the
+				// file itself, byte for byte, which is stronger than asserting the
+				// values parse back the same.
 				const content = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
-				expect(content).not.toContain('rollback-generation-');
+				expect(content).toBe(originalStackEnv);
+				expect(readVersionPins(state).OP_ASSISTANT_VERSION).toBe('0.13.0');
 
 				// The immutable-tag preservation step (the only caller of `docker
 				// image tag`) must never run when nothing was mutated.

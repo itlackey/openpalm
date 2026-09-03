@@ -18,5 +18,9 @@
     "guardian": [
       "packages/guardian/package.json"
     ]
-  }
+  },
+  "composeImageTagFiles": [
+    "packages/skeleton/system/stack/core.compose.yml",
+    "packages/skeleton/system/stack/portals.compose.yml"
+  ]
 }

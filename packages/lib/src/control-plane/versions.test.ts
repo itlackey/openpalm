@@ -7,11 +7,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	writeVersions,
-	writeManagedVersions,
-	readVersions,
-	ensureVersionDefaults,
-	advanceManagedImageVersions,
-	stripRetiredToolVersions
+	readVersionPins,
+	resolveVersions,
+	stripRetiredStackEnvKeys
 } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 import { PLATFORM_VERSION } from './versioning.js';
@@ -40,7 +38,7 @@ function makeState(): { state: ControlPlaneState; cleanup: () => void } {
 	};
 }
 
-describe('version configuration', () => {
+describe('image tag resolution', () => {
 	let home: ReturnType<typeof makeState>;
 	beforeEach(() => {
 		home = makeState();
@@ -49,76 +47,76 @@ describe('version configuration', () => {
 		home.cleanup();
 	});
 
-	it('reads a recorded pin from stack.env', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=0.12.0\n');
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.12.0');
+	const envPath = () => join(home.state.homeDir, 'state', 'stack.env');
+
+	// #679: a row in stack.env exists only because a human put it there, so a
+	// row IS a pin and no row means "follow the release". Nothing records which
+	// is which, because nothing can write one by accident any more.
+	it('reports a row as a pin', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.12.0\n');
+		expect(readVersionPins(home.state)).toEqual({ OP_ASSISTANT_VERSION: '0.12.0' });
 	});
 
-	it('falls back to the default for a key stack.env does not record', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=0.12.0\n');
-		expect(readVersions(home.state).OP_GUARDIAN_VERSION).toBe(PLATFORM_VERSION);
+	it('reports absence as absence, never as a default', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.12.0\n');
+		const pins = readVersionPins(home.state);
+		expect(pins.OP_GUARDIAN_VERSION).toBeUndefined();
+		expect(Object.hasOwn(pins, 'OP_GUARDIAN_VERSION')).toBe(false);
 	});
 
-	it('a moving state tag wins over the legacy configured version', () => {
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			'OP_ASSISTANT_VERSION=0.13.0-beta.6\n'
-		);
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=next\n');
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('next');
+	// A filled-in default is indistinguishable from a pin — which is precisely
+	// how a live stack sat frozen on 0.13.1 while every update reported success.
+	it('treats a blank row as no pin, the way compose does', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=\n');
+		expect(readVersionPins(home.state).OP_ASSISTANT_VERSION).toBeUndefined();
+	});
+
+	it('resolves an unpinned image to the release default the compose file carries', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.12.0\n');
+		const resolved = resolveVersions(home.state);
+		expect(resolved.OP_ASSISTANT_VERSION).toBe('0.12.0');
+		expect(resolved.OP_GUARDIAN_VERSION).toBe(PLATFORM_VERSION);
+		expect(resolved.OP_VOICE_VERSION).toBe('latest');
 	});
 
 	it('writes latest and next honestly to the state file', () => {
 		// OP_UNRELATED_KEY stands in for any pre-existing stack.env key that
 		// writeVersions has no business touching — it must survive untouched.
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			'OP_UNRELATED_KEY=next\nOP_ASSISTANT_VERSION=0.12.0\n'
-		);
+		writeFileSync(envPath(), 'OP_UNRELATED_KEY=next\nOP_ASSISTANT_VERSION=0.12.0\n');
 		writeVersions(home.state, {
 			OP_ASSISTANT_VERSION: 'latest',
 			OP_GUARDIAN_VERSION: 'next'
 		});
-		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
+		const content = readFileSync(envPath(), 'utf-8');
 		expect(content).toContain('OP_UNRELATED_KEY=next');
 		expect(content).toContain('OP_ASSISTANT_VERSION=latest');
 		expect(content).toContain('OP_GUARDIAN_VERSION=next');
 	});
 
-	it('falls back to the documented defaults', () => {
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe(PLATFORM_VERSION);
+	// THE UNPIN. Before #679 there was none, from any surface: the API rejected
+	// an empty tag and no writer ever removed a row.
+	it('an empty value removes the row, so the image follows the release again', () => {
+		writeFileSync(envPath(), 'OP_UNRELATED_KEY=keep\nOP_ASSISTANT_VERSION=0.12.0\n');
+
+		writeVersions(home.state, { OP_ASSISTANT_VERSION: '' });
+
+		const content = readFileSync(envPath(), 'utf-8');
+		expect(content).not.toContain('OP_ASSISTANT_VERSION');
+		expect(content).toContain('OP_UNRELATED_KEY=keep');
+		expect(readVersionPins(home.state).OP_ASSISTANT_VERSION).toBeUndefined();
+		expect(resolveVersions(home.state).OP_ASSISTANT_VERSION).toBe(PLATFORM_VERSION);
 	});
 
-	it('writes missing defaults without changing an existing pin', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=0.12.0\n');
+	it('sets and clears in one write', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.12.0\nOP_GUARDIAN_VERSION=0.12.0\n');
 
-		ensureVersionDefaults(home.state);
+		writeVersions(home.state, { OP_ASSISTANT_VERSION: '', OP_GUARDIAN_VERSION: '0.13.1' });
 
-		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
-		expect(content).toContain('OP_ASSISTANT_VERSION=0.12.0');
-		expect(content).toContain(`OP_GUARDIAN_VERSION=${PLATFORM_VERSION}`);
-		expect(content).toContain(`OP_PORTAL_VERSION=${PLATFORM_VERSION}`);
-		expect(content).toContain('OP_VOICE_VERSION=latest');
+		expect(readVersionPins(home.state)).toEqual({ OP_GUARDIAN_VERSION: '0.13.1' });
 	});
 
-	it('advances release-managed and rollback pins without changing custom pins', () => {
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			[
-				'OP_ASSISTANT_VERSION=0.12.0',
-				'OP_GUARDIAN_VERSION=rollback-generation-1',
-				'OP_PORTAL_VERSION=custom-build',
-				'OP_VOICE_VERSION=rollback-generation-1',
-			].join('\n')
-		);
-
-		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
-
-		const versions = readVersions(home.state);
-		expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.1');
-		expect(versions.OP_GUARDIAN_VERSION).toBe('0.13.1');
-		expect(versions.OP_PORTAL_VERSION).toBe('custom-build');
-		expect(versions.OP_VOICE_VERSION).toBe('latest');
+	it('refuses an unknown key', () => {
+		expect(() => writeVersions(home.state, { OP_NOPE_VERSION: '1.0.0' })).toThrow(/unknown version key/i);
 	});
 
 	// The compose services append `-cpu` / `-cu121` / `-rocm6` themselves, so
@@ -128,9 +126,7 @@ describe('version configuration', () => {
 	// reference with nothing pointing back at this field.
 	it('rejects a voice version that already carries an accelerator suffix', () => {
 		for (const bad of ['latest-cpu', '0.13.0-cu121', '1.2.3-rocm6', 'latest-CPU']) {
-			expect(() => writeVersions(home.state, { OP_VOICE_VERSION: bad })).toThrow(
-				/base image tag/i
-			);
+			expect(() => writeVersions(home.state, { OP_VOICE_VERSION: bad })).toThrow(/base image tag/i);
 		}
 	});
 
@@ -142,59 +138,11 @@ describe('version configuration', () => {
 
 	it('still accepts a bare voice tag', () => {
 		writeVersions(home.state, { OP_VOICE_VERSION: 'latest' });
-		expect(readVersions(home.state).OP_VOICE_VERSION).toBe('latest');
-	});
-
-	it('preserves an operator-selected exact pin', () => {
-		ensureVersionDefaults(home.state);
-		writeVersions(home.state, { OP_ASSISTANT_VERSION: '0.12.0' });
-
-		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
-
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.12.0');
-	});
-
-	// D3: the marker-match arm (unlike the rollback arm just above it) used to
-	// advance voice to the bare platform version too. Voice tags are
-	// variant-suffixed (latest-cpu, vX.Y.Z-cu121) and publish-voice.yml never
-	// publishes a bare platform-version tag, so that pointed voice at an image
-	// that was never published — and since this arm also re-stamps the marker
-	// to match, the bad value stuck forever.
-	it('never advances a marker-armed voice version to the bare platform version', () => {
-		writeFileSync(
-			join(home.state.homeDir, 'state', 'stack.env'),
-			[
-				'OP_ASSISTANT_VERSION=0.12.0',
-				'OP_MANAGED_ASSISTANT_VERSION=0.12.0',
-				'OP_VOICE_VERSION=latest',
-				'OP_MANAGED_VOICE_VERSION=latest',
-			].join('\n')
-		);
-
-		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
-
-		const versions = readVersions(home.state);
-		expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.1');
-		expect(versions.OP_VOICE_VERSION).toBe('latest');
-	});
-
-	// D2: setup's own release-managed defaults must stamp the marker (so a
-	// later advance recognizes them), never blank it the way an operator's
-	// explicit pin (writeVersions) does.
-	it('writeManagedVersions stamps the marker so a later advance recognizes the default', () => {
-		writeManagedVersions(home.state, { OP_ASSISTANT_VERSION: PLATFORM_VERSION });
-
-		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
-		expect(content).toContain(`OP_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
-		expect(content).toContain(`OP_MANAGED_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
-
-		advanceManagedImageVersions(home.state, PLATFORM_VERSION, '0.99.0');
-
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.99.0');
+		expect(readVersionPins(home.state).OP_VOICE_VERSION).toBe('latest');
 	});
 });
 
-describe('retired OP_TOOL_*_VERSION keys', () => {
+describe('retired stack.env keys', () => {
 	let home: ReturnType<typeof makeState>;
 	beforeEach(() => {
 		home = makeState();
@@ -222,7 +170,7 @@ describe('retired OP_TOOL_*_VERSION keys', () => {
 			].join('\n')
 		);
 
-		expect(stripRetiredToolVersions(home.state)).toBe(true);
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(true);
 
 		const after = readFileSync(envPath(), 'utf-8');
 		expect(after).not.toContain('OP_TOOL_');
@@ -249,7 +197,7 @@ describe('retired OP_TOOL_*_VERSION keys', () => {
 			].join('\n')
 		);
 
-		expect(stripRetiredToolVersions(home.state)).toBe(true);
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(true);
 
 		const after = readFileSync(envPath(), 'utf-8');
 		expect(after).not.toContain('OP_GUARDIAN_NPM_VERSION');
@@ -261,15 +209,39 @@ describe('retired OP_TOOL_*_VERSION keys', () => {
 		expect(after).toContain('OP_PROJECT_NAME=splinter');
 	});
 
-	it('is a no-op on an env that never had them', () => {
-		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.13.0\n');
-		expect(stripRetiredToolVersions(home.state)).toBe(false);
+	// #679: the marker rows themselves are now retired. A home upgraded from
+	// any earlier release still carries them, and a divergent pair is what
+	// froze image updates while reporting success.
+	it('sweeps the retired managed-version markers', () => {
+		writeFileSync(
+			envPath(),
+			[
+				'OP_ASSISTANT_VERSION=0.13.1',
+				'OP_MANAGED_ASSISTANT_VERSION=0.13.0',
+				'OP_MANAGED_GUARDIAN_VERSION=',
+				'OP_MANAGED_PORTAL_VERSION=0.13.1',
+				'OP_MANAGED_VOICE_VERSION=latest',
+				''
+			].join('\n')
+		);
+
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(true);
+
+		const after = readFileSync(envPath(), 'utf-8');
+		expect(after).not.toContain('OP_MANAGED_');
+		expect(after).toContain('OP_ASSISTANT_VERSION=0.13.1');
 	});
 
-	it('runs as part of the lifecycle version pass', () => {
-		writeFileSync(envPath(), 'OP_TOOL_AKM_VERSION=0.8.14\n');
-		ensureVersionDefaults(home.state);
-		expect(readFileSync(envPath(), 'utf-8')).not.toContain('OP_TOOL_AKM_VERSION');
+	it('is a no-op on an env that never had them', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.13.0\n');
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(false);
+	});
+
+	it('is idempotent', () => {
+		writeFileSync(envPath(), 'OP_TOOL_AKM_VERSION=0.8.14\nOP_ASSISTANT_VERSION=0.13.0\n');
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(true);
+		expect(stripRetiredStackEnvKeys(home.state)).toBe(false);
+		expect(readFileSync(envPath(), 'utf-8')).toContain('OP_ASSISTANT_VERSION=0.13.0');
 	});
 
 });

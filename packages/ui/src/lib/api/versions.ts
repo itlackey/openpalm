@@ -16,7 +16,12 @@ export function applyChanges(): Promise<void> {
 }
 
 export type VersionsResponse = {
-	configured: Record<VersionKey, string>;
+	/** Rows present in state/stack.env — i.e. the pins. Absent key = not pinned. */
+	pins: Partial<Record<VersionKey, string>>;
+	/** Pin, or the release default the shipped compose file carries. */
+	resolved: Record<VersionKey, string>;
+	/** Image refs actually running, keyed by compose service. null = docker unreachable. */
+	running: Record<string, string> | null;
 };
 
 export async function fetchVersions(): Promise<VersionsResponse> {
@@ -24,6 +29,7 @@ export async function fetchVersions(): Promise<VersionsResponse> {
 	return (await response.json()) as VersionsResponse;
 }
 
+/** An EMPTY tag clears that image's pin, so it follows releases again (#679). */
 export async function patchVersions(versions: Partial<Record<VersionKey, string>>): Promise<void> {
 	await requireOk(
 		await request('PATCH', '/api/host/versions', {
@@ -32,7 +38,4 @@ export async function patchVersions(versions: Partial<Record<VersionKey, string>
 	);
 }
 
-/** A `rollback-` tag is never an operator-typed pin (#639) — only restoreRunningImageIds writes that shape. */
-export function isRollbackPin(value: string | undefined): boolean {
-	return !!value?.startsWith('rollback-');
-}
+

@@ -1,24 +1,28 @@
 /**
- * Regression test for #639: a failed `performUpgrade` re-tags the running
- * images as `<namespace>/<service>:rollback-generation-<id>` and pins
- * `state/stack.env` to them (restoreRunningImageIds, image-snapshots.ts, run
- * as `performUpgrade`'s snapshot-rollback `preserveImages` callback). The
- * ONLY code that ever clears a `rollback-` pin, `advanceManagedImageVersions`
- * (applyManagedFiles, called at the START of every upgrade attempt, before
- * activateStack), runs earlier in the SAME attempt — so on every repeated
- * failure the sequence is unpin -> attempt -> fail -> re-pin to a NEW
- * generation, and the pin survives exactly as long as updates keep failing.
+ * Regression test for #639, reworked for #679.
  *
- * This reproduces N (3) consecutive failed `performUpgrade` calls and asserts
- * the stack stays pinned to the Nth rollback generation the whole time, then
- * proves the design is self-releasing: the very next `performUpgrade` whose
- * activation SUCCEEDS clears the pin on its own, with no manual step required.
+ * A failed `performUpgrade` restores the images that were running before it, by
+ * re-tagging where necessary and writing their REAL tags into `state/stack.env`
+ * (restoreRunningImageIds, image-snapshots.ts, run as performUpgrade's
+ * snapshot-rollback `preserveImages` callback). Those rows are ordinary pins:
+ * the stack stays on the images that were working.
+ *
+ * WHAT CHANGED, AND WHY IT IS NOT A REGRESSION. It used to mint a synthetic
+ * `rollback-generation-<id>` tag, which a later SUCCESSFUL update silently
+ * cleared. That self-clearing depended on the update writing version rows —
+ * the same write that, when it decided a value was "an operator pin", froze a
+ * live instance on 0.13.1 for months while reporting success (#679). Updates no
+ * longer write image tags at all, so the pin a rollback leaves is now cleared
+ * by the operator, and `openpalm update` names it on every run until they do.
+ * In exchange the value is a real, re-pullable release tag instead of a
+ * local-only alias that accumulated orphan tags nothing reaped, and voice —
+ * which the old self-clearing skipped unconditionally, so nothing EVER cleared
+ * it — is no longer a special case.
  *
  * `activateStack`/`applyStack` and the low-level `DockerClient` used by
  * captureRunningImageIds/restoreRunningImageIds are statically imported by
  * lifecycle.ts, so this test mocks them via `mock.module` and re-imports
- * lifecycle.ts with a cache-busting query — the same pattern used by
- * lifecycle-volume-reap.test.ts / lifecycle-install-ownership.test.ts.
+ * lifecycle.ts with a cache-busting query.
  */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,7 +30,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realDocker from './docker.js';
 import * as realActivation from './activation.js';
-import { readVersions, SERVICE_VERSION_KEYS, MANAGED_VERSION_MARKERS } from './versions.js';
+import { readVersionPins, SERVICE_VERSION_KEYS } from './versions.js';
+import { HOME_SCHEMA_VERSION } from './home.js';
 import { PLATFORM_VERSION } from './versioning.js';
 
 const realActivateStack = realActivation.activateStack;
@@ -94,30 +99,19 @@ function fakeDockerClient() {
 	};
 }
 
-describe('a rollback-generation-* pin from a failed performUpgrade releases itself on the next successful update (#639)', () => {
-	test('N consecutive failed upgrades stay pinned to the Nth rollback generation, and the next upgrade that activates successfully clears the pin with no manual step', async () => {
+describe('a failed performUpgrade restores the images that were running, as ordinary pins (#639/#679)', () => {
+	test('N consecutive failed upgrades keep the stack on the images that were running, and a later successful upgrade does not silently move them', async () => {
 		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-rollback-pin-'));
 		try {
 			await withUpgradeEnv(homeDir, async () => {
-				// An already-installed home, on the release these RUNNING_CONTAINERS
-				// report, whose OP_MANAGED_* markers were never stamped (the shape a
-				// home from before the managed-marker mechanism existed carries, and
-				// the exact shape #639 was reported against). Seeded directly on
-				// disk, not via ensureVersionDefaults, which only fills in a MISSING
-				// key — it would not touch a marker sitting beside an already-defined
-				// version key like this one.
 				mkdirSync(join(homeDir, 'state'), { recursive: true });
 				writeFileSync(
 					join(homeDir, 'state', 'stack.env'),
 					[
-						'OP_ASSISTANT_VERSION=0.13.0',
-						'OP_GUARDIAN_VERSION=0.13.0',
-						'OP_PORTAL_VERSION=0.13.0',
-						'OP_MANAGED_ASSISTANT_VERSION=',
-						'OP_MANAGED_GUARDIAN_VERSION=',
-						'OP_MANAGED_PORTAL_VERSION=',
-						'OP_VOICE_VERSION=latest',
-						'OP_MANAGED_VOICE_VERSION=latest',
+						// An already-installed home with NO version rows: the normal
+						// state now, where every image follows the tag the release
+						// baked into its compose file.
+						'OP_SETUP_COMPLETE=true',
 						''
 					].join('\n')
 				);
@@ -148,58 +142,85 @@ describe('a rollback-generation-* pin from a failed performUpgrade releases itse
 				);
 
 				const state = createState();
-				const seenPins: string[] = [];
 
-				// (a) 3 consecutive failed upgrades leave state/stack.env pinned to
-				// the Nth rollback-generation-* value, same as before the fix.
+				// (a) Three consecutive failed upgrades. Each one restores the
+				// images that were running — the REAL 0.13.0 tags these
+				// RUNNING_CONTAINERS report — as pins, so the stack stays on the
+				// build that worked.
 				for (let i = 1; i <= 3; i++) {
 					await expect(performUpgrade(state)).rejects.toThrow();
 
-					const versions = readVersions(state);
+					const pins = readVersionPins(state);
 					for (const key of SERVICE_VERSION_KEYS) {
 						if (key === 'OP_VOICE_VERSION') continue; // no running voice container in this fixture
-						expect(versions[key]).toMatch(/^rollback-generation-/);
+						expect(pins[key]).toBe('0.13.0');
 					}
-					seenPins.push(versions.OP_ASSISTANT_VERSION);
 				}
 
 				expect(activateStackMock).toHaveBeenCalledTimes(3);
-				// Each failure re-pins to a NEW generation — the pin keeps moving
-				// forward, never clearing itself while updates keep failing.
-				expect(new Set(seenPins).size).toBe(3);
 
-				const stillPinnedAfterThreeFailures = readVersions(state).OP_ASSISTANT_VERSION;
-				expect(stillPinnedAfterThreeFailures).toBe(seenPins[2]);
-
-				// Every re-pinned key's OP_MANAGED_* marker is blank — restoreRunningImageIds
-				// (the only writer of the rollback- value) never stamps it, and this
-				// is the exact shape a genuine operator pin also leaves, which is why
-				// the marker alone can never distinguish the two.
+				// No synthetic tag is minted, so nothing accumulates orphan local
+				// tags and no other call site has to recognise a magic prefix.
 				const contentAfterFailures = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
-				for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
-					const markerKey = MANAGED_VERSION_MARKERS[key];
-					expect(contentAfterFailures).toMatch(new RegExp(`${markerKey}=(\\r?\\n|$)`));
-				}
+				expect(contentAfterFailures).not.toContain('rollback-generation-');
 
-				// (b) The next performUpgrade activates successfully. advanceManagedImageVersions
-				// (applyManagedFiles, before activateStack) clears the rollback- pin to the
-				// target platform version on its own — no unpin command, no operator step.
+				// (b) The next performUpgrade activates successfully. On a home that
+				// has not yet been through the v13->v14 migration — this one, and
+				// every home upgrading INTO this release — the pins do not survive
+				// it, and that is not an accident of the pin: `restoreSnapshot`
+				// rolls `state/schema-version` back along with everything else, so
+				// the retry re-runs the migration, which clears every version row.
+				// Transition-only, self-limiting, and it lands on the behaviour an
+				// operator retrying an upgrade wants. See the sibling test for the
+				// steady state, where the pin does persist.
 				await performUpgrade(state);
 
 				expect(activateStackMock).toHaveBeenCalledTimes(4);
-				const clearedVersions = readVersions(state);
-				for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
-					expect(clearedVersions[key]).toBe(PLATFORM_VERSION);
-					expect(clearedVersions[key]).not.toMatch(/^rollback-/);
-				}
+				expect(readVersionPins(state).OP_ASSISTANT_VERSION).toBeUndefined();
 
 				const contentAfterSuccess = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
-				expect(contentAfterSuccess).not.toContain('rollback-generation-');
-				// The marker is re-stamped to match (not left blank), so a later
-				// release still recognizes these keys as managed and advances them.
-				for (const key of ['OP_ASSISTANT_VERSION', 'OP_GUARDIAN_VERSION', 'OP_PORTAL_VERSION'] as const) {
-					expect(contentAfterSuccess).toContain(`${MANAGED_VERSION_MARKERS[key]}=${PLATFORM_VERSION}`);
-				}
+				expect(contentAfterSuccess).not.toContain('OP_MANAGED_');
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	// The steady state, on a home already at the current schema: a rollback's
+	// pins are ordinary pins, and a later successful update leaves them exactly
+	// where they are. An update that moved them because it judged them
+	// "release-managed" is what #679 was — the judgement was wrong, and nothing
+	// said so for months.
+	test('on a migrated home, the pins a failed upgrade leaves survive the next successful one', async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-rollback-pin-steady-'));
+		try {
+			await withUpgradeEnv(homeDir, async () => {
+				mkdirSync(join(homeDir, 'state'), { recursive: true });
+				writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+				writeFileSync(join(homeDir, 'state', 'schema-version'), `${HOME_SCHEMA_VERSION}\n`);
+
+				const docker = fakeDockerClient();
+				let attempt = 0;
+				const activateStackMock = mock(async () => {
+					attempt += 1;
+					return attempt === 1
+						? { ok: false, error: 'simulated activation failure', pullFailed: true }
+						: { ok: true };
+				});
+				mock.module('./docker.js', () => ({ ...realDocker, realDockerClient: docker }));
+				mock.module('./activation.js', () => ({ ...realActivation, activateStack: activateStackMock }));
+
+				const { performUpgrade, createState } = await import(
+					`./lifecycle.js?rollback-pin-steady-test=${Math.random()}`
+				);
+				const state = createState();
+
+				await expect(performUpgrade(state)).rejects.toThrow();
+				expect(readVersionPins(state).OP_ASSISTANT_VERSION).toBe('0.13.0');
+
+				await performUpgrade(state);
+
+				expect(readVersionPins(state).OP_ASSISTANT_VERSION).toBe('0.13.0');
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true, force: true });

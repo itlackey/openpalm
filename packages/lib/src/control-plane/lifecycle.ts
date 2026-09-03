@@ -48,7 +48,7 @@ import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { guardianRequired } from './guardian-required.js';
-import { advanceManagedImageVersions, assertHomeNotNewerThanApp, ensureVersionDefaults } from './versions.js';
+import { assertHomeNotNewerThanApp, stripRetiredStackEnvKeys } from './versions.js';
 import { reconcileAkmDbJournalMode } from './akm-db-journal.js';
 import {
 	captureRunningImageIds,
@@ -263,7 +263,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 		});
 	}
 	pruneRemovedAddonState(state.homeDir);
-	ensureVersionDefaults(state);
+	stripRetiredStackEnvKeys(state);
 	ensureOpenCodeConfig();
 	ensureOpenCodeSystemConfig();
 }
@@ -308,8 +308,6 @@ async function applyManagedFiles(
 	// consolidation is value-preserving, so there is nothing to roll back.)
 	const generation = snapshotCurrentState(state);
 	await runHomeMigrations(state.homeDir);
-	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
-	advanceManagedImageVersions(state, previousPlatformVersion);
 	// #660: a compose-published host port left ABSENT falls straight through
 	// to compose's own bare `${KEY:-default}` — the port migrations above only
 	// ever considered assistant/ui, so every other default (workspace, api,

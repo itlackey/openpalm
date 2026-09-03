@@ -10,7 +10,7 @@
 services:
   discord:
     profiles: ["addon.discord"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:?OP_PORTAL_VERSION is required}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.3}
     restart: unless-stopped
     # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
     # driver is unbounded, which contributed to the production disk incident.
@@ -57,7 +57,7 @@ services:
       start_period: 30s
   slack:
     profiles: ["addon.slack"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:?OP_PORTAL_VERSION is required}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.3}
     restart: unless-stopped
     # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
     # driver is unbounded, which contributed to the production disk incident.
@@ -97,7 +97,7 @@ services:
       start_period: 30s
   guardian:
     profiles: ["addon.api", "addon.discord", "addon.slack", "addon.gateway", "guardian"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:?OP_GUARDIAN_VERSION is required}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.13.3}
     restart: unless-stopped
     # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
     # driver is unbounded, which contributed to the production disk incident.

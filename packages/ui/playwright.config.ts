@@ -42,6 +42,7 @@ const STACK_PROJECTS = [
       'lan-access.stack.ts',
       'setup-wizard-api.stack.ts',
       'setup-wizard-browser.stack.ts',
+      'setup-wizard-recovery.stack.ts',
     ],
   },
   {
@@ -55,6 +56,9 @@ const STACK_PROJECTS = [
       'install-flow.stack.ts',
       'setup-wizard-api.stack.ts',
       'setup-wizard-browser.stack.ts',
+      // #678. Runs with the wizard group because it resets wizard state; the
+      // baseline group expects a completed setup.
+      'setup-wizard-recovery.stack.ts',
     ],
     dependencies: ['stack-lan'],
   },

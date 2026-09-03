@@ -9,7 +9,6 @@
     fetchInstallLockStatus,
     clearInstallLock,
     fetchVersions,
-    isRollbackPin,
     type InstallLockStatusView,
   } from '$lib/api.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
@@ -38,19 +37,14 @@
   let unlocking = $state<ActionHandle<{ removed: boolean }> | null>(null);
   let unlockCleared = $state(false);
 
-  // #639 — a failed update pins state/stack.env to a preserved rollback-*
-  // image tag (never `latest`) so automatic recovery restarts exactly what
-  // was running before. Distinct from a deliberate operator pin, which never
-  // carries the `rollback-` prefix. Nothing to clear by hand: the next
-  // successful `openpalm update` advances the pin off this tag on its own
-  // (advanceManagedImageVersions, run at the start of every upgrade attempt)
-  // — this is read-only, a status notice rather than a control.
-  const versionsRes = resource(async () => (await fetchVersions()).configured);
-  let rollbackPinnedKeys = $derived(
-    (Object.entries(versionsRes.data ?? {}) as [VersionKey, string][])
-      .filter(([, value]) => isRollbackPin(value))
-      .map(([key]) => key),
-  );
+  // #639/#679 — a pinned image is one that updates will not move. Two things
+  // create one: the operator typing a tag, and automatic recovery from a failed
+  // update, which re-pins the images that were running before it. This states
+  // the fact — which images are pinned — and does NOT try to work out which
+  // cause produced it. Guessing an operator's intent from a stored value is the
+  // failure this whole surface exists because of.
+  const versionsRes = resource(async () => (await fetchVersions()).pins);
+  let pinnedKeys = $derived(Object.keys(versionsRes.data ?? {}) as VersionKey[]);
 
   onMount(() => {
     void backupsRes.reload();
@@ -153,16 +147,17 @@
       </div>
     {/if}
 
-    {#if rollbackPinnedKeys.length > 0}
-      <!-- #639: a failed update pinned the stack to a preserved rollback image tag. -->
+    {#if pinnedKeys.length > 0}
+      <!-- #679: updates skip pinned images. Say so, and say how to undo it. -->
       <div class="stuck-notice" role="status">
         <div class="stuck-notice-text">
-          <p class="stuck-notice-title">Stack pinned to a rollback image</p>
+          <p class="stuck-notice-title">Some images are pinned</p>
           <p>
-            The last update failed, so {rollbackPinnedKeys.join(', ')} {rollbackPinnedKeys.length === 1 ? 'is' : 'are'}
-            still pointed at the image that was running before it — not the normal release tag.
-            Fix whatever caused the update to fail and run <code>openpalm update</code> again; once
-            it succeeds, this moves forward on its own. There's nothing to clear by hand.
+            {pinnedKeys.join(', ')} {pinnedKeys.length === 1 ? 'is' : 'are'} pinned in
+            <code>state/stack.env</code>, so updates will not move
+            {pinnedKeys.length === 1 ? 'it' : 'them'}. Recovery from a failed update pins the
+            images that were running before it; so does typing a tag yourself. Clear the tag in
+            Updates &gt; Advanced image tags to follow releases again.
           </p>
         </div>
       </div>

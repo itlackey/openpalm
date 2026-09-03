@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('lifecycle update state', () => {
-	test('advances managed exact pins and creates a bounded safety backup', async () => {
+	test('leaves image tags entirely alone, and creates a bounded safety backup', async () => {
 		const home = mkdtempSync(join(tmpdir(), 'openpalm-lifecycle-update-'));
 		process.env.OP_HOME = home;
 		process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
@@ -49,10 +49,17 @@ describe('lifecycle update state', () => {
 
 			await applyUpdate(createState());
 
+			// #679: an update writes NO image tags. The tag comes from the `:-`
+			// default in the compose files this release ships, which the same
+			// update overwrote — so there is no "advance the versions" step left
+			// that can be skipped, and no stored value that can outrank the
+			// release. A row here can only be an operator's pin, and the v13->v14
+			// migration deleted the ones past releases wrote.
 			const stackEnv = readFileSync(join(home, 'state', 'stack.env'), 'utf8');
-			expect(stackEnv).toContain(`OP_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
-			expect(stackEnv).toContain(`OP_GUARDIAN_VERSION=${PLATFORM_VERSION}`);
-			expect(stackEnv).toContain('OP_PORTAL_VERSION=custom-pin');
+			expect(stackEnv).not.toMatch(/^OP_ASSISTANT_VERSION=/m);
+			expect(stackEnv).not.toMatch(/^OP_GUARDIAN_VERSION=/m);
+			expect(stackEnv).not.toMatch(/^OP_PORTAL_VERSION=/m);
+			expect(stackEnv).not.toContain('OP_MANAGED_');
 			const backupsDir = join(home, 'data', 'backups');
 			const backups = existsSync(backupsDir)
 				? readdirSync(backupsDir).filter((backup) =>

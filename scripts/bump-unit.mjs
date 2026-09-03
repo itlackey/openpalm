@@ -11,11 +11,14 @@
 // Preview locally: UNIT=platform VERSION=1.2.3 node scripts/bump-unit.mjs
 
 import { existsSync, readFileSync } from 'node:fs';
-import { parseSemver, setVersion } from './set-version.mjs';
+import { parseSemver, setComposeImageTags, setVersion } from './set-version.mjs';
 
-const RELEASE_PACKAGE_GROUPS = JSON.parse(
-  readFileSync('.github/release-package-groups.json', 'utf8'),
-).units;
+const RELEASE_GROUPS = JSON.parse(readFileSync('.github/release-package-groups.json', 'utf8'));
+const RELEASE_PACKAGE_GROUPS = RELEASE_GROUPS.units;
+// Compose files carrying the platform image-tag defaults. Kept OUTSIDE `units`
+// on purpose: gates.yml reads every entry under `units` with `jq -r .version`,
+// which only works on a package.json.
+const COMPOSE_IMAGE_TAG_FILES = RELEASE_GROUPS.composeImageTagFiles ?? [];
 
 const unit = process.env.UNIT;
 const version = process.env.VERSION?.trim() || null;
@@ -39,4 +42,19 @@ for (const f of files) {
   }
   if (doStamp) setVersion(f, version);
   console.log(`  ${f} → ${version}`);
+}
+
+// The image tag a release deploys is the `:-` default in the compose files it
+// ships (#679), stamped from the same VERSION in the same run as
+// packages/lib/package.json — which is where PLATFORM_VERSION comes from — so
+// the two cannot disagree in a committed state.
+if (unit === 'platform') {
+  for (const f of COMPOSE_IMAGE_TAG_FILES) {
+    if (!existsSync(f)) {
+      console.error(`Error: Cannot stamp: file not found: ${f}`);
+      process.exit(1);
+    }
+    const count = doStamp ? setComposeImageTags(f, version) : '(preview)';
+    console.log(`  ${f} → image tags ${version} ${doStamp ? `(${count} refs)` : '(preview)'}`);
+  }
 }

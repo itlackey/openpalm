@@ -1,18 +1,28 @@
 /**
- * Version variable management for the OpenPalm control plane (§4.2, §5).
+ * Image tag resolution for the OpenPalm stack (§4.2, §5).
  *
- * SERVICE versions (`OP_*_VERSION`) are Docker image tags. They take an exact
- * tag or an explicit moving "latest" / "next" ref. They are never semver
- * ranges. Platform images default to the exact host release version.
+ * THE RULE, in one sentence: an image runs the tag the release baked into its
+ * own `system/stack/*.compose.yml` as a Compose `:-` default, unless
+ * `state/stack.env` carries a row for that image — in which case the row wins.
+ *
+ * Presence of the row IS the pin. Absence IS "follow the release". Nothing
+ * records which one a value is, because nothing needs to: the app never writes
+ * a version row, so a row can only have come from an operator.
+ *
+ * That replaced (#679) four OP_MANAGED_*_VERSION shadow keys whose pairwise
+ * relationship with the real key encoded the same bit — equal meant
+ * release-managed, blank meant pinned, and present-but-different meant nothing
+ * anyone wrote on purpose, which silently froze a live instance on 0.13.1
+ * while `openpalm update` reported success for months. Three earlier versions
+ * of the same idea (#471, #537, #639) failed the same way: production code
+ * inferring an operator's intent from a stored value.
+ *
+ * `system/stack/` is overwritten from the packaged skeleton on every update, so
+ * delivering the compose topology and delivering the tag are now the same copy.
+ * There is no "advance the image versions" step left that can be skipped.
  *
  * Tool package versions are managed via per-container package.json files at
- * OP_HOME/data/<container>/tools/package.json. Edit those files to pin or
- * update individual tool versions.
- *
- * Compose reads every SERVICE_VERSION_KEY directly via
- * `${OP_*_VERSION:-latest}` — there is no cascade fallback to a single platform
- * tag anymore. Each image rides its own var.
- *
+ * OP_HOME/data/<container>/tools/package.json.
  */
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { writeFileAtomic } from './fs-atomic.js';
@@ -33,14 +43,14 @@ export const SERVICE_VERSION_KEYS = [
 export type VersionKey = (typeof SERVICE_VERSION_KEYS)[number];
 
 const VERSION_KEY_SET: ReadonlySet<string> = new Set(SERVICE_VERSION_KEYS);
-export const MANAGED_VERSION_MARKERS: Record<VersionKey, string> = {
-	OP_ASSISTANT_VERSION: 'OP_MANAGED_ASSISTANT_VERSION',
-	OP_GUARDIAN_VERSION: 'OP_MANAGED_GUARDIAN_VERSION',
-	OP_PORTAL_VERSION: 'OP_MANAGED_PORTAL_VERSION',
-	OP_VOICE_VERSION: 'OP_MANAGED_VOICE_VERSION'
-};
 
-/** Default values seeded into a fresh stack.env (and returned for unset keys). */
+/**
+ * The tag each image falls back to when stack.env carries no row — i.e. the
+ * `:-` default written into the shipped compose files. Nothing seeds these into
+ * stack.env; they exist so the UI and CLI can SHOW what "unpinned" resolves to
+ * without parsing YAML. The compose files remain the source of truth, and
+ * skeleton-guardrail.test.ts asserts the two agree on every CI run.
+ */
 export const VERSION_DEFAULTS: Record<VersionKey, string> = {
 	OP_ASSISTANT_VERSION: PLATFORM_VERSION,
 	OP_GUARDIAN_VERSION: PLATFORM_VERSION,
@@ -50,6 +60,11 @@ export const VERSION_DEFAULTS: Record<VersionKey, string> = {
 
 export function isVersionKey(key: string): key is VersionKey {
 	return VERSION_KEY_SET.has(key);
+}
+
+/** `OP_ASSISTANT_VERSION` <-> `assistant`, for display and image names. */
+export function versionKeyToService(key: VersionKey): string {
+	return key.slice('OP_'.length).replace('_VERSION', '').toLowerCase();
 }
 
 /**
@@ -64,7 +79,7 @@ export function isVersionKey(key: string): key is VersionKey {
  * debugging a version skew edits it and nothing happens. Swept on the same
  * lifecycle pass that seeds the real version keys.
  */
-export const RETIRED_TOOL_VERSION_KEYS = [
+export const RETIRED_STACK_ENV_KEYS = [
 	'OP_TOOL_AKM_VERSION',
 	'OP_TOOL_CLAUDE_CODE_VERSION',
 	'OP_TOOL_CODEX_VERSION',
@@ -82,7 +97,19 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 	'OP_GUARDIAN_PACKAGE',
 	'OP_GUARDIAN_ENTRY',
 	'OP_GUARDIAN_NPMRC',
-	'OP_GUARDIAN_NPMRC_FILE'
+	'OP_GUARDIAN_NPMRC_FILE',
+	// The managed-version markers (#679). Four shadow keys that encoded, by
+	// their relationship to the real OP_*_VERSION rows, whether an update was
+	// allowed to advance each image. Equal meant "release-managed", blank meant
+	// "operator pin", and a third state nobody wrote deliberately — present but
+	// DIFFERENT — silently froze the stack: `openpalm update` reported success
+	// on every release while never moving the images again. That is what
+	// happened on a live 0.13.1 -> 0.13.3 upgrade. Deleted rather than guarded:
+	// an update now deploys this release's images, full stop.
+	'OP_MANAGED_ASSISTANT_VERSION',
+	'OP_MANAGED_GUARDIAN_VERSION',
+	'OP_MANAGED_PORTAL_VERSION',
+	'OP_MANAGED_VOICE_VERSION'
 ] as const;
 
 // ── Version-skew guard (#636) ────────────────────────────────────────────────
@@ -92,8 +119,8 @@ export const RETIRED_TOOL_VERSION_KEYS = [
 // record that. Nothing used to compare those stamps against the CODE now
 // running before writing to the home, so an older app (e.g. a desktop build
 // stuck mid-self-update, #635) pointed at a home a newer app had already
-// upgraded would silently downgrade it: `advanceManagedImageVersions`
-// defaults its target to THIS build's `PLATFORM_VERSION`, and `applyHomeSeed`
+// upgraded would silently downgrade it: `setPlatformImageVersions` writes
+// THIS build's `PLATFORM_VERSION`, and `applyHomeSeed`
 // unconditionally overwrites `system/` and re-stamps `.skeleton-version` from
 // THIS build's skeleton — both moving a newer home backwards with no operator
 // confirmation.
@@ -156,8 +183,8 @@ export function assertHomeNotNewerThanApp(state: ControlPlaneState): void {
 //
 // #636 (above) stops an OLDER app from silently rewriting a NEWER home. #662
 // is the same hazard from the other direction: `openpalm update` deploys
-// image tags pinned to `targetVersion` (defaulting to THIS build's
-// `PLATFORM_VERSION` — see `advanceManagedImageVersions`'s default), but
+// image tags for `targetVersion` (THIS build's `PLATFORM_VERSION` — see
+// `setPlatformImageVersions`), but
 // nothing ever compared that target against the CLI binary actually doing the
 // deploying. A CLI whose own package version trails the release it is about
 // to pin the stack to finishes `update` having created exactly the stale
@@ -192,41 +219,40 @@ export function detectCliVersionSkew(cliVersion: string, targetVersion: string =
 // ── Version configuration ────────────────────────────────────────────────────
 
 /**
- * Read configured image tags from app-owned state. Legacy stack.env version
- * values represented the previously applied release on older installs, not a
- * deliberate pin, so treating them as pins would freeze updates.
+ * The image tags an operator has pinned in `state/stack.env`. A key is absent
+ * when nothing is pinned — absence is reported as absence, never filled in with
+ * a default, because a filled-in value is indistinguishable from a pin and that
+ * confusion is the whole of #679.
  */
-export function readVersions(state: ControlPlaneState): Record<string, string> {
+export function readVersionPins(state: ControlPlaneState): Partial<Record<VersionKey, string>> {
 	const fromState = parseEnvFile(stackEnvFile(state.homeDir));
-	const out: Record<string, string> = {};
+	const pins: Partial<Record<VersionKey, string>> = {};
 	for (const key of SERVICE_VERSION_KEYS) {
-		out[key] = fromState[key] ?? VERSION_DEFAULTS[key];
+		const value = fromState[key]?.trim();
+		if (value) pins[key] = value;
 	}
-	return out;
+	return pins;
 }
 
-/** Ensure every image has an explicit state value that overrides legacy env files. */
-export function ensureVersionDefaults(state: ControlPlaneState): void {
-	const path = stackEnvFile(state.homeDir);
-	const current = existsSync(path) ? parseEnvFile(path) : {};
-	const missing: Record<string, string> = {};
-	for (const key of SERVICE_VERSION_KEYS) {
-		if (current[key] === undefined) {
-			missing[key] = VERSION_DEFAULTS[key];
-			missing[MANAGED_VERSION_MARKERS[key]] = VERSION_DEFAULTS[key];
-		}
-	}
-	writeVersionState(state, missing);
-	stripRetiredToolVersions(state);
+/**
+ * What each image resolves to right now: the operator's pin when there is one,
+ * otherwise the release default the compose file carries. For DISPLAY and for
+ * the update report — never written back anywhere.
+ */
+export function resolveVersions(state: ControlPlaneState): Record<VersionKey, string> {
+	const pins = readVersionPins(state);
+	return Object.fromEntries(
+		SERVICE_VERSION_KEYS.map((key) => [key, pins[key] ?? VERSION_DEFAULTS[key]])
+	) as Record<VersionKey, string>;
 }
 
-/** Drop {@link RETIRED_TOOL_VERSION_KEYS} from `state/stack.env`. No-op once clean. */
-export function stripRetiredToolVersions(state: ControlPlaneState): boolean {
+/** Drop {@link RETIRED_STACK_ENV_KEYS} from `state/stack.env`. No-op once clean. */
+export function stripRetiredStackEnvKeys(state: ControlPlaneState): boolean {
 	const path = stackEnvFile(state.homeDir);
 	if (!existsSync(path)) return false;
 	const content = readFileSync(path, 'utf-8');
 	const parsed = parseEnvFile(path);
-	const retired = RETIRED_TOOL_VERSION_KEYS.filter((key) => Object.hasOwn(parsed, key));
+	const retired = RETIRED_STACK_ENV_KEYS.filter((key) => Object.hasOwn(parsed, key));
 	if (retired.length === 0) return false;
 	let next = content;
 	for (const key of retired) next = removeEnvKey(next, key);
@@ -235,69 +261,45 @@ export function stripRetiredToolVersions(state: ControlPlaneState): boolean {
 	return true;
 }
 
-/** Advance release-managed exact pins while preserving explicit moving or custom pins. */
-export function advanceManagedImageVersions(
-	state: ControlPlaneState,
-	previousPlatformVersion: string | null,
-	targetPlatformVersion = PLATFORM_VERSION
-): void {
-	const current = parseEnvFile(stackEnvFile(state.homeDir));
-	const previous = normalizeVersion(previousPlatformVersion);
-	const updates: Record<string, string> = {};
-	for (const key of SERVICE_VERSION_KEYS) {
-		const value = current[key]?.trim() ?? '';
-		const markerKey = MANAGED_VERSION_MARKERS[key];
-		const managedValue = current[markerKey]?.trim() ?? '';
-		const legacyManaged = current[markerKey] === undefined && key !== 'OP_VOICE_VERSION' && previous && normalizeVersion(value) === previous;
-		if (value.startsWith('rollback-')) {
-			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
-			updates[key] = target;
-			updates[markerKey] = target;
-		} else if ((managedValue && value === managedValue) || legacyManaged) {
-			// Voice tags are variant-suffixed (latest-cpu, vX.Y.Z-cu121), not
-			// platform semver, and publish-voice.yml never publishes a bare
-			// platform-version tag — same reason the rollback arm above excludes
-			// it. Advancing voice to targetPlatformVersion here would point it at
-			// an image that was never published, and because this arm also
-			// re-stamps the marker to match, the bad value would be sticky.
-			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
-			updates[key] = target;
-			updates[markerKey] = target;
-		}
-	}
-	writeVersionState(state, updates);
-}
-
 /**
- * Write validated version tags to the state file (atomically: temp + rename).
- * Only SERVICE_VERSION_KEYS are accepted, so a typo or hostile caller can't smuggle
- * arbitrary env into the stack config. mergeEnvContent preserves any existing state
- * keys/comments. Supplied values, including `latest` and `next`, are persisted
- * honestly as the desired Compose configuration.
+ * Set or clear operator pins in `state/stack.env`. Only SERVICE_VERSION_KEYS
+ * are accepted, so a typo or hostile caller can't smuggle arbitrary env into
+ * the stack config.
  *
- * This is the OPERATOR-PIN API: it blanks each key's OP_MANAGED_*_VERSION
- * marker, which tells advanceManagedImageVersions the value is a deliberate
- * choice that must never be auto-advanced. Only a genuine operator choice
- * (the Updates tab PATCH, or a wizard's explicit Advanced image-tag field)
- * should call this. A release-managed DEFAULT that setup fills in on the
- * operator's behalf must use writeManagedVersions below instead — blanking
- * its marker here would make it indistinguishable from a real pin and freeze
- * it on the install-time tag forever.
+ * An EMPTY value removes the row, which is how an operator unpins: the image
+ * goes back to the release default in the compose file. Compose treats
+ * set-but-empty as unset anyway, so leaving a blank row behind would be a
+ * second way to say the same thing — and this project has now hand-modelled
+ * "blank means something" four separate times (#471, #537, #639, #679).
  */
 export function writeVersions(state: ControlPlaneState, updates: Record<string, string>): void {
-	writeVersionEntries(state, updates, () => '');
-}
-
-/**
- * Same validation/persistence as writeVersions, but for a value setup chose
- * as a release-managed DEFAULT, not something the operator asked for: the
- * marker is stamped to match the value (instead of blanked) so a later
- * advanceManagedImageVersions still recognizes it as managed and advances it
- * on the next release, exactly like the markers generateFallbackSystemEnv
- * seeds into a brand-new stack.env.
- */
-export function writeManagedVersions(state: ControlPlaneState, updates: Record<string, string>): void {
-	writeVersionEntries(state, updates, (value) => value);
+	const sets: Record<string, string> = {};
+	const removals: VersionKey[] = [];
+	for (const [key, value] of Object.entries(updates)) {
+		if (!isVersionKey(key)) {
+			throw new Error(`Refusing to write unknown version key: ${key}`);
+		}
+		const trimmed = (value ?? '').trim();
+		if (!trimmed) {
+			removals.push(key);
+			continue;
+		}
+		if (key === 'OP_VOICE_VERSION' && VOICE_VARIANT_SUFFIX_RE.test(trimmed)) {
+			throw new Error(
+				`OP_VOICE_VERSION is the base image tag; Compose appends the accelerator suffix itself. Use "${trimmed.replace(VOICE_VARIANT_SUFFIX_RE, '')}" instead of "${trimmed}", or the image resolves to a tag that does not exist.`
+			);
+		}
+		sets[key] = trimmed;
+	}
+	if (removals.length === 0) {
+		writeVersionState(state, sets);
+		return;
+	}
+	const path = stackEnvFile(state.homeDir);
+	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
+	let content = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+	for (const key of removals) content = removeEnvKey(content, key);
+	writeFileAtomic(path, mergeEnvContent(content, sets), 0o600);
 }
 
 /**
@@ -312,28 +314,6 @@ export function writeManagedVersions(state: ControlPlaneState, updates: Record<s
  * that failure back to the field that caused it.
  */
 const VOICE_VARIANT_SUFFIX_RE = /-(?:cpu|cu\d+|rocm\d+)$/i;
-
-function writeVersionEntries(
-	state: ControlPlaneState,
-	updates: Record<string, string>,
-	markerValue: (value: string) => string
-): void {
-	const accepted: Record<string, string> = {};
-	for (const [key, value] of Object.entries(updates)) {
-		if (!isVersionKey(key)) {
-			throw new Error(`Refusing to write unknown version key: ${key}`);
-		}
-		const trimmed = (value ?? '').trim();
-		if (key === 'OP_VOICE_VERSION' && VOICE_VARIANT_SUFFIX_RE.test(trimmed)) {
-			throw new Error(
-				`OP_VOICE_VERSION is the base image tag; Compose appends the accelerator suffix itself. Use "${trimmed.replace(VOICE_VARIANT_SUFFIX_RE, '')}" instead of "${trimmed}", or the image resolves to a tag that does not exist.`
-			);
-		}
-		accepted[key] = trimmed;
-		accepted[MANAGED_VERSION_MARKERS[key]] = markerValue(trimmed);
-	}
-	writeVersionState(state, accepted);
-}
 
 function writeVersionState(state: ControlPlaneState, updates: Record<string, string>): void {
 	if (Object.keys(updates).length === 0) return;

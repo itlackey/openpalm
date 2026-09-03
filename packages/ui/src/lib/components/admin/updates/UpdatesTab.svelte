@@ -126,6 +126,13 @@
 
 	const busy = $derived(operation !== null);
 
+	// #679: the tag field IS the pin. A value here is a row in state/stack.env
+	// that updates will not move; an empty field means the image follows the
+	// tag the release ships in its compose file, shown as the placeholder.
+	// There is no separate "is it pinned" bit to disagree with the field.
+	let resolved = $state<Record<VersionKey, string> | null>(null);
+	let running = $state<Record<string, string> | null>(null);
+
 	onMount(() => {
 		inElectron = typeof window.openpalm !== 'undefined';
 		void loadUpdaterState();
@@ -141,7 +148,11 @@
 		loadError = '';
 		try {
 			const data = await fetchVersions();
-			configured = { ...data.configured };
+			// Only pins go in the boxes; an unpinned image shows an empty box with
+			// the release tag as its placeholder.
+			configured = { ...emptyConfigured(), ...data.pins };
+			resolved = data.resolved;
+			running = data.running;
 		} catch (error) {
 			loadError = `Failed to load versions: ${error instanceof Error ? error.message : String(error)}`;
 		} finally {
@@ -188,22 +199,27 @@
 
 	async function saveConfiguration(): Promise<void> {
 		if (busy) return;
+		// Every field is sent, empty ones included: an empty value clears that
+		// image's pin. Sending only non-empty fields would make "cleared" and
+		// "unchanged" the same request, which is how there came to be no way to
+		// unpin at all.
 		const versions = emptyConfigured();
-		for (const field of VERSION_FIELDS) {
-			const value = configured[field.key].trim();
-			if (!value) {
-				notice = { tone: 'error', text: `${field.key} must not be empty.` };
-				return;
-			}
-			versions[field.key] = value;
-		}
+		for (const field of VERSION_FIELDS) versions[field.key] = configured[field.key].trim();
 
 		operation = { kind: 'configuration' };
 		notice = null;
 		try {
 			await patchVersions(versions);
 			configured = versions;
-			notice = { tone: 'success', text: 'Configured image tags saved.' };
+			const pinnedCount = Object.values(versions).filter((value) => value).length;
+			notice = {
+				tone: 'success',
+				text:
+					pinnedCount > 0
+						? 'Saved. Pinned images are not moved by updates; clear a tag to follow releases again.'
+						: 'Saved. All images now follow the release.'
+			};
+			void loadVersions();
 		} catch (error) {
 			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
 		} finally {
@@ -316,7 +332,9 @@
 				<details>
 					<summary id="configuration-heading">Advanced image tags</summary>
 					<p class="section-desc">
-						Most installations should keep these values set to <code>latest</code>.
+						Leave these empty and each image follows the release, which is what almost every
+						installation wants. Type a tag to pin one — updates will then leave it exactly
+						where you put it until you clear the box again.
 					</p>
 
 					<form
@@ -334,10 +352,15 @@
 										type="text"
 										autocomplete="off"
 										spellcheck="false"
-										required
+										placeholder={resolved?.[field.key] ?? ''}
 										bind:value={configured[field.key]}
 										aria-label={field.key}
 									/>
+									<span class="field-hint">
+										{configured[field.key].trim()
+											? 'Pinned — updates will not move this image. Clear to follow releases.'
+											: `Following the release (${resolved?.[field.key] ?? '—'}).`}
+									</span>
 								</label>
 							{/each}
 						</div>
@@ -537,6 +560,12 @@
 	}
 
 	.section-heading,
+	.field-hint {
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		color: var(--s-ink-3);
+	}
+
 	.version-field code {
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark);

@@ -1,4 +1,11 @@
-import { readVersions, SERVICE_VERSION_KEYS, writeVersions } from '@openpalm/lib';
+import {
+	buildComposeOptions,
+	probeRunningImages,
+	readVersionPins,
+	resolveVersions,
+	SERVICE_VERSION_KEYS,
+	writeVersions
+} from '@openpalm/lib';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
 	errorResponse,
@@ -13,6 +20,18 @@ import { getState } from '$lib/server/state.js';
 import type { RequestHandler } from './$types';
 
 const VERSION_KEYS = new Set<string>(SERVICE_VERSION_KEYS);
+
+/** Never throws and never fails the request: a down daemon reports as null. */
+async function readRunningImages(
+	state: Parameters<typeof buildComposeOptions>[0]
+): Promise<Record<string, string> | null> {
+	try {
+		const probe = await probeRunningImages(buildComposeOptions(state));
+		return probe.ok ? probe.images : null;
+	} catch {
+		return null;
+	}
+}
 
 export const GET: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);
@@ -29,7 +48,17 @@ export const GET: RequestHandler = async (event) => {
 	return jsonResponse(
 		200,
 		{
-			configured: readVersions(state)
+			// The rows literally present in state/stack.env — i.e. the pins. A key
+			// is absent when nothing is pinned; absence is never filled in with a
+			// default, because a filled-in value cannot be told from a pin (#679).
+			pins: readVersionPins(state),
+			// What each image resolves to today: the pin, or the release default
+			// the compose file carries.
+			resolved: resolveVersions(state),
+			// What is ACTUALLY running, from the daemon — the only report that
+			// cannot agree with a deploy that never happened. `null` when docker
+			// could not be asked; this route never fails on a down daemon.
+			running: await readRunningImages(state)
 		},
 		requestId
 	);
@@ -56,6 +85,9 @@ export const PATCH: RequestHandler = async (event) => {
 		);
 	}
 
+	// An empty tag CLEARS the pin — writeVersions removes the row and the image
+	// goes back to the release default. That is the unpin path; before #679
+	// there was none, from any surface.
 	const versions: Record<string, string> = {};
 	if (parsedBody.data.versions !== undefined) {
 		const value = parsedBody.data.versions;
@@ -72,11 +104,11 @@ export const PATCH: RequestHandler = async (event) => {
 					requestId
 				);
 			}
-			if (typeof tag !== 'string' || !tag.trim()) {
+			if (typeof tag !== 'string') {
 				return errorResponse(
 					400,
 					'invalid_version_value',
-					`${key} must be a non-empty string`,
+					`${key} must be a string`,
 					{},
 					requestId
 				);

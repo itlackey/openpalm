@@ -13,7 +13,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginHeaders } from './auth-helpers';
+import { loginAndGetSessionCookie, loginHeaders } from './auth-helpers';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
@@ -112,5 +112,50 @@ test.describe('Auth boundary — public paths remain accessible', () => {
       headers: { 'x-request-id': crypto.randomUUID() },
     });
     expect(res.status()).toBe(200);
+  });
+});
+
+// #678 — the host admin UI and the container-served assistant UI must hold
+// INDEPENDENT sessions. The host surface issues `op_session`; the
+// container-served UI reads `op_session_assistant` (session-cookie.ts). The
+// distinct names ARE the mechanism, so this asserts the consequence: a session
+// minted on one surface is not a session on the other.
+test.describe('Auth boundary — host and assistant sessions are independent', () => {
+  test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
+  test.setTimeout(30_000);
+
+  const CONTAINER_UI_URL = process.env.CONTAINER_UI_URL ?? '';
+
+  test('a host admin session buys nothing on the container-served UI', async ({ request }) => {
+    // Exported by scripts/dev-e2e-test.sh. Missing means the runner changed,
+    // which must fail rather than quietly skip — this suite forbids skips.
+    expect(CONTAINER_UI_URL, 'CONTAINER_UI_URL not exported by the stack runner').toBeTruthy();
+
+    const hostSession = await loginAndGetSessionCookie(request, ADMIN_URL, PASSWORD);
+    expect(hostSession.name).toBe('op_session');
+
+    const probe = '/api/host/containers/list';
+    const cookieHeader = `${hostSession.name}=${hostSession.value}`;
+
+    // The session works on the surface that issued it.
+    const onHost = await request.get(`${ADMIN_URL}${probe}`, {
+      headers: { cookie: cookieHeader, 'x-requested-by': 'e2e-test', 'x-request-id': crypto.randomUUID() },
+    });
+    expect(onHost.status()).toBe(200);
+
+    // On the other surface it must confer NOTHING — asserted as "the same
+    // answer you get with no cookie at all", not as a specific status code.
+    // The container UI answers this path 403 (the host capability is not
+    // served there) rather than 401, and pinning either number would test the
+    // rejection style instead of the session boundary.
+    const anonymous = await request.get(`${CONTAINER_UI_URL}${probe}`, {
+      headers: { 'x-requested-by': 'e2e-test', 'x-request-id': crypto.randomUUID() },
+    });
+    const withHostCookie = await request.get(`${CONTAINER_UI_URL}${probe}`, {
+      headers: { cookie: cookieHeader, 'x-requested-by': 'e2e-test', 'x-request-id': crypto.randomUUID() },
+    });
+
+    expect(withHostCookie.status()).toBe(anonymous.status());
+    expect(withHostCookie.status()).not.toBe(200);
   });
 });

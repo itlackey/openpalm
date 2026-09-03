@@ -186,6 +186,13 @@ jobs:
           mkdir -p "${OP_HOME}/system/stack" "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/env" "${OP_HOME}/knowledge/secrets" "${OP_HOME}/data"
           docker compose -f packages/skeleton/system/stack/core.compose.yml -f compose.dev.yml config -q
 
+      # #628: the app and `docker compose --env-file` must read an app-written
+      # env file identically. The test skips itself without a docker daemon, so
+      # it runs HERE — the job that has one — not only in the unit lane, where
+      # it would pass by skipping.
+      - name: Env-file grammar parity with docker compose
+        run: bun test packages/lib/src/control-plane/env-grammar-parity.test.ts
+
       - name: Validate current rootless non-regression guardrails
         run: ./scripts/validate-rootless-guardrails.sh
 

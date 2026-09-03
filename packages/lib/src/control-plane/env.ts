@@ -17,6 +17,12 @@ export function parseEnvFile(filePath: string): Record<string, string> {
   }
 }
 
+/**
+ * dotenv quoting, for env files only this app and akm read — today exactly one:
+ * `knowledge/env/user.env`, which holds user-set values (provider keys, owner
+ * info, occasionally a pasted multi-line key). Compose never reads it, so its
+ * values are not bound by {@link quoteComposeEnvValue}'s narrower grammar.
+ */
 export function quoteEnvValue(value: string): string {
   if (value.length === 0) return '';
   const needsQuoting = /[#"'\\\n\r$]/.test(value) || value !== value.trim();
@@ -27,6 +33,70 @@ export function quoteEnvValue(value: string): string {
   const escaped = value.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
   return `"${escaped}"`;
 }
+
+/** A value no shape of the compose-safe grammar can hold (#628). */
+export class UnrepresentableEnvValueError extends Error {
+  constructor(readonly key: string, readonly reason: string) {
+    super(`Cannot store ${key} in a Compose env file: ${reason}`);
+    this.name = 'UnrepresentableEnvValueError';
+  }
+}
+
+/**
+ * Render a value for an env file DOCKER COMPOSE reads — `state/stack.env` and
+ * its legacy variants. TWO shapes, and only two: bare, or single-quoted (#628).
+ *
+ * The third shape {@link quoteEnvValue} still uses — double-quoted with
+ * backslash escapes — is not merely awkward for a non-JS consumer here. dotenv
+ * and `docker compose --env-file` DISAGREE about it. Written for a Windows
+ * path, this app read `C:\\Users\\op\\` back while Compose read
+ * `C:\Users\op\`: the same bytes, two different values, no error from
+ * either. A file compose reads may not contain a shape they read differently.
+ *
+ * What survives is what dotenv, Compose and `bash source` agree on, and the
+ * reader side is now one sentence long: if the value starts and ends with a
+ * single quote, drop those two characters; otherwise take it literally.
+ *
+ * A value neither shape can hold is REFUSED, naming the key. Compose parses
+ * --env-file whole-file, so one unrepresentable value written silently takes
+ * down every compose command on that home — a loud refusal at the write is the
+ * cheap end of that trade. Nothing in a real OP_HOME is affected: every value
+ * across the installs surveyed for #628 is bare.
+ */
+export function quoteComposeEnvValue(value: string, key = 'value'): string {
+  if (value.length === 0) return '';
+  const needsQuoting = /[#"'\\\n\r$]/.test(value) || value !== value.trim();
+  if (!needsQuoting) return value;
+
+  // A line break ends the record for both readers; no shape holds one.
+  if (/[\n\r]/.test(value)) {
+    throw new UnrepresentableEnvValueError(key, 'the value contains a line break');
+  }
+  // Compose answers `KEY='...\'` with "unterminated quoted value" — and it
+  // fails the WHOLE file, not the line. Verified against docker compose.
+  if (/\\$/.test(value)) {
+    throw new UnrepresentableEnvValueError(
+      key,
+      'the value ends with a backslash, which docker compose reads as an escaped quote and then rejects the entire env file',
+    );
+  }
+  // The quote character itself has no escape inside a single-quoted value that
+  // both readers agree on.
+  if (value.includes("'")) {
+    throw new UnrepresentableEnvValueError(key, "the value contains a single quote (')");
+  }
+  return `'${value}'`;
+}
+
+/**
+ * The reader half of {@link quoteComposeEnvValue}'s grammar, for a non-JS
+ * consumer to mirror in two lines. Kept beside the writer so the pair cannot
+ * drift, and asserted against real `docker compose` in env-grammar-parity.
+ */
+export function unquoteComposeEnvValue(raw: string): string {
+  return raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'") ? raw.slice(1, -1) : raw;
+}
+
 
 /**
  * Remove a key from .env content. Comments above the line and the
@@ -105,6 +175,17 @@ export function resolveRequestedImageTag(repoRef: string): string | null {
   return trimmed;
 }
 
+/**
+ * Upsert keys into env-file content, preserving comments and layout.
+ *
+ * A key that appears more than once is written to its LAST occurrence and the
+ * earlier ones are deleted (#628). It used to write the FIRST and leave the
+ * rest — while dotenv, `docker compose --env-file` and `bash source` all take
+ * the last. So on a file with a duplicated key the app's write was read back as
+ * the stale value, with nothing reporting a problem: `K=first / K=second`,
+ * write `K=NEW`, and every reader still says `second`. Verified against both
+ * readers before and after.
+ */
 export function mergeEnvContent(
   content: string,
   updates: Record<string, string>,
@@ -113,12 +194,14 @@ export function mergeEnvContent(
   const lines = content.split('\n');
   const remaining = new Map(Object.entries(updates));
 
+  /** Index of each key's occurrences, in file order. */
+  const seen = new Map<string, number[]>();
+  const prefixes = new Map<number, string>();
   for (let i = 0; i < lines.length; i++) {
     let testLine = lines[i].trim();
     if (options.uncomment) {
       testLine = testLine.replace(/^#\s*/, '').trim();
     }
-    // Strip `export ` prefix so we can match the key name
     const hadExport = testLine.startsWith('export ');
     if (hadExport) {
       testLine = testLine.slice(7).trimStart();
@@ -126,26 +209,34 @@ export function mergeEnvContent(
     const eq = testLine.indexOf('=');
     if (eq <= 0) continue;
     const key = testLine.slice(0, eq).trim();
-    const value = remaining.get(key);
-    if (value !== undefined) {
-      // Preserve the export prefix if the original line had one
-      const prefix = hadExport ? 'export ' : '';
-      lines[i] = `${prefix}${key}=${quoteEnvValue(value)}`;
-      remaining.delete(key);
-    }
+    if (!remaining.has(key)) continue;
+    seen.set(key, [...(seen.get(key) ?? []), i]);
+    prefixes.set(i, hadExport ? 'export ' : '');
   }
+
+  const doomed = new Set<number>();
+  for (const [key, indices] of seen) {
+    const target = indices[indices.length - 1];
+    const value = remaining.get(key) as string;
+    lines[target] = `${prefixes.get(target) ?? ''}${key}=${quoteComposeEnvValue(value, key)}`;
+    // The shadowed earlier copies go: leaving them would keep a value in the
+    // file that no reader uses and that a later hand-edit could resurrect.
+    for (const index of indices.slice(0, -1)) doomed.add(index);
+    remaining.delete(key);
+  }
+  const kept = doomed.size > 0 ? lines.filter((_line, index) => !doomed.has(index)) : lines;
 
   if (remaining.size > 0) {
-    if (lines.length === 0 || lines[lines.length - 1] !== '') {
-      lines.push('');
+    if (kept.length === 0 || kept[kept.length - 1] !== '') {
+      kept.push('');
     }
     if (options.sectionHeader) {
-      lines.push(options.sectionHeader);
+      kept.push(options.sectionHeader);
     }
     for (const [key, value] of remaining) {
-      lines.push(`${key}=${quoteEnvValue(value)}`);
+      kept.push(`${key}=${quoteComposeEnvValue(value, key)}`);
     }
   }
 
-  return lines.join('\n');
+  return kept.join('\n');
 }

@@ -275,12 +275,11 @@ describe("writeRuntimeFiles", () => {
     expect(existsSync(systemEnvPath)).toBe(true);
     const content = readFileSync(systemEnvPath, "utf-8");
     expect(content).toContain(`OP_HOME=${state.homeDir}`);
-    // Per-image version pins (exact tag / "latest" / "next") replaced the old
-    // single OP_IMAGE_TAG + per-unit OP_*_IMAGE_TAG cascade.
-    expect(content).toContain('OP_ASSISTANT_VERSION=');
-    expect(content).toContain('OP_GUARDIAN_VERSION=');
-    expect(content).toContain('OP_PORTAL_VERSION=');
-    expect(content).toContain('OP_VOICE_VERSION=');
+    // #679: a fresh stack.env carries NO image-tag rows. Each image runs the
+    // `:-` default in the compose files this release ships; a row here exists
+    // only when an operator pinned one, which is what makes a row a pin.
+    expect(content).not.toMatch(/^OP_ASSISTANT_VERSION=/m);
+    expect(content).not.toContain('OP_MANAGED_');
   });
 
   test("stack.env does NOT leak user-managed secrets", () => {
