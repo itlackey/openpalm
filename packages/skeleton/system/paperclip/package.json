@@ -2,6 +2,6 @@
 	"private": true,
 	"dependencies": {
 		"akm-cli": "0.9.14",
-		"akm-opencode": "0.9.14202609050009"
+		"akm-opencode": "0.9.14202609050148"
 	}
 }
