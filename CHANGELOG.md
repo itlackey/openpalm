@@ -5,6 +5,62 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] - 2026-09-05
+
+### Changed
+
+- **#685 / #683 AKM moves to 0.9.14, and the plugin is pinned to the build
+  that matches it.** `akm-cli` 0.9.10 -> 0.9.14 in both the assistant tool
+  image and the Paperclip skeleton; `akm-opencode`
+  0.9.9202609021827 -> 0.9.14202609050148 in the Paperclip manifest and in the
+  assistant's own runtime plugin spec.
+
+  Those two pins are one change, not two. The plugin build published before
+  akm-plugins#120 declared `akm-cli: ^0.9.8`, a range that can resolve a CLI
+  *older* than 0.9.14 at install time — and 0.9.14 advances the derived search
+  index to generation 23 and carries state migration 027, which an older CLI
+  refuses to open. Taking the plugin without the matching exact pin could
+  therefore have produced a container whose AKM will not open its own
+  `OP_HOME`. The adopted build exact-pins `akm-cli: 0.9.14`.
+
+  What users get: `akm search` now returns addressable fragment refs and `akm
+  show` resolves one to that passage alone, so a hit in a long knowledge
+  document or a chat-transcript memory delivers the relevant section instead
+  of the whole file. Nothing in `OP_HOME` needs a manual step — the index is a
+  regenerable cache and the current binary rebuilds an older one on the first
+  `akm index` after the upgrade. Only the backward direction is refused, which
+  is why the pin is exact rather than a range.
+
+  Verified against a live instance, not just metadata: homes migrated from
+  `@openpalm/skeleton` 0.12.43 and 0.13.0-beta.13 both report `akm migrate
+  status` current and reconcile all three shipped tasks under
+  `akm-cli@0.9.14` on `node:22-trixie-slim`. `engines.node >=22` is unchanged
+  from 0.9.10, so the engines-floor failure class that made the 0.9.1 -> 0.9.4
+  bump ship five cascading failures does not apply here.
+
+### Fixed
+
+- **#684 An existing-install command pointed at a home that is not one now
+  fails closed, naming the path.** A wrong `OP_HOME` — a typo, or an unset
+  variable falling through to a default nothing was installed to — read as a
+  valid EMPTY install: every lookup returned nothing, so the command reported
+  "no version rows" or "schema unset" and sent the operator off to debug an
+  install that was never there.
+
+  The refusal itself largely existed; what it never did was say WHICH path it
+  looked at. "OpenPalm is not installed in this OP_HOME yet. Run `openpalm
+  install` first." reads, on a typo, as advice to install a second time at the
+  wrong location. The message is now `Not an OpenPalm home: <resolved path>`.
+
+  The guard also moved into `@openpalm/lib`, so the CLI and the host-admin API
+  share one implementation instead of the CLI having the only copy: all eleven
+  CLI lifecycle commands inherit it through `ensureValidState`, and the eleven
+  host-admin routes with an existing-install prerequisite call the same guard
+  before any Docker invocation or managed-home write. `install` and first-run
+  setup are deliberately exempt, and an interrupted install still passes —
+  `setup_incomplete` is an OpenPalm home, and the setup-recovery commands
+  exist to finish it.
+
 ## [0.13.4] - 2026-09-03
 
 ### Fixed
