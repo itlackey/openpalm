@@ -7,6 +7,7 @@
 import {
   classifyLocalInstall,
   createState,
+  requireExistingInstall,
   resolveRuntimeFiles,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
@@ -25,9 +26,11 @@ import type { ControlPlaneState } from '@openpalm/lib';
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();
-  if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
-    throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
-  }
+  // #684: one shared lib guard, so the message names the path that was actually
+  // resolved. The old wording ("not installed in this OP_HOME yet — run install")
+  // read as advice on a typo'd OP_HOME, inviting a second install at the wrong
+  // path instead of saying the path is not a home.
+  requireExistingInstall(state.homeDir);
   state.artifacts = resolveRuntimeFiles();
   return state;
 }
