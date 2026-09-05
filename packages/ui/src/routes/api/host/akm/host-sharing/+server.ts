@@ -32,6 +32,7 @@ import {
   jsonResponse,
   requireAdmin,
   requireCapability,
+  requireInstalledHome
 } from '$lib/server/helpers.js';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 
@@ -53,6 +54,8 @@ export const PUT: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
+  const notInstalled = requireInstalledHome(state.homeDir, requestId);
+  if (notInstalled) return notInstalled;
   return withAdminUpdateLock(state, requestId, async (lock) => {
     enableHostAkmSharing(state);
     // The mount source changed; only a recreate picks that up.

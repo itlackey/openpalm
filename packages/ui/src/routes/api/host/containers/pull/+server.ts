@@ -3,7 +3,8 @@ import {
 	jsonResponse,
 	errorResponse,
 	requireAdmin,
-	requireCapability
+	requireCapability,
+  requireInstalledHome
 } from '$lib/server/helpers.js';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from '$lib/server/state.js';
@@ -28,6 +29,8 @@ export const POST: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const state = getState();
+	const notInstalled = requireInstalledHome(state.homeDir, requestId);
+	if (notInstalled) return notInstalled;
 	return withAdminUpdateLock(state, requestId, async (lock) => {
 		const dockerCheck = await checkDocker();
 		if (!dockerCheck.ok) {
