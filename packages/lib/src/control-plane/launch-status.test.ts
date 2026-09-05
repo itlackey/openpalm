@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import {
   deriveLaunchStatus,
   classifyLocalInstall,
+  requireExistingInstall,
   hasMaterializedLocalInstall,
   deriveLocalStackState,
   detectRuntimeName,
@@ -122,6 +123,24 @@ describe("classifyLocalInstall (disk markers)", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
     expect(classifyLocalInstall(sd, dir)).toBe("not_installed");
+  });
+
+  // (#684) The existing-install guard rejects ONLY not_installed, so both
+  // shapes below must pass it. Asserted here, against the same fixtures that
+  // pin the classification itself, so the two can never drift apart.
+  it("requireExistingInstall accepts an interrupted install — setup_incomplete is still a home", () => {
+    const sd = stackDir();
+    writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    writeStackEnv("OP_SETUP_COMPLETE=false\n");
+    expect(requireExistingInstall(dir)).toBe(dir);
+  });
+
+  it("requireExistingInstall accepts a legacy-location env file as install evidence", () => {
+    const sd = stackDir();
+    writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(join(dir, "state", "stack.state.env"), "OP_SETUP_COMPLETE=false\n");
+    expect(requireExistingInstall(dir)).toBe(dir);
   });
 
   it("counts a legacy-location env file as install evidence too", () => {

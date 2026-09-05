@@ -228,6 +228,48 @@ export function hasMaterializedLocalInstall(homeDir: string): boolean {
   return classifyLocalInstall(stackDirFor(homeDir), homeDir) !== "not_installed";
 }
 
+/**
+ * Thrown when an operation that requires an existing installation is pointed at
+ * a home that is not one. Carries the resolved path so callers can report the
+ * path they actually looked at rather than the one the user thinks they typed.
+ */
+export class NotAnOpenPalmHomeError extends Error {
+  readonly home: string;
+  constructor(home: string) {
+    super(`Not an OpenPalm home: ${home}`);
+    this.name = "NotAnOpenPalmHomeError";
+    this.home = home;
+  }
+}
+
+/**
+ * Fail closed before an existing-install operation touches Docker or writes to
+ * a managed home (#684).
+ *
+ * A wrong `OP_HOME` — a typo, an unset variable falling through to a default
+ * that was never installed to — otherwise reads as a valid EMPTY install:
+ * every lookup returns nothing, so the operation reports "no version rows" or
+ * "schema unset" and the user debugs their install instead of their path. The
+ * distinction this makes is between "installed here and broken" and "not here
+ * at all", and only the second one is this guard's business.
+ *
+ * Rejects ONLY `not_installed`. `setup_incomplete` deliberately passes: an
+ * interrupted install IS an OpenPalm home, and setup-recovery commands exist to
+ * finish it — {@link classifyLocalInstall}'s own per-command handling decides
+ * what to do with it, not a blanket refusal here.
+ *
+ * Callers that legitimately accept a missing home — install, first-run setup,
+ * restore-to-a-new-home — must not call this.
+ *
+ * @returns the resolved home, so a caller can use the canonical path it validated.
+ */
+export function requireExistingInstall(homeDir: string): string {
+  if (classifyLocalInstall(stackDirFor(homeDir), homeDir) === "not_installed") {
+    throw new NotAnOpenPalmHomeError(homeDir);
+  }
+  return homeDir;
+}
+
 export function deriveLocalStackState(
   installState: 'not_installed' | 'setup_incomplete' | 'installed',
   services: ComposeServiceStatus[],

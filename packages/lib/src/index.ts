@@ -244,6 +244,8 @@ export {
   deriveLaunchStatus,
   classifyLocalInstall,
   hasMaterializedLocalInstall,
+  requireExistingInstall,
+  NotAnOpenPalmHomeError,
   deriveLocalStackState,
   detectRuntime,
 } from "./control-plane/launch-status.js";
