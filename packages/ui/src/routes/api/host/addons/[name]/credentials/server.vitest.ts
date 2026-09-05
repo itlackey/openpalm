@@ -52,7 +52,9 @@ function makeGetEvent(name = 'voice'): Parameters<typeof GET>[0] {
 
 function writeRemoteStackEnv(contents: string): void {
 	mkdirSync(join(homeDir, 'state'), { recursive: true });
-	writeFileSync(join(homeDir, 'state', 'stack.env'), contents);
+	// Keep the installed stamp: this helper sets addon keys, it does not
+	// un-install the home, and #684's guard reads the same file.
+	writeFileSync(join(homeDir, 'state', 'stack.env'), `OP_SETUP_COMPLETE=true\n${contents}`);
 }
 
 beforeEach(() => {
@@ -63,6 +65,11 @@ beforeEach(() => {
 	// Replace activation so the tests can assert its service scope without Docker.
 	activateStackMock.mockReset();
 	activateStackMock.mockRejectedValue(new Error('compose apply failed'));
+	// #684: this route requires an existing installation, and the fixture home
+	// is a bare mkdtemp. Stamp it installed before resetState reads it, so the
+	// assertions below observe the route's behaviour rather than the guard.
+	mkdirSync(join(homeDir, 'state'), { recursive: true });
+	writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 	resetState('admin-token');
 });
 

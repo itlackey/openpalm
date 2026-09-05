@@ -24,6 +24,8 @@ vi.mock('@openpalm/lib', async () => {
 });
 
 import { resetState } from '$lib/server/test-helpers.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { HostSwapBlockedError } from '@openpalm/lib';
 import { POST } from './+server.js';
 
@@ -44,7 +46,13 @@ beforeEach(() => {
 	// Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
 	// run this suite as a host-capable mode.
 	process.env.OP_ENABLE_ADMIN = '1';
-	resetState('admin-token');
+	const state = resetState('admin-token');
+	// #684: this route requires an existing installation. The fixture home is a
+	// bare temp dir, so stamp it installed — production always is by the time a
+	// container-lifecycle route is reachable, and without this the guard (not
+	// the behaviour under test) is what every assertion below would observe.
+	mkdirSync(join(state.homeDir, 'state'), { recursive: true });
+	writeFileSync(join(state.homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 	composeStartMock.mockReset();
 	checkDockerMock.mockReset();
 	reconcileHostOwnershipMock.mockReset();
