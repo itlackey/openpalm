@@ -5,8 +5,7 @@ import {
   requireAdmin,
   requireCapability,
   parseJsonBody,
-  jsonBodyError,
-  requireInstalledHome
+  jsonBodyError
 } from "$lib/server/helpers.js";
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
@@ -24,8 +23,6 @@ export const POST: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const notInstalled = requireInstalledHome(state.homeDir, requestId);
-  if (notInstalled) return notInstalled;
   const result = await parseJsonBody(event.request);
   if ('error' in result) return jsonBodyError(result, requestId);
   const body = result.data;

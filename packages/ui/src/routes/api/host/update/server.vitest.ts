@@ -25,7 +25,7 @@ vi.mock('@openpalm/lib', async () => {
 });
 
 import { getState } from '$lib/server/state.js';
-import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
+import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
 function makeEvent(body: unknown = {}, token = 'admin-token'): Parameters<typeof POST>[0] {
@@ -58,8 +58,7 @@ function makeRawEvent(body: string): Parameters<typeof POST>[0] {
 
 beforeEach(() => {
 	process.env.OP_ENABLE_ADMIN = '1';
-	// #684: this route requires an existing installation.
-	markStateInstalled(resetState('admin-token'));
+	resetState('admin-token');
 	vi.clearAllMocks();
 	checkDockerMock.mockResolvedValue({ ok: true, stdout: '26.0.0', stderr: '', code: 0 });
 	composeConfigServicesMock.mockResolvedValue({ ok: true, services: ['assistant', 'discord'] });

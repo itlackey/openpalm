@@ -52,14 +52,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   install` first." reads, on a typo, as advice to install a second time at the
   wrong location. The message is now `Not an OpenPalm home: <resolved path>`.
 
-  The guard also moved into `@openpalm/lib`, so the CLI and the host-admin API
-  share one implementation instead of the CLI having the only copy: all eleven
-  CLI lifecycle commands inherit it through `ensureValidState`, and the eleven
-  host-admin routes with an existing-install prerequisite call the same guard
+  The guard also moved into `@openpalm/lib` as `requireExistingInstall`, so it
+  is one shared implementation rather than a private CLI helper. All eleven CLI
+  lifecycle commands inherit it through `ensureValidState`, which already ran
   before any Docker invocation or managed-home write. `install` and first-run
   setup are deliberately exempt, and an interrupted install still passes —
-  `setup_incomplete` is an OpenPalm home, and the setup-recovery commands
-  exist to finish it.
+  `setup_incomplete` is an OpenPalm home, and the setup-recovery commands exist
+  to finish it.
+
+  Scoped to the CLI. #684 also asks for the guard on host-admin routes; that
+  half is deferred rather than shipped half-checked, because the admin server
+  deliberately serves a not-installed home so a new user can reach `/setup`
+  (`resolveServeState`), and a per-route refusal has to be reconciled with that
+  contract rather than bolted beside it.
 
 ## [0.13.4] - 2026-09-03
 

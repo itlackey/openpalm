@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { cleanupTempDirs, resetState, seedSecretsEnv, stackEnvFor, trackDir, markStateInstalled } from '$lib/server/test-helpers.js';
+import { cleanupTempDirs, resetState, seedSecretsEnv, stackEnvFor, trackDir } from '$lib/server/test-helpers.js';
 import {
   _resetMdnsResponderForTests,
   _setMdnsFactoryForTests,
@@ -127,8 +127,7 @@ beforeEach(() => {
   }
   homeDir = makeTempHome();
   process.env.OP_HOME = homeDir;
-  // #684: this route requires an existing installation.
-  markStateInstalled(resetState('admin-token'));
+  resetState('admin-token');
   // #488 — never let the PUT handler's reconcile bind a real UDP socket.
   _setMdnsFactoryForTests(noopMdnsFactory);
   // Stub the reachability probe too. Without it the PUT path fires a real

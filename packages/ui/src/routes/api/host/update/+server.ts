@@ -14,8 +14,7 @@ import {
 	jsonResponse,
 	parseJsonBody,
 	requireAdmin,
-	requireCapability,
-  requireInstalledHome
+	requireCapability
 } from '$lib/server/helpers.js';
 import { getState } from '$lib/server/state.js';
 import type { RequestHandler } from './$types';
@@ -46,8 +45,6 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const state = getState();
-	const notInstalled = requireInstalledHome(state.homeDir, requestId);
-	if (notInstalled) return notInstalled;
 	return withAdminUpdateLock(state, requestId, async (lock) => {
 		try {
 			const docker = await checkDocker();

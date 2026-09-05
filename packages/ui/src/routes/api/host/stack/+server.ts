@@ -34,7 +34,6 @@ import {
   requireAdmin,
   requireCapability,
   withAdminBody,
-  requireInstalledHome
 } from '$lib/server/helpers.js';
 
 const DEFAULT_PROJECT_NAME = 'openpalm';
@@ -55,8 +54,6 @@ export const GET: RequestHandler = async (event) => {
   if (denied) return denied;
 
   const state = getState();
-  const notInstalled = requireInstalledHome(state.homeDir, requestId);
-  if (notInstalled) return notInstalled;
   const env = readStackEnv(state.homeDir);
 
   return jsonResponse(

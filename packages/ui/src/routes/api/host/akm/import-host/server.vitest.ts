@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
+import { resetState } from '$lib/server/test-helpers.js';
 
 const mocks = vi.hoisted(() => ({
   akmResult: {
@@ -69,8 +69,7 @@ beforeEach(() => {
   mkdirSync(join(homeDir, 'state'), { recursive: true });
   writeFileSync(configPath(), PRIOR);
   process.env.OP_HOME = homeDir;
-  // #684: this route requires an existing installation.
-  markStateInstalled(resetState('admin-token'));
+  resetState('admin-token');
   mocks.akmResult = { ok: true, stdout: '{"ok":true}', stderr: '', exitCode: 0, missing: false };
   mocks.imported = ['engines'];
 });

@@ -14,8 +14,7 @@ import {
 	jsonResponse,
 	parseJsonBody,
 	requireAdmin,
-	requireCapability,
-  requireInstalledHome
+	requireCapability
 } from '$lib/server/helpers.js';
 import { getState } from '$lib/server/state.js';
 import type { RequestHandler } from './$types';
@@ -42,8 +41,6 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const state = getState();
-	const notInstalled = requireInstalledHome(state.homeDir, requestId);
-	if (notInstalled) return notInstalled;
 	if (!state.stackDir) {
 		return errorResponse(503, 'not_initialized', 'Stack directory not configured', {}, requestId);
 	}
