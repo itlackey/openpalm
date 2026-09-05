@@ -52,6 +52,26 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
   };
 }
 
+/**
+ * Stamp a fixture home as an installed OpenPalm home.
+ *
+ * Host-admin routes whose prerequisite is an existing installation refuse a
+ * home that is not one (#684). A fixture built from a bare mkdtemp is not one,
+ * so without this the guard — rather than the behaviour under test — is what
+ * those suites observe. Production always has an installed home by the time
+ * such a route is reachable.
+ *
+ * Opt-in on purpose: `resetState` is shared with the hooks.server suites that
+ * deliberately assert not-installed routing, and stamping there would fake an
+ * install for them too.
+ */
+export function markStateInstalled(state: ControlPlaneState): ControlPlaneState {
+  const path = stackEnvFile(state.homeDir);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "OP_SETUP_COMPLETE=true\n");
+  return state;
+}
+
 export function trackDir(dir: string): string {
   tempDirs.push(dir);
   return dir;

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { resetState } from '$lib/server/test-helpers.js';
+import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 
 vi.mock('@openpalm/lib', async (importOriginal) => {
@@ -57,7 +57,8 @@ beforeEach(() => {
 	mkdirSync(rootDir, { recursive: true });
 	originalHome = process.env.OP_HOME;
 	process.env.OP_HOME = rootDir;
-	resetState('admin-token');
+	// #684: this route requires an existing installation.
+	markStateInstalled(resetState('admin-token'));
 	vi.clearAllMocks();
 	vi.mocked(getHostAkmSharingStatus).mockReturnValue({ enabled: true, hostStashPath: '/home/u/akm' });
 });

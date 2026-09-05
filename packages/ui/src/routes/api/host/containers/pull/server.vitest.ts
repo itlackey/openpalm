@@ -31,7 +31,7 @@ vi.mock('@openpalm/lib', async () => {
 	};
 });
 
-import { resetState } from '$lib/server/test-helpers.js';
+import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
 function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
@@ -48,7 +48,8 @@ beforeEach(() => {
 	// Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
 	// run this suite as a host-capable mode.
 	process.env.OP_ENABLE_ADMIN = '1';
-	resetState('admin-token');
+	// #684: this route requires an existing installation.
+	markStateInstalled(resetState('admin-token'));
 	applyStackMock.mockReset();
 	checkDockerMock.mockReset();
 	buildManagedServicesMock.mockReset();
