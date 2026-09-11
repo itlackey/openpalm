@@ -84,6 +84,7 @@ not kept current as the code moves.
 | Document | Description |
 |---|---|
 | [onboarding-setup-review.md](reviews/onboarding-setup-review.md) | End-to-end review of the new-user journey: discovery, install, setup wizard, first deploy, first chat |
+| [buzz-integration-analysis.md](reviews/buzz-integration-analysis.md) | OpenPalm vs [Buzz](https://github.com/block/buzz): protocol/architecture comparison against Paperclip, and an integration recommendation for the "agents at work" use case |
 | [paperclip-integration-analysis.md](reviews/paperclip-integration-analysis.md) | OpenPalm vs [Paperclip](https://github.com/paperclipai/paperclip): overlap, integration seams, and a phased recommendation for the "agents at work" use case |
 
 ## Release notes
@@ -101,5 +102,6 @@ not kept current as the code moves.
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
+| [buzz-addon-design.md](technical/buzz-addon-design.md) | **Design, not yet implemented.** Buzz as two addons — an ACP agent bridge and an optional self-hosted relay |
 | [paperclip-addon-design.md](technical/paperclip-addon-design.md) | Paperclip as a standard loopback-only first-party service addon |
 | [remote-provider-contract.md](technical/remote-provider-contract.md) | The `remote` addon's provider-variant contract, with Tailscale as the reference implementation |
