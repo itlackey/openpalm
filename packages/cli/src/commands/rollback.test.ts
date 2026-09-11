@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 import * as realCliState from '../lib/cli-state.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
 import * as realPrompt from '../lib/prompt.ts';
@@ -15,7 +16,7 @@ afterEach(() => {
   mock.restore();
   // mock.restore() does NOT undo mock.module(); re-point to the real modules
   // so these mocks do not leak into other test files in the shared bun test process.
-  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  restoreRealOpenPalmLib();
   mock.module(moduleUrls.cliState, () => ({ ...realCliState }));
   mock.module(moduleUrls.cliCompose, () => ({ ...realCliCompose }));
   mock.module(moduleUrls.prompt, () => ({ ...realPrompt }));

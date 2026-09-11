@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 import * as realCliState from '../lib/cli-state.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
 
@@ -15,7 +16,7 @@ const composeWaitArgs = ['--wait'];
 
 afterEach(() => {
   mock.restore();
-  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  restoreRealOpenPalmLib();
   mock.module(moduleUrls.cliState, () => ({ ...realCliState }));
   mock.module(moduleUrls.cliCompose, () => ({ ...realCliCompose }));
 });

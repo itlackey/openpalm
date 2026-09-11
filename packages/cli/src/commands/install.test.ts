@@ -21,6 +21,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 import * as realPrompt from '../lib/prompt.ts';
 import { wizardUiServerOptions } from './install.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
@@ -69,7 +70,7 @@ afterEach(() => {
   mock.restore();
   // mock.restore() does NOT undo mock.module(); re-point to the real modules
   // so these mocks do not leak into other test files in the shared bun test process.
-  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  restoreRealOpenPalmLib();
   mock.module(moduleUrls.prompt, () => ({ ...realPrompt }));
 });
 

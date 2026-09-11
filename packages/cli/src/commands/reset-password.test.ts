@@ -16,6 +16,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
 import * as realCliState from '../lib/cli-state.ts';
 
@@ -32,7 +33,7 @@ let composeInvoked: boolean;
 
 function resetMocks(): void {
 	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	mock.module(moduleUrls.cliState, () => ({
 		...realCliState,
 		ensureValidState: () => {
@@ -71,7 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	mock.module(moduleUrls.cliState, () => ({ ...realCliState }));
 	mock.module(moduleUrls.cliCompose, () => ({ ...realCliCompose }));
 	if (originalHome === undefined) delete process.env.OP_HOME;
