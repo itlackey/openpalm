@@ -37,7 +37,7 @@ vi.mock('@openpalm/lib', async (orig) => {
   };
 });
 
-const { resetState } = await import('$lib/server/test-helpers.js');
+const { resetState, markStateInstalled } = await import('$lib/server/test-helpers.js');
 const { PUT } = await import('./+server.js');
 
 let rootDir = '';
@@ -74,7 +74,7 @@ beforeEach(() => {
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
   projectNameDuringApply = null;
-  resetState('admin-token');
+  markStateInstalled(resetState('admin-token'));
 });
 
 afterEach(() => {

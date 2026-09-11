@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resetState } from '$lib/server/test-helpers.js';
+import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 
 const activateStackMock = vi.hoisted(() => vi.fn());
@@ -52,7 +52,12 @@ function makeGetEvent(name = 'voice'): Parameters<typeof GET>[0] {
 
 function writeRemoteStackEnv(contents: string): void {
 	mkdirSync(join(homeDir, 'state'), { recursive: true });
-	writeFileSync(join(homeDir, 'state', 'stack.env'), contents);
+	// This helper replaces the whole file, so it must carry the same
+	// OP_SETUP_COMPLETE stamp markStateInstalled put there in beforeEach —
+	// otherwise the #689 install guard on the route under test sees the
+	// fixture home as not-installed and refuses before the addon logic runs.
+	const stamped = contents.includes('OP_SETUP_COMPLETE') ? contents : `${contents}OP_SETUP_COMPLETE=true\n`;
+	writeFileSync(join(homeDir, 'state', 'stack.env'), stamped);
 }
 
 beforeEach(() => {
@@ -63,7 +68,7 @@ beforeEach(() => {
 	// Replace activation so the tests can assert its service scope without Docker.
 	activateStackMock.mockReset();
 	activateStackMock.mockRejectedValue(new Error('compose apply failed'));
-	resetState('admin-token');
+	markStateInstalled(resetState('admin-token'));
 });
 
 afterEach(() => {
