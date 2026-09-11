@@ -35,6 +35,24 @@ describe('reconcileEvictedSessions', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'guardian-reconcile-test-'));
     database = new Database(join(tmpDir, 'state.db'), { create: true });
     configureStateDatabase(database);
+    // These suites seed hundreds of rows and then drain them, and every
+    // statement commits on its own — ~800 commits for the 250-row backlog
+    // cases, each one an fsync under the default synchronous=FULL.
+    //
+    // Measured, 800 single-statement commits into a WAL database:
+    //   tmpfs         FULL 5.7ms   NORMAL 5.0ms   OFF 5.1ms
+    //   ext4 (disk)   FULL 4076ms  NORMAL 22.9ms  OFF 5.9ms
+    //
+    // Developer machines usually put TMPDIR on tmpfs, where fsync is free and
+    // the whole file runs in <100ms. GitHub-hosted runners put it on a real
+    // disk, where the same work costs seconds — which is how the AC2 backlog
+    // test came to take 6990ms against bun's 5000ms default and fail a 0.13.6
+    // release dry run while passing on the identical commit elsewhere.
+    //
+    // The database is a throwaway created by mkdtempSync and deleted in
+    // afterEach, so durability here protects nothing. Dropping it removes the
+    // fsyncs without changing a single statement, ordering, or assertion.
+    database.exec('PRAGMA synchronous = OFF');
   });
 
   afterEach(() => {
@@ -171,6 +189,24 @@ describe('drainEvictedSessions (Fix B, #586)', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'guardian-drain-test-'));
     database = new Database(join(tmpDir, 'state.db'), { create: true });
     configureStateDatabase(database);
+    // These suites seed hundreds of rows and then drain them, and every
+    // statement commits on its own — ~800 commits for the 250-row backlog
+    // cases, each one an fsync under the default synchronous=FULL.
+    //
+    // Measured, 800 single-statement commits into a WAL database:
+    //   tmpfs         FULL 5.7ms   NORMAL 5.0ms   OFF 5.1ms
+    //   ext4 (disk)   FULL 4076ms  NORMAL 22.9ms  OFF 5.9ms
+    //
+    // Developer machines usually put TMPDIR on tmpfs, where fsync is free and
+    // the whole file runs in <100ms. GitHub-hosted runners put it on a real
+    // disk, where the same work costs seconds — which is how the AC2 backlog
+    // test came to take 6990ms against bun's 5000ms default and fail a 0.13.6
+    // release dry run while passing on the identical commit elsewhere.
+    //
+    // The database is a throwaway created by mkdtempSync and deleted in
+    // afterEach, so durability here protects nothing. Dropping it removes the
+    // fsyncs without changing a single statement, ordering, or assertion.
+    database.exec('PRAGMA synchronous = OFF');
   });
 
   afterEach(() => {
