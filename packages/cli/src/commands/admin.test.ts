@@ -38,6 +38,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CommandDef, renderUsage, runCommand } from 'citty';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 import type { UIServerOptions } from '../lib/ui-server.ts';
 
 // Resolved as a plain string so the red state fails at runtime ("Cannot find
@@ -95,7 +96,7 @@ afterEach(() => {
 
 function restoreOpenPalmLib(): void {
 	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	mock.module(cliStateModuleUrl, () => ({
 		ensureValidState: () => {
 			const state = realLib.createState();

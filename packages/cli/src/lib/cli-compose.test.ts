@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { ControlPlaneState } from '@openpalm/lib';
 import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from './mock-openpalm-lib.ts';
 
 const cliComposeModuleUrl = new URL('./cli-compose.ts', import.meta.url).href;
 
@@ -23,7 +24,7 @@ afterEach(() => {
 	// mock.restore() does NOT undo mock.module() — re-point back to the real
 	// module so this file's mocks don't leak into other test files sharing the
 	// same `bun test` process.
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	if (originalSkipEnv === undefined) delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
 	else process.env.OP_SKIP_COMPOSE_PREFLIGHT = originalSkipEnv;
 });

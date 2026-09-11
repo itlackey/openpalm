@@ -15,7 +15,7 @@ import * as nodeChildProcess from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as realLib from '../../../lib/src/index.ts';
+import { restoreRealOpenPalmLib } from '../lib/mock-openpalm-lib.ts';
 
 const automationsModuleUrl = new URL('./automations.ts', import.meta.url).href;
 
@@ -29,7 +29,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 function resetMocks(): void {
 	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	mock.module('node:child_process', () => ({ ...nodeChildProcess }));
 }
 
@@ -43,7 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	restoreRealOpenPalmLib();
 	mock.module('node:child_process', () => ({ ...nodeChildProcess }));
 	setPlatform(originalPlatform);
 	if (originalHome === undefined) delete process.env.OP_HOME;
