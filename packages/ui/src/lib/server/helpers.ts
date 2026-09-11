@@ -4,7 +4,7 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getAssistantOpencodeTarget } from "./opencode-target.js";
-import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled } from "@openpalm/lib";
+import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled, requireExistingInstall, NotAnOpenPalmHomeError } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { sessionTokenFromCookieHeader } from "./session-cookie.js";
 import { computeServerRuntimeContext } from "./features.js";
@@ -144,6 +144,40 @@ export function requireCapability(
     );
   }
   return null;
+}
+
+/**
+ * Refuse a host-admin MUTATION whose prerequisite is an existing installation
+ * when the resolved home is not one (#684, #689).
+ *
+ * Same shared lib guard the CLI's `ensureValidState` uses (`requireExistingInstall`),
+ * so a wrong `OP_HOME` fails identically on both surfaces and before any Docker
+ * call or managed-home write. Applied only to the mutating handler of a route —
+ * a route's GET stays honest about a not-installed home (e.g. `versions` reports
+ * empty pins, `stack` reports its defaults) rather than refusing to answer, and
+ * `/setup` / first-run routing (`resolveServeState`) is untouched: this helper is
+ * never called from there.
+ *
+ * `setup_incomplete` passes: an interrupted install is still an OpenPalm home,
+ * and setup-recovery decides what to do with it, not a blanket refusal here.
+ *
+ * Routes that legitimately run against a missing home — install, first-run
+ * setup — must not call this.
+ */
+export function requireInstalledHome(homeDir: string, requestId: string): Response | null {
+  try {
+    requireExistingInstall(homeDir);
+    return null;
+  } catch (error) {
+    if (!(error instanceof NotAnOpenPalmHomeError)) throw error;
+    return errorResponse(
+      409,
+      "not_an_openpalm_home",
+      error.message,
+      { home: error.home },
+      requestId,
+    );
+  }
 }
 
 /**

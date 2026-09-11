@@ -14,7 +14,8 @@ import {
 	jsonResponse,
 	parseJsonBody,
 	requireAdmin,
-	requireCapability
+	requireCapability,
+	requireInstalledHome
 } from '$lib/server/helpers.js';
 import { getState } from '$lib/server/state.js';
 import type { RequestHandler } from './$types';
@@ -122,6 +123,8 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 
 	const state = getState();
+	const notInstalled = requireInstalledHome(state.homeDir, requestId);
+	if (notInstalled) return notInstalled;
 	return withAdminUpdateLock(state, requestId, () => {
 		try {
 			writeVersions(state, versions);

@@ -7,7 +7,7 @@ import {
 	VERSION_DEFAULTS
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { resetState } from '$lib/server/test-helpers.js';
+import { resetState, markStateInstalled } from '$lib/server/test-helpers.js';
 import { GET, PATCH } from './+server.js';
 
 function event(method: 'GET' | 'PATCH', body?: unknown, token = 'admin-token') {
@@ -26,7 +26,7 @@ function event(method: 'GET' | 'PATCH', body?: unknown, token = 'admin-token') {
 
 beforeEach(() => {
 	process.env.OP_ENABLE_ADMIN = '1';
-	resetState('admin-token');
+	markStateInstalled(resetState('admin-token'));
 });
 
 afterEach(() => {

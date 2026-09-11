@@ -22,6 +22,7 @@ import {
   getRequestId,
   parseJsonBody,
   jsonBodyError,
+  requireInstalledHome,
 } from "$lib/server/helpers.js";
 import {
   ADDON_ENV_RECREATE_SCOPE,
@@ -218,6 +219,8 @@ export const POST: RequestHandler = async (event) => {
   if (authErr) return authErr;
 
   const state = getState();
+  const notInstalled = requireInstalledHome(state.homeDir, requestId);
+  if (notInstalled) return notInstalled;
   const name = event.params.name;
 
   if (!listAvailableAddonIds().includes(name)) {

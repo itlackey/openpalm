@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resetState, stackEnvFor } from '$lib/server/test-helpers.js';
+import { markStateInstalled, resetState, stackEnvFor } from '$lib/server/test-helpers.js';
 import { GET, PUT } from './+server.js';
 
 let rootDir = '';
@@ -55,7 +55,7 @@ beforeEach(() => {
   mkdirSync(rootDir, { recursive: true });
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
-  resetState('admin-token');
+  markStateInstalled(resetState('admin-token'));
 });
 
 afterEach(() => {
@@ -132,7 +132,7 @@ describe('PUT /api/host/stack', () => {
   });
 
   test('disables LAN exposure by restoring loopback bind address', async () => {
-    writeFileSync(stackEnvFor(rootDir), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
+    writeFileSync(stackEnvFor(rootDir), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\nOP_SETUP_COMPLETE=true\n');
 
     const res = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(200);

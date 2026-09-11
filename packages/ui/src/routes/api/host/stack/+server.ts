@@ -34,6 +34,7 @@ import {
   requireAdmin,
   requireCapability,
   withAdminBody,
+  requireInstalledHome,
 } from '$lib/server/helpers.js';
 
 const DEFAULT_PROJECT_NAME = 'openpalm';
@@ -92,6 +93,8 @@ export const PUT: RequestHandler = async (event) => {
     }
 
     const state = getState();
+    const notInstalled = requireInstalledHome(state.homeDir, requestId);
+    if (notInstalled) return notInstalled;
     return withAdminUpdateLock(state, requestId, async (lock) => {
       // Capture the outgoing project name BEFORE the patch overwrites it — a
       // rename must be recorded so the next locked apply (deploy/update/start)
