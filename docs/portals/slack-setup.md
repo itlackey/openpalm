@@ -1,142 +1,72 @@
-# Slack Bot Setup
+# Slack adapter
 
-The Slack addon uses Socket Mode and sends native OpenCode requests through
-Guardian. Socket Mode connects outbound, so no public Slack request URL is
-required.
+Slack is an optional Socket Mode adapter and MCP client of Guardian.
 
-## Prerequisites
+## 1. Create the Slack app
 
-- A working generated OpenPalm installation
-- A Slack workspace where you can create apps
-- A configured assistant provider/model
+Create an app in the Slack API console and:
 
-## Create the Slack App
+1. enable Socket Mode;
+2. create an app-level token with `connections:write`;
+3. grant the bot `app_mentions:read`, `chat:write`, and the history scopes
+   needed for the channel types you will allow;
+4. subscribe to `app_mention` plus the message events needed for those channel
+   types; and
+5. install the app to the workspace.
 
-1. Go to <https://api.slack.com/apps> and create an app from scratch.
-2. Enable **Socket Mode**.
-3. Create an app-level `xapp-...` token with `connections:write`.
-4. Add the bot scopes below under **OAuth & Permissions**.
-5. Enable the event subscriptions below.
-6. Enable **Interactivity & Shortcuts**.
-7. Enable the **App Home** tab.
-8. Install the app to the workspace and copy its `xoxb-...` bot token.
+Write the bot and app tokens to the host:
 
-Required bot scopes:
-
-- `app_mentions:read`
-- `chat:write`
-- `im:history`
-- `channels:history`
-- `groups:history`
-- `users:read`
-- `commands`
-
-Event subscriptions:
-
-- `app_mention`
-- `message.im`
-- `message.channels`
-- `message.groups`
-- `app_home_opened`
-
-Optional shortcuts:
-
-- Global shortcut `Ask OpenPalm`, callback ID `ask_openpalm`
-- Message shortcut `Ask OpenPalm about this message`, callback ID `ask_openpalm_message`
-
-Socket Mode can use a placeholder Request URL for interactivity and slash
-commands.
-
-## Configure Credentials
-
-Both Slack tokens are delegated secrets under `state/secrets/`:
-
-```bash
-install -d -m 700 "$HOME/.openpalm/state/secrets"
-printf '%s\n' 'xoxb-your-bot-token' \
-  > "$HOME/.openpalm/state/secrets/slack_bot_token"
-printf '%s\n' 'xapp-your-app-token' \
-  > "$HOME/.openpalm/state/secrets/slack_app_token"
-chmod 600 \
-  "$HOME/.openpalm/state/secrets/slack_bot_token" \
-  "$HOME/.openpalm/state/secrets/slack_app_token"
+```text
+~/.openpalm/state/secrets/slack_bot_token
+~/.openpalm/state/secrets/slack_app_token
 ```
 
-Optional non-secret controls belong in `state/stack.env`:
+Both files must be mode 0600. Do not store the values in Compose environment
+variables.
 
-```dotenv
-SLACK_ALLOWED_CHANNELS=C01ABCDEF23
-SLACK_ALLOWED_USERS=U01ABCDEF23
-SLACK_BLOCKED_USERS=U09ZZZZZZ99
+## 2. Configure a default-deny scope
+
+Edit `config/stack/custom.compose.yml`:
+
+```yaml
+services:
+  slack:
+    environment:
+      SLACK_ALLOWED_CHANNELS: "C0123456789"
+      SLACK_ALLOWED_USERS: ""
+      SLACK_BLOCKED_USERS: ""
 ```
 
-The installer generates `state/secrets/portal_slack_secret` for Guardian
-principal authentication. You may configure all of these values through the
-host admin UI instead of editing files.
+Values are comma-separated Slack IDs. Every non-empty allowlist must match. A
+blocked user always loses access. Configure users alone to allow direct
+messages; a DM cannot satisfy a channel constraint. The adapter refuses all use
+when both allowlists are empty.
 
-## Enable the Addon
+## 3. Enable and verify
 
 ```bash
+openpalm credential set-policy slack chat
+openpalm config portal slack --credential slack --no-apply
 openpalm addon enable slack
-```
-
-For raw Compose, pass the profile explicitly:
-
-```bash
-OP_HOME="${OP_HOME:-$HOME/.openpalm}"
-docker compose \
-  --project-name openpalm \
-  --env-file "$OP_HOME/state/stack.env" \
-  -f "$OP_HOME/system/stack/core.compose.yml" \
-  -f "$OP_HOME/system/stack/services.compose.yml" \
-  -f "$OP_HOME/system/stack/portals.compose.yml" \
-  -f "$OP_HOME/config/stack/custom.compose.yml" \
-  --profile addon.slack \
-  up -d
-```
-
-`OP_ENABLED_ADDONS=slack` is OpenPalm state, not a Docker Compose profile
-instruction. Raw Compose needs `--profile addon.slack` or an explicit
-`COMPOSE_PROFILES` value.
-
-## Verify
-
-```bash
 openpalm status
-openpalm logs slack
-openpalm logs guardian
+openpalm logs
 ```
 
-Then:
+`chat` is the safe default for a shared chat platform. `read` additionally lets
+the agent inspect non-secret content in `/stash` and `/work`; `full` inherits Assistant tool
+permissions and should be used only when both the Slack allowlist and every
+permitted user are trusted to trigger state-changing work.
 
-- DM the bot.
-- Mention it in a channel and confirm it replies in a thread.
-- Run `/ask`, `/help`, and `/clear` if configured.
-- Open App Home.
-- Test configured global and message shortcuts.
+The selected credential currently applies to every allowed Slack user. User-
+or channel-specific credential mapping and OAuth are planned follow-up features.
 
-## Troubleshooting
+Mention the app in an allowed channel or message it directly when the user
+scope permits that. Thread replies retain an opaque Guardian conversation
+handle. Send `/clear` or `!clear` to reset it.
 
-| Symptom | Check |
-|---|---|
-| No replies | Both token files, Socket Mode, event subscriptions, and container status |
-| DMs fail | `im:history` and `message.im` |
-| Channel follow-ups fail | Public/private history scopes and matching message events |
-| Slash commands fail | `commands` scope, command definitions, and app reinstall |
-| `not_allowed_token_type` | App token must be `xapp-...` with `connections:write` |
-| Guardian returns `401` | Matching `portal_slack_secret` grants and recreated services |
-| Guardian blocks content | Guardian logs and moderation provider/model; validation is on by default |
+The Slack adapter is intentionally a conversational subset of the MCP catalog.
+If a `full` agent pauses for a permission decision, the adapter tells the user
+to complete that explicit decision with a full MCP client; chat text is never
+treated as permission approval.
 
-## Runtime Environment
-
-| Variable | Purpose |
-|---|---|
-| `SLACK_BOT_TOKEN_FILE` | Mounted `xoxb-...` bot token path |
-| `SLACK_APP_TOKEN_FILE` | Mounted `xapp-...` Socket Mode token path |
-| `SLACK_ALLOWED_CHANNELS` | Comma-separated channel allowlist |
-| `SLACK_ALLOWED_USERS` | Comma-separated user allowlist |
-| `SLACK_BLOCKED_USERS` | Comma-separated user blocklist |
-| `PRINCIPAL_SECRET_FILE` | System-managed Guardian principal secret path |
-
-See the [Manual Compose Runbook](../operations/manual-compose-runbook.md) for
-profile-safe raw operations.
+Continuity state is stored at `data/portal/slack/portal.db`.

@@ -1,42 +1,32 @@
 {
-  "name": "@openpalm/lib",
-  "version": "0.13.6",
-  "private": true,
-  "license": "MPL-2.0",
-  "type": "module",
-  "description": "Shared control-plane library for OpenPalm — lifecycle, staging, secrets, portals, connections, scheduler",
-  "engines": {
-    "bun": ">=1.0.0"
-  },
-  "scripts": {
-    "test": "bun test"
-  },
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./pairing": "./src/pairing.ts",
-    "./pairing.js": "./src/pairing.ts",
-    "./provider-constants": "./src/provider-constants.ts",
-    "./shared/logger": "./src/logger.ts",
-    "./control-plane/*.js": "./src/control-plane/*.ts",
-    "./control-plane/*": "./src/control-plane/*.ts"
-  },
-  "files": [
-    "src"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/itlackey/openpalm",
-    "directory": "packages/lib"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "multicast-dns": "^7.2.5",
-    "tar": "^7.5.22",
-    "yaml": "^2.9.0"
-  },
-  "devDependencies": {
-    "@types/multicast-dns": "^7.2.4",
-    "bun-types": "^1.3.14"
-  }
+	"name": "@openpalm/lib",
+	"version": "0.13.6",
+	"private": true,
+	"license": "MPL-2.0",
+	"type": "module",
+	"description": "Shared filesystem and Docker Compose control plane for OpenPalm",
+	"engines": {
+		"bun": ">=1.0.0"
+	},
+	"scripts": {
+		"test": "bun test src/control-plane/credential-store.test.ts src/control-plane/stack-config.test.ts src/control-plane/lean-*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"types": "./src/lean.ts",
+	"exports": {
+		".": "./src/lean.ts",
+		"./lean": "./src/lean.ts"
+	},
+	"files": [
+		"src"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/itlackey/openpalm",
+		"directory": "packages/lib"
+	},
+	"devDependencies": {
+		"bun-types": "^1.3.14",
+		"typescript": "^6.0.3"
+	}
 }

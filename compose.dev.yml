@@ -5,9 +5,7 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f .dev/system/stack/core.compose.yml \
-#     -f .dev/system/stack/services.compose.yml \
-#     -f .dev/system/stack/portals.compose.yml \
+#     -f .dev/system/stack/stack.compose.yml \
 #     -f .dev/config/stack/custom.compose.yml \
 #     -f compose.dev.yml \
 #     --env-file .dev/state/stack.env \
@@ -32,18 +30,13 @@ services:
       args:
         GUARDIAN_VERSION: ${GUARDIAN_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
-    # Guardian is intentionally NOT host-published. It is reachable only on
-    # the portal_net / assistant_net networks as `http://guardian:8080`.
-    # Manual smoke tests that previously hit a host-published port must
-    # either run inside the network or use `docker exec openpalm-guardian-1`.
+    # Publication remains controlled by the managed lean compose file.
 
   assistant:
     build:
       context: .
-      dockerfile: containers/assistant/Dockerfile
+      dockerfile: containers/assistant/Dockerfile.lean
       args:
-        # Source builds use the candidate-local compiled UI; no OpenPalm npm
-        # package or image-baked skeleton is fetched.
         PLATFORM_VERSION: ${PLATFORM_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
 

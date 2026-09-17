@@ -1,43 +1,43 @@
 {
-  "name": "openpalm",
-  "version": "0.13.6",
-  "type": "module",
-  "license": "MPL-2.0",
-  "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/itlackey/openpalm.git",
-    "directory": "packages/cli"
-  },
-  "bin": {
-    "openpalm": "./bin/openpalm.js"
-  },
-  "files": [
-    "bin",
-    "README.md"
-  ],
-  "scripts": {
-    "start": "bun run src/main.ts",
-    "test": "bun test --isolate",
-    "typecheck": "tsc --noEmit",
-    "wizard:local": "bun run src/main.ts install --no-start --force",
-    "pack:embedded": "bun run scripts/pack-embedded-assets.ts",
-    "build": "bun run pack:embedded && bun build src/main.ts --compile --outfile dist/openpalm-cli",
-    "build:linux-x64": "bun run pack:embedded && bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-cli-linux-x64",
-    "build:linux-arm64": "bun run pack:embedded && bun build src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-cli-linux-arm64",
-    "build:darwin-x64": "bun run pack:embedded && bun build src/main.ts --compile --target=bun-darwin-x64 --outfile dist/openpalm-cli-darwin-x64",
-    "build:darwin-arm64": "bun run pack:embedded && bun build src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-cli-darwin-arm64",
-    "build:windows-x64": "bun run pack:embedded && bun build src/main.ts --compile --target=bun-windows-x64 --outfile dist/openpalm-cli-windows-x64.exe"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "devDependencies": {
-    "@openpalm/lib": "workspace:*",
-    "@types/node": "^26.1.2",
-    "citty": "^0.2.2",
-    "tar": "^7.5.22",
-    "typescript": "^6.0.3",
-    "yaml": "^2.9.0"
-  }
+	"name": "openpalm",
+	"version": "0.13.6",
+	"type": "module",
+	"license": "MPL-2.0",
+	"description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/itlackey/openpalm.git",
+		"directory": "packages/cli"
+	},
+	"bin": {
+		"openpalm": "./bin/openpalm.js"
+	},
+	"files": [
+		"bin",
+		"README.md"
+	],
+	"scripts": {
+		"start": "bun run src/main-lean.ts",
+		"test": "bun test --isolate src/main-lean.test.ts src/commands/*-lean.test.ts",
+		"typecheck": "tsc --noEmit",
+		"install:local": "bun run src/main-lean.ts install --no-start",
+		"pack:embedded": "bun run scripts/pack-embedded-assets.ts",
+		"build": "bun run pack:embedded && bun build src/main-lean.ts --compile --outfile dist/openpalm-cli",
+		"build:linux-x64": "bun run pack:embedded && bun build src/main-lean.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-cli-linux-x64",
+		"build:linux-arm64": "bun run pack:embedded && bun build src/main-lean.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-cli-linux-arm64",
+		"build:darwin-x64": "bun run pack:embedded && bun build src/main-lean.ts --compile --target=bun-darwin-x64 --outfile dist/openpalm-cli-darwin-x64",
+		"build:darwin-arm64": "bun run pack:embedded && bun build src/main-lean.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-cli-darwin-arm64",
+		"build:windows-x64": "bun run pack:embedded && bun build src/main-lean.ts --compile --target=bun-windows-x64 --outfile dist/openpalm-cli-windows-x64.exe"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"devDependencies": {
+		"@openpalm/lib": "workspace:*",
+		"@types/node": "^26.1.2",
+		"bun-types": "^1.3.14",
+		"citty": "^0.2.2",
+		"tar": "^7.5.22",
+		"typescript": "^6.0.3"
+	}
 }

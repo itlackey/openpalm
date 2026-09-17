@@ -1,121 +1,158 @@
-# OpenPalm Architecture: One UI
+# Lean architecture
 
-> Authoritative overview of the 0.13.0 app/UI topology. See
-> [`core-principles.md`](./core-principles.md) for filesystem and security
-> invariants.
+## System boundary
 
-## Runtime Topology
+OpenPalm owns the smallest deployable layer around OpenCode:
 
 ```text
-CLI or admin-capable host UI -> Docker Compose on the host
-
-Browser -> OpenPalm UI -> same-origin /oc -> Assistant OpenCode
-External portal -> Guardian /oc -> Assistant OpenCode
-Remote connection -> exact OpenCode or Guardian URL
+Host
+├── openpalm CLI (primary lifecycle tool)
+├── OpenPalm Admin (optional static Electron process)
+└── Docker Compose
+    ├── assistant                 always
+    ├── guardian                  gateway/discord/slack profile
+    ├── discord                   discord profile
+    └── slack                     slack profile
 ```
 
-- The assistant is the one always-on core container. It runs OpenCode, the
-  non-admin UI child, `supercronic`, and AKM-backed assistant tools. It has no
-  Docker socket, admin credential, or path to the admin process.
-- Guardian is profile-gated ingress, not a core container. It authenticates
-  principals and enforces ownership, rate, event-filtering, and moderation
-  policy before transparently forwarding native OpenCode traffic.
-- Admin capability exists only in Electron and `openpalm admin`, both host
-  processes. They invoke Docker Compose through the host socket. There is no
-  admin container or socket-proxy path.
+The CLI and Admin import only `@openpalm/lib/lean`. They do not run a server or maintain a second lifecycle implementation.
 
-## One UI
+## Assistant
 
-There is one front-end package, `@openpalm/ui` (SvelteKit with adapter-node).
-The same build is:
+Assistant is an immutable image containing:
 
-- baked into the assistant image and served as a non-admin child
-- installed under `OP_HOME/data/ui` for host-process serving
-- loaded by the thin Electron harness
-- installable as a PWA from a serving origin
+- OpenCode;
+- AKM CLI;
+- the AKM OpenCode plugin as a local image-baked plugin; and
+- supercronic.
 
-There is no second client app or UI runtime-mode matrix. Server capabilities
-vary by launch boundary; the browser application and connection model do not.
+The image contains no UI, browser client, optional CLI installer, model runtime, embedding bundle, notification service, Docker client, or admin credential.
 
-## Browser-Owned Connections
+Assistant mounts operator knowledge at `/stash`, a workspace at `/work`, and its own data home. Its native OpenCode server always uses file-backed Basic authentication. It is host-published on `127.0.0.1` by default and can be bound to another exact address through StackConfig.
 
-The browser owns its connection list in IndexedDB. A connection supplies the
-exact base URL; Guardian paths are not inferred.
+Two access paths coexist:
 
-- The default local connection is root-relative `/oc`. It reaches the UI
-  process's authenticated same-origin transparent pass-through, which then
-  calls local OpenCode and attaches upstream Basic auth if needed.
-- User-added remote OpenCode or Guardian connections are browser-direct and use
-  their own per-connection credentials.
-- Cross-origin requests omit the OpenPalm session cookie. Same-origin `/oc`
-  requests include it because the UI session is the local credential.
-- Stored Basic passwords use WebCrypto AES-GCM when the browser origin provides
-  SubtleCrypto. On a non-secure http origin (the plain-HTTP LAN tier),
-  SubtleCrypto is unavailable by platform rule, so credentials degrade to
-  plaintext-at-rest there rather than refusing to save.
+- trusted native clients use the complete OpenCode API and normal Assistant
+  permissions without passing through Guardian; and
+- Guardian clients use a managed profile selected by their credential policy.
 
-One transport implementation, session model, and SSE parser serve both local
-and remote connection forms.
+The managed Guardian profiles are `remote` (`chat`, no tools), `remote-read`
+(`read`, bounded read/list tools with managed secret/env exclusions), and
+`remote-full` (`full`, no additional Guardian tool denial). The last profile
+still inherits the Assistant's global OpenCode permissions.
 
 ## Guardian
 
-Guardian is a transparent 1:1 OpenCode reverse proxy. It preserves method,
-path, query, body, response, and SSE framing while stripping hop-by-hop and
-inbound credential headers.
+Guardian is an optional Bun service with one listener.
 
-Its policy overlays include:
+Request pipeline:
 
-- constant-time-verified HTTP Basic principal authentication
-- SQLite-persisted session and permission ownership
-- tenant-filtered `/event` streaming
-- rate/resource limits
-- content validation on prompt-bearing writes
+```text
+request size / pre-auth rate
+  -> exact Origin policy
+  -> Bearer key to named credential identity
+  -> principal rate + concurrency
+  -> MCP schema validation
+  -> policy-filtered capability catalog
+  -> heuristic content screen for prompts and answers
+  -> loopback LLM classification when suspicious
+  -> encrypted handle + session-ownership validation
+  -> policy-to-agent mapping for the authenticated credential
+  -> async OpenCode job/session operation or contained read-only workspace access
+  -> bounded response + audit record
+```
 
-`GUARDIAN_CONTENT_VALIDATION` defaults on in both package code and shipped
-Compose. Explicit `0`, `false`, `no`, or `off` disables it. Suspicious input is
-escalated to Guardian's loopback OpenCode moderator; a moderator failure or
-unusable verdict blocks the escalated request.
+Guardian does not proxy arbitrary OpenCode paths. It does not implement OpenAI,
+Anthropic, or A2A compatibility. It exposes a curated agent catalog: resumable runs and jobs,
+owned sessions, bounded workspace reads, explicit human interactions, useful
+resources, and static workflow prompts. It deliberately does not mirror the
+Assistant's raw routes or internal tool catalog.
 
-Guardian also owns the one OpenAI/Anthropic-compatible listener at container
-port `8182`, published on host port `3821` only when the OpenAI-compatible
-API is enabled (the `guardian.compose.api.yml` overlay). Chat and API are not
-separate listeners.
+Guardian mounts the operator workspace at `/work` read-only. Direct MCP file
+reads are opened locally only after lexical, canonical-path, regular-file, and
+opened-descriptor containment checks. Search results from Assistant are exposed
+only when their paths independently pass that same filesystem boundary.
 
-## Secret Topology
+Guardian is stateless. Encrypted session/message/job/interaction handles carry bounded
+continuity, while HMAC-bound OpenCode session metadata provides independently
+verifiable ownership. OpenCode remains the source of truth for messages,
+status, diffs, todos, and pending questions/permissions. `full` clients may
+answer explicit `ask` decisions; ordinary prompt text never counts as approval.
 
-- Provider `knowledge/secrets/auth.json` remains in the assistant-readable AKM
-  tree and is delivered to Guardian as one Compose secret.
-- Delegated UI, OpenCode server, Guardian, API, portal, and bot credentials live
-  under `state/secrets/`.
-- `state/secrets/` and `state/env/` are never bind-mounted; services receive
-  only the named files they consume.
-- Paperclip's upstream image requires two environment secrets, delivered through
-  the sole audited exact-key file at `state/env/paperclip.env`.
-- `knowledge/env/user.env` is loaded by scoped tools on demand, not sourced by
-  the assistant entrypoint.
+The moderator is a second loopback OpenCode process in the Guardian container. Its managed configuration denies every tool. It receives only the untrusted message encoded as a JSON string plus heuristic signal names. Unavailable or malformed moderation fails closed.
 
-## Admin Boundary
+## Portal
 
-Admin is a launch capability, not a client-side UI mode. A process is
-admin-capable only when launched by Electron or `openpalm admin`. A container,
-PWA, or ordinary `openpalm app` launch cannot self-grant host capabilities.
+`@openpalm/portal` is one private package and one image. `PORTAL_ADAPTER` selects Discord or Slack.
 
-| Surface | How the UI runs | Admin capability |
-|---|---|---|
-| Assistant container | Image-baked adapter-node child on port `3000` | No |
-| Electron | Thin native harness starts the host build | Yes |
-| `openpalm admin` | Host process | Yes |
-| `openpalm app` | Host process | No |
-| PWA | Installed from a non-admin serving origin | No |
+Each adapter:
 
-Electron and `openpalm admin` remain loopback-only. A non-admin `openpalm app`
-can be explicitly exposed only after local setup and should sit behind
-operator-managed HTTPS.
+- enforces a default-deny platform allowlist;
+- maps a platform thread/user scope to an opaque Guardian session handle in SQLite;
+- serializes turns per platform conversation;
+- calls Guardian with the standard MCP client; and
+- never receives an OpenCode session ID or Assistant credential.
 
-## Development Ports
+Each adapter is assigned one named Guardian credential and receives only that
+credential's read-only key directory. The credential may also be used by a
+direct MCP client. Platform-user-to-credential mapping is intentionally not in
+the basic release.
 
-- `npm run dev` in `packages/ui`: `5173`
-- root `bun run ui:dev:isolated`: `3880`
-- installed host UI: `3880`
-- assistant-served UI: host `3800` -> container `3000`
-- assistant OpenCode: host `3810` -> container `4096`
+The adapters do not have an `agent_net` path.
+
+## Control plane
+
+`StackConfigV2` is deliberately small:
+
+```json
+{
+  "version": 2,
+  "assistant": {
+    "bindAddress": "127.0.0.1",
+    "port": 3810
+  },
+  "gateway": {
+    "enabled": false,
+    "bindAddress": "127.0.0.1",
+    "port": 3830
+  },
+  "credentials": {
+    "owner": { "id": "owner", "policy": "full" },
+    "discord": { "id": "discord", "policy": "chat" },
+    "slack": { "id": "slack", "policy": "chat" }
+  },
+  "portals": {
+    "discord": { "enabled": false, "credential": "discord" },
+    "slack": { "enabled": false, "credential": "slack" }
+  }
+}
+```
+
+It is stored at `state/stack.json`. The control plane derives Compose profiles,
+binds, ports, a key-free Guardian registry, and portal credential mounts from
+it. Raw keys live separately under `state/credentials/<username>/key`.
+Unsupported keys fail validation.
+
+The Compose project is assembled from:
+
+1. `system/stack/stack.compose.yml` — managed and replaced whole; and
+2. `config/stack/custom.compose.yml` — operator-owned and seed-only.
+
+No catalog or overlay discovery exists in the active control plane.
+
+## Package graph
+
+```text
+@openpalm/lib (zero runtime dependencies)
+   ↑                ↑
+ CLI        optional Electron Admin
+
+Guardian -> @modelcontextprotocol/server + @opencode-ai/sdk
+Portal   -> @modelcontextprotocol/client + Discord/Slack SDKs
+```
+
+Guardian and Portal are private image components. MCP is the integration contract, not a published OpenPalm client SDK.
+
+## Migration boundary
+
+Legacy files are inputs and preserved artifacts, not active modules. The migration reads old add-on/access values only to derive Gateway, Discord, and Slack intent. It never imports old lifecycle code and never removes retired files or data.

@@ -1,172 +1,85 @@
-# OpenCode Configuration Integration
+# OpenCode configuration
 
-This document describes the containerized OpenCode runtimes in 0.13.0: the
-assistant, Guardian's local moderator, and OpenCode processes spawned by the
-optional Paperclip addon. Admin is a host process, not an OpenCode container or
-Docker-socket path.
+OpenPalm uses OpenCode directly; it does not maintain a parallel agent/session abstraction.
 
-Primary sources:
+## Assistant configuration layers
 
-- `packages/skeleton/system/stack/core.compose.yml`
-- `packages/skeleton/system/stack/portals.compose.yml`
-- `containers/assistant/entrypoint.sh`
-- `containers/guardian/entrypoint.sh`
-
-## Assistant Runtime
-
-### Configuration Layers
-
-OpenCode can see three practical layers:
-
-1. `/etc/opencode`, mounted from managed `system/assistant/`, contains shipped
-   plugins, permissions, and instructions. `OPENCODE_CONFIG_DIR` points here.
-2. `/home/opencode/.config/opencode`, mounted from user-owned
-   `config/assistant/`, is the user's global OpenCode config.
-3. Project-local OpenCode files under `/work` follow normal OpenCode behavior.
-
-Managed files are replaced on reconcile. Durable user customizations belong in
-`config/assistant/`, not `system/assistant/`.
-
-### Mounts
-
-| Host path | Container path | Purpose |
+| Layer | Host path | Purpose |
 |---|---|---|
-| `system/assistant/` | `/etc/opencode` | Managed `OPENCODE_CONFIG_DIR` |
-| `config/assistant/` | `/home/opencode/.config/opencode` | User global config |
-| `data/assistant/` | `/home/opencode` | Persistent runtime home |
-| `cache/assistant/` | `/home/opencode/.cache` | Regenerable runtime cache |
-| `knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Provider auth state |
-| `knowledge/` | `/stash` | AKM stash: user env, tasks, knowledge, and the operator's own skills |
-| `system/skills/` | `/system-stash` (ro) | Release-shipped AKM skills bundle |
-| `config/akm/` | `/etc/akm` | AKM config |
-| `data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
-| `data/akm/data/` | `/opt/akm/data` | AKM durable data |
-| `workspace/` | `/work` | Shared workspace |
+| managed directory | `system/assistant` | server settings, global instructions, three Guardian agent profiles, local AKM plugin wrapper |
+| user config | `config/assistant/opencode.json` | operator model/provider preferences |
+| provider auth | `knowledge/secrets/auth.json` | OpenCode credential store |
+| workspace | `workspace` | trusted local worktree |
 
-The image also exposes the `assistant-persistent` named volume at
-`/opt/persistent` for optional tools.
+`OPENCODE_CONFIG_DIR=/etc/opencode` points at the managed directory. Both loaded
+config directories contain a pre-seeded `.gitignore` and are mounted read-only,
+so OpenCode does not bootstrap package metadata or fetch its plugin SDK at
+startup. OpenCode discovers the image-baked local plugin at `plugins/akm.js`.
 
-### Environment
+Project configuration, Claude compatibility discovery, external skill
+discovery, and OpenCode's embedded browser UI are disabled in the hosted
+process. This prevents a checked-out workspace from introducing startup code or
+silently widening the managed agent surface. Workspace files remain available
+to a trusted local session through normal tools.
 
-| Variable | Value/default | Purpose |
-|---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Managed config root |
-| `OPENCODE_PORT` | `4096` | OpenCode HTTP listener |
-| `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated direct API password |
-| `HOME` | `/home/opencode` | Runtime home |
-| `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |
-| `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
-| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
-| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data |
-| `AKM_STATE_DIR` | `/opt/akm/data/state` | AKM task-scheduler state |
+The plugin wrapper imports the exact package baked at:
 
-The entrypoint does not source `knowledge/env/user.env`. Scoped OpenCode tools
-and AKM commands resolve `env/user` only for the operation that needs it, so the
-OpenCode server and arbitrary tool subprocesses do not inherit every user
-secret.
+```text
+/opt/openpalm/tools/node_modules/akm-opencode/dist/index.js
+```
 
-The assistant starts in `/work`, has no Docker socket or admin credential, and
-cannot initiate stack operations. `supercronic` is started alongside OpenCode.
+## Trusted native sessions
 
-## Local UI Pass-Through
+A client connecting to the configured Assistant endpoint uses the native
+OpenCode server and normal Assistant configuration. OpenCode Basic
+authentication is always enabled through the file-backed server password. The
+bind defaults to `127.0.0.1:3810`; StackConfig may explicitly select another
+host address and port.
 
-The assistant image bakes the same `@openpalm/ui` adapter-node build used by host
-surfaces. The entrypoint supervises it on container port `3000` and sets
-`OP_OPENCODE_URL=http://localhost:4096` for the UI child.
+The [OpenCode TUI](https://opencode.ai/docs/cli/) can connect with
+`opencode attach <url>` and the `--username` and `--password` options or
+corresponding environment variables. Direct native sessions do not pass
+through Guardian moderation.
 
-The default browser connection is the root-relative `/oc` path. The UI server
-authenticates the browser session, transparently forwards native OpenCode
-traffic to the local server, and attaches an upstream OpenCode credential when
-direct-assistant auth is enabled. The browser does not need the generated
-OpenCode password for this local path.
+## Remote sessions
 
-The assistant entrypoint performs no runtime install of `@openpalm/ui`; the
-candidate-local compiled UI is image-baked at `PLATFORM_VERSION`. Skeleton
-assets are delivered and materialized by the host control plane.
+Guardian selects one fixed agent name from the authenticated credential's
+configured policy on every message:
 
-## Guardian Moderator
+- `chat` -> `remote`, with `"*": deny`;
+- `read` -> `remote-read`, with wildcard denial followed by explicit read,
+  glob, list, `/stash`, and `/work` allowances, plus explicit denials for
+  managed knowledge secrets, knowledge environment files, and `.env` reads; and
+- `full` -> `remote-full`, with no profile permission override, so the global
+  Assistant permission configuration remains authoritative.
 
-Guardian's OpenCode runtime is a loopback-only classifier used by content
-validation.
+All profiles treat input and retrieved content as untrusted and forbid secret
+or unrelated-data disclosure. Wildcard denial in `chat` and `read` means a
+newly installed tool is denied without needing an OpenPalm update.
 
-| Host/source | Container path | Purpose |
-|---|---|---|
-| `system/guardian/` | `/opt/openpalm/guardian-config` (ro) | Managed moderator instructions and permissions |
-| `cache/guardian-opencode/runtime/` | `/etc/opencode` | Regenerable `OPENCODE_CONFIG_DIR`, republished from the managed source at boot |
-| `config/guardian/` | `/opt/openpalm/guardian/.config/opencode` | User-selectable moderation model |
-| `knowledge/secrets/auth.json` via Compose secret | `/run/secrets/guardian_auth_json` | Provider auth input copied into Guardian home |
+## Guardian moderator
 
-Guardian mounts no `knowledge/` directory. Its entrypoint copies the provider
-auth file to `/opt/openpalm/guardian/.local/share/opencode/auth.json` before
-starting OpenCode.
+Guardian starts a separate OpenCode server on container loopback port 4097. It uses:
 
-The moderator listens on `127.0.0.1:4097`, denies agent tools, and starts when
-content validation is enabled. `GUARDIAN_CONTENT_VALIDATION` is on by default in
-both code and shipped Compose; explicit `0`, `false`, `no`, or `off` disables
-the stage. Failed classification of an escalated message blocks the message.
+- managed config from `system/guardian`;
+- operator model selection from `config/guardian/opencode.json`; and
+- the same provider `auth.json` through a read-only file mount.
 
-## Paperclip Agent Runtime
+The moderator managed configuration denies every tool. It creates an ephemeral session per escalated input and deletes it after classification. Moderator unavailability blocks the suspicious message.
 
-Paperclip spawns its image-baked `opencode` command for each local-agent run.
-OpenPalm supplies two config layers:
+The moderator uses the same read-only, pre-seeded config-directory contract as
+Assistant. Its process performs no package installation at boot.
 
-1. `system/paperclip/` is mounted read-only at `/opt/openpalm/paperclip`. It
-   contains the exact AKM package manifest, managed permissions and security
-   instructions, a single-export adapter for `akm-opencode`, an embedded-Bun
-   launcher for `akm-cli`, and an `opencode` launcher that removes long-lived
-   Paperclip server secrets from agent runs.
-2. `config/paperclip/opencode/` is mounted read-only at
-   `/paperclip/.config/opencode` for operator model/provider and agent settings.
-   `XDG_CONFIG_HOME=/paperclip/.config` keeps this location stable when
-   Paperclip's model preflight normalizes `HOME` from the passwd database.
+## Scheduler
 
-The managed launcher copies whole release files into
-`cache/paperclip-opencode/runtime/`, mounted at the writable
-`OPENCODE_CONFIG_DIR=/etc/opencode`. OpenCode installs the exact-pinned
-`akm-opencode` and `akm-cli` dependencies there and adds its own matching plugin
-API package. Changed files are published atomically under a cross-process lock,
-and exact installed versions are checked before a release manifest is marked
-current. No runtime config or dependency content is stored in the managed or
-user config trees or included in backups.
+Supercronic runs inside Assistant. AKM task source files live in `knowledge/tasks/*.yml`. At startup and every 60 seconds:
 
-Paperclip receives shared knowledge at `/stash` as-is — no per-service
-overmounts. Its AKM config and state are isolated at `/etc/akm`,
-`/opt/akm/cache`, and `/opt/akm/data`.
+```bash
+akm task sync --rebind
+```
 
-The compatibility adapter is required by the OpenCode `1.3.0` bundled in the
-current digest-pinned Paperclip image. Re-test plugin loading, bare `akm`, and
-model tool invocation whenever that image changes.
+Invalid tasks are reported without preventing OpenCode from starting. OpenPalm seeds no default tasks in a fresh lean installation; existing operator tasks are preserved during migration.
 
-Managed permissions allow `/stash` plus Paperclip's generated per-agent
-instruction and workspace directories. Those paths can sit outside the active
-project cwd, so the grants prevent noninteractive runs from auto-rejecting
-Paperclip's own `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, and agent-memory reads.
-The pinned upstream adapter otherwise passes its full server environment to
-OpenCode. The managed launcher removes the server authentication and JWT-signing
-secrets while preserving Paperclip's short-lived run API key; managed
-instructions prohibit environment enumeration so that run key is not logged.
+## Credentials
 
-## Secret Boundary
-
-- Provider `auth.json` is the only service credential retained under
-  `knowledge/secrets/` for assistant access.
-- UI, OpenCode server, Guardian, API, portal, and bot credentials live under
-  `state/secrets/`.
-- `state/secrets/` and `state/env/` are never bind-mounted. Compose exposes only
-  named secret files to consuming service processes.
-- `state/stack.env` contains non-secret runtime configuration only.
-
-## Day-to-Day Changes
-
-- Put user tools, plugins, commands, skills, persona, and provider/model config
-  under `~/.openpalm/config/assistant/`.
-- Put Paperclip-specific OpenCode settings under
-  `~/.openpalm/config/paperclip/opencode/` and its AKM settings under
-  `~/.openpalm/config/paperclip/akm/`.
-- Update provider credentials through OpenCode auth state at
-  `~/.openpalm/knowledge/secrets/auth.json`.
-- Edit only `~/.openpalm/config/stack/custom.compose.yml` for user stack
-  overrides. Managed Compose is read from `~/.openpalm/system/stack/` and will be
-  overwritten on reconcile.
-- Restart the relevant container after startup configuration or credential
-  changes.
+The Assistant entrypoint never sources `knowledge/env/user.env` into its own process. User commands that need those values should explicitly use AKM's scoped environment execution. Provider credentials use OpenCode's `auth.json` rather than Compose environment variables.

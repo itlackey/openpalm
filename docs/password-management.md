@@ -1,141 +1,71 @@
-# Password & Secret Management
+# Credential and secret management
 
-OpenPalm separates assistant-readable provider auth from credentials delegated
-to host, Guardian, API, portal, and bot processes.
+OpenPalm separates Assistant provider authentication, named Guardian/MCP
+credentials, and service-specific runtime secrets.
 
-## Secret Layout
+## Layout
 
 ```text
 ~/.openpalm/
   state/
-    stack.env                 # sole Compose env file; non-secret
-    secrets/                  # delegated service secrets; never mounted as a tree
-  knowledge/
+    stack.json                         # non-secret intent and credential metadata
+    stack.env                          # derived non-secret Compose values
+    credentials/
+      registry.json                    # derived key-free Guardian registry
+      <username>/key                   # named bearer key
     secrets/
-      auth.json               # assistant-readable OpenCode provider auth only
-    env/
-      user.env                # AKM user env, loaded on demand
+      op_opencode_password             # native OpenCode Basic-auth password
+      op_guardian_handle_key           # opaque-handle encryption/ownership key
+      discord_bot_token
+      slack_bot_token
+      slack_app_token
+  knowledge/secrets/auth.json          # Assistant-readable provider auth
 ```
 
-Directories are created with mode `0700` and secret files with mode `0600`.
+Private directories use mode `0700`; key and secret files use mode `0600`.
+Assistant never receives `state/credentials`, the Guardian handle key, or
+portal platform tokens.
 
-## Delegated Secrets
+## Named Guardian credentials
 
-`state/secrets/` contains credentials that the assistant must not read:
-
-- `op_ui_login_password`
-- `op_opencode_password`
-- `op_guardian_admin_token`
-- `op_guardian_mcp_token`
-- `op_api_key`
-- `portal_<id>_secret`
-- Discord and Slack bot/app tokens
-
-Compose grants each service only its required files and exposes their paths
-through `*_FILE` variables. The assistant does not receive a bind mount of
-`state/secrets/`.
-
-`knowledge/secrets/auth.json` is the exception because the assistant's OpenCode
-runtime needs provider credentials. Guardian receives the same file through a
-narrow Compose secret grant rather than a `knowledge/` tree mount.
-
-## `knowledge/env/user.env`
-
-This is the AKM user env backing file. It is:
-
-- safe to edit directly on the host
-- available to assistant tools through `akm env run user -- <command>`
-- loaded only on demand in the tool subprocess that needs it
-- not sourced by the assistant entrypoint
-- never passed to Docker Compose or inherited by the OpenCode server process
-- preserved by normal lifecycle operations
-
-`akm env run user -- <command>` only reaches that one subprocess. It does not
-reach the in-process akm-opencode plugin — the assistant's own OpenCode
-session has no supported route to a credential from this file until
-[akm#905](https://github.com/itlackey/akm/issues/905) lands. A `run:` task
-(supercronic, its own subprocess) can use the wrapper today; the assistant's
-own chat session cannot.
-
-## `state/stack.env`
-
-`state/stack.env` is the sole Compose `--env-file`. It contains only
-non-secret runtime values and app records, including:
-
-- `OP_HOME`, `OP_UID`, `OP_GID`, and `OP_PROJECT_NAME`
-- image version pins
-- host ports
-- flat listener bind addresses
-- `OP_ENABLED_ADDONS` and hardware profile selections
-- `OP_SETUP_COMPLETE`
-
-Do not place passwords, tokens, API keys, or credential JSON in this file.
-
-## UI Authentication
-
-The UI login password is stored at:
-
-```text
-~/.openpalm/state/secrets/op_ui_login_password
-```
-
-Browser login uses `POST /api/auth/login`. A successful login issues the
-`op_session` cookie with `HttpOnly` and `SameSite=Lax`; browser sessions do not
-use a bearer token or `localStorage` credential.
-
-Reset a lost password from the host:
+Each credential has an operator-facing username, a stable internal identity, a
+private key, and a `chat`, `read`, or `full` policy.
 
 ```bash
-openpalm reset-password
-# or
-openpalm reset-password --password 'a-new-password'
+openpalm credential list
+openpalm credential add automation read
+openpalm credential show automation
+openpalm credential set-policy automation full
+openpalm credential rotate automation
+openpalm credential remove automation
 ```
 
-The assistant has no admin credential and no network path to the host admin
-process. It does not authenticate to or call the host API on the operator's
-behalf.
+`add` and `rotate` generate a key unless `--key-file <path>` or `--key-file -`
+is supplied. `show` omits the key unless `--show-key` is explicit. Do not pass
+keys directly in command arguments.
 
-## Provider Credentials
+Guardian receives the whole named store read-only because it must authenticate
+every key. A portal receives only the credential directory selected with:
 
-Use the provider flow in the UI, or maintain OpenCode's auth file directly:
-
-```text
-~/.openpalm/knowledge/secrets/auth.json
+```bash
+openpalm config portal discord --credential automation
+openpalm config portal slack --credential automation
 ```
 
-Its shape is owned by OpenCode. A basic API-key entry looks like:
+The bearer header contains only the key. Rotating a key preserves the stable
+identity and its owned sessions. Removing and recreating a username creates a
+new identity.
 
-```json
-{
-  "openai": {
-    "type": "api",
-    "key": "sk-..."
-  }
-}
-```
+## Provider authentication
 
-Recreate OpenCode processes after changing provider auth if they have already
-cached the old credentials.
+`knowledge/secrets/auth.json` is intentionally Assistant-readable because
+OpenCode needs model-provider credentials. Guardian receives a narrow read-only
+mount of that file for its loopback moderator. Keep Guardian keys and service
+secrets out of `knowledge/` and `workspace/`.
 
-## Rotation
+## Non-secret environment
 
-Use OpenPalm's setup/admin flows where available. For a delegated file under
-`state/secrets/`, a manual rotation should:
-
-1. Write a temporary replacement with mode `0600`, then atomically rename it over the old file.
-2. Recreate every service that reads that secret at startup.
-3. For a portal principal, replace its one shared host file and recreate both Guardian and that portal.
-
-`docker compose restart` does not recreate secret mounts. Use the same full
-Compose file/profile set with `up -d --force-recreate` when a startup-only
-secret changes.
-
-`knowledge/secrets/auth.json` is a bind-mounted file. Prefer the provider UI;
-if editing it directly, update the file in place and then recreate OpenCode
-processes so a bind mount is not left on a replaced inode.
-
-## Backups
-
-Back up `state/`, `knowledge/`, `config/`, and `system/` together.
-A full `OP_HOME` archive naturally includes both secret trees. See
-[Backup & Restore](backup-restore.md).
+`state/stack.env` contains only derived paths, image pins, bind addresses,
+ports, enabled profiles, selected portal credential usernames, and lifecycle
+state. Never put passwords, bearer keys, provider keys, or credential JSON in
+that file, Compose `environment`, logs, or project configuration.

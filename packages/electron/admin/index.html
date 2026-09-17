@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenPalm Admin</title>
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">OPTIONAL STACK TOOL</p>
+          <h1>OpenPalm Admin</h1>
+          <p id="home" class="muted">Loading stack…</p>
+        </div>
+        <button id="refresh" class="quiet" type="button">Refresh</button>
+      </header>
+
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <section>
+        <h2>Runtime</h2>
+        <div class="actions">
+          <button data-action="start" type="button">Start</button>
+          <button data-action="restart" class="quiet" type="button">Restart</button>
+          <button data-action="stop" class="danger" type="button">Stop</button>
+        </div>
+        <div id="services" class="services"></div>
+      </section>
+
+      <section>
+        <h2>Access</h2>
+        <form id="config-form">
+          <h3>Native OpenCode</h3>
+          <p class="muted">Direct clients use OpenCode Basic authentication and bypass Guardian.</p>
+          <div class="grid">
+            <label>Assistant bind address <input id="assistant-bind" autocomplete="off" /></label>
+            <label>Assistant port <input id="assistant-port" type="number" min="1" max="65535" /></label>
+          </div>
+
+          <h3>Guardian MCP</h3>
+          <label class="toggle"><input id="gateway" type="checkbox" /> Guardian MCP gateway</label>
+          <label class="toggle"><input id="discord" type="checkbox" /> Discord adapter</label>
+          <label class="toggle"><input id="slack" type="checkbox" /> Slack adapter</label>
+          <div class="grid">
+            <label>Gateway bind address <input id="gateway-bind" autocomplete="off" /></label>
+            <label>Gateway port <input id="gateway-port" type="number" min="1" max="65535" /></label>
+          </div>
+          <h3>Named credentials</h3>
+          <div id="credential-policies" class="policy-grid"></div>
+          <div class="policy-grid">
+            <label>Discord credential <select id="discord-credential"></select></label>
+            <label>Slack credential <select id="slack-credential"></select></label>
+          </div>
+          <p class="muted policy-note">chat: no tools · read: non-secret file access · full: inherit Assistant permissions</p>
+          <button type="submit">Save and apply</button>
+        </form>
+      </section>
+
+      <section>
+        <div class="section-title">
+          <h2>Recent logs</h2>
+          <button id="load-logs" class="quiet" type="button">Load logs</button>
+        </div>
+        <pre id="logs">Logs are loaded only on request.</pre>
+      </section>
+    </main>
+    <script src="admin.js"></script>
+  </body>
+</html>

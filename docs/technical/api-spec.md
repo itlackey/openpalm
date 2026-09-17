@@ -1,140 +1,233 @@
-# Admin API Conventions
+# Guardian MCP API
 
-The current route inventory is maintained in
-[`ui-route-map.md`](ui-route-map.md#api-routes). Route handlers under
-`packages/ui/src/routes/**/+server.ts` and their tests are the payload-level
-source of truth. This document defines the cross-route contract and the few
-security-sensitive behaviors callers must not infer.
+Guardian is a curated MCP agent gateway. It turns the native OpenCode API into
+a small, policy-filtered set of durable agent operations; it is not a generic
+OpenCode proxy.
 
-## Process Surfaces
+## HTTP boundary
 
-- A host admin process normally listens at `http://127.0.0.1:3880`.
-- The assistant image serves the same UI build as a non-admin child on container
-  port `3000`.
-- `/api/host/*` exists only where host capabilities are available.
-- `/api/assistant/*` exposes the bounded assistant-settings capability surface.
-- `/admin` and `/admin/*` are not aliases and return `404`.
+| Method | Path | Authentication | Result |
+|---|---|---|---|
+| `GET` | `/health` | none | `{"ok":true}` when Guardian is available |
+| MCP transport methods | `/mcp` | Bearer | MCP Streamable HTTP |
+| any | any other path | n/a | 404 |
 
-## Authentication
+The same `/mcp` endpoint supports modern MCP negotiation and stateless 2025-era
+clients. There is no admin HTTP API, OpenAI/Anthropic compatibility endpoint,
+A2A endpoint, raw OpenCode proxy, UI pass-through, or voice API.
 
-`POST /api/auth/login` accepts the UI login password and issues `op_session`.
-The cookie contains a stateless HMAC-signed expiry token, not the password or an
-admin bearer token. Its attributes are:
+## Authentication and policy
 
-- `HttpOnly`
-- `SameSite=Lax`
-- `Path=/`
-- a 14-day `Max-Age`
-- `Secure` only when the request arrived over HTTPS, directly or through a
-  trusted `x-forwarded-proto` value
+```http
+Authorization: Bearer <credential>
+```
 
-State-changing browser requests are also subject to the server's Origin check.
-The retired `x-admin-token` and host `Authorization: Bearer` fallbacks are not
-accepted.
+| Initial username | Key file | Default policy |
+|---|---|---|
+| `owner` | `state/credentials/owner/key` | `full` |
+| `discord` | `state/credentials/discord/key` | `chat` |
+| `slack` | `state/credentials/slack/key` | `chat` |
 
-After setup, protected endpoints require a valid session. Host routes then
-apply a second `requireCapability('host:...')` gate and return
-`403 capability_not_available` when the serving process has no host capability.
+Operators may add up to 128 lowercase named credentials. Each record has a
+username, stable internal identity, key, and policy. Keys contain 32–512
+printable non-whitespace ASCII characters. Guardian compares every configured
+key with fixed-length digest comparison and rejects duplicated credentials.
+Missing, weak, malformed, duplicated, or unknown credentials return 401.
 
-## Setup Gate
+```bash
+openpalm credential add automation read
+openpalm credential set-policy automation full
+openpalm credential rotate automation
+openpalm credential remove automation
+```
 
-First-run `/setup` and `/api/setup/*` access is not generally public:
+The bearer header carries only the key; the username is the operator-facing
+identity resolved by Guardian. A credential can be used by any MCP client and
+assigned to either portal. Rotating its key preserves session ownership.
+Removing and recreating the same username creates a different internal identity
+and cannot recover the removed credential's sessions.
 
-- the process must expose `host:setup`
-- remote setup is denied unless the narrow documented remote-setup opt-in is
-  active
-- after setup completes, rerunning setup requires an admin session
+The configured `chat`, `read`, or `full` policy selects both the MCP catalog
+and the managed Assistant profile. A prompt or handle can never select a more
+privileged policy.
 
-These checks are centralized in `packages/ui/src/hooks.server.ts`.
+| Capability | `chat` | `read` | `full` |
+|---|:---:|:---:|:---:|
+| Guarded agent run and job polling/cancel | yes | yes | yes |
+| Owned session list/get | yes | yes | yes |
+| Session messages/diff/todos resources | yes | yes | yes |
+| Question response and permission rejection | yes | yes | yes |
+| Bounded workspace search/read | no | yes | yes |
+| Session fork/delete | no | no | yes |
+| Permission approval (`once`/`always`) | no | no | yes |
+| Managed Assistant profile | `remote` | `remote-read` | `remote-full` |
 
-## Response Conventions
+`full` does not bypass OpenCode permissions. It permits Guardian to relay an
+explicit client's decision when OpenCode returns an `ask` interaction.
 
-Protected route failures normally use:
+## Tools
+
+All essential operations are tools so tools-only clients, including OpenCode,
+can complete the full workflow.
+
+### Agent and jobs
+
+`openpalm.agent.run`
 
 ```json
 {
-  "error": "string_code",
-  "message": "human readable",
-  "details": {},
-  "requestId": "request correlation id"
+  "message": "required; 1..32000 characters",
+  "session": "optional opaque session handle",
+  "title": "optional title; 1..160 characters",
+  "waitMs": "optional; 0..30000"
 }
 ```
 
-Callers may send `x-request-id`; the server creates one when absent. Health and
-transparent proxy routes may use their native upstream shape instead.
+The tool creates or resumes an owned session, screens the message, starts the
+policy-selected agent asynchronously, and waits for at most `waitMs`. It
+returns opaque `session` and `job` handles plus one of:
 
-## Route Families
+- `completed` — includes `text` and may include changed files, todos, and usage;
+- `running` — poll with `openpalm.job.get`;
+- `input_required` — includes opaque question or permission interactions; or
+- `failed` — includes a bounded public error.
 
-| Namespace | Purpose | Primary guard |
-|---|---|---|
-| `/health`, `/api/runtime`, `/api/runtime-config` | Liveness and credential-free launcher context | Public |
-| `/api/auth/*` | Session lifecycle | Login public; session/logout use session state |
-| `/api/setup/*` | First-run host setup | Setup capability, locality, then admin after completion |
-| `/api/assistant/*` | Persona, model, and assistant AKM settings | Session plus assistant-settings capability |
-| `/api/connections/pairing` | Mint a one-time Guardian direct-principal pairing code | Session plus host stack-write capability |
-| `/api/host/*` | Docker, lifecycle, addons, providers, secrets, versions, recovery, and diagnostics | Session plus route-specific host capability |
-| `/oc/*` | Same-origin pass-through to **this process's own** OpenCode | Session; not to be confused with Guardian's `/oc/*` below |
-| `/voice/*` | Same-origin pass-through to local voice | Session; `503` when unavailable |
-| `/guardian/health` | Guardian reachability probe | Public |
+`openpalm.job.get` accepts `{ "job": handle, "waitMs"?: 0..30000 }` and
+returns the same status shape. `openpalm.job.cancel` accepts `{ "job": handle }`
+and aborts the associated active OpenCode run.
 
-See `ui-route-map.md` for the complete current endpoint list.
+### Sessions
 
-## Secrets Contract
+- `openpalm.session.list({ limit? })` lists only sessions cryptographically
+  owned by the authenticated named credential.
+- `openpalm.session.get({ session, include? })` returns status and summary
+  metadata. `include` may contain `messages`, `diff`, and/or `todos`, making
+  those views available to tools-only clients.
+- `openpalm.session.fork({ session, message? })` is `full`-only and creates a
+  newly owned session. The optional value is an opaque message handle from the
+  session-messages resource.
+- `openpalm.session.delete({ session })` is `full`-only and permanently removes
+  the session and history.
 
-Generic host secret actions route names to one of two stores:
+OpenCode session IDs and Guardian ownership proofs are never returned.
 
-- OpenCode provider auth remains in `knowledge/secrets/auth.json`.
-- Delegated UI, OpenCode-server, Guardian, API, portal, and bot credentials live
-  under `state/secrets/`.
+### Workspace
 
-Secret-list responses expose metadata, not values. `state/stack.env` is
-non-secret and secret-looking keys are rejected or relocated through the
-name-routed secret writer.
+`openpalm.workspace.search` and `openpalm.workspace.read` are advertised only
+for `read` and `full` credentials.
 
-## Configuration Validation
+```json
+{ "mode": "files | text | symbols", "query": "required", "limit": 50 }
+```
 
-`GET /api/host/config/validate` performs the current narrow bootability check:
+```json
+{ "path": "relative/path.txt" }
+```
 
-1. `state/stack.env` must exist.
-2. `state/secrets/op_ui_login_password` must be present and non-empty.
+Reads are text-only and capped at 256 KiB. Paths must be relative to `/work`.
+Traversal, absolute paths, VCS/credential directories, `.env` files (except
+`.env.example`), private keys, auth files, and secret-like path components are
+denied. Guardian reads its own read-only workspace mount and verifies the
+canonical path and opened file descriptor remain inside `/work`, so symlinks
+cannot escape the boundary. Search results pass through the same filesystem
+check before their content or metadata is returned.
 
-It does not claim to run a complete Compose, registry, provider, or filesystem
-audit. Compose preflight and the dedicated diagnostics/secret-audit paths cover
-their own concerns.
+This is a confidentiality grant as well as a no-write policy: every ordinary
+workspace file is visible to a `read` or `full` credential. Keep credentials
+outside `/work`.
 
-## Provider Import
+### Interactions
 
-Host OpenCode import merges provider configuration and credentials without
-overwriting conflicts unless requested. It best-effort pushes imported
-non-Anthropic credentials to the running assistant OpenCode process, then
-restarts the assistant and any enabled Guardian consumer so disk credentials
-are reloaded. Per-provider push or restart failures are reported without
-rolling back the completed file import.
+`openpalm.interaction.respond` accepts an opaque interaction handle plus:
 
-## OC Proxy Disambiguation
+- `answers: string[][]` for an agent question;
+- `decision: "reject"` to reject a question or permission; or
+- `decision: "once" | "always"` for a permission under `full` policy.
 
-The path `/oc/*` names two unrelated servers:
+Question answers and optional permission messages are screened before they
+reach Assistant. Guardian verifies that the interaction is still pending and
+belongs to the same owned session. Non-`full` credentials can never approve a
+permission.
 
-| | This UI's `/oc/*` (`routes/oc/[...path]/+server.ts`) | Guardian's `/oc/*` (`packages/guardian/src/proxy.ts`) |
-|---|---|---|
-| Server | Whichever process is serving this UI (assistant co-process, `openpalm app`, `openpalm admin`, Electron) | The separate `guardian` container |
-| Auth | `requireAdmin` — the UI's own `op_session` cookie | Guardian principal HTTP Basic auth + ownership enforcement |
-| Upstream | This process's own OpenCode only (`getAssistantOpencodeTarget()`) | Whatever OpenCode Guardian is configured to front |
-| Reached by | The browser, same-origin, as part of loading this UI | External/portal clients (Discord, Slack, direct principals, MCP) — never this UI |
+### Catalog
 
-They happen to share a path segment because both are transparent 1:1 OpenCode
-proxies; neither forwards to the other, and a client authenticated to one has
-no standing on the other.
+`openpalm.catalog.get({})` returns the policy-filtered tool, resource, and
+prompt names. It does not return the Assistant's internal tools, configuration,
+providers, or credentials.
 
-## Guardian HTTP Surfaces
+## Resources
 
-Guardian is not authenticated by `op_session`:
+Resources are additive conveniences. Tools-only clients use
+`openpalm.session.get` with `include` for the same session views and
+`openpalm.job.get` for job state.
 
-- `/oc/*` uses principal HTTP Basic authentication and ownership enforcement.
-- `/stats` and principal administration use the Guardian admin bearer token and
-  fail closed when it is absent.
-- the OpenAI/Anthropic-compatible listener uses its dedicated API key and an
-  internal Guardian principal.
+- `openpalm://workspace/{path}` (`read`/`full` only)
+- `openpalm://sessions/{session}/messages`
+- `openpalm://sessions/{session}/diff`
+- `openpalm://sessions/{session}/todos`
+- `openpalm://jobs/{job}`
 
-See [`environment-and-mounts.md`](environment-and-mounts.md) and the Guardian
-package tests for listener and response details.
+The URI variables are opaque Guardian handles where applicable. Reads repeat
+policy, ownership, expiry, and path validation; possession of an upstream ID is
+not authorization.
+
+## Prompts
+
+Guardian publishes four static workflow prompts:
+
+- `openpalm.implement`
+- `openpalm.debug`
+- `openpalm.review`
+- `openpalm.explain`
+
+They produce client-visible user messages and never bypass `agent.run`, policy,
+moderation, or permission handling.
+
+## Handle and ownership model
+
+New session, message, job, and interaction handles use AES-256-GCM with a key derived
+from the file-backed Guardian handle secret. They are expiring,
+credential-identity scoped, and conceal every upstream identifier. Session
+handles default to 30 days, jobs to 24 hours, and interactions to one hour.
+
+Guardian also writes an HMAC-bound ownership record into each created OpenCode
+session. Listing, polling, resource reads, and mutations require that proof.
+This keeps Guardian stateless without trusting user-supplied session IDs or
+adding a database. Legacy signed conversation handles can claim only the
+session they originally authenticated; Guardian upgrades that session with an
+ownership record on first use.
+
+Each new job handle is also bound to the exact OpenCode user-message ID created
+for that run. Polling an older completed job remains deterministic, while an
+older handle cannot cancel a later run in the same session.
+
+## Security behavior
+
+- Request bodies, prompts, responses, file reads, concurrency, waits, upstream
+  calls, pre-auth traffic, and per-principal traffic are bounded.
+- Browser requests require an exact configured HTTP(S) Origin. Wildcards and
+  path-bearing origin entries are invalid.
+- Prompts and human-input answers pass the heuristic screen. Suspicious text
+  is classified by the separate loopback moderator.
+- `flag`, `block`, moderator failure/timeout, or malformed classifier output
+  fails closed.
+- Raw shell/file-write endpoints, provider/auth/config management, session
+  sharing, TUI control, and OpenCode MCP administration are not exposed.
+- Upstream error detail, reasoning parts, credentials, session IDs, and
+  ownership proofs are not returned.
+- Audit records contain request metadata and verdict signals, never bearer
+  tokens or prompt bodies.
+
+## CORS
+
+Set `GUARDIAN_ALLOWED_ORIGINS` to a comma-separated list of exact origins only
+when a browser MCP client is required:
+
+```text
+https://agent.example.com,http://127.0.0.1:3000
+```
+
+A request without an Origin header is a non-browser MCP client. An Origin that
+is absent from the allowlist returns 403. Allowed browser responses expose the
+MCP session/protocol headers and request ID required by a Streamable HTTP
+client; credentials remain bearer headers rather than cookies.

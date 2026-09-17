@@ -3,7 +3,7 @@
 //
 // Env in:
 //   UNIT    — a unit key from .github/release-package-groups.json
-//             (platform | electron | portals | guardian)
+//             (platform | electron)
 //   STAMP   — 'true' to write files in place; any other value = preview only
 //   VERSION — explicit semver to stamp (required)
 //
@@ -26,22 +26,24 @@ const doStamp = process.env.STAMP === 'true';
 
 const files = unit ? RELEASE_PACKAGE_GROUPS[unit] : undefined;
 if (!files) {
-  console.error(`Error: UNIT env var must be one of ${Object.keys(RELEASE_PACKAGE_GROUPS).join('|')}`);
-  process.exit(1);
+	console.error(
+		`Error: UNIT env var must be one of ${Object.keys(RELEASE_PACKAGE_GROUPS).join('|')}`
+	);
+	process.exit(1);
 }
 if (!version || !parseSemver(version)) {
-  console.error(`Error: Cannot parse VERSION: ${version ?? '(unset)'}`);
-  process.exit(1);
+	console.error(`Error: Cannot parse VERSION: ${version ?? '(unset)'}`);
+	process.exit(1);
 }
 
 console.log(`${unit} → ${version}${doStamp ? '' : ' (STAMP=false — preview only)'}`);
 for (const f of files) {
-  if (!existsSync(f)) {
-    console.error(`Error: Cannot stamp: file not found: ${f}`);
-    process.exit(1);
-  }
-  if (doStamp) setVersion(f, version);
-  console.log(`  ${f} → ${version}`);
+	if (!existsSync(f)) {
+		console.error(`Error: Cannot stamp: file not found: ${f}`);
+		process.exit(1);
+	}
+	if (doStamp) setVersion(f, version);
+	console.log(`  ${f} → ${version}`);
 }
 
 // The image tag a release deploys is the `:-` default in the compose files it
@@ -49,12 +51,12 @@ for (const f of files) {
 // packages/lib/package.json — which is where PLATFORM_VERSION comes from — so
 // the two cannot disagree in a committed state.
 if (unit === 'platform') {
-  for (const f of COMPOSE_IMAGE_TAG_FILES) {
-    if (!existsSync(f)) {
-      console.error(`Error: Cannot stamp: file not found: ${f}`);
-      process.exit(1);
-    }
-    const count = doStamp ? setComposeImageTags(f, version) : '(preview)';
-    console.log(`  ${f} → image tags ${version} ${doStamp ? `(${count} refs)` : '(preview)'}`);
-  }
+	for (const f of COMPOSE_IMAGE_TAG_FILES) {
+		if (!existsSync(f)) {
+			console.error(`Error: Cannot stamp: file not found: ${f}`);
+			process.exit(1);
+		}
+		const count = doStamp ? setComposeImageTags(f, version) : '(preview)';
+		console.log(`  ${f} → image tags ${version} ${doStamp ? `(${count} refs)` : '(preview)'}`);
+	}
 }

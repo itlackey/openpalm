@@ -3,37 +3,27 @@ node_modules
 .worktrees
 .plans
 .opencode
-.state
 .dev/
 .dev-*/
-.cache/manual-tailscale-paperclip/
+.cache/
 .private/
 .env
 .env.*
 !.env.example
-# containers/ layout
-containers/guardian/node_modules
-containers/assistant/node_modules
-containers/portal/node_modules
-# portal adapter packages
-packages/portal-discord/node_modules
-packages/portal-slack/node_modules
-# generated package output
+
 packages/*/build
 packages/*/dist
 packages/*/.svelte-kit
-!packages/ui/build
-!packages/ui/build/**
+
+# Inactive source is never part of an active image build context.
+packages/ui/
+packages/portal-sdk/
+packages/portal-discord/
+packages/portal-slack/
+containers/voice/
+
 docs/
 *.md
-!containers/**/*.md
-!packages/**/*.md
-!.openpalm/**/*.md
-# Secrets — never send to Docker build context
-# Stack/channel secrets (OP_HOME/config/stack/)
-.openpalm/config/stack/*.env
-# User env config (OP_HOME/knowledge/env/)
-.openpalm/knowledge/env/user.env
-# Secrets — never bake into images (auth.json, per-service secret files)
-.openpalm/knowledge/secrets/**
-.openpalm/state/**
+
+# Host state and credentials must never enter an image build context.
+.openpalm/

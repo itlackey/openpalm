@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"types": ["bun-types"]
+	},
+	"include": [
+		"src/assistant-client.ts",
+		"src/conversation.ts",
+		"src/credentials.ts",
+		"src/gateway-service.ts",
+		"src/lean-index.ts",
+		"src/lean-audit.ts",
+		"src/lean-content-screen.ts",
+		"src/lean-moderation.ts",
+		"src/lean-server.ts",
+		"src/mcp-agent.ts",
+		"src/workspace-access.ts",
+		"src/workspace-policy.ts"
+	]
+}

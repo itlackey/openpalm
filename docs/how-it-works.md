@@ -1,5 +1,9 @@
 # How OpenPalm Works
 
+> Historical pre-lean architecture reference. It does not describe the active
+> stack. Use [the maintained architecture](technical/architecture.md) and
+> [Guardian MCP contract](technical/api-spec.md).
+
 OpenPalm is a host control plane around a Docker Compose stack.
 
 The host CLI or optional host admin UI owns lifecycle operations. The stack's

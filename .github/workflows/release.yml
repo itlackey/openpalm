@@ -1,380 +1,118 @@
-name: Release
+name: Release lean OpenPalm
 
-# 0.13 product release. The candidate bundle is the only source consumed by
-# tests, image builds, native builds, and the host asset builder. Product npm is
-# deliberately limited to the openpalm bootstrap and is published only after
-# its matching public GitHub Release has been verified.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Product version (for example 0.13.0)'
+        description: 'Already-stamped product version (for example 0.14.0)'
         required: true
         type: string
       dry_run:
-        description: 'Build and validate without publishing or pushing'
+        description: 'Build and validate without publishing'
         required: false
         type: boolean
         default: true
 
 concurrency:
-  group: release
+  group: release-lean-openpalm
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  candidate:
+  validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
-      base_sha: ${{ steps.bundle.outputs.base_sha }}
-      candidate_sha: ${{ steps.bundle.outputs.candidate_sha }}
-      candidate_tree: ${{ steps.bundle.outputs.candidate_tree }}
-      source_artifact: ${{ steps.bundle.outputs.source_artifact }}
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-      - name: Validate release target
-        id: version
+      - id: version
+        name: Validate the stamped release
         env:
           VERSION: ${{ inputs.version }}
           DRY_RUN: ${{ inputs.dry_run }}
           RELEASE_REF: ${{ github.ref }}
         run: |
           node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
+          import { appendFileSync, readFileSync } from 'node:fs';
           import { parseSemver } from './scripts/set-version.mjs';
           const version = process.env.VERSION ?? '';
           const parsed = parseSemver(version);
-          if (!parsed) throw new Error(`Invalid release version: ${version}`);
-          if (process.env.DRY_RUN !== 'true' && process.env.RELEASE_REF !== 'refs/heads/main' && !process.env.RELEASE_REF.startsWith('refs/heads/release/')) {
-            throw new Error('Live publication is restricted to main or release/* refs');
+          if (!parsed) throw new Error(`Invalid version: ${version}`);
+          if (process.env.DRY_RUN !== 'true' &&
+              process.env.RELEASE_REF !== 'refs/heads/main' &&
+              !process.env.RELEASE_REF.startsWith('refs/heads/release/')) {
+            throw new Error('Live releases are restricted to main and release/* branches');
+          }
+          const groups = JSON.parse(readFileSync('.github/release-package-groups.json', 'utf8'));
+          const manifests = [...new Set(Object.values(groups.units).flat())];
+          for (const manifest of manifests) {
+            const actual = JSON.parse(readFileSync(manifest, 'utf8')).version;
+            if (actual !== version) throw new Error(`${manifest} is ${actual}; expected ${version}`);
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nprerelease=${parsed.pre !== null}\n`);
           NODE
-      - name: Version monotonicity guard
-        # Publishing moves the GitHub 'latest' release and the npm dist-tags,
-        # so a dispatch LOWER than the highest already-published version would
-        # repoint both backwards. Equal versions stay allowed — idempotent
-        # re-runs of the same version are handled by the tree-identity checks
-        # downstream — and a prerelease of the NEXT version (0.14.0-beta.1
-        # after 0.13.0) sorts higher, so it passes; only strictly-lower
-        # dispatches fail.
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { compareSemver, parseSemver } from './scripts/set-version.mjs';
-          const target = process.env.VERSION;
-          const published = [];
-          // npm: publish-bootstrap moves the openpalm dist-tags.
-          try {
-            let versions = JSON.parse(execFileSync('npm', ['view', 'openpalm', 'versions', '--json'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
-            if (!Array.isArray(versions)) versions = versions ? [versions] : [];
-            published.push(...versions);
-          } catch {
-            console.log('openpalm has no published versions on npm — skipping the npm comparison.');
-          }
-          // Git product tags: tag-release repoints the GitHub 'latest' release.
-          published.push(
-            ...execFileSync('git', ['ls-remote', '--tags', 'origin']).toString()
-              .split('\n')
-              .map((line) => line.split('\t')[1] ?? '')
-              .filter(Boolean)
-              .map((ref) => ref.replace('refs/tags/', '').replace(/\^\{\}$/, '')),
-          );
-          let highest = null;
-          for (const version of published) {
-            if (!parseSemver(version)) continue;
-            if (highest === null || compareSemver(version, highest) > 0) highest = version;
-          }
-          if (highest !== null && compareSemver(target, highest) < 0) {
-            console.error(`::error::Requested version ${target} is LOWER than the already-published ${highest}. Releasing it would repoint GitHub and npm 'latest' backwards; re-runs of the SAME version are allowed, lower never.`);
-            process.exit(1);
-          }
-          console.log(`Monotonicity OK: ${target} >= highest published ${highest ?? '(none)'}`);
-          NODE
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Stamp product candidate
-        env:
-          UNIT: platform
-          STAMP: true
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          node scripts/bump-unit.mjs
-          UNIT=electron node scripts/bump-unit.mjs
-          bun install --lockfile-only
-      - name: Commit and bundle candidate
-        id: bundle
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          DISPATCH_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          BASE_SHA=$(git rev-parse HEAD)
-          [ "${BASE_SHA}" = "${DISPATCH_SHA}" ] || { echo '::error::dispatch SHA changed'; exit 1; }
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git switch -c release-candidate
-          git add -A
-          git commit --allow-empty -m "chore(release): prepare ${VERSION}"
-          CANDIDATE_SHA=$(git rev-parse HEAD)
-          CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')
-          [ "$(git rev-parse HEAD^)" = "${BASE_SHA}" ] || { echo '::error::candidate is not atop base'; exit 1; }
-          git diff --check "${BASE_SHA}" "${CANDIDATE_SHA}"
-          SOURCE_ARTIFACT="release-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          git bundle create "${RUNNER_TEMP}/release-candidate.bundle" release-candidate "^${BASE_SHA}"
-          git bundle verify "${RUNNER_TEMP}/release-candidate.bundle"
-          printf 'base_sha=%s\ncandidate_sha=%s\ncandidate_tree=%s\nsource_artifact=%s\n' "${BASE_SHA}" "${CANDIDATE_SHA}" "${CANDIDATE_TREE}" "${SOURCE_ARTIFACT}" >> "$GITHUB_OUTPUT"
-      - name: Validate an existing product tag
-        # Moved here (from the old standalone `preflight` job) when preflight
-        # became a call into gates.yml (#659): this needs only the git history
-        # already checked out for THIS job (fetch-depth: 0, above) plus the
-        # version/tree this job just computed — no candidate restore, no bun.
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          CANDIDATE_TREE: ${{ steps.bundle.outputs.candidate_tree }}
-        run: |
-          set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
-            git fetch --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
-            test "$(git rev-parse "${VERSION}^{tree}")" = "${CANDIDATE_TREE}" || { echo "::error::Product tag ${VERSION} belongs to different source"; exit 1; }
-          fi
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ steps.bundle.outputs.source_artifact }}
-          path: ${{ runner.temp }}/release-candidate.bundle
-          compression-level: 0
 
-  # #659: preflight used to hand-copy a SUBSET of ci.yml's quality-gates/
-  # ui-unit-tests content (missing every rootless/akm/upgrade-path/
-  # multi-instance smoke, Tier 4, and — like every OTHER release.yml job —
-  # Biome lint, despite docs/operations/release.md's checklist listing
-  # `bun run lint` as an automated gate release.yml never actually ran). Now
-  # it calls the exact same gates.yml ci.yml calls, against this candidate's
-  # restored source, so the two literally cannot drift again.
-  preflight:
-    needs: candidate
-    permissions:
-      contents: read
+  gates:
+    needs: validate
     uses: ./.github/workflows/gates.yml
-    with:
-      base_sha: ${{ needs.candidate.outputs.base_sha }}
-      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
-      source_artifact: ${{ needs.candidate.outputs.source_artifact }}
 
-  # The compiled UI is identical for every consumer (assistant image, all three
-  # Electron platforms, host assets), so it is built once here and downloaded
-  # into packages/ui/build wherever it is needed — the same artifact hand-off
-  # this workflow already uses for the CLI binaries.
-  ui-build:
-    needs: [candidate, preflight]
+  images:
+    name: Publish ${{ matrix.image }} image
+    needs: [validate, gates]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore candidate source
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Build candidate UI
-        run: |
-          bun install --frozen-lockfile
-          bun run ui:build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ui-build
-          if-no-files-found: error
-          path: packages/ui/build
-
-  docker:
-    needs: [candidate, preflight, ui-build, assemble-assets]
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - image: assistant
-            file: containers/assistant/Dockerfile
-            build_args: PLATFORM_VERSION=${{ needs.candidate.outputs.version }}
+            file: containers/assistant/Dockerfile.lean
+            build_args: PLATFORM_VERSION=${{ needs.validate.outputs.version }}
           - image: guardian
             file: containers/guardian/Dockerfile
-            build_args: GUARDIAN_VERSION=${{ needs.candidate.outputs.version }}
+            build_args: GUARDIAN_VERSION=${{ needs.validate.outputs.version }}
           - image: portal
             file: containers/portal/Dockerfile
             build_args: ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore candidate source
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      # Deliberately NOT gated on dry_run: the immutable-image guard below
-      # inspects the registry on every run, and anonymous inspects from shared
-      # runner IPs get rate-limited (429 toomanyrequests), which matches none
-      # of the tag-absent cases and spuriously fails dry runs. Logging in has
-      # no side effects.
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
+        if: inputs.dry_run != true
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Validate an existing immutable image tag
-        id: image-tag
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-          CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
-        run: |
-          set -euo pipefail
-          ref="openpalm/${{ matrix.image }}:${VERSION}"
-          if ! inspect_error=$(docker buildx imagetools inspect "${ref}" 2>&1 >/dev/null); then
-            case "${inspect_error}" in
-              *"manifest unknown"*|*"not found"*|*"no such manifest"*)
-                echo 'exists=false' >> "$GITHUB_OUTPUT"
-                exit 0
-                ;;
-              *)
-                echo "::error::Could not inspect ${ref} — not a tag-absent response (possibly rate limiting or a registry outage), so the guard cannot prove the tag is free: ${inspect_error}"
-                exit 1
-                ;;
-            esac
-          fi
-          for platform in linux/amd64 linux/arm64; do
-            docker buildx imagetools inspect "${ref}" --format "{{json (index .Image \"${platform}\")}}" \
-              | jq -e --arg tree "${CANDIDATE_TREE}" --arg version "${VERSION}" \
-                '.config.Labels["org.opencontainers.image.source-tree"] == $tree and .config.Labels["org.opencontainers.image.version"] == $version' >/dev/null \
-              || { echo "::error::${ref} exists but belongs to a different candidate"; exit 1; }
-          done
-          echo 'exists=true' >> "$GITHUB_OUTPUT"
-      - name: Restore prebuilt UI into the assistant build context
-        if: matrix.image == 'assistant'
-        uses: actions/download-artifact@v8
-        with:
-          name: ui-build
-          path: packages/ui/build
-      # Pre-push runtime verification (amd64 only): build the assistant image
-      # for the runner's own platform on the same buildx builder as the
-      # multi-arch build below — its amd64 layers are built once here and
-      # restored from the builder cache there — and prove the baked UI and
-      # tool packages actually exist before anything can be pushed. An empty
-      # restored UI tree would otherwise still bake successfully. Runs on dry
-      # runs too.
-      - name: Build assistant smoke image (amd64, pre-push)
-        if: matrix.image == 'assistant' && (inputs.dry_run == true || steps.image-tag.outputs.exists != 'true')
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.file }}
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: openpalm-assistant-smoke:${{ github.run_id }}
-          build-args: ${{ matrix.build_args }}
-          labels: |
-            org.opencontainers.image.source-tree=${{ needs.candidate.outputs.candidate_tree }}
-            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
-          provenance: false
-          sbom: false
-      - name: Assistant image smoke — baked UI and tools present
-        if: matrix.image == 'assistant' && (inputs.dry_run == true || steps.image-tag.outputs.exists != 'true')
-        run: |
-          docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
-            -lc 'test -f /opt/openpalm/ui/node_modules/@openpalm/ui/package.json && test -f /opt/openpalm/ui/node_modules/@openpalm/ui/build/index.js && opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
-      - name: Build immutable image from candidate-local source
-        id: build
-        if: inputs.dry_run == true || steps.image-tag.outputs.exists != 'true'
+      - id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: ${{ inputs.dry_run != true }}
-          tags: openpalm/${{ matrix.image }}:${{ needs.candidate.outputs.version }}
+          tags: openpalm/${{ matrix.image }}:${{ needs.validate.outputs.version }}
           build-args: ${{ matrix.build_args }}
-          labels: |
-            org.opencontainers.image.source-tree=${{ needs.candidate.outputs.candidate_tree }}
-            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
-          provenance: false
-          sbom: false
-      # Dry runs build without pushing, and an idempotent re-run of an
-      # already-published tag skips the build entirely (exists=true) — in both
-      # cases there is no freshly pushed manifest to sign, so the digest gate
-      # keeps these steps quiet. The id-token: write permission above exists
-      # for exactly this keyless flow.
-      - name: Install cosign
-        if: inputs.dry_run != true && steps.build.outputs.digest != ''
-        uses: sigstore/cosign-installer@v4.1.2
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=release-${{ matrix.image }}
+          cache-to: type=gha,scope=release-${{ matrix.image }},mode=max
+      - uses: sigstore/cosign-installer@v4.1.2
+        if: inputs.dry_run != true
         with:
           cosign-release: v3.0.6
-      - name: Sign image (cosign keyless)
-        if: inputs.dry_run != true && steps.build.outputs.digest != ''
-        # Sign by immutable digest (not by tag) so the signature binds to the
-        # exact pushed manifest even as other tags move. Keyless: uses the
-        # job's GitHub OIDC token (id-token: write) to get a short-lived
-        # Fulcio cert; the signature + cert are recorded in the public Rekor
-        # transparency log. No secret key involved.
+      - name: Sign the immutable manifest
+        if: inputs.dry_run != true
         run: cosign sign --yes openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
-      - name: Verify image signature (fail loudly on a broken signer)
-        if: inputs.dry_run != true && steps.build.outputs.digest != ''
-        # Retried, because the signature is not readable the instant it is
-        # written. cosign 3.x attaches it as an OCI 1.1 referrer, and Docker
-        # Hub's referrers index is eventually consistent: on 0.13.0-beta.24 the
-        # portal job verified one second after signing while guardian and
-        # assistant both failed `no signatures found` at the same one-second
-        # gap — the signatures were there minutes later, and the identical
-        # re-run passed. A single immediate attempt makes every release a coin
-        # flip per image, and this step CANNOT be exercised by a dry run: both
-        # it and the sign above are gated on `dry_run != true`, so the first
-        # time it runs is the run that publishes.
-        #
-        # Still fails closed. Only "not visible yet" is retried; the last
-        # attempt's failure is the step's failure, so a genuinely broken signer
-        # (wrong identity, wrong issuer, absent signature) still stops the
-        # release — it just takes ~1 minute to say so.
-        run: |
-          set -uo pipefail
-          for attempt in 1 2 3 4 5 6; do
-            if cosign verify \
-              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}; then
-              echo "Signature verified on attempt ${attempt}."
-              exit 0
-            fi
-            if [ "${attempt}" -eq 6 ]; then
-              echo "::error::cosign verify failed after ${attempt} attempts for openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
-              exit 1
-            fi
-            echo "Attempt ${attempt} did not see the signature yet; retrying in $((attempt * 5))s."
-            sleep "$((attempt * 5))"
-          done
 
   cli:
-    needs: [candidate, preflight, ui-build]
+    name: Build CLI ${{ matrix.asset }}
+    needs: [validate, gates]
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -394,332 +132,109 @@ jobs:
           - os: windows-latest
             script: build:windows-x64
             asset: openpalm-cli-windows-x64.exe
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore candidate source
-        shell: bash
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
-      - name: Install candidate source dependencies
-        run: bun install --frozen-lockfile
-      - name: Restore prebuilt UI for embedding
-        uses: actions/download-artifact@v8
-        with:
-          name: ui-build
-          path: packages/ui/build
-      - name: Build CLI binary without npm
-        # packages/cli's build:* scripts run pack:embedded first, which packs
-        # this restored packages/ui/build and the checked-out packages/skeleton
-        # into packages/cli/embedded/*.tar.gz for bun build --compile to embed
-        # (see packages/cli/scripts/pack-embedded-assets.ts).
-        run: bun run --cwd packages/cli ${{ matrix.script }}
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/cli ${{ matrix.script }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           if-no-files-found: error
           path: packages/cli/dist/${{ matrix.asset }}
 
-  electron:
-    needs: [candidate, preflight, ui-build]
+  admin:
+    name: Build optional admin for ${{ matrix.platform }}
+    needs: [validate, gates]
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             platform: mac
-            flag: --mac
+            script: build:mac
           - os: ubuntu-latest
             platform: linux
-            flag: --linux
+            script: build:linux
           - os: windows-latest
-            platform: win
-            flag: --win
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
+            platform: windows
+            script: build:win
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore candidate source
-        shell: bash
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
-      - uses: actions/download-artifact@v8
-        with:
-          name: ui-build
-          path: packages/ui/build
-      - run: bun run --cwd packages/electron bundle
-      - working-directory: packages/electron
-        shell: bash
-        run: node "$(node -e "console.log(require.resolve('electron-builder/cli.js'))")" ${{ matrix.flag }} --publish never
+      - run: bun run --cwd packages/electron ${{ matrix.script }}
       - uses: actions/upload-artifact@v7
         with:
-          name: electron-${{ matrix.platform }}
+          name: openpalm-admin-${{ matrix.platform }}
           if-no-files-found: error
           path: |
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.zip
             packages/electron/dist/packages/*.exe
-            # Blockmaps: the published feed advertises blockMapSize and
-            # electron-updater fetches <installer>.blockmap for differential
-            # updates — omitting them 404s every differential download and
-            # forces full downloads.
-            packages/electron/dist/packages/*.blockmap
-            # Feed metadata. electron-builder's github provider always writes
-            # the stable names (latest*.yml) whatever the candidate's channel;
-            # assemble-assets renames them to the channel feeds (beta*.yml)
-            # for a prerelease candidate.
-            packages/electron/dist/packages/*.yml
 
-  assemble-assets:
-    needs: [candidate, preflight, ui-build, cli, electron]
+  release:
+    needs: [validate, images, cli, admin]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore candidate source
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
-      - uses: actions/download-artifact@v8
-        with:
-          name: ui-build
-          path: packages/ui/build
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: openpalm-cli-*
+          pattern: openpalm-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: electron-*
-          path: dist
-          merge-multiple: true
-      - name: Assemble and validate complete asset manifest
-        # validate-release-assets composes updater-feed validation here, before
-        # release-source can push the immutable version tag.
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
+      - name: Create checksums
         run: |
-          node --input-type=module <<'NODE'
-          import { existsSync, renameSync } from 'node:fs';
-          import { feedChannelForVersion, updaterFeedsFor } from './scripts/validate-updater-feed.mjs';
-          const channel = feedChannelForVersion(process.env.VERSION);
-          if (channel !== 'latest') {
-            const sources = updaterFeedsFor('latest');
-            const destinations = updaterFeedsFor(channel);
-            for (let index = 0; index < sources.length; index += 1) {
-              // electron-builder's github provider always emits the stable
-              // feed names; a missing source means the electron job's feed
-              // output changed and needs investigating, not a bare ENOENT.
-              if (!existsSync(`dist/${sources[index]}`)) {
-                throw new Error(`Expected updater feed dist/${sources[index]} (to be renamed to ${destinations[index]}) was not produced by the electron job`);
-              }
-              renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`);
-            }
-          }
-          NODE
-          node --input-type=module <<'NODE'
-          import { readdirSync, writeFileSync } from 'node:fs';
-          const assets = readdirSync('dist').filter((name) => name !== 'release-assets-manifest.json' && name !== 'checksums-sha256.txt');
-          assets.push('checksums-sha256.txt');
-          assets.sort();
-          writeFileSync('dist/release-assets-manifest.json', JSON.stringify({ version: process.env.VERSION, assets }, null, 2) + '\n');
-          NODE
-          rm -f dist/checksums-sha256.txt
-          (cd dist && sha256sum -- * > checksums-sha256.txt)
-          VERSION="${VERSION}" node scripts/validate-release-assets.mjs
+          cd dist
+          sha256sum -- * > checksums-sha256.txt
       - uses: actions/upload-artifact@v7
         with:
-          name: product-release-assets
+          name: lean-release-assets
           path: dist
-
-  release-source:
-    needs: [candidate, preflight, docker, assemble-assets]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.base_sha }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore tested candidate
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
-      - name: Push candidate with base lease
+      - name: Publish immutable GitHub release
         if: inputs.dry_run != true
         env:
-          BASE_SHA: ${{ needs.candidate.outputs.base_sha }}
-          CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
-          CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
-          TARGET_BRANCH: ${{ github.ref_name }}
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: |
-          set -euo pipefail
-          REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}" | cut -f1)
-          if [ "${REMOTE_SHA}" = "${CANDIDATE_SHA}" ]; then
-            exit 0
-          fi
-          [ "${REMOTE_SHA}" = "${BASE_SHA}" ] || { echo '::error::release branch moved'; exit 1; }
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
-            git fetch --force origin "refs/tags/${VERSION}:refs/tags/${VERSION}"
-            test "$(git rev-parse "${VERSION}^{tree}")" = "${CANDIDATE_TREE}" || { echo "::error::Product tag ${VERSION} belongs to different source"; exit 1; }
-          else
-            git tag -a "${VERSION}" "${CANDIDATE_SHA}" -m "OpenPalm ${VERSION}"
-          fi
-          git push --atomic --force-with-lease="refs/heads/${TARGET_BRANCH}:${BASE_SHA}" origin "${CANDIDATE_SHA}:refs/heads/${TARGET_BRANCH}" "refs/tags/${VERSION}"
-
-  tag-release:
-    needs: [candidate, release-source, assemble-assets]
-    if: inputs.dry_run != true
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.release-source.outputs.candidate_sha }}
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: product-release-assets
-          path: dist
-      - name: Validate assets before public release
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: VERSION="${VERSION}" node scripts/validate-release-assets.mjs
-      - name: Create one summary GitHub Release
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-          PRERELEASE: ${{ needs.candidate.outputs.prerelease }}
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
-          if gh release view "${VERSION}" >/dev/null 2>&1; then
-            # A published stable release is what every installed desktop app
-            # updates from (#572). Overwriting its assets in place would swap
-            # the binaries out from under a feed users are already fetching, so
-            # a re-run against an existing STABLE tag is a hard failure: cut a
-            # new version instead. Prereleases stay re-uploadable, which is the
-            # point of a beta channel.
-            if [ "${PRERELEASE}" != 'true' ]; then
-              echo "::error::Release ${VERSION} already exists. Stable releases are immutable — publish a new version." >&2
-              exit 1
-            fi
-            gh release upload "${VERSION}" dist/* --clobber
-          else
-            args=(release create "${VERSION}" --title "OpenPalm ${VERSION}" --generate-notes)
-            # --latest=false keeps a prerelease from ever becoming the GitHub
-            # 'latest' release desktop installs and the install script resolve.
-            if [ "${PRERELEASE}" = 'true' ]; then args+=(--prerelease --latest=false); fi
-            gh "${args[@]}" dist/*
-          fi
-      - name: Verify public GitHub Release assets
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-          PRERELEASE: ${{ needs.candidate.outputs.prerelease }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh release view "${VERSION}" --json isDraft,isPrerelease,assets --jq ".isDraft == false and .isPrerelease == (${PRERELEASE}) and ([.assets[].name] | index(\"checksums-sha256.txt\")) != null")" = true
-          curl --fail --location --silent --show-error "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/checksums-sha256.txt" >/dev/null
+          args=(release create "${VERSION}" dist/* --title "OpenPalm ${VERSION}" --generate-notes)
+          if [ "${PRERELEASE}" = true ]; then args+=(--prerelease --latest=false); fi
+          gh "${args[@]}"
 
   publish-bootstrap:
-    needs: [candidate, tag-release]
+    needs: [validate, release]
+    if: inputs.dry_run != true
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.candidate.outputs.version }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
-      - name: Verify matching public assets before npm
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir verified-assets
-          cd verified-assets
-          curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/checksums-sha256.txt"
-          # The CLI binary list lives once in scripts/validate-release-assets.mjs
-          # (CLI_BINARIES) — mirroring the `cli` job matrix above, which
-          # release-aggregates-hygiene.test.ts checks stays in sync with it.
-          mapfile -t ASSETS < <(node --input-type=module -e "
-            import { CLI_BINARIES } from '../scripts/validate-release-assets.mjs';
-            console.log(CLI_BINARIES.join('\n'));
-          ")
-          for asset in "${ASSETS[@]}"; do
-            curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/${asset}"
-            grep -E "[[:space:]]${asset}$" checksums-sha256.txt | sha256sum --check --strict
-          done
-      - name: Check for an existing bootstrap publication
-        id: bootstrap
+      - name: Publish the zero-dependency CLI bootstrap
         working-directory: packages/cli
         env:
-          VERSION: ${{ needs.candidate.outputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          set -euo pipefail
-          EXPECTED=$(npm pack --json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const result=JSON.parse(s); console.log((Array.isArray(result) ? result[0] : Object.values(result)[0]).integrity)})")
-          if ACTUAL=$(npm view "openpalm@${VERSION}" dist.integrity --json 2>/dev/null); then
-            test "${ACTUAL//\"/}" = "${EXPECTED}" || { echo "::error::openpalm@${VERSION} exists with different contents"; exit 1; }
-            echo 'exists=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          if npm view "openpalm@${VERSION}" version >/dev/null 2>&1; then
+            echo "openpalm@${VERSION} already exists"
+            exit 0
           fi
-      - name: Publish openpalm bootstrap only
-        if: steps.bootstrap.outputs.exists != 'true'
-        working-directory: packages/cli
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: |
-          # Channel dist-tags: beta and rc each track their own stream, any
-          # other prerelease lands on next, stable moves latest. Collapsing
-          # every prerelease to next would strand the beta tag on whatever
-          # beta was published last before the collapse.
           tag=latest
           case "${VERSION}" in
             *-beta.*) tag=beta ;;
             *-rc.*) tag=rc ;;
             *-*) tag=next ;;
           esac
-          npm publish --provenance --access public --tag "${tag}" $(npm pack --silent)
+          npm publish --provenance --access public --tag "${tag}"

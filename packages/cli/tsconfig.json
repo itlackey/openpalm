@@ -1,15 +1,21 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "types": ["node"],
-    "resolveJsonModule": true,
-    "noEmit": true
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"types": ["node", "bun-types"],
+		"resolveJsonModule": true,
+		"noEmit": true
+	},
+	"include": [
+		"src/main-lean.ts",
+		"src/commands/*-lean.ts",
+		"src/lib/action.ts",
+		"src/lib/embedded-lean-assets.ts",
+		"src/types/embedded-assets.d.ts"
+	],
+	"exclude": ["src/**/*.test.ts"]
 }

@@ -1,142 +1,27 @@
-# OpenPalm Guardian Container
+# Guardian image
 
-Guardian source lives in `packages/guardian/`. This directory contains its
-image build and entrypoint assets.
+Guardian is an optional authenticated MCP security gateway.
 
-Guardian is a profile-gated ingress service, not an always-on core container.
-It is deployed for `api`, `discord`, `slack`, or `gateway` ingress — or
-directly, via the bare `guardian` profile, when a guardian access toggle or a
-remote tunnel requires it — and is the only path from those clients to the
-assistant.
+The image contains the Bun Guardian service and a pinned OpenCode runtime used
+only by a loopback moderation server. Its entrypoint validates strong file
+secrets, starts the moderator, and starts Guardian. It performs no installation
+at boot.
 
-## Thin-Host Runtime
+Guardian exposes only:
 
-The image packs the local Guardian candidate, its external dependencies, and
-OpenCode tooling so the default path boots without resolving public
-`@openpalm` packages. The entrypoint keeps an explicit package/version override
-seam for downstream distributions; with no override it uses the baked package.
+- `GET /health`
+- MCP Streamable HTTP at `/mcp`
 
-Runtime state is bind-mounted under `/opt/openpalm/guardian`, while the package
-lives at unshadowed `/opt/openpalm/guardian-pkg`.
+It authenticates named credentials reusable by MCP, Discord, and Slack; rate-limits and
+bounds requests; encrypts expiring session/message/job/interaction handles; screens every message;
+and sends allowed messages to Assistant with the configured class policy.
+`chat` is tool-disabled, `read` permits bounded filesystem inspection, and
+`full` inherits Assistant permissions. Suspicious input is classified by the
+separate moderator. Any failure, invalid result, `flag`, or `block` verdict
+fails closed.
 
-## Proxy Pipeline
-
-For each authenticated `/oc/*` request, Guardian:
-
-1. Canonicalizes the path and rejects traversal.
-2. Authenticates the principal with HTTP Basic credentials.
-3. Enforces persisted session, permission, and question ownership.
-4. Applies rate and stream/resource limits.
-5. Validates prompt-bearing content.
-6. Transparently proxies the native OpenCode method, path, query, body, and stream.
-
-Guardian is not an endpoint allowlist or a second protocol. Failed policy checks
-return an error before the request reaches the assistant.
-
-## Content Validation
-
-Content validation defaults **on in Guardian code and in the shipped Compose**.
-Only explicit `0`, `false`, `no`, or `off` values disable it.
-
-The pipeline uses a cheap heuristic screen first. Suspicious messages are sent
-to the local OpenCode moderator on loopback port `4097`. An `allow` verdict is
-forwarded, `flag` is forwarded and audited, and `block` is rejected.
-
-Escalation fails closed: timeout, moderator failure, or an unparseable verdict
-returns `403 content_blocked`.
-
-Managed moderation instructions come from host `system/guardian/`, mounted
-read-only at `/opt/openpalm/guardian-config`; the entrypoint republishes them
-into `OPENCODE_CONFIG_DIR` (`/etc/opencode`), a regenerable copy bound from
-`cache/guardian-opencode/runtime/` because OpenCode writes into every config
-directory it loads. User model selection comes separately from
-`config/guardian/`, mounted as Guardian's OpenCode global config.
-
-## Credentials and Mounts
-
-- Delegated principal, admin, API, bot, and OpenCode-server credentials originate in host `state/secrets/` and arrive through narrow Compose grants.
-- Provider `knowledge/secrets/auth.json` remains the assistant-readable source; Guardian receives it as the `guardian_auth_json` Compose secret and copies it into its private home.
-- Guardian does not mount the full `knowledge/` tree.
-- Durable state is under `data/guardian/`; regenerable cache is under `cache/guardian/`; audit logs are under `data/logs/`.
-
-## Listeners
-
-| Listener | Default publication | Purpose |
-|---|---|---|
-| Internal `8080` | Docker networks only | Health, stats, and authenticated `/oc/*` proxy |
-| Direct `3830` | `127.0.0.1:3830` | Optional direct `/oc/*` and MCP ingress |
-| Admin `3831` | `127.0.0.1:3831` permanently | `/admin/principals` CRUD |
-| Compatible API `8182` | `127.0.0.1:3821` (only when the `guardian.compose.api.yml` overlay is included) | OpenAI/Anthropic-compatible edge |
-| Moderator `4097` | Container loopback only | Content-validation OpenCode process |
-
-One compatible API listener; its host publish (`OP_API_PORT`) ships in the opt-in `guardian.compose.api.yml` overlay.
-
-The direct listener returns `404` until `GUARDIAN_DIRECT_INGRESS=true`. TLS
-termination is an operator reverse-proxy concern; Guardian serves plain HTTP.
-Never expose the admin listener.
-
-## Endpoints
-
-| Method | Path | Listener | Purpose |
-|---|---|---|---|
-| `GET` | `/health` | Internal/direct | Liveness |
-| `GET` | `/health/ready` | Internal | Readiness |
-| `GET` | `/stats` | Internal | Token-protected runtime stats |
-| `*` | `/oc/*` | Internal/direct | Authenticated native OpenCode proxy |
-| `*` | `/mcp` | Direct | Optional MCP gateway |
-| `POST/GET/...` | `/admin/principals...` | Admin `3831` | Principal management |
-
-## Environment
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PORT` | `8080` | Internal gateway port |
-| `OP_ASSISTANT_URL` | `http://assistant:4096` | Assistant upstream |
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Managed Guardian OpenCode config |
-| `GUARDIAN_CONTENT_VALIDATION` | On | Explicit falsy value opts out |
-| `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local moderator |
-| `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic escalation threshold |
-| `GUARDIAN_MODERATION_TIMEOUT_MS` | `4000` | Classification timeout |
-| `GUARDIAN_DIRECT_INGRESS` | `false` | Enable direct listener routes |
-| `GUARDIAN_CORS_ALLOWED_ORIGINS` | Empty | Exact browser origins for direct access |
-| `GUARDIAN_SESSION_ACTIVE_GRACE_MS` | `86400000` (24 hours) | Recent-use window that exempts active sessions from ownership eviction |
-| `GUARDIAN_RECONCILE_INTERVAL_MS` | `300000` (5 minutes) | Orphan-session reconciliation cadence; `0` disables periodic sweeps |
-| `GUARDIAN_ADMIN_TOKEN_FILE` | Required for admin calls | Admin bearer-token file |
-| `GUARDIAN_MCP_TOKEN_FILE` | Required for MCP | MCP bearer-token file |
-
-## No runtime package overrides
-
-The image bakes exactly one guardian, built from the candidate source, and the
-entrypoint runs that. `OP_GUARDIAN_NPM_VERSION`, `OP_GUARDIAN_PACKAGE`,
-`OP_GUARDIAN_ENTRY` and the private-registry npmrc path are **removed**, not
-deprecated.
-
-They were removed because the indirection was load-bearing in the wrong
-direction. The pre-0.13 release model wrote `OP_GUARDIAN_NPM_VERSION` into
-`state/stack.env`; 554b79bc removed that writer without sweeping the key; every
-upgraded home therefore kept a stale value, and the entrypoint honoured it by
-discarding its correct baked package and installing that old version from npm
-on every boot. The downgraded guardian predated 0.13.0's always-on OpenCode
-auth, so it 401'd, disabled its own proxy, answered `/health/ready` with 503,
-failed its healthcheck, and took every stack update down with it for months —
-invisibly, because the operator-facing error was "container for service discord
-not found after up".
-
-To ship a different guardian, build a different image. That is a reviewable,
-versioned artifact; an env var that silently swaps the trust boundary's code at
-boot is not.
-
-## Development
-
-```bash
-cd packages/guardian
-bun run src/server.ts
-bun test
-```
-
-From the repository root:
-
-```bash
-bun run guardian:dev
-bun run guardian:test
-```
+Guardian runs non-root with all capabilities dropped. It mounts managed and
+operator moderator configuration, provider auth, and `/work` read-only; only
+its append-only audit-log directory is read/write. Its direct MCP file reader
+uses the read-only workspace mount to reject symlink escapes before returning
+content.

@@ -15,17 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # #659: every gate job (Stack hygiene, Quality gates, UI unit tests,
-  # Electron unit tests, PowerShell installer behavior, Biome lint — folded
-  # in from the former standalone lint.yml, which release.yml's preflight
-  # never ran despite docs/operations/release.md claiming it as an automated
-  # gate) now lives in one place: .github/workflows/gates.yml. release.yml's
-  # preflight calls the exact same file, so the two can no longer drift.
-  #
-  # NOTE for branch protection: GitHub displays/reports a reusable-workflow
-  # job as "<this caller job id> / <job name>" — e.g. "gates / Quality gates"
-  # — not the bare "Quality gates" a required-status-check rule may still
-  # reference from before this refactor. Update any such rule to the
-  # "gates / <name>" form (job names inside gates.yml are unchanged).
+  # CI and release call the same reusable lean-stack gate.
   gates:
     uses: ./.github/workflows/gates.yml

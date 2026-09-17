@@ -1,115 +1,13 @@
-name: Publish Extensions
+name: Retired extension packages
 
-# Independent extension release. Nothing in this workflow is a prerequisite for
-# the product release or for product image assembly.
 on:
   workflow_dispatch:
-    inputs:
-      unit:
-        description: 'Extension release unit'
-        required: true
-        type: choice
-        options:
-          - guardian
-          - portals
-      version:
-        description: 'Exact extension version'
-        required: true
-        type: string
-      dry_run:
-        required: false
-        type: boolean
-        default: true
 
-concurrency:
-  group: extensions
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 jobs:
-  publish:
+  retired:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          registry-url: https://registry.npmjs.org
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Install extension source
-        run: bun install --frozen-lockfile
-      - name: Stamp extension version
-        env:
-          UNIT: ${{ inputs.unit }}
-          VERSION: ${{ inputs.version }}
-          STAMP: true
-        run: |
-          node scripts/bump-unit.mjs
-          bun install --lockfile-only
-      - name: Test extensions
-        run: bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack
-      - name: Pack extensions
-        env:
-          UNIT: ${{ inputs.unit }}
-        run: |
-          mkdir -p .extension-packages
-          if [ "${UNIT}" = guardian ]; then
-            dirs=(packages/guardian)
-          else
-            dirs=(packages/portal-sdk packages/portal-discord packages/portal-slack)
-          fi
-          for dir in "${dirs[@]}"; do
-            (cd "${dir}" && bun pm pack --destination "${GITHUB_WORKSPACE}/.extension-packages")
-          done
-      - name: Publish extensions independently
-        if: inputs.dry_run != true
-        working-directory: .extension-packages
-        env:
-          VERSION: ${{ inputs.version }}
-          UNIT: ${{ inputs.unit }}
-        run: |
-          set -euo pipefail
-          tag=latest
-          case "${VERSION}" in *-*) tag=next ;; esac
-          # bun pm pack tarballs are not byte-reproducible (member mtimes vary
-          # per run), so hashing a freshly packed tarball against npm's stored
-          # dist.integrity hard-fails every re-run of an already-published
-          # version. Compare unpacked CONTENT instead: an identical re-run
-          # skips cleanly, and only a genuine content mismatch stays a hard
-          # failure. What actually gets PUBLISHED is still the bun-packed
-          # archive from the Pack step, unchanged.
-          content_fingerprint() {
-            local extracted
-            extracted=$(mktemp -d)
-            tar -xzf "$1" -C "${extracted}"
-            (cd "${extracted}" && find . -type f | LC_ALL=C sort | xargs -r sha256sum | sha256sum | awk '{print $1}')
-            rm -rf "${extracted}"
-          }
-          publish_package() {
-            archive=$1
-            spec=$(tar -xOf "${archive}" package/package.json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s); console.log(p.name+'@'+p.version)})")
-            if npm view "${spec}" dist.integrity >/dev/null 2>&1; then
-              published_dir=$(mktemp -d)
-              (cd "${published_dir}" && npm pack "${spec}" >/dev/null 2>&1)
-              expected=$(content_fingerprint "${published_dir}"/*.tgz)
-              rm -rf "${published_dir}"
-              actual=$(content_fingerprint "${archive}")
-              test "${actual}" = "${expected}" || { echo "::error::${spec} exists with different contents"; exit 1; }
-              echo "${spec} is already published with identical contents — skipping"
-            else
-              npm publish --provenance --access public --tag "${tag}" "${archive}"
-            fi
-          }
-          if [ "${UNIT}" = guardian ]; then
-            publish_package openpalm-guardian-*.tgz
-          else
-            publish_package openpalm-portal-sdk-*.tgz
-            publish_package openpalm-discord-portal-*.tgz
-            publish_package openpalm-slack-portal-*.tgz
-          fi
+      - run: echo "::notice::Retired. Guardian and the unified portal are private image components; MCP is the public integration contract."

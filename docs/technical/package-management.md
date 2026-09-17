@@ -1,91 +1,76 @@
-# Package Management
+# Package management
 
-## Single Lock File
+## One lock file
 
-The repository has one dependency lock file: root `bun.lock`. Nested Bun locks
-and `package-lock.json` files are not committed.
-
-Rules:
-
-1. Run dependency-changing installs from the repository root.
-2. CI uses `--frozen-lockfile` to detect package manifest changes that were not
-   reflected in `bun.lock`.
-3. Root `.npmrc` sets `package-lock=false`; `.gitignore` is a second guard.
-4. Do not introduce a package-local lock to make one workspace behave as a
-   separate repository.
+The repository has one dependency lock: root `bun.lock`. Package-local locks and `package-lock.json` are not committed.
 
 ```bash
-bun add <package>
-bun add <package> --cwd packages/<workspace>
+bun install
 bun install --frozen-lockfile
 ```
 
-## Internal Workspace References
+Dependency changes are made from the repository root so the workspace graph and lock remain one transaction.
 
-Internal `@openpalm/*` references intentionally use `workspace:*` when a
-workspace package should resolve to its local peer during development. Bun's
-pack step is used for candidate-local image assembly and packages that remain
-public:
+## Active workspaces
 
-```bash
-bun pm pack
+| Workspace | Runtime dependencies | Release role |
+|---|---|---|
+| `@openpalm/lib` | none | private lean control-plane source bundled into consumers |
+| `openpalm` | zero runtime dependencies in npm bootstrap | compiled standalone CLI + npm bootstrap |
+| `@openpalm/guardian` | MCP server, OpenCode SDK, Zod | private Guardian image component |
+| `@openpalm/portal` | MCP client, Discord, Slack SDKs | private unified portal image component |
+| `@openpalm/electron` | Electron build dependencies | optional static admin artifact |
+| `@openpalm/skeleton` | none | files embedded in the CLI |
+
+The root `workspaces` list is the authoritative active package list. Packages left outside it are legacy removal candidates, not extension release units.
+
+## Internal APIs
+
+Active host consumers import only:
+
+```ts
+import { ... } from '@openpalm/lib/lean';
 ```
 
-`bun pm pack` replaces `workspace:*` with the concrete on-disk workspace
-version in the tarball. Packed artifacts therefore receive normal semver, not
-the workspace protocol. Private platform workspaces keep `workspace:*`; they
-are not registry contracts.
+The package root resolves to the same narrow API. Legacy wildcard exports are intentionally absent.
 
-## Release Units
+Guardian and Portal communicate through MCP. There is no published OpenPalm portal SDK and no workspace dependency between their packages.
 
-Platform manifests are stamped in lockstep for a platform release:
+## Image builds
 
-- root
-- `@openpalm/skeleton`
-- `@openpalm/lib`
-- CLI `openpalm`
-- `@openpalm/ui`
+Images install dependencies at build time from explicit pinned manifests:
 
-Guardian is its own one-manifest unit. Electron and Electron admin tools form a
-separate harness unit. No manifest belongs to more than one canonical owner.
+- `containers/assistant/tools/package.json` — OpenCode, AKM CLI, AKM plugin;
+- `containers/guardian/tools/package.json` — classifier OpenCode runtime;
+- `packages/guardian/package.json` — Guardian application dependency;
+- `packages/portal/package.json` — unified adapter dependencies.
 
-The portal SDK and adapters are one portal unit:
+Entrypoints never run a package manager. Runtime package overrides are not supported.
 
-- `@openpalm/portal-sdk`
-- `@openpalm/discord-portal`
-- `@openpalm/slack-portal`
+Direct dependencies in image manifests use exact versions. When changing one, update `bun.lock` and verify the corresponding image.
 
-The extension publish DAG releases the SDK before either adapter. The product
-release is separate: host assets and images are assembled from candidate-local
-source, and only the `openpalm` bootstrap publishes after public GitHub assets
-are verified.
+## Release units
 
-## Docker Builds
+The platform unit versions these manifests together:
 
-Docker builds do not consume the monorepo's hoisted `node_modules` or root lock
-as if they were runtime volumes. Each image installs from the explicit manifest
-copied into its build context:
+- root `package.json`
+- skeleton
+- lean library
+- CLI
+- Guardian
+- Portal
 
-- Assistant tools use `containers/assistant/tools/package.json`.
-- Guardian tools use `containers/guardian/tools/package.json`.
-- Portal images copy and pack `packages/portal-sdk`, `packages/portal-discord`,
-  and `packages/portal-slack` from candidate source.
-- Guardian and portal package source/dependencies are installed during image
-  build, after the required package files are copied.
+The optional Electron Admin artifact is a separate unit. Compose image defaults are stamped only in `stack.compose.yml`.
 
-The resulting images are immutable and image-baked. Assistant and portal
-entrypoints do not update these dependency trees at boot. Guardian retains only
-its documented explicit thin-host package override.
+Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian and Portal are delivered as signed container images. Admin is delivered as a GitHub release artifact.
 
 ## Verification
 
-After dependency or version changes, run the narrow package tests plus:
-
 ```bash
 bun install --frozen-lockfile
-bun run lint
+bun run check
 bun run test
+bun run lint
+bun run --cwd packages/cli build
+bun run --cwd packages/electron bundle
 ```
-
-See [`../operations/release.md`](../operations/release.md)
-for release execution.

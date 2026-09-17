@@ -2,6 +2,7 @@
   "name": "@openpalm/assistant-tools",
   "private": true,
   "dependencies": {
+    "akm-opencode": "0.9.15202609102133",
     "opencode-ai": "1.18.21",
     "akm-cli": "0.9.15"
   }

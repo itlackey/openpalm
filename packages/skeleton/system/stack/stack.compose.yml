@@ -1,0 +1,226 @@
+# OpenPalm lean stack
+#
+# One required service (assistant), one optional security gateway (guardian),
+# and two optional chat adapters. Operator overlays belong exclusively in
+# config/stack/custom.compose.yml.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  assistant:
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.13.6}
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOME: /home/opencode
+      OPENCODE_CONFIG_DIR: /etc/opencode
+      OPENCODE_DISABLE_PROJECT_CONFIG: "true"
+      OPENCODE_DISABLE_CLAUDE_CODE: "true"
+      OPENCODE_DISABLE_EXTERNAL_SKILLS: "true"
+      OPENCODE_DISABLE_EMBEDDED_WEB_UI: "true"
+      OPENCODE_PORT: "4096"
+      OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
+      AKM_BUNDLE_DIR: /stash
+      AKM_CONFIG_DIR: /etc/akm
+      AKM_CACHE_DIR: /opt/akm/cache
+      AKM_DATA_DIR: /opt/akm/data
+      AKM_STATE_DIR: /opt/akm/data/state
+      OPENCODE_API_URL: http://127.0.0.1:4096
+      TERM: xterm-256color
+    ports:
+      # Trusted native OpenCode access. Loopback is the secure default; an
+      # operator may explicitly publish another address in StackConfigV2.
+      - name: opencode
+        target: 4096
+        published: "${OP_ASSISTANT_PORT:-3810}"
+        host_ip: "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    volumes:
+      - ${OP_HOME:?}/data/assistant:/home/opencode
+      - ${OP_HOME:?}/config/assistant:/home/opencode/.config/opencode:ro
+      # OpenCode owns this credential file. Mount only the file rather than
+      # exposing the delegated Guardian/portal secret directory to the agent.
+      - ${OP_HOME:?}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
+      - ${OP_HOME:?}/system/assistant:/etc/opencode:ro
+      - ${OP_HOME:?}/config/akm:/etc/akm:ro
+      - ${OP_HOME:?}/knowledge:/stash
+      - ${OP_HOME:?}/data/akm/cache:/opt/akm/cache
+      - ${OP_HOME:?}/data/akm/data:/opt/akm/data
+      - ${OP_HOME:?}/workspace:/work
+    secrets:
+      - opencode_server_password
+    networks: [agent_net]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf -u "opencode:$$(cat /run/secrets/opencode_server_password)"
+          http://127.0.0.1:4096/config >/dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  guardian:
+    profiles: [gateway, discord, slack]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.13.6}
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOME: /opt/openpalm/guardian
+      OPENCODE_CONFIG_DIR: /opt/openpalm/moderator-config
+      OPENCODE_DISABLE_PROJECT_CONFIG: "true"
+      OPENCODE_DISABLE_CLAUDE_CODE: "true"
+      OPENCODE_DISABLE_EXTERNAL_SKILLS: "true"
+      OPENCODE_DISABLE_EMBEDDED_WEB_UI: "true"
+      PORT: "8080"
+      OP_ASSISTANT_URL: http://assistant:4096
+      OP_ASSISTANT_DIRECTORY: /work
+      OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
+      GUARDIAN_AUTH_DIR: /run/openpalm-credentials
+      GUARDIAN_HANDLE_KEY_FILE: /run/secrets/guardian_handle_key
+      GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
+      GUARDIAN_ALLOWED_ORIGINS: ${GUARDIAN_ALLOWED_ORIGINS:-}
+      GUARDIAN_MODERATION_URL: http://127.0.0.1:4097
+      GUARDIAN_MODERATION_PORT: "4097"
+      GUARDIAN_MODERATION_TIMEOUT_MS: ${GUARDIAN_MODERATION_TIMEOUT_MS:-4000}
+      GUARDIAN_ASSISTANT_TIMEOUT_MS: ${GUARDIAN_ASSISTANT_TIMEOUT_MS:-120000}
+      GUARDIAN_MODERATION_THRESHOLD: "3"
+    ports:
+      - name: mcp
+        target: 8080
+        published: "${OP_GUARDIAN_PORT:-3830}"
+        host_ip: "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    volumes:
+      - ${OP_HOME:?}/data/logs:/opt/openpalm/logs
+      - ${OP_HOME:?}/system/guardian:/opt/openpalm/moderator-config:ro
+      - ${OP_HOME:?}/config/guardian:/opt/openpalm/guardian/.config/opencode:ro
+      - ${OP_HOME:?}/knowledge/secrets/auth.json:/opt/openpalm/guardian/.local/share/opencode/auth.json:ro
+      # Guardian reads this mount itself so workspace resources cannot escape
+      # through OpenCode's intentionally broad native file API.
+      - ${OP_HOME:?}/workspace:/work:ro
+      # Guardian authenticates every named credential. Portals receive only
+      # their selected credential subdirectory below.
+      - ${OP_HOME:?}/state/credentials:/run/openpalm-credentials:ro
+    secrets:
+      - guardian_handle_key
+      - opencode_server_password
+    networks: [agent_net, ingress_net]
+    depends_on:
+      assistant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  discord:
+    profiles: [discord]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.6}
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: "8184"
+      PORTAL_ADAPTER: discord
+      MCP_SERVER_URL: http://guardian:8080/mcp
+      MCP_TOKEN_FILE: /run/openpalm-credential/key
+      PORTAL_STATE_PATH: /var/lib/openpalm/portal.db
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+      DISCORD_ALLOWED_GUILDS: ${DISCORD_ALLOWED_GUILDS:-}
+      DISCORD_ALLOWED_ROLES: ${DISCORD_ALLOWED_ROLES:-}
+      DISCORD_ALLOWED_USERS: ${DISCORD_ALLOWED_USERS:-}
+      DISCORD_BLOCKED_USERS: ${DISCORD_BLOCKED_USERS:-}
+    volumes:
+      - ${OP_HOME:?}/data/portal/discord:/var/lib/openpalm
+      - ${OP_HOME:?}/state/credentials/${OP_DISCORD_CREDENTIAL:-discord}:/run/openpalm-credential:ro
+    secrets:
+      - discord_bot_token
+    networks: [ingress_net]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8184/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  slack:
+    profiles: [slack]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.6}
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: "8185"
+      PORTAL_ADAPTER: slack
+      MCP_SERVER_URL: http://guardian:8080/mcp
+      MCP_TOKEN_FILE: /run/openpalm-credential/key
+      PORTAL_STATE_PATH: /var/lib/openpalm/portal.db
+      SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
+      SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
+      SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
+      SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
+      SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
+    volumes:
+      - ${OP_HOME:?}/data/portal/slack:/var/lib/openpalm
+      - ${OP_HOME:?}/state/credentials/${OP_SLACK_CREDENTIAL:-slack}:/run/openpalm-credential:ro
+    secrets:
+      - slack_bot_token
+      - slack_app_token
+    networks: [ingress_net]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8185/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  # Network membership is the isolation boundary. Both networks retain normal
+  # outbound access so the assistant can reach model providers and the portal
+  # adapters can reach Discord/Slack.
+  agent_net: {}
+  ingress_net: {}
+
+secrets:
+  opencode_server_password:
+    file: ${OP_HOME:?}/state/secrets/op_opencode_password
+  guardian_handle_key:
+    file: ${OP_HOME:?}/state/secrets/op_guardian_handle_key
+  discord_bot_token:
+    file: ${OP_HOME:?}/state/secrets/discord_bot_token
+  slack_bot_token:
+    file: ${OP_HOME:?}/state/secrets/slack_bot_token
+  slack_app_token:
+    file: ${OP_HOME:?}/state/secrets/slack_app_token

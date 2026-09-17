@@ -35,17 +35,16 @@ Ownership is a security boundary, not just organization:
 
 - `knowledge/secrets/auth.json` is the provider credential store used by
   OpenCode. It stays in the assistant-readable knowledge tree.
-- `state/secrets/` holds delegated UI, OpenCode server, Guardian, API, portal,
-  Discord, and Slack credentials. It is never bind-mounted into `/stash`.
-- Compose grants delegated credentials as individual files under
+- `state/credentials/<username>/key` holds named Guardian bearer keys. Guardian
+  receives the store read-only; a portal receives only its selected credential
+  directory; Assistant receives neither.
+- `state/secrets/` holds the OpenCode server password, Guardian handle key, and
+  Discord/Slack platform credentials. It is never bind-mounted into `/stash`.
+- Compose grants those other credentials as individual files under
   `/run/secrets/` only to the services that need them.
-- The digest-pinned Paperclip image cannot consume file-based auth, so its two
-  required server secrets use the sole audited exception:
-  `state/env/paperclip.env`, with an exact key set and strict file modes.
 - `knowledge/env/user.env` backs AKM `env/user`. It is neither a Compose env file
   nor sourced by the assistant entrypoint. Scoped tools load it on demand.
-- No service receives a broad secret env file; Paperclip's narrow exact-key file
-  is the only exception. `state/stack.env` must remain non-secret.
+- No service receives a secret env file. `state/stack.env` remains non-secret.
 
 ## Security Boundaries
 

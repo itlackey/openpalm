@@ -1,125 +1,13 @@
-name: Publish openpalm/voice-models
-# Builds the prebuilt voice MODEL BUNDLE (Kokoro TTS + faster-whisper STT) and
-# pushes it to Docker Hub. The voice image build (containers/voice/Dockerfile) pulls
-# this instead of downloading models, so the heavy/flaky download happens ONCE
-# here per model bump — not on every cpu/cu121 voice build.
-#
-# Single-arch (amd64): the artifacts are platform-agnostic data and the voice
-# build pulls this via `--platform=$BUILDPLATFORM`, then COPY --from's the files
-# into both the amd64 and arm64 runtime images.
-#
-# Run this BEFORE publish-voice.yml whenever the model pin changes:
-#   1. bump the ARGs / tag here (and the VOICE_MODELS_IMAGE default in
-#      containers/voice/Dockerfile),
-#   2. dispatch this workflow with the new `tag`,
-#   3. then run publish-voice.yml.
-#
-# NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
-# (main). Dispatching with --ref <branch> runs that branch's copy.
+name: Retired voice model bundle
+
 on:
-  # Auto-publish-on-merge removed (0.11.0): the model bundle is published
-  # explicitly (workflow_dispatch) when the model pin changes.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'New immutable model bundle tag (vN, e.g. v2).'
-        required: false
-        default: 'v1'
-        type: string
 
 permissions:
   contents: read
-  id-token: write
-
-concurrency:
-  group: publish-voice-models
-  cancel-in-progress: false
 
 jobs:
-  build-models:
-    name: Build and push openpalm/voice-models
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Guard immutable image tag
-        env:
-          TAG: ${{ inputs.tag || 'v1' }}
-        run: |
-          REF="openpalm/voice-models:${TAG}"
-          if output=$(docker manifest inspect "${REF}" 2>&1); then
-            echo "::error::${REF} already exists"
-            exit 1
-          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
-            echo "::error::Could not verify ${REF}: ${output}"
-            exit 1
-          fi
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          context: git
-          images: openpalm/voice-models
-          tags: |
-            type=raw,value=${{ inputs.tag || 'v1' }}
-
-      - name: Build and push
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: containers/voice
-          file: containers/voice/Dockerfile.models
-          # Platform-agnostic data — amd64 only; the voice build pulls it via
-          # --platform=$BUILDPLATFORM and COPY --from's into every target arch.
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Optional: an authenticated HuggingFace token sidesteps the anonymous
-          # per-IP 429 rate limit on the model API. Add a read-only HF_TOKEN repo
-          # secret to enable it; without it the build falls back to anonymous +
-          # retry (which can 429 under load).
-          secrets: |
-            hf_token=${{ secrets.HF_TOKEN }}
-          cache-from: type=gha,scope=openpalm/voice-models
-          cache-to: type=gha,scope=openpalm/voice-models,mode=max
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
-        with:
-          cosign-release: v3.0.6
-
-      - name: Sign image (cosign keyless)
-        run: cosign sign --yes openpalm/voice-models@${{ steps.build.outputs.digest }}
-
-      - name: Verify image signature
-        run: |
-          cosign verify \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-voice-models.yml@refs/.*$" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            openpalm/voice-models@${{ steps.build.outputs.digest }}
-
-      - name: Promote verified model bundle
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::Missing or invalid model bundle digest: ${DIGEST}"
-            exit 1
-          fi
-          docker buildx imagetools create \
-            --tag openpalm/voice-models:latest \
-            "openpalm/voice-models@${DIGEST}"
-          docker buildx imagetools inspect openpalm/voice-models:latest >/dev/null
+      - run: echo "::notice::Retired. Voice is not part of the lean OpenPalm stack."

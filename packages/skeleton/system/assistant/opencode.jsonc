@@ -1,104 +1,28 @@
 {
-  "$schema": "https://opencode.ai/config.json",
-  // Absolute paths only — a relative entry resolves from the session dir and
-  // silently loads nothing.
-  "instructions": [
-    "/etc/opencode/instructions/core.md",
-    "/etc/opencode/instructions/conversation.md",
-    "/etc/opencode/instructions/system.md",
-    // What the assistant has learned about the user. USER-owned, alongside
-    // persona.md; contents are re-read every model call, so an update applies
-    // to the next message.
-    "~/.config/opencode/user-profile.md",
-    // USER-owned persona (config/assistant → ~/.config/opencode).
-    "~/.config/opencode/persona.md"
-  ],
-  // Exact-pinned (E2): OpenCode resolves plugin specs itself at runtime, so an
-  // "@latest" reference here would still be a live registry fetch even after
-  // the image-baked-only model removed every other runtime install. Bump this
-  // deliberately at release time, same as containers/assistant/tools/package.json.
-  "plugin": [
-    "akm-opencode@0.9.15202609102133"
-  ],
-  // MCP consume-only example: OpenCode can connect to external MCP servers,
-  // but it does not serve MCP itself. Seed-only file: existing installs keep
-  // their current config unless the operator edits it.
-  // "mcp": {
-  //   "docs": {
-  //     "type": "local",
-  //     "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/work"]
-  //   },
-  //   "local-http": {
-  //     "type": "remote",
-  //     "url": "http://127.0.0.1:8787/mcp"
-  //   }
-  // },
-  // #488 — the PRIMARY LAN mDNS advertisement mechanism is now the HOST
-  // control-plane responder (packages/lib/src/control-plane/mdns-responder.ts,
-  // started from the host UI process's hooks.server.ts). It is gated by
-  // OP_GUARDIAN_BIND_ADDRESS (guardian) / OP_ASSISTANT_BIND_ADDRESS (assistant) and
-  // reaches the real LAN — this in-container OpenCode block cannot (see the
-  // reachability gap below). See docs/technical/network-partitioning-d5a.md.
-  //
-  // NATIVE mDNS below remains a MANUAL/ADVANCED path only, kept off by
-  // default and documented for operators who understand the bridge-network
-  // limitation:
-  //   - Set "mdns": true to publish. OpenCode advertises service type
-  //     `_http._tcp.local` with a HARDCODED instance label `opencode-4096`
-  //     (the port; not configurable) and an SRV/A host target of "mdnsDomain"
-  //     (below), defaulting to "opencode.local".
-  //   - "mdnsDomain" is the resolvable `.local` HOSTNAME other devices use.
-  //     OpenCode cannot template it, so install/upgrade writes the whole file
-  //     with the operator's chosen name, e.g. "openpalm.local" derived from the
-  //     assistant name (file-assembly, per the no-template-rendering rule).
-  //   - LAN REACHABILITY GAP: the responder publishes from inside the
-  //     container's own network namespace. On the default Docker BRIDGE network
-  //     the multicast (UDP 5353) stays inside the bridge and does NOT reach the
-  //     physical LAN. To be seen by other LAN devices on a LINUX host the
-  //     assistant container must run with network_mode: host (gated behind LAN
-  //     exposure). On macOS (Docker Desktop / OrbStack) network_mode: host is
-  //     the Linux VM, not the Mac LAN, so native container mDNS is inert there —
-  //     macOS LAN advertisement must come from the host OS.
-  "server": {
-    "port": 4096,
-    "hostname": "0.0.0.0",
-    "mdns": false,
-    "mdnsDomain": "openpalm.local"
-  },
-  // Guardrails against accidents, not against a determined agent. Bash rules
-  // match per parsed command; LAST match wins, so broad asks come before the
-  // narrow denies that override them.
-  //
-  // Every rule here was verified to actually match. The previous set did not:
-  // "sudo" compiled to ^sudo$ (only bare `sudo`), bare "/stash" never matched
-  // the "/stash/foo/*" resource external_directory actually asserts, and the
-  // absolute read denies never matched a worktree-relative resource.
-  "permission": {
-    "bash": {
-      "*": "allow",
-      "rm -r *": "ask",
-      "rm -rf *": "ask",
-      "rm -fr *": "ask",
-      "sudo *": "ask",
-      "rm -rf /": "deny",
-      "rm -fr /": "deny"
-    },
-    "edit": "allow",
-    "task": "allow",
-    // No "read" block: OpenCode's built-in default is broader than anything we
-    // had here (*.env and *.env.* ask, *.env.example allow). The old
-    // read {"*": "allow"} overrode it and REMOVED that protection.
-    "external_directory": {
-      "/tmp/*": "allow",
-      "/work/*": "allow",
-      "/stash/*": "allow",
-      "/host-stash/*": "allow",
-      "/etc/akm/*": "allow",
-      // The assistant's own OpenCode config dir. It maintains user-profile.md
-      // there, and the session dir is /work, so every write to it would
-      // otherwise raise an external_directory prompt — one nobody can answer
-      // on a chat channel.
-      "/home/opencode/.config/opencode/*": "allow"
-    }
-  }
+	"$schema": "https://opencode.ai/config.json",
+	"server": {
+		"port": 4096,
+		"hostname": "0.0.0.0",
+		"mdns": false
+	},
+	"permission": {
+		"bash": {
+			"*": "allow",
+			"rm -r *": "ask",
+			"rm -rf *": "ask",
+			"rm -fr *": "ask",
+			"sudo *": "ask",
+			"rm -rf /": "deny",
+			"rm -fr /": "deny"
+		},
+		"edit": "allow",
+		"task": "allow",
+		"external_directory": {
+			"/tmp/*": "allow",
+			"/work/*": "allow",
+			"/stash/*": "allow",
+			"/etc/akm/*": "allow",
+			"/home/opencode/.config/opencode/*": "allow"
+		}
+	}
 }

@@ -1,194 +1,242 @@
 # OpenPalm
 
-<p>
-  <strong>Your own AI assistant. Private, self-hosted, no hype required.</strong>
-</p>
+OpenPalm is a small self-hosted agent stack built around OpenCode.
 
----
+The default installation is one container: **Assistant**. It exposes the native, authenticated OpenCode server on host loopback and includes AKM-backed knowledge plus scheduled tasks. Add the optional **Guardian** for screened MCP access. Guardian authenticates every request, screens hostile input, and applies the authenticated named credential's `chat`, `read`, or `full` policy.
 
-## What is this?
+There is no bundled chat application. Use any client that speaks MCP or the native OpenCode API. A static desktop admin utility is available as an optional stack-management aid; it is not part of the runtime.
 
-OpenPalm is two things: a **harness** and a **stack**.
+## Runtime
 
-**The harness** runs on your machine — either as a CLI binary or an Electron desktop app. It manages a single directory (`~/.openpalm/`) that contains plain files you can read and edit:
+```text
+trusted OpenCode client ── native OpenCode HTTP ─────────────> Assistant
 
-- Docker Compose files and addon overlays
-- Environment files for non-secret stack config and [AKM](https://github.com/itlackey/akm) (the assistant's persistent memory and knowledge-stash layer) user variables
-- Private principal (an authenticated identity Guardian issues credentials to — a portal, bot, or direct client), service, and provider credential files
-- OpenCode configuration (model, providers, persona)
-- AKM configuration (memory, embeddings, knowledge stash)
-- Voice and portal configuration
+MCP client ── bearer auth ──> Guardian ── policy-scoped call ──> Assistant
+Discord/Slack ── unified Portal MCP client ──┘
+```
 
-The harness job is unglamorous: download Docker images, place the right content in the right files, and start `docker compose up`. That's the entire control plane. If you prefer, you can skip the harness entirely and manage those files by hand.
+| Component | Default | Purpose |
+|---|---:|---|
+| Assistant | on | OpenCode, AKM knowledge, and the task scheduler |
+| Guardian | off | Authenticated MCP ingress and malicious-input screening |
+| Discord adapter | off | Default-deny Discord bridge through Guardian MCP |
+| Slack adapter | off | Default-deny Slack bridge through Guardian MCP |
+| Admin desktop app | separate | Optional local stack editor and lifecycle control |
 
-**The stack** is what the harness runs. At its core:
+OpenPalm deliberately does not ship a chat UI, OpenAI-compatible API, Anthropic-compatible API, A2A server, model server, voice stack, VPN, service catalog, or containerized admin plane.
 
-- An **OpenCode assistant** in Docker — your AI, talking to whatever model you point it at, with persistent memory and skills via AKM
-- A **Guardian** — the profile-gated front door for portals and Guardian clients, enforcing principal authentication, ownership checks, rate limits, and default-on fail-closed content validation
-- Optional **addons** — portal adapters such as Discord and Slack, services such as Voice, or anything you add through Compose
+## Install
 
-Official clients are the Electron desktop app and the OpenPalm UI — the same SvelteKit app, served as a co-process inside the assistant container. The assistant-served and host-served OpenPalm UIs have direct paths to OpenCode; portals and Guardian direct/API clients reach it through Guardian.
+Requirements:
 
----
+- Docker Engine with Docker Compose v2
+- Linux, macOS, or Windows with a supported Docker environment
+- a provider configured through OpenCode
 
-OpenPalm started as a hobby project — a weekend experiment to see if a useful AI assistant could be built on boring, standard tools. Turns out it can. It's now a daily driver, and it keeps getting better.
-
-No proprietary orchestration layer, no magic runtime, no lock-in. Just containers, env files, and compose overlays. If you can run `docker compose up`, you can run OpenPalm.
-
-## Where things stand
-
-Use the [latest published release](https://github.com/itlackey/openpalm/releases/latest). See the [changelog](CHANGELOG.md) for current work and release-specific upgrade notes.
-
-See the download table below. The `access.*` setup-spec fields (`networkAccess`,
-`assistantDirect`, `guardianNetwork`, `guardianOpenaiApi`) require `0.13.0` or
-newer; see [Setup Guide](docs/setup-guide.md#headless-setup).
-
-## What you get
-
-- **An AI assistant that's yours** — Runs on [OpenCode](https://opencode.ai), talks to any OpenAI-compatible model (local or remote), and remembers things between sessions.
-- **Portals** — Talk to your assistant through an OpenAI-compatible API, Discord, Slack, or build your own adapter.
-- **Security by default** — Portal and Guardian ingress traffic passes through principal authentication, ownership checks, and rate limits. Direct Assistant access is loopback-only by default, and the Assistant has no Docker socket.
-- **Plain control plane** — Stack and control-plane state use Compose, env, and configuration files. Service runtime data, including SQLite databases, stays under `~/.openpalm/data/`.
-- **LAN-first** — Nothing is exposed to the internet unless you explicitly choose to expose it.
-
-## Get started
-
-**1. Install Docker (with Compose V2)** — OpenPalm runs your assistant in Docker containers.
-
-| Platform | Get Docker |
-|---|---|
-| **Mac** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [OrbStack](https://orbstack.dev/download) |
-| **Windows** | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
-| **Linux** | [Docker Engine](https://docs.docker.com/engine/install/) (`curl -fsSL https://get.docker.com \| sh`) |
-
-**2. Download the OpenPalm desktop app** — Recommended for most users.
-
-Grab the file matching your platform from the
-[releases page](https://github.com/itlackey/openpalm/releases). Filenames are
-versioned — `<version>` below stands for the release tag (e.g.
-`0.13.0`) — so link to the releases page, not to a specific file URL.
-
-| Platform | Filename | Run |
-|---|---|---|
-| **Mac (Apple Silicon)** | `OpenPalm-<version>-arm64-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
-| **Mac (Intel)** | `OpenPalm-<version>-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
-| **Windows (portable)** | `OpenPalm-<version>-win.zip` | Unzip → run **OpenPalm.exe**. No install step, but no auto-update either. |
-| **Windows (installer)** | `OpenPalm-Setup-<version>.exe` | Run it to install per-user (no admin prompt); updates itself in place afterward. |
-| **Linux (x64)** | `OpenPalm-<version>.AppImage` | `chmod +x` → run |
-| **Linux (arm64)** | `OpenPalm-<version>-arm64.AppImage` | `chmod +x` → run |
-
-> **Mac Intel has no arch marker in its filename.** `OpenPalm-<version>-mac.zip`
-> (no `-x64-` or `-arm64-`) is the Intel build; only the Apple Silicon build
-> says `-arm64-`. Picking the file that "looks" more specific gets you the
-> wrong architecture.
->
-> **Windows: pick one.** The portable zip needs no install but never
-> auto-updates; the installer replaces itself on new releases but writes to
-> `%LOCALAPPDATA%`. See
-> [Desktop app updates](docs/managing-openpalm.md#desktop-app-updates) for the
-> full auto-update matrix.
->
-> **Linux AppImage needs `libfuse2`**, which Ubuntu 22.04+, Debian 12+, and
-> Fedora no longer install by default. Without it the AppImage fails with
-> `dlopen(): error loading libfuse.so.2` before OpenPalm starts. Install it
-> **before** launching the AppImage:
->
-> ```sh
-> # Ubuntu / Debian 12 and earlier
-> sudo apt update && sudo apt install -y libfuse2
->
-> # Debian 13 (trixie) and newer — the 64-bit time_t transition renamed the
-> # package to libfuse2t64
-> sudo apt update && sudo apt install -y libfuse2t64
-> ```
->
-> On other distros, install the equivalent `fuse2`/`libfuse2` package. If you
-> can't install libfuse2, run
-> `./OpenPalm-<version>.AppImage --appimage-extract-and-run` instead.
-
-Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
-
-> First launch on macOS/Windows: builds are not code-signed, so there's a
-> one-time security prompt. On macOS 15 (Sequoia) and newer, right-click →
-> Open no longer bypasses this for unsigned apps — instead, try to open the
-> app once (it will be blocked), then go to **System Settings → Privacy &
-> Security**, scroll to the block notice, and click **Open Anyway**, then
-> confirm **Open** in the follow-up dialog. On older macOS versions,
-> right-click **OpenPalm.app → Open** still works. Either way, you can instead
-> clear the quarantine flag before first launch: `xattr -dr
-> com.apple.quarantine OpenPalm.app`. On Windows, click **More info → Run
-> anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
-
-<details>
-<summary><strong>Command-line install</strong></summary>
-
-For power users who prefer a CLI:
+From a release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+npm install --global openpalm
+openpalm install
 ```
 
-This downloads the CLI binary for your platform, seeds `~/.openpalm/`, and
-opens the same setup wizard in a browser — at
-`http://127.0.0.1:3880/setup`, loopback-only, on purpose. **This is not
-headless**: on an SSH-only server there's no local browser to open it in. Tunnel
-the port over SSH instead, then open the URL on your side of the tunnel:
+From this repository:
 
 ```bash
-ssh -L 3880:127.0.0.1:3880 user@host
+bun install
+bun run packages/cli/src/main-lean.ts install
 ```
 
-For a genuinely headless install with no browser step, write a setup spec and
-run:
+The install creates `~/.openpalm` by default. Set `OP_HOME` to use another absolute location. The Assistant endpoint defaults to:
+
+```text
+http://127.0.0.1:3810
+```
+
+Attach an OpenCode TUI or another native client and authenticate as `opencode`
+with the password stored at:
+
+```text
+~/.openpalm/state/secrets/op_opencode_password
+```
+
+For example, load the password without placing it in the command arguments:
 
 ```bash
-openpalm install --file <path-to-setup-spec.yaml>
+IFS= read -r OPENCODE_SERVER_PASSWORD < ~/.openpalm/state/secrets/op_opencode_password
+export OPENCODE_SERVER_PASSWORD
+opencode attach http://127.0.0.1:3810
+unset OPENCODE_SERVER_PASSWORD
 ```
 
-See the [setup guide](docs/setup-guide.md) for the full headless flow, the
-setup-spec format, and the bare-metal `docker compose` path.
+To allow a client on a trusted network to connect directly:
 
-</details>
-
-## Make it yours
-
-- **Swap models** — Point it at OpenAI, Anthropic, Groq, Ollama, LMStudio, or anything OpenAI-compatible.
-- **Add portals** — Enable Discord, Slack, or the OpenAI-compatible API by enabling the relevant addon in your stack.
-- **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
-- **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
-- **Protect your secrets** — The shared control-plane logger redacts structured values under recognized sensitive key names; this is not a blanket guarantee for every service log. `openpalm scan` inventories discovered sensitive keys and secret files as set or empty without printing their values.
-
-## How it works
-
-```mermaid
-flowchart LR
-  Admin[Electron or openpalm admin] -->|host control plane| Compose[Docker Compose]
-  Compose --> Assistant[Assistant and OpenCode]
-  UI[Assistant or host-served UI] -->|same-origin /oc| Assistant
-  Direct[Direct OpenCode client] -->|optional OpenCode Basic auth| Assistant
-  Portals[Discord and Slack portals] -->|principal Basic auth /oc| Guardian
-  Clients[Guardian direct, API, or MCP clients] -->|issued credentials| Guardian
-  Guardian -->|native OpenCode upstream| Assistant
-  Assistant --> AKM[AKM knowledge and supercronic]
+```bash
+openpalm config assistant --bind 192.168.1.10 --port 3810
 ```
 
-Guardian mediates portal and Guardian-facing protocols. It is not inserted into the supported direct Assistant or UI paths.
+This bypasses Guardian by design. OpenCode Basic authentication remains
+mandatory, but the native server is plain HTTP; use a private network or
+operator-managed TLS and do not publish it directly to the internet.
 
-For the full walkthrough, see [How It Works](docs/how-it-works.md). For security invariants and architectural rules, see [Core Principles](docs/technical/core-principles.md).
+Provider authentication remains in OpenCode's standard `auth.json`, mounted from:
 
-## Documentation
+```text
+~/.openpalm/knowledge/secrets/auth.json
+```
 
-| Guide | What's inside |
-|---|---|
-| [Setup Guide](docs/setup-guide.md) | Install, update, and troubleshoot |
-| [How It Works](docs/how-it-works.md) | Architecture and data flow |
-| [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
-| [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
-| [Community Portals](docs/portals/community-portals.md) | Build your own guardian-facing portal adapter |
-| [Upgrade 0.12.x → 0.13.0](docs/operations/upgrade-0.12-to-0.13.md) | `private/` folds into `state/`, and the OpenCode password becomes mandatory |
-| [Upgrade 0.10.x → 0.11.0](docs/operations/upgrade-0.10-to-0.11.md) | Historical: migrating a pre-0.11 install |
-| [Full docs index](docs/README.md) | Everything else |
+## Enable MCP ingress
 
-## Contributing
+```bash
+openpalm addon enable gateway
+```
 
-OpenPalm is open source under [MPL-2.0](LICENSE). Contributions are welcome — just know that things move fast right now and the architecture is still settling. Check out the [docs index](docs/README.md) to get oriented, and don't hesitate to open an issue if something breaks or doesn't make sense.
+Guardian defaults to loopback at `http://127.0.0.1:3830/mcp`. Install creates `owner`, `discord`, and `slack` credentials. Their keys live under:
+
+```text
+~/.openpalm/state/credentials/<username>/key
+```
+
+Guardian publishes a curated MCP agent catalog rather than a chat shim or raw
+OpenCode proxy. Every client can use tools for guarded agent runs, resumable
+jobs, owned sessions (including messages, diffs, and todos), and human-input responses. `read` and `full` policies add
+bounded workspace search/read; `full` adds session mutation and explicit
+permission decisions. Richer clients also receive session/job/workspace
+resources and workflow prompts.
+
+Session, message, job, and interaction values are encrypted, expiring,
+principal-scoped handles. Clients never receive upstream OpenCode IDs. Start
+with `openpalm.catalog.get` to inspect the authenticated catalog and
+`openpalm.agent.run` to do work. The same endpoint negotiates modern MCP and
+supports stateless 2025-era clients.
+
+Credentials are reusable across direct MCP clients and portals. Create and manage them by username:
+
+```bash
+openpalm credential list
+openpalm credential add automation read
+openpalm credential set-policy automation full
+openpalm credential rotate automation
+openpalm credential show automation --show-key
+```
+
+`add` and `rotate` generate a strong key by default. Use `--key-file <path>` or
+`--key-file -` to supply one without putting it in process arguments. Keys must
+contain 32–512 printable non-whitespace ASCII characters. Credential metadata
+and portal assignments live in `state/stack.json`; raw keys do not.
+
+- `chat` denies every Assistant tool.
+- `read` gives the managed agent read/list access to non-secret `/stash` and
+  `/work` content and exposes bounded non-secret `/work` search/read operations
+  to the MCP client. It permits no writes, shell commands, or network tools.
+  Treat every other readable file in those allowed trees as visible to that
+  credential.
+- `full` adds no Guardian-specific tool denial; the Assistant's OpenCode
+  permission configuration remains authoritative.
+
+### Use Guardian from OpenCode
+
+The bundled OpenCode version can consume Guardian as a remote MCP server. Keep
+the bearer token in the client process environment, not in project config:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "openpalm": {
+      "type": "remote",
+      "url": "http://127.0.0.1:3830/mcp",
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:OPENPALM_MCP_TOKEN}"
+      },
+      "timeout": 45000
+    }
+  }
+}
+```
+
+Then load the desired named credential before starting that client:
+
+```bash
+IFS= read -r OPENPALM_MCP_TOKEN < ~/.openpalm/state/credentials/owner/key
+export OPENPALM_MCP_TOKEN
+opencode
+unset OPENPALM_MCP_TOKEN
+```
+
+OpenCode receives the same policy-filtered tools as any other MCP client; it is
+not limited to a chat operation. See the upstream
+[remote MCP configuration](https://opencode.ai/v2/docs/mcp-servers) when using
+a newer OpenCode release whose config layout differs from the bundled version.
+
+To bind Guardian to a specific LAN address:
+
+```bash
+openpalm config gateway --bind 192.168.1.10 --port 3830
+```
+
+Do not publish Guardian directly to the public internet without a properly configured TLS reverse proxy and an explicit origin allowlist.
+
+## Optional portals
+
+```bash
+openpalm addon enable discord
+openpalm addon enable slack
+```
+
+Enabling either adapter also enables Guardian. Assign any named credential to a portal:
+
+```bash
+openpalm config portal discord --credential support-bot
+openpalm config portal slack --credential support-bot
+```
+
+Each portal receives only the selected credential directory. Bot credentials
+remain in `state/secrets/`; allowlists are set through the documented Compose
+environment keys. Both adapters are default-deny until at least one user, role,
+guild, or channel scope is configured. All users of a portal currently share
+that portal's selected credential identity and policy; per-user mapping and
+OAuth are planned follow-up layers.
+
+## Day-two commands
+
+```bash
+openpalm status
+openpalm doctor
+openpalm logs
+openpalm start
+openpalm restart
+openpalm stop
+openpalm config show
+openpalm addon list
+openpalm update
+```
+
+`stop` removes containers and networks but never volumes or operator data. OpenPalm has no purge command in the lean CLI.
+
+## Upgrade from 0.13
+
+Run:
+
+```bash
+openpalm update --no-start
+openpalm config show
+openpalm start
+```
+
+The migration derives `state/stack.json` from existing intent, activates only Guardian/Discord/Slack settings that still exist, and preserves all legacy files and data. It does not automatically delete retired UI, voice, model, VPN, Paperclip, or old portal state. See [migration-to-lean-stack.md](docs/operations/migration-to-lean-stack.md) and [deletion-manifest.md](docs/technical/deletion-manifest.md).
+
+## Development
+
+```bash
+bun install
+bun run check
+bun run test
+bun run lint
+
+./scripts/dev-setup.sh --seed-env
+bun run dev:build
+```
+
+The authoritative architecture and security rules are in [core-principles.md](docs/technical/core-principles.md). The active document map is [docs/README.md](docs/README.md).

@@ -1,127 +1,32 @@
-# OpenPalm Assistant Container
+# Assistant image
 
-The assistant image is OpenPalm's only always-on core container. It runs
-OpenCode, the non-admin OpenPalm UI, and `supercronic` for AKM tasks.
+The active image is built from `Dockerfile.lean`.
 
-It has no Docker socket, host admin credential, or network path to the host
-admin process. It cannot run stack lifecycle operations.
+It contains only:
 
-## Runtime Processes
+- OpenCode;
+- AKM CLI;
+- the image-baked `akm-opencode` plugin;
+- supercronic; and
+- minimal runtime utilities.
 
-- OpenCode on container port `4096`
-- Image-baked `@openpalm/ui` on container port `3000`
-- `supercronic`
-- `akm migrate apply` at boot — offline, idempotent, applies every pending
-  migration (config lift, state.db, task v2/v3 → v4 conversion, residue
-  sweeps) in one plan, including operator-authored task files (backed up
-  under akm's data dir first)
-- `akm task sync` at boot and every 60 seconds
+The entrypoint validates its managed configuration and file-backed OpenCode
+password, synchronizes user task sources, starts supercronic, and starts the
+native OpenCode server. It performs no package installation or network download.
 
-The UI reaches OpenCode through its same-origin `/oc` proxy. The default host
-publications are `127.0.0.1:3810` for OpenCode and `127.0.0.1:3800` for the UI.
+Assistant runs as the configured non-root operator identity, drops all
+capabilities, and receives no Docker socket, Admin credential, Guardian token,
+or portal token. Its authenticated host port defaults to loopback; StackConfig
+may deliberately bind it to another exact host address for direct native
+OpenCode clients.
 
-## Image-Baked Assets
+Persistent mounts are the Assistant home, operator OpenCode/AKM configuration,
+knowledge, AKM state, and workspace. Managed configuration is read-only.
+Provider `auth.json` is intentionally Assistant-readable; delegated ingress
+credentials are not.
 
-Release builds contain exact candidate copies of:
+Managed Guardian sessions select one of three Assistant profiles: tool-disabled
+`remote`, read-only `remote-read`, or permission-inheriting `remote-full`.
 
-- the OpenCode and AKM tool tree
-- compiled `@openpalm/ui`
-
-The Dockerfile packs the local UI candidate during the image build. The
-entrypoint does not install or update it from npm. Updating the UI requires a
-new assistant image.
-
-OpenCode may resolve explicitly configured plugins according to its own plugin
-behavior; their cache is on the assistant cache bind.
-
-## Mounts
-
-The managed Compose definition is
-`packages/skeleton/system/stack/core.compose.yml`.
-
-| Host source | Container path | Purpose |
-|---|---|---|
-| `${OP_HOME}/data/assistant` | `/home/opencode` | Durable assistant home and OpenCode state |
-| `${OP_HOME}/cache/assistant` | `/home/opencode/.cache` | Regenerable package/OpenCode cache |
-| `${OP_HOME}/system/assistant` | `/etc/opencode` | Managed OpenCode config (`OPENCODE_CONFIG_DIR`) |
-| `${OP_HOME}/config/assistant` | `/home/opencode/.config/opencode` | User OpenCode global config |
-| `${OP_HOME}/config/akm` | `/etc/akm` | AKM config |
-| `${OP_HOME}/knowledge` | `/stash` | AKM knowledge, tasks, user env, and the operator's own skills |
-| `${OP_HOME}/system/skills` | `/system-stash` | Release-shipped AKM skills, read-only |
-| `${OP_HOME}/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | OpenCode provider auth |
-| `${OP_HOME}/data/akm/cache` | `/opt/akm/cache` | AKM cache and task logs |
-| `${OP_HOME}/data/akm/data` | `/opt/akm/data` | AKM databases |
-| `${OP_HOME}/workspace` | `/work` | Shared workspace |
-| Host AKM stash or empty fallback | `/host-stash` | Optional secondary AKM source |
-| `assistant-persistent` volume | `/opt/persistent` | Persistent prefix-style installs |
-
-Managed config and user config are separate. Update may replace
-`system/assistant/`; it preserves existing `config/assistant/` files.
-
-## Secret Boundary
-
-The assistant-readable provider file is
-`knowledge/secrets/auth.json`. Delegated UI, Guardian, API, portal, bot, and
-OpenCode-server credentials live under host `state/secrets/` and are not
-mounted as a tree.
-
-The assistant service receives only the specific UI/OpenCode server secret
-files needed by its server processes through Compose `secrets:`. Those paths
-are passed to the relevant child process; the assistant does not receive host
-control-plane credentials.
-
-`knowledge/env/user.env` is not sourced by the entrypoint. A tool that needs a
-user-env value runs `akm env run user -- <cmd>` and loads it in that tool subprocess only.
-The OpenCode server and unrelated tools do not inherit the whole file.
-
-## Automations
-
-AKM task files live at `/stash/tasks/*.yml`. Supported targets are `command`,
-`prompt`, and `workflow`.
-
-Task commands run inside this container. Host lifecycle commands such as
-`openpalm update`, `openpalm status`, and `openpalm validate` cannot run here.
-Schedule those with host cron or the host operating system's task scheduler.
-
-## User Configuration
-
-Durable user changes belong under host `config/assistant/`:
-
-```text
-opencode.json
-persona.md
-user-profile.md
-tools/
-plugins/
-skills/
-```
-
-Managed instructions, permissions, themes, and plugin configuration come from
-`system/assistant/` at `/etc/opencode`.
-
-## Persistent Tools
-
-Install user tools under `$HOME/.local` or `$HOME/.bun`; both survive
-recreation. Use `/opt/persistent` for a non-home prefix. Distro packages in the
-container writable layer do not survive recreation; build a derived image for
-those.
-
-See
-[Persisting Assistant-Installed Tools](../../docs/operations/persistent-assistant-tools.md).
-
-## Key Environment Variables
-
-| Variable | Purpose |
-|---|---|
-| `OPENCODE_CONFIG_DIR` | Managed config path, `/etc/opencode` |
-| `OPENCODE_PORT` | OpenCode container port, normally `4096` |
-| `OPENCODE_SERVER_PASSWORD_FILE` | Narrow Compose secret path used when OpenCode auth is enabled |
-| `OP_UI_LOGIN_PASSWORD_FILE` | Narrow secret path for UI login |
-| `AKM_BUNDLE_DIR` | `/stash` |
-| `AKM_CONFIG_DIR` | `/etc/akm` |
-| `AKM_CACHE_DIR` | `/opt/akm/cache` |
-| `AKM_DATA_DIR` | `/opt/akm/data` |
-| `AKM_STATE_DIR` | `/opt/akm/data/state` |
-
-Host bind policy is controlled by flat service-specific values in
-`state/stack.env`; there is no global bind cascade or SSH listener.
+The old `Dockerfile`, `Dockerfile.models`, and `entrypoint.sh` are inactive
+legacy files pending deletion approval.

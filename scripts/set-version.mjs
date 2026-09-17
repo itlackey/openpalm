@@ -9,14 +9,14 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const PRERELEASE_IDENTIFIER = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)';
 
 export const SEMVER_RE = new RegExp(
-  `^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-(${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*))?$`,
+	`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-(${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*))?$`
 );
 
 export function parseSemver(version) {
-  const match = String(version).match(SEMVER_RE);
-  return match
-    ? { ma: Number(match[1]), mi: Number(match[2]), pa: Number(match[3]), pre: match[4] ?? null }
-    : null;
+	const match = String(version).match(SEMVER_RE);
+	return match
+		? { ma: Number(match[1]), mi: Number(match[2]), pa: Number(match[3]), pre: match[4] ?? null }
+		: null;
 }
 
 /**
@@ -26,34 +26,34 @@ export function parseSemver(version) {
  * workflow's monotonicity guard.
  */
 export function compareSemver(a, b) {
-  const left = parseSemver(a);
-  const right = parseSemver(b);
-  if (!left || !right) throw new Error(`Cannot compare invalid semver: '${a}' and '${b}'`);
-  for (const key of ['ma', 'mi', 'pa']) {
-    if (left[key] !== right[key]) return left[key] > right[key] ? 1 : -1;
-  }
-  if (left.pre === right.pre) return 0;
-  if (left.pre === null) return 1;
-  if (right.pre === null) return -1;
+	const left = parseSemver(a);
+	const right = parseSemver(b);
+	if (!left || !right) throw new Error(`Cannot compare invalid semver: '${a}' and '${b}'`);
+	for (const key of ['ma', 'mi', 'pa']) {
+		if (left[key] !== right[key]) return left[key] > right[key] ? 1 : -1;
+	}
+	if (left.pre === right.pre) return 0;
+	if (left.pre === null) return 1;
+	if (right.pre === null) return -1;
 
-  const leftParts = left.pre.split('.');
-  const rightParts = right.pre.split('.');
-  for (let i = 0; i < Math.max(leftParts.length, rightParts.length); i++) {
-    if (leftParts[i] === undefined) return -1;
-    if (rightParts[i] === undefined) return 1;
-    const leftNumeric = /^[0-9]+$/.test(leftParts[i]);
-    const rightNumeric = /^[0-9]+$/.test(rightParts[i]);
-    if (leftNumeric && rightNumeric) {
-      if (Number(leftParts[i]) !== Number(rightParts[i])) {
-        return Number(leftParts[i]) > Number(rightParts[i]) ? 1 : -1;
-      }
-    } else if (leftNumeric !== rightNumeric) {
-      return leftNumeric ? -1 : 1;
-    } else if (leftParts[i] !== rightParts[i]) {
-      return leftParts[i] > rightParts[i] ? 1 : -1;
-    }
-  }
-  return 0;
+	const leftParts = left.pre.split('.');
+	const rightParts = right.pre.split('.');
+	for (let i = 0; i < Math.max(leftParts.length, rightParts.length); i++) {
+		if (leftParts[i] === undefined) return -1;
+		if (rightParts[i] === undefined) return 1;
+		const leftNumeric = /^[0-9]+$/.test(leftParts[i]);
+		const rightNumeric = /^[0-9]+$/.test(rightParts[i]);
+		if (leftNumeric && rightNumeric) {
+			if (Number(leftParts[i]) !== Number(rightParts[i])) {
+				return Number(leftParts[i]) > Number(rightParts[i]) ? 1 : -1;
+			}
+		} else if (leftNumeric !== rightNumeric) {
+			return leftNumeric ? -1 : 1;
+		} else if (leftParts[i] !== rightParts[i]) {
+			return leftParts[i] > rightParts[i] ? 1 : -1;
+		}
+	}
+	return 0;
 }
 
 /**
@@ -65,40 +65,36 @@ export function compareSemver(a, b) {
  * delivering the tag are the same copy. There is no separate "advance the
  * image versions" step left to silently skip.
  *
- * OP_VOICE_VERSION is deliberately NOT matched: voice tags are
- * accelerator-variant suffixed and ship on their own cadence, so no release
- * may ever stamp a platform version into that position.
- *
  * Throws when nothing matched, so an unstamped release fails the run instead
  * of shipping compose files pointing at the previous version.
  */
 export function setComposeImageTags(file, version) {
-  if (!parseSemver(version)) {
-    throw new Error(`version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${version}'`);
-  }
-  const before = readFileSync(file, 'utf-8');
-  let count = 0;
-  const after = before.replace(
-    /\$\{(OP_(?:ASSISTANT|GUARDIAN|PORTAL)_VERSION):-[^}]*\}/g,
-    (_match, key) => {
-      count += 1;
-      return `\${${key}:-${version}}`;
-    },
-  );
-  if (count === 0) {
-    throw new Error(`No image-tag defaults found to stamp in ${file}`);
-  }
-  writeFileSync(file, after);
-  return count;
+	if (!parseSemver(version)) {
+		throw new Error(`version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${version}'`);
+	}
+	const before = readFileSync(file, 'utf-8');
+	let count = 0;
+	const after = before.replace(
+		/\$\{(OP_(?:ASSISTANT|GUARDIAN|PORTAL)_VERSION):-[^}]*\}/g,
+		(_match, key) => {
+			count += 1;
+			return `\${${key}:-${version}}`;
+		}
+	);
+	if (count === 0) {
+		throw new Error(`No image-tag defaults found to stamp in ${file}`);
+	}
+	writeFileSync(file, after);
+	return count;
 }
 
 /** Stamp `version` into a package.json file (in place). Returns the new version. */
 export function setVersion(file, version) {
-  if (!parseSemver(version)) {
-    throw new Error(`version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${version}'`);
-  }
-  const pkg = JSON.parse(readFileSync(file, 'utf-8'));
-  pkg.version = version;
-  writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
-  return version;
+	if (!parseSemver(version)) {
+		throw new Error(`version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${version}'`);
+	}
+	const pkg = JSON.parse(readFileSync(file, 'utf-8'));
+	pkg.version = version;
+	writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
+	return version;
 }

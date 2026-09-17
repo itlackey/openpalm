@@ -4,8 +4,8 @@
 // The published `openpalm` npm package ships ONLY this file (see package.json
 // `files`) — it has zero runtime dependencies and must run under plain Node
 // (no Bun, no TypeScript). The actual CLI is a Bun-compiled standalone binary
-// published as a GitHub release asset (see scripts/setup.sh and
-// src/commands/self-update.ts, which resolve/verify/run the same artifacts).
+// published as a GitHub release asset (see scripts/setup.sh, which
+// resolves and verifies the same artifacts).
 //
 // On each invocation this script:
 //   1. Maps process.platform/arch to the matching release binary name.

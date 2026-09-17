@@ -1,37 +1,55 @@
 {
-  "name": "@openpalm/guardian",
-  "description": "Basic-auth message gateway with ownership, moderation, and rate limiting — importable as a library to compose custom auth, authorization, and transports",
-  "version": "0.13.0-beta.15",
-  "private": false,
-  "license": "MPL-2.0",
-  "type": "module",
-  "types": "./src/index.ts",
-  "main": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts"
-  },
-  "bin": {
-    "openpalm-guardian": "./src/server.ts"
-  },
-  "files": [
-    "src",
-    "!src/**/*.test.ts"
-  ],
-  "scripts": {
-    "start": "bun run src/server.ts",
-    "start:openai-api": "bun run src/openai-api-server.ts",
-    "test": "bun test --no-orphans"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/itlackey/openpalm",
-    "directory": "packages/guardian"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
-  },
-  "devDependencies": {
-    "bun-types": "^1.3.14"
-  }
+	"name": "@openpalm/guardian",
+	"description": "Minimal MCP security gateway for a hosted OpenPalm agent",
+	"version": "0.13.6",
+	"private": true,
+	"license": "MPL-2.0",
+	"type": "module",
+	"types": "./src/lean-index.ts",
+	"main": "./src/lean-index.ts",
+	"exports": {
+		".": "./src/lean-index.ts",
+		"./server": "./src/lean-server.ts"
+	},
+	"bin": {
+		"openpalm-guardian": "./src/lean-server.ts"
+	},
+	"files": [
+		"src/assistant-client.ts",
+		"src/conversation.ts",
+		"src/credentials.ts",
+		"src/crypto.ts",
+		"src/gateway-service.ts",
+		"src/http-util.ts",
+		"src/lean-audit.ts",
+		"src/lean-content-screen.ts",
+		"src/lean-index.ts",
+		"src/lean-moderation.ts",
+		"src/lean-server.ts",
+		"src/logger.ts",
+		"src/mcp-agent.ts",
+		"src/rate-limit.ts",
+		"src/workspace-access.ts",
+		"src/workspace-policy.ts"
+	],
+	"scripts": {
+		"start": "bun run src/lean-server.ts",
+		"test": "bun test --no-orphans src/assistant-client.test.ts src/conversation.test.ts src/credentials.test.ts src/crypto.test.ts src/http-util.test.ts src/lean-moderation.test.ts src/mcp-agent.test.ts src/rate-limit.test.ts src/lean-server.test.ts src/workspace-access.test.ts src/workspace-policy.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/itlackey/openpalm",
+		"directory": "packages/guardian"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/server": "2.0.0",
+		"@opencode-ai/sdk": "1.18.21",
+		"zod": "4.2.0"
+	},
+	"devDependencies": {
+		"@modelcontextprotocol/client": "2.0.0",
+		"bun-types": "^1.3.14",
+		"typescript": "^6.0.3"
+	}
 }

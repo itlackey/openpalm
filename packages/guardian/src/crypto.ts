@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 /**
  * Constant-time string comparison via the stdlib primitive.
@@ -8,12 +8,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * constant-time AND avoids leaking either secret's length through an early
  * length-mismatch return.
  *
- * This is the single shared implementation; all secret/token comparisons in the
- * guardian (principal token hashes, admin token, MCP bearer token, OpenAI/
- * Anthropic API keys) go through it.
+ * This is the single shared implementation for Guardian bearer credentials and
+ * signed conversation handles.
  */
 export function constantTimeEqual(a: string, b: string): boolean {
-  const ha = createHash("sha256").update(a, "utf8").digest();
-  const hb = createHash("sha256").update(b, "utf8").digest();
-  return timingSafeEqual(ha, hb);
+	const ha = createHash('sha256').update(a, 'utf8').digest();
+	const hb = createHash('sha256').update(b, 'utf8').digest();
+	return timingSafeEqual(ha, hb);
 }

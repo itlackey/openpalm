@@ -1,128 +1,13 @@
-name: Publish openpalm/assistant-models
-# Builds the prebuilt assistant EMBEDDER MODEL BUNDLE (Xenova/bge-small-en-v1.5,
-# 384-dim, in transformers.js cache layout) and pushes it to Docker Hub. The
-# assistant image build (containers/assistant/Dockerfile) pulls this instead of
-# downloading the model, so the heavy/flaky HuggingFace download happens ONCE here
-# per model bump — not on every assistant build (issue #505).
-#
-# Single-arch (amd64): the artifacts are platform-agnostic data and the assistant
-# build pulls this via `--platform=$BUILDPLATFORM`, then COPY --from's the files
-# into the runtime image.
-#
-# Run this BEFORE the assistant build (platform-release.yml) whenever the model
-# pin or the @huggingface/transformers major changes:
-#   1. bump the ARGs / tag here (and the ASSISTANT_MODELS_IMAGE default in
-#      containers/assistant/Dockerfile),
-#   2. dispatch this workflow with the new `tag`,
-#   3. then run the assistant build.
-#
-# NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
-# (main). Dispatching with --ref <branch> runs that branch's copy.
+name: Retired assistant model bundle
+
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'New immutable model bundle tag (vN, e.g. v2).'
-        required: false
-        default: 'v1'
-        type: string
 
 permissions:
   contents: read
-  id-token: write
-
-concurrency:
-  group: publish-assistant-models
-  cancel-in-progress: false
 
 jobs:
-  build-models:
-    name: Build and push openpalm/assistant-models
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Guard immutable image tag
-        env:
-          TAG: ${{ inputs.tag || 'v1' }}
-        run: |
-          REF="openpalm/assistant-models:${TAG}"
-          if output=$(docker manifest inspect "${REF}" 2>&1); then
-            echo "::error::${REF} already exists"
-            exit 1
-          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
-            echo "::error::Could not verify ${REF}: ${output}"
-            exit 1
-          fi
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          context: git
-          images: openpalm/assistant-models
-          tags: |
-            type=raw,value=${{ inputs.tag || 'v1' }}
-
-      - name: Build and push
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: containers/assistant
-          file: containers/assistant/Dockerfile.models
-          # Platform-agnostic data — amd64 only; the assistant build pulls it via
-          # --platform=$BUILDPLATFORM and COPY --from's into the runtime image.
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Optional: an authenticated HuggingFace token sidesteps the anonymous
-          # per-IP 429 rate limit on the model download. Add a read-only HF_TOKEN
-          # repo secret to enable it; without it the build falls back to anonymous +
-          # retry (which can flake under load).
-          secrets: |
-            hf_token=${{ secrets.HF_TOKEN }}
-          cache-from: type=gha,scope=openpalm/assistant-models
-          cache-to: type=gha,scope=openpalm/assistant-models,mode=max
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
-        with:
-          cosign-release: v3.0.6
-
-      - name: Sign image (cosign keyless)
-        # This job always pushes (no dry-run mode here), so sign unconditionally.
-        # Sign by immutable digest, not by tag, so the signature binds to the
-        # exact pushed manifest even as `latest` moves.
-        run: cosign sign --yes openpalm/assistant-models@${{ steps.build.outputs.digest }}
-
-      - name: Verify image signature (fail loudly on a broken signer)
-        run: |
-          cosign verify \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-assistant-models.yml@refs/.*$" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            openpalm/assistant-models@${{ steps.build.outputs.digest }}
-
-      - name: Promote verified model bundle
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::Missing or invalid model bundle digest: ${DIGEST}"
-            exit 1
-          fi
-          docker buildx imagetools create \
-            --tag openpalm/assistant-models:latest \
-            "openpalm/assistant-models@${DIGEST}"
-          docker buildx imagetools inspect openpalm/assistant-models:latest >/dev/null
+      - run: echo "::notice::Retired. The lean Assistant image no longer embeds a separate model or embedding bundle."

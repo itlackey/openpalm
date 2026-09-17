@@ -10,14 +10,9 @@ Creates local .dev directories and seeds dev config files.
 Options:
   --seed-env          Seed .dev/knowledge/env/user.env for akm env/user, generate
                       .dev/state/stack.env with auto-detected values, and
-                      write system secrets under .dev/knowledge/secrets/.
-  --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Add <n> to OP_ENABLED_ADDONS in state/stack.env. Repeat to enable multiple dev addons.
-  --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
-                      seconds on a warm cache). Default: build only when missing.
-  --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
-                      the voice addon will fail with "image not found" until
-                       built manually via \`docker build -t openpalm/voice:dev-cpu containers/voice\`.
+                      seed runtime credentials.
+  --force             Refresh generated non-secret development state.
+  --enable-addon <n>  Enable gateway, discord, or slack. Repeat as needed.
   -h, --help          Show this help
 EOF
 }
@@ -25,8 +20,6 @@ EOF
 seed_env=0
 force=0
 enabled_addons=()
-rebuild_voice=0
-skip_voice_build=0
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -43,16 +36,14 @@ while [[ $# -gt 0 ]]; do
 			echo "Error: --enable-addon requires a name" >&2
 			exit 1
 		fi
-		enabled_addons+=("$2")
+		case "$2" in
+		gateway | discord | slack) enabled_addons+=("$2") ;;
+		*)
+			echo "Error: supported addons are gateway, discord, and slack" >&2
+			exit 1
+			;;
+		esac
 		shift 2
-		;;
-	--rebuild-voice)
-		rebuild_voice=1
-		shift
-		;;
-	--skip-voice-build)
-		skip_voice_build=1
-		shift
 		;;
 	-h | --help)
 		usage
@@ -68,94 +59,58 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# ── Check Ollama prerequisites (warning only) ────────────────────
-# Dev defaults assume a local Ollama instance. Warn if it appears
-# unreachable or required models are not pulled.
-if command -v ollama &>/dev/null; then
-	if ! ollama list &>/dev/null 2>&1; then
-		echo "WARNING: 'ollama' CLI found but 'ollama list' failed." >&2
-		echo "  Is the Ollama server running? Start it with: ollama serve" >&2
-		echo ""
-	else
-		missing_models=()
-		for model in "qwen2.5-coder:3b" "nomic-embed-text:latest"; do
-			# ollama list outputs "NAME  ID  SIZE  MODIFIED" — match model name prefix
-			if ! ollama list 2>/dev/null | grep -qiF "$model"; then
-				missing_models+=("$model")
-			fi
-		done
-		if [[ ${#missing_models[@]} -gt 0 ]]; then
-			echo "WARNING: The following Ollama models are not pulled:" >&2
-			for m in "${missing_models[@]}"; do
-				echo "  - $m    (pull with: ollama pull $m)" >&2
-			done
-			echo "  Dev defaults require these models for the assistant." >&2
-			echo ""
-		fi
-	fi
-else
-	echo "WARNING: 'ollama' command not found." >&2
-	echo "  Dev defaults assume a local Ollama instance for LLM and embeddings." >&2
-	echo "  Install Ollama from https://ollama.ai and pull required models:" >&2
-	echo "    ollama pull qwen2.5-coder:3b" >&2
-	echo "    ollama pull nomic-embed-text" >&2
-	echo ""
-fi
-
-# ── Init submodules ──────────────────────────────────────────────
-if [ -f "$ROOT_DIR/.gitmodules" ]; then
-	git -C "$ROOT_DIR" submodule update --init --depth 1
-fi
-
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
 STASH_DIR="$DEV_ROOT/knowledge"
 STACK_ENV="$DEV_ROOT/state/stack.env"
 DATA_DIR="$DEV_ROOT/data"
-LOGS_DIR="$DEV_ROOT/data/logs"
 
 # ── Template sync ────────────────────────────────────────────────
-# `packages/skeleton/` in the repo IS the canonical OP_HOME template
-# (per CLAUDE.md and packages/lib/src/control-plane/ui-assets.ts). Mirror
-# the whole tree into .dev/ so any new file/dir the team adds there shows
-# up automatically — no per-file copy lines to keep in sync. The skeleton
-# package's own metadata (package.json, README.md) is NOT a seedable
-# OP_HOME asset and is excluded. Generated files (state/stack.env,
-# knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
-# because they're seeded with dev-specific values further down.
-rsync_flags=(-a)
-# --force does a destructive resync (drop stale files that no longer
-# exist in the template) — useful after addon renames, doc removals,
-# etc. Default keeps user-edited files in .dev/ alone unless the
-# template version is strictly newer.
-[[ $force -eq 1 ]] && rsync_flags+=(--delete)
-
-rsync "${rsync_flags[@]}" \
-	--exclude=/package.json \
-	--exclude=/tools.json \
-	--exclude=/README.md \
-	--exclude=state/stack.env \
-	--exclude=knowledge/secrets \
-	--exclude=knowledge/secrets/auth.json \
-	--exclude=knowledge/env/user.env \
-	--exclude=config/assistant/opencode.json \
-	--exclude=config/guardian/opencode.json \
-	"$ROOT_DIR/packages/skeleton/" "$DEV_ROOT/"
+# Copy only the active lean surface. Managed files are refreshed whole; user
+# files are seeded only when absent. Nothing stale is auto-deleted.
+managed_files=(
+	system/stack/stack.compose.yml
+	system/assistant/.gitignore
+	system/assistant/opencode.jsonc
+	system/assistant/AGENTS.md
+	system/assistant/agents/remote.md
+	system/assistant/plugins/akm.js
+	system/guardian/.gitignore
+	system/guardian/opencode.jsonc
+	system/guardian/instructions/moderation.md
+)
+for relative in "${managed_files[@]}"; do
+	mkdir -p "$(dirname "$DEV_ROOT/$relative")"
+	cp "$ROOT_DIR/packages/skeleton/$relative" "$DEV_ROOT/$relative"
+done
+seeded_files=(
+	config/stack/custom.compose.yml
+	config/assistant/.gitignore
+	config/assistant/opencode.json
+	config/guardian/.gitignore
+	config/guardian/opencode.json
+)
+for relative in "${seeded_files[@]}"; do
+	if [[ ! -e "$DEV_ROOT/$relative" ]]; then
+		mkdir -p "$(dirname "$DEV_ROOT/$relative")"
+		cp "$ROOT_DIR/packages/skeleton/$relative" "$DEV_ROOT/$relative"
+	fi
+done
 
 # ── Runtime-only mount targets ───────────────────────────────────
 # Dirs the compose stack expects to bind-mount but the skeleton doesn't
 # ship (they're per-container data, not config). All must exist before
 # `docker compose up` or bind-mount creation runs as root.
 mkdir -p \
-	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
-	"$CONFIG_DIR/automations" \
-	"$STASH_DIR/env" "$STASH_DIR/secrets" "$DEV_ROOT/state" \
-	"$DATA_DIR" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
-	"$DATA_DIR/assistant/.local/bin" "$DATA_DIR/assistant/.local/share/opencode" \
-	"$DATA_DIR/assistant/.local/state/opencode" "$DATA_DIR/guardian" \
+	"$CONFIG_DIR/akm" \
+	"$STASH_DIR/env" "$STASH_DIR/secrets" "$STASH_DIR/tasks" \
+	"$DEV_ROOT/state" "$DEV_ROOT/state/secrets" \
+	"$DATA_DIR" "$DATA_DIR/assistant/.cache/opencode" \
+	"$DATA_DIR/assistant/.config/opencode" "$DATA_DIR/assistant/.local/share/opencode" \
+	"$DATA_DIR/assistant/.local/state/opencode" \
 	"$DATA_DIR/akm/cache" "$DATA_DIR/akm/data" "$DATA_DIR/akm/data/state" \
-	"$DATA_DIR/logs" "$DATA_DIR/backups" "$DATA_DIR/rollback" \
-	"$DATA_DIR/voice" "$DATA_DIR/voice/models" "$DATA_DIR/ollama" \
+	"$DATA_DIR/portal/discord" "$DATA_DIR/portal/slack" \
+	"$DATA_DIR/logs" \
 	"$DEV_ROOT/workspace"
 
 # Addon enablement lives in OP_ENABLED_ADDONS in stack.env (set after the env
@@ -164,7 +119,7 @@ mkdir -p \
 # Seed auth.json (empty — prevents Docker creating it as directory)
 mkdir -p "$STASH_DIR/secrets"
 AUTH_JSON="$STASH_DIR/secrets/auth.json"
-if [[ ! -f "$AUTH_JSON" || $force -eq 1 ]]; then
+if [[ ! -f "$AUTH_JSON" ]]; then
 	echo '{}' >"$AUTH_JSON"
 	chmod 600 "$AUTH_JSON"
 fi
@@ -172,35 +127,20 @@ fi
 # ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
 	env_dest="$STASH_DIR/env/user.env"
-	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
-		# Seed user.env with dev-friendly defaults (Ollama backend, dev tokens).
-		# The schema template (knowledge/env/user.env.schema) documents all supported
-		# variables but contains no values; we write concrete dev values here.
+	if [[ ! -f "$env_dest" ]]; then
+		# This file is user-owned. Even --force must not replace an existing copy.
 		cat >"$env_dest" <<USEREOF
 # OpenPalm user.env — dev environment
 # Seeded by dev-setup.sh; safe to edit.
 #
 # Provider credentials are NOT seeded here — they live in OpenCode's
-# auth.json (mounted from knowledge/secrets/auth.json). Import them from the host
-# via the Providers panel, or set OPENAI_API_KEY / OPENAI_BASE_URL
-# below if you want to override a provider globally (e.g. point the
-# openai provider at a local Ollama for offline dev).
+# auth.json (mounted from knowledge/secrets/auth.json). Use OpenCode's standard
+# provider configuration flow or add scoped environment values here.
 USEREOF
 	fi
 
 	system_env="$STACK_ENV"
 	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
-		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
-		docker_sock="/var/run/docker.sock"
-		if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
-			case "$host_url" in
-			unix://*)
-				detected_sock="${host_url#unix://}"
-				[[ -S "$detected_sock" ]] && docker_sock=$detected_sock
-				;;
-			esac
-		fi
-
 		cat >"$system_env" <<EOF
 # OpenPalm System Environment — system-managed, do not edit
 
@@ -209,52 +149,33 @@ OP_HOME=$DEV_ROOT
 OP_UID=$(id -u)
 OP_GID=$(id -g)
 
-OP_DOCKER_SOCK=$docker_sock
-
 OP_IMAGE_NAMESPACE=openpalm
-OP_IMAGE_TAG=dev
+OP_ASSISTANT_VERSION=dev
+OP_GUARDIAN_VERSION=dev
+OP_PORTAL_VERSION=dev
 
 # Compose project name — MUST differ from production. The default name
 # "openpalm" is what ~/.openpalm/ uses; sharing it would let a dev stack
 # accidentally clobber a running production stack via docker compose up.
 OP_PROJECT_NAME=openpalm-dev
 
-# Host-side port bindings for the compose stack.
-# These are intentionally offset from the production defaults
-# (3800/3810/3820/3880) so a dev/test stack never conflicts with a production
-# instance running on the same machine. Playwright e2e test defaults match these
-# ports so global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from
-# stack.env.
-# Guardian has no host port mapping (network-only service).
+# Host-side bindings are offset from production defaults.
 OP_ASSISTANT_PORT=4800
-OP_UI_PORT=4810
-OP_WORKSPACE_PORT=4820
-OP_HOST_UI_PORT=9100
-
-# Skip the first-boot setup wizard — the dev password above is already
-# the operator-facing secret. Production installs leave this false until
-# the wizard completes successfully.
+OP_GUARDIAN_BIND_ADDRESS=127.0.0.1
+OP_GUARDIAN_PORT=4830
+OP_STACK_CONFIG_VERSION=1
+OP_ENABLED_ADDONS=
+COMPOSE_PROFILES=
 OP_SETUP_COMPLETE=true
 EOF
 	fi
 
-	# G1: op_ui_login_password / op_opencode_password are DELEGATED secrets
-	# (consumed only by the guardian/portals and this service's own server
-	# process, never by the assistant agent) — seeded under state/secrets/,
-	# NOT knowledge/secrets/ (bind-mounted wholesale into the assistant at
-	# /stash).
+	# OpenCode's server password is delegated state and never agent-readable.
 	state_secrets_dir="$DEV_ROOT/state/secrets"
 	mkdir -p "$state_secrets_dir"
 	chmod 700 "$state_secrets_dir"
-	if [[ ! -f "$state_secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
-		printf '%s\n' 'dev-admin-token' >"$state_secrets_dir/op_ui_login_password"
-		chmod 600 "$state_secrets_dir/op_ui_login_password"
-	fi
-	# A REAL value, not an empty file: OpenCode requires a password in every
-	# configuration now, and the assistant entrypoint refuses to start without
-	# one. "Empty = auth off" is no longer a posture.
-	if [[ ! -f "$state_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
-		printf '%s\n' 'dev-opencode-password' >"$state_secrets_dir/op_opencode_password"
+	if [[ ! -s "$state_secrets_dir/op_opencode_password" ]]; then
+		openssl rand -hex 32 >"$state_secrets_dir/op_opencode_password"
 		chmod 600 "$state_secrets_dir/op_opencode_password"
 	fi
 fi
@@ -267,9 +188,6 @@ fi
 if ! grep -q '^OP_PROJECT_NAME=' "$STACK_ENV"; then
 	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STACK_ENV"
 fi
-if ! grep -q '^OP_UI_PORT=' "$STACK_ENV"; then
-	printf 'OP_UI_PORT=4810\n' >>"$STACK_ENV"
-fi
 # Managed Compose requires immutable image pins even when compose.dev.yml
 # replaces the resulting image names with locally built :dev images.
 for image_var in OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION; do
@@ -277,101 +195,82 @@ for image_var in OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION; do
 		printf '%s=dev\n' "$image_var" >>"$STACK_ENV"
 	fi
 done
-# Migrate legacy OP_ADMIN_PORT → OP_HOST_UI_PORT (idempotent).
-# If only the old name exists, add the canonical name so consumers see it.
-if grep -q '^OP_ADMIN_PORT=' "$STACK_ENV" \
-	&& ! grep -q '^OP_HOST_UI_PORT=' "$STACK_ENV"; then
-	_old_port="$(grep '^OP_ADMIN_PORT=' "$STACK_ENV" | head -1 | cut -d= -f2-)"
-	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STACK_ENV"
-fi
-# Enable requested addons via OP_ENABLED_ADDONS (comma-separated) in stack.env,
-# and seed the matching COMPOSE_PROFILES. The production `up` path computes
-# active profiles via the control plane (resolveActiveProfiles), but the dev
-# shortcuts (dev:stack / dev:build) call docker compose directly and bypass it —
-# so without COMPOSE_PROFILES the enabled addon's containers (e.g. guardian +
-# discord portal) silently never start. docker compose reads COMPOSE_PROFILES
-# from --env-file. Mirror resolveActiveProfiles' defaults: voice/ollama use their
-# .cpu variant, everything else is addon.<name>.
+# Direct Compose shortcuts read profiles from the env file. The JSON document
+# remains the canonical user intent consumed by the CLI and optional admin app.
 if [[ ${#enabled_addons[@]} -gt 0 ]]; then
-	_csv="$(IFS=,; echo "${enabled_addons[*]}")"
-	if grep -q '^OP_ENABLED_ADDONS=' "$STACK_ENV"; then
-		sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${_csv}/" "$STACK_ENV"
-	else
-		printf 'OP_ENABLED_ADDONS=%s\n' "$_csv" >>"$STACK_ENV"
-	fi
-
-	_profiles=()
-	for _a in "${enabled_addons[@]}"; do
-		case "$_a" in
-		voice) _profiles+=("addon.voice.cpu") ;;
-		ollama) _profiles+=("addon.ollama.cpu") ;;
-		*) _profiles+=("addon.${_a}") ;;
+	_enable_gateway=false
+	_enable_discord=false
+	_enable_slack=false
+	for addon in "${enabled_addons[@]}"; do
+		case "$addon" in
+		gateway) _enable_gateway=true ;;
+		discord) _enable_gateway=true; _enable_discord=true ;;
+		slack) _enable_gateway=true; _enable_slack=true ;;
 		esac
 	done
-	_pcsv="$(IFS=,; echo "${_profiles[*]}")"
-	if grep -q '^COMPOSE_PROFILES=' "$STACK_ENV"; then
-		sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${_pcsv}/" "$STACK_ENV"
-	else
-		printf 'COMPOSE_PROFILES=%s\n' "$_pcsv" >>"$STACK_ENV"
-	fi
+	_normalized_addons=()
+	[[ $_enable_gateway == true ]] && _normalized_addons+=(gateway)
+	[[ $_enable_discord == true ]] && _normalized_addons+=(discord)
+	[[ $_enable_slack == true ]] && _normalized_addons+=(slack)
+	_csv="$(IFS=,; echo "${_normalized_addons[*]}")"
+	for key in OP_ENABLED_ADDONS COMPOSE_PROFILES; do
+		if grep -q "^${key}=" "$STACK_ENV"; then
+			sed -i "s/^${key}=.*/${key}=${_csv}/" "$STACK_ENV"
+		else
+			printf '%s=%s\n' "$key" "$_csv" >>"$STACK_ENV"
+		fi
+	done
 fi
 
-# G1: all of these are DELEGATED secrets (guardian/portal-only) — seeded
-# under state/secrets/, not knowledge/secrets/.
+# All service credentials are file secrets. Strong random values are seeded
+# once; platform bot tokens remain empty until the operator configures them.
 state_secrets_dir="$DEV_ROOT/state/secrets"
 mkdir -p "$state_secrets_dir"
 chmod 700 "$state_secrets_dir"
-for secret_name in portal_api_secret op_api_key portal_discord_secret portal_slack_secret; do
-	if [[ ! -f "$state_secrets_dir/$secret_name" || $force -eq 1 ]]; then
-		openssl rand -hex 16 >"$state_secrets_dir/$secret_name"
+for secret_name in op_opencode_password op_guardian_mcp_token op_guardian_handle_key portal_discord_secret portal_slack_secret; do
+	if [[ ! -s "$state_secrets_dir/$secret_name" ]]; then
+		openssl rand -hex 32 >"$state_secrets_dir/$secret_name"
+		chmod 600 "$state_secrets_dir/$secret_name"
+	fi
+done
+for secret_name in discord_bot_token slack_bot_token slack_app_token; do
+	if [[ ! -f "$state_secrets_dir/$secret_name" ]]; then
+		: >"$state_secrets_dir/$secret_name"
 		chmod 600 "$state_secrets_dir/$secret_name"
 	fi
 done
 
-# OpenCode user config (opencode.json + assistant.md + system.md + openpalm.md)
-# comes in via the template rsync above. No per-file copy needed.
-
-# ── Fix ownership ────────────────────────────────────────────────
-# Use Docker to fix root-owned files created by containers (qdrant, opencode, etc.)
-if docker info >/dev/null 2>&1; then
-	docker run --rm -v "$DEV_ROOT:/cleanup" alpine sh -c \
-		"find /cleanup -user root -exec chown $(id -u):$(id -g) {} +" 2>/dev/null || true
+if [[ ${#enabled_addons[@]} -gt 0 || ! -f "$DEV_ROOT/state/stack.json" || $force -eq 1 ]]; then
+	_effective_addons="$(grep '^OP_ENABLED_ADDONS=' "$STACK_ENV" | tail -1 | cut -d= -f2-)"
+	_gateway=false
+	_discord=false
+	_slack=false
+	case ",${_effective_addons}," in *,gateway,*) _gateway=true ;; esac
+	case ",${_effective_addons}," in *,discord,*) _discord=true; _gateway=true ;; esac
+	case ",${_effective_addons}," in *,slack,*) _slack=true; _gateway=true ;; esac
+	cat >"$DEV_ROOT/state/stack.json" <<EOF
+{
+  "version": 1,
+  "gateway": {
+    "enabled": $_gateway,
+    "bindAddress": "127.0.0.1",
+    "port": 4830
+  },
+  "portals": {
+    "discord": { "enabled": $_discord },
+    "slack": { "enabled": $_slack }
+  }
+}
+EOF
+	chmod 600 "$DEV_ROOT/state/stack.json"
 fi
+
+# OpenCode user config comes from the seed-only allowlist above.
 
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" 2>/dev/null || true
+	chown -R "$(id -u):$(id -g)" "$CONFIG_DIR" "$STASH_DIR" "$DATA_DIR" "$DEV_ROOT/state" 2>/dev/null || true
 else
 	echo "Note: running as root; ownership left as-is." >&2
-fi
-
-# ── Build openpalm/voice:dev-cpu (skip if present unless forced) ─
-# The voice addon's compose overlay references openpalm/voice:dev-cpu
-# (resolved from OP_IMAGE_NAMESPACE + OP_IMAGE_TAG + the -cpu suffix in
-# the overlay). The image isn't on any public registry, so without a
-# local build the addon silently fails to start: docker compose tries
-# to pull, gets "access denied", and the UI's update endpoint reports a
-# successful restart of unrelated services (see PR review for the fix
-# to surface pull failures upstream). Building here makes "enable
-# voice → apply" Just Work after `bun run dev:setup`.
-if [[ $skip_voice_build -eq 1 ]]; then
-	echo "Skipping voice image build (--skip-voice-build)."
-elif ! command -v docker &>/dev/null; then
-	echo "WARNING: docker CLI not found; skipping voice image build." >&2
-	echo "  Install docker, then run: docker build -t openpalm/voice:dev-cpu containers/voice" >&2
-elif ! docker info >/dev/null 2>&1; then
-	echo "WARNING: docker daemon unreachable; skipping voice image build." >&2
-elif [[ $rebuild_voice -eq 1 ]] || ! docker image inspect openpalm/voice:dev-cpu >/dev/null 2>&1; then
-	echo "Building openpalm/voice:dev-cpu from containers/voice/ (first build ~5-15 min;"
-	echo "subsequent rebuilds use the layer cache and complete in seconds)…"
-	if docker build -t openpalm/voice:dev-cpu "$ROOT_DIR/containers/voice"; then
-		echo "Voice image built: openpalm/voice:dev-cpu"
-	else
-		echo "WARNING: voice image build failed. The voice addon won't start." >&2
-		echo "  Retry manually: docker build -t openpalm/voice:dev-cpu containers/voice" >&2
-	fi
-else
-	echo "Voice image already present (openpalm/voice:dev-cpu) — skipping build."
-	echo "  Use --rebuild-voice to force a rebuild."
 fi
 
 echo "Dev setup complete."

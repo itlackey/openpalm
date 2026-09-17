@@ -1,14 +1,14 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"outDir": "dist",
+		"rootDir": "src",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true
+	},
+	"include": ["src/admin-main.ts", "src/admin-preload.ts", "src/admin-types.ts"],
+	"exclude": ["node_modules", "dist", "test"]
 }

@@ -1,46 +1,28 @@
-# scripts
+# Scripts
 
-Utility scripts for installing, testing, and developing OpenPalm.
-The platform model is compose-first and manual-first; these scripts help seed or package that flow, but they do not replace Docker Compose as deployment truth.
+Only a small script surface remains active.
 
-## Install and release helpers
+| Script | Purpose |
+|---|---|
+| `dev-setup.sh` | Materialize an isolated `.dev` home for the lean stack |
+| `set-version.mjs` | Validate semantic versions and stamp package/Compose versions |
+| `bump-unit.mjs` | Stamp the platform or Admin release unit |
+| `restore-release-candidate.sh` | Restore a source bundle for reusable CI gates |
+| `setup.sh`, `setup.ps1` | Release bootstrap installers |
+| `test-isolate-op-home.ts` | Force every Bun test into a throwaway `OP_HOME` |
 
-### `setup.sh` / `setup.ps1`
-
-Convenience installers that download and verify the CLI, then run the generated
-OpenPalm install flow. The repository does not contain a complete `.openpalm/`
-runtime bundle to copy by hand.
-
-Both scripts support `--cli-only` to install or refresh just the CLI binary without running `openpalm install` or touching the existing stack files under `OP_HOME`.
-
-Release preparation and publication are orchestrated by
-`.github/workflows/release.yml`; `bump-unit.mjs` is its canonical version stamper.
-
-## Development helpers
-
-### `dev-setup.sh`
-
-Creates a local `.dev/` OpenPalm home for development.
-
-- Mirrors the current `packages/skeleton/` runtime assets into `.dev/`
-- Seeds `.dev/knowledge/env/user.env` and `.dev/state/stack.env` when `--seed-env` is used
-- Updates `.dev/state/stack.env` `OP_ENABLED_ADDONS` when `--enable-addon <name>` is used
-- Seeds provider `auth.json`, delegated development secrets, and required mount targets
-
-Examples:
+## Local development
 
 ```bash
 ./scripts/dev-setup.sh --seed-env
-./scripts/dev-setup.sh --seed-env --force
-./scripts/dev-setup.sh --seed-env --enable-addon voice
+./scripts/dev-setup.sh --seed-env --enable-addon gateway
+./scripts/dev-setup.sh --seed-env --enable-addon discord
+bun run dev:build
 ```
 
-Notes:
+`--force` refreshes generated non-secret development state. It does not
+replace existing operator-owned files.
 
-- This is a dev-only current-layout home, not the recommended user-facing install flow
-- Enabled addons live in `.dev/state/stack.env` as `OP_ENABLED_ADDONS`
-
-## Test and misc helpers
-
-- `test-tier.sh` - tiers 1-5, from type checks through isolated stack integration
-- `dev-e2e-test.sh` - isolated current-layout stack smoke and Playwright flow
+Other tracked scripts are preserved legacy candidates and are absent from the
+active root scripts, CI, and release workflow. Their exact paths are listed in
+[the deletion manifest](../docs/technical/deletion-manifest.md).

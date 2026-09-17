@@ -1,0 +1,109 @@
+import { defineCommand } from 'citty';
+import { existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+	buildLeanComposeOptions,
+	auditLeanCompose,
+	composeConfigJson,
+	createLeanState,
+	credentialKeyFile,
+	credentialRegistryFile,
+	ensureDockerReady,
+	readStackConfig,
+	requireLeanInstall,
+	stateSecretFile
+} from '@openpalm/lib/lean';
+
+import { defineAction } from '../lib/action.js';
+
+type Check = { name: string; ok: boolean; detail: string };
+
+function fileCheck(name: string, path: string, requireContent = true): Check {
+	if (!existsSync(path)) return { name, ok: false, detail: `missing: ${path}` };
+	const stat = statSync(path);
+	const privateMode = process.platform === 'win32' || (stat.mode & 0o077) === 0;
+	const hasContent = !requireContent || stat.size > 0;
+	return {
+		name,
+		ok: stat.isFile() && privateMode && hasContent,
+		detail: `${path} (${stat.size} bytes, mode ${(stat.mode & 0o777).toString(8)})`
+	};
+}
+
+export async function diagnoseLeanStack(): Promise<{ ok: boolean; checks: Check[] }> {
+	const state = createLeanState();
+	requireLeanInstall(state.homeDir);
+	const checks: Check[] = [];
+	const config = readStackConfig(state.homeDir);
+	checks.push({
+		name: 'stack config',
+		ok: config.ok,
+		detail: config.ok ? `${state.homeDir}/state/stack.json` : config.error
+	});
+
+	const docker = await ensureDockerReady();
+	checks.push({ name: 'docker', ok: docker.ok, detail: docker.ok ? 'ready' : docker.message });
+	checks.push(
+		fileCheck('OpenCode password', stateSecretFile(state.homeDir, 'op_opencode_password')),
+		fileCheck('Guardian handle key', stateSecretFile(state.homeDir, 'op_guardian_handle_key')),
+		fileCheck(
+			'provider credentials',
+			join(state.homeDir, 'knowledge', 'secrets', 'auth.json'),
+			false
+		)
+	);
+	if (config.ok) {
+		checks.push(fileCheck('credential registry', credentialRegistryFile(state.homeDir)));
+		for (const username of Object.keys(config.config.credentials)) {
+			checks.push(fileCheck(`credential ${username}`, credentialKeyFile(state.homeDir, username)));
+		}
+	}
+
+	if (config.ok && config.config.portals.discord.enabled) {
+		checks.push(
+			fileCheck('Discord bot token', stateSecretFile(state.homeDir, 'discord_bot_token'))
+		);
+	}
+	if (config.ok && config.config.portals.slack.enabled) {
+		checks.push(
+			fileCheck('Slack bot token', stateSecretFile(state.homeDir, 'slack_bot_token')),
+			fileCheck('Slack app token', stateSecretFile(state.homeDir, 'slack_app_token'))
+		);
+	}
+
+	if (docker.ok) {
+		const compose = await composeConfigJson(buildLeanComposeOptions(state));
+		checks.push({
+			name: 'compose config',
+			ok: compose.ok,
+			detail: compose.ok ? 'valid' : compose.stderr || 'validation failed'
+		});
+		if (compose.ok) {
+			const issues = auditLeanCompose(compose.config, state.homeDir);
+			checks.push({
+				name: 'compose security boundaries',
+				ok: issues.length === 0,
+				detail: issues.length === 0 ? 'valid' : issues.join('; ')
+			});
+		}
+	}
+	return { ok: checks.every((check) => check.ok), checks };
+}
+
+export default defineCommand({
+	meta: { name: 'doctor', description: 'Check lean stack configuration, credentials, and Docker' },
+	args: {
+		json: { type: 'boolean', description: 'Print machine-readable JSON', default: false }
+	},
+	run: defineAction(async ({ args }) => {
+		const result = await diagnoseLeanStack();
+		if (args.json) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			for (const check of result.checks) {
+				console.log(`${check.ok ? 'ok' : 'FAIL'}  ${check.name}: ${check.detail}`);
+			}
+		}
+		if (!result.ok) throw new Error('One or more checks failed.');
+	})
+});
