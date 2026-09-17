@@ -152,8 +152,8 @@ describe('StackConfigV2', () => {
 		expect(registry.credentials).toContainEqual({ username: 'owner', id: 'owner', policy: 'full' });
 		const env = readFileSync(join(root, 'state', 'stack.env'), 'utf8');
 		expect(env).toContain('OP_ENABLED_ADDONS=gateway,slack');
-		expect(env).toContain('OP_DISCORD_CREDENTIAL=discord');
-		expect(env).toContain('OP_SLACK_CREDENTIAL=slack');
+		expect(env).not.toContain('OP_DISCORD_CREDENTIAL=');
+		expect(env).not.toContain('OP_SLACK_CREDENTIAL=');
 		expect(ensureStackConfig(root).portals.slack.enabled).toBe(true);
 	});
 

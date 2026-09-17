@@ -7,15 +7,22 @@ import {
 	generateCredentialKey,
 	isCredentialUsername,
 	isGuardianPolicy,
+	isPortalName,
+	isPortalUserId,
 	normalizeCredentialKey,
+	portalCredentialUsages,
 	readCredentialKey,
+	readPortalCredentialMap,
 	readStackConfig,
 	removeCredentialKey,
 	requireLeanInstall,
 	resolveOpenPalmHome,
+	syncPortalCredentialBundles,
 	writeCredentialKey,
+	writePortalCredentialMap,
 	writeStackConfig,
 	type GuardianPolicy,
+	type PortalName,
 	type StackConfig
 } from '@openpalm/lib/lean';
 
@@ -46,6 +53,22 @@ function requirePolicy(value: string): GuardianPolicy {
 	return value;
 }
 
+function requirePortal(value: string): PortalName {
+	if (!isPortalName(value)) throw new Error('Portal must be discord or slack.');
+	return value;
+}
+
+function requirePortalUserId(portal: PortalName, value: string): string {
+	if (!isPortalUserId(portal, value)) {
+		throw new Error(
+			portal === 'discord'
+				? 'Discord user ID must be a numeric snowflake.'
+				: 'Slack user ID must be an uppercase platform ID such as U012ABCDEF.'
+		);
+	}
+	return value;
+}
+
 function suppliedKey(path: string | undefined): string {
 	if (!path) return generateCredentialKey();
 	const content = path === '-' ? readFileSync(0, 'utf8') : readFileSync(path, 'utf8');
@@ -69,15 +92,13 @@ function rejectDuplicateKey(
 const list = defineCommand({
 	meta: { name: 'list', description: 'List credential usernames and policies without keys' },
 	run() {
-		const { config } = current();
+		const { homeDir, config } = current();
 		for (const [username, credential] of Object.entries(config.credentials).sort(([a], [b]) =>
 			a.localeCompare(b)
 		)) {
-			const portals = (['discord', 'slack'] as const).filter(
-				(name) => config.portals[name].credential === username
-			);
+			const usages = portalCredentialUsages(homeDir, config, username);
 			console.log(
-				`${username}\t${credential.policy}${portals.length ? `\tportals=${portals.join(',')}` : ''}`
+				`${username}\t${credential.policy}${usages.length ? `\tassigned=${usages.join(',')}` : ''}`
 			);
 		}
 	}
@@ -162,6 +183,7 @@ const rotate = defineCommand({
 		const key = suppliedKey(args.keyFile ? String(args.keyFile) : undefined);
 		rejectDuplicateKey(homeDir, config, key, username);
 		writeCredentialKey(homeDir, username, key);
+		syncPortalCredentialBundles(homeDir, config);
 		console.log(`Rotated ${username}.`);
 		console.log(`Key file: ${homeDir}/state/credentials/${username}/key`);
 		if (args.showKey) console.log(key);
@@ -205,12 +227,11 @@ const remove = defineCommand({
 		if (!Object.hasOwn(config.credentials, username)) {
 			throw new Error(`Unknown credential: ${username}`);
 		}
-		for (const name of ['discord', 'slack'] as const) {
-			if (config.portals[name].credential === username) {
-				throw new Error(
-					`Credential ${username} is assigned to ${name}. Assign another credential before removing it.`
-				);
-			}
+		const usages = portalCredentialUsages(homeDir, config, username);
+		if (usages.length > 0) {
+			throw new Error(
+				`Credential ${username} is assigned to ${usages.join(', ')}. Reassign or unmap it before removing it.`
+			);
 		}
 		if (Object.keys(config.credentials).length === 1) {
 			throw new Error('Cannot remove the final credential.');
@@ -222,7 +243,66 @@ const remove = defineCommand({
 	}
 });
 
+const map = defineCommand({
+	meta: { name: 'map', description: 'Map a Slack or Discord user to a named credential' },
+	args: {
+		portal: { type: 'positional', required: true, description: 'discord or slack' },
+		userId: { type: 'positional', required: true, description: 'platform user ID' },
+		username: { type: 'positional', required: true, description: 'credential username' }
+	},
+	run({ args }) {
+		const portal = requirePortal(positional(args, 0));
+		const userId = requirePortalUserId(portal, positional(args, 1));
+		const username = requireUsername(positional(args, 2));
+		const { homeDir, config } = current();
+		if (!Object.hasOwn(config.credentials, username)) {
+			throw new Error(`Unknown credential: ${username}. Create it first.`);
+		}
+		const mapping = readPortalCredentialMap(homeDir, portal);
+		mapping.users[userId] = username;
+		writePortalCredentialMap(homeDir, portal, mapping);
+		syncPortalCredentialBundles(homeDir, config);
+		console.log(`${portal} user ${userId}: ${username} (${config.credentials[username]?.policy})`);
+	}
+});
+
+const unmap = defineCommand({
+	meta: { name: 'unmap', description: 'Remove a Slack or Discord user credential override' },
+	args: {
+		portal: { type: 'positional', required: true, description: 'discord or slack' },
+		userId: { type: 'positional', required: true, description: 'platform user ID' }
+	},
+	run({ args }) {
+		const portal = requirePortal(positional(args, 0));
+		const userId = requirePortalUserId(portal, positional(args, 1));
+		const { homeDir, config } = current();
+		const mapping = readPortalCredentialMap(homeDir, portal);
+		if (!Object.hasOwn(mapping.users, userId)) {
+			throw new Error(`${portal} user ${userId} has no credential mapping.`);
+		}
+		delete mapping.users[userId];
+		writePortalCredentialMap(homeDir, portal, mapping);
+		syncPortalCredentialBundles(homeDir, config);
+		console.log(`${portal} user ${userId} now uses the portal default credential.`);
+	}
+});
+
+const mappings = defineCommand({
+	meta: { name: 'mappings', description: 'List a portal default and per-user credential mappings' },
+	args: { portal: { type: 'positional', required: true, description: 'discord or slack' } },
+	run({ args }) {
+		const portal = requirePortal(positional(args, 0));
+		const { homeDir, config } = current();
+		const mapping = readPortalCredentialMap(homeDir, portal);
+		const defaultUsername = config.portals[portal].credential;
+		console.log(`default\t${defaultUsername}\t${config.credentials[defaultUsername]?.policy}`);
+		for (const [userId, username] of Object.entries(mapping.users)) {
+			console.log(`${userId}\t${username}\t${config.credentials[username]?.policy}`);
+		}
+	}
+});
+
 export default defineCommand({
 	meta: { name: 'credential', description: 'Manage reusable Guardian/MCP credentials' },
-	subCommands: { list, add, show, 'set-policy': setPolicy, rotate, remove }
+	subCommands: { list, add, show, 'set-policy': setPolicy, rotate, remove, map, unmap, mappings }
 });

@@ -60,11 +60,25 @@ the agent inspect non-secret content in `/stash` and `/work`; `full` inherits As
 permissions and should be used only when both the Discord allowlist and every
 permitted user are trusted to trigger state-changing work.
 
-The selected credential currently applies to every allowed Discord user. User-
-or role-specific credential mapping and OAuth are planned follow-up features.
+The selected credential is the fallback for every allowed Discord user. Map an
+exact Discord user snowflake to another named credential when that user needs a
+different policy:
+
+```bash
+openpalm credential add support-read read
+openpalm credential map discord 123456789012345678 support-read
+openpalm credential mappings discord
+```
+
+Remove the override with `openpalm credential unmap discord
+123456789012345678`. All guild, role, user, and block-list checks still apply;
+a credential mapping never grants portal access. The portal receives only a
+generated keyring for its fallback and mapped credentials. OAuth remains a
+future identity source for the same registry.
 
 Mention the bot in an allowed server channel or send an allowed direct message.
-Replies continue within a per-user channel/thread conversation. Send
+Replies continue within a per-user channel/thread and credential-scoped
+conversation. Changing a user's mapping starts fresh policy continuity. Send
 `/clear` or `!clear` to discard that local conversation handle.
 
 The adapter stores only opaque Guardian session handles in

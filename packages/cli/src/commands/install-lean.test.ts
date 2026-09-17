@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { createCredentialId, defaultStackConfig } from '@openpalm/lib/lean';
 
 import { bootstrapLeanInstall } from './install-lean.js';
 
@@ -49,5 +51,31 @@ describe('lean install', () => {
 		expect(
 			readFileSync(join(process.env.OP_HOME, 'state', 'credentials', 'owner', 'key'), 'utf8').trim()
 		).toHaveLength(43);
+	});
+
+	it('reconciles named keys and portal bundles to supplied install intent', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-install-config-'));
+		roots.push(root);
+		process.env.OP_HOME = join(root, 'home');
+		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+		const config = defaultStackConfig();
+		config.credentials.automation = { id: createCredentialId(), policy: 'read' };
+		config.portals.discord.credential = 'automation';
+		const configFile = join(root, 'stack.json');
+		writeFileSync(configFile, JSON.stringify(config));
+
+		await bootstrapLeanInstall({ start: false, configFile });
+
+		expect(existsSync(join(process.env.OP_HOME, 'state', 'credentials', 'automation', 'key'))).toBe(
+			true
+		);
+		const bundle = JSON.parse(
+			readFileSync(
+				join(process.env.OP_HOME, 'state', 'portal-credentials', 'discord', 'credentials.json'),
+				'utf8'
+			)
+		) as { default: string; credentials: Record<string, string> };
+		expect(bundle.default).toBe('automation');
+		expect(Object.keys(bundle.credentials)).toEqual(['automation']);
 	});
 });

@@ -192,12 +192,24 @@ openpalm config portal discord --credential support-bot
 openpalm config portal slack --credential support-bot
 ```
 
-Each portal receives only the selected credential directory. Bot credentials
-remain in `state/secrets/`; allowlists are set through the documented Compose
-environment keys. Both adapters are default-deny until at least one user, role,
-guild, or channel scope is configured. All users of a portal currently share
-that portal's selected credential identity and policy; per-user mapping and
-OAuth are planned follow-up layers.
+That credential is the portal fallback. Map individual platform users to any
+other named credential and policy:
+
+```bash
+openpalm credential map discord 123456789012345678 support-read
+openpalm credential map slack U012ABCDEF automation-full
+openpalm credential mappings discord
+openpalm credential unmap discord 123456789012345678
+```
+
+Direct MCP clients authenticate with the key of the credential whose policy
+they should receive. For portals, the sender's exact platform user ID selects
+the mapped credential; an unmapped allowed user receives the portal fallback.
+All portal allowlists still apply first. The control plane generates a separate
+least-privilege keyring for each portal containing only its fallback and mapped
+credentials; Assistant receives none of them. Bot credentials remain in
+`state/secrets/`. OAuth identity mapping remains a future layer over the same
+named registry.
 
 ## Day-two commands
 

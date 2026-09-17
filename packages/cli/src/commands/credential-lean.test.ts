@@ -70,4 +70,37 @@ describe('lean credential commands', () => {
 		await main(['config', 'portal', 'discord', '--credential', 'support', '--no-apply']);
 		await expect(main(['credential', 'remove', 'support'])).rejects.toThrow('assigned to discord');
 	});
+
+	it('maps platform users to credentials, synchronizes rotation, and blocks mapped removal', async () => {
+		const { root, home } = await setup();
+		const firstKey = join(root, 'mapped-first.key');
+		const secondKey = join(root, 'mapped-second.key');
+		writeFileSync(firstKey, `${'m'.repeat(40)}\n`);
+		writeFileSync(secondKey, `${'n'.repeat(40)}\n`);
+		await main(['credential', 'add', 'mapped-user', 'read', '--key-file', firstKey]);
+		await main(['credential', 'map', 'discord', '1234567890', 'mapped-user']);
+		await main(['credential', 'map', 'slack', 'U123ABC', 'mapped-user']);
+
+		const discordBundle = () =>
+			JSON.parse(
+				readFileSync(
+					join(home, 'state', 'portal-credentials', 'discord', 'credentials.json'),
+					'utf8'
+				)
+			) as {
+				users: Record<string, string>;
+				credentials: Record<string, string>;
+			};
+		expect(discordBundle().users['1234567890']).toBe('mapped-user');
+		expect(discordBundle().credentials['mapped-user']).toBe('m'.repeat(40));
+		await expect(main(['credential', 'remove', 'mapped-user'])).rejects.toThrow(
+			'discord user 1234567890'
+		);
+
+		await main(['credential', 'rotate', 'mapped-user', '--key-file', secondKey]);
+		expect(discordBundle().credentials['mapped-user']).toBe('n'.repeat(40));
+		await main(['credential', 'unmap', 'discord', '1234567890']);
+		await main(['credential', 'unmap', 'slack', 'U123ABC']);
+		await main(['credential', 'remove', 'mapped-user']);
+	});
 });

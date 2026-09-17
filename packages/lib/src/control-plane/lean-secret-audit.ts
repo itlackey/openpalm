@@ -76,8 +76,22 @@ const CORE_MOUNTS: Readonly<Record<string, readonly MountGrant[]>> = {
 		{ source: 'workspace', target: '/work', readOnly: true },
 		{ source: 'state/credentials', target: '/run/openpalm-credentials', readOnly: true }
 	],
-	discord: [{ source: 'data/portal/discord', target: '/var/lib/openpalm', readOnly: false }],
-	slack: [{ source: 'data/portal/slack', target: '/var/lib/openpalm', readOnly: false }]
+	discord: [
+		{ source: 'data/portal/discord', target: '/var/lib/openpalm', readOnly: false },
+		{
+			source: 'state/portal-credentials/discord',
+			target: '/run/openpalm-credentials',
+			readOnly: true
+		}
+	],
+	slack: [
+		{ source: 'data/portal/slack', target: '/var/lib/openpalm', readOnly: false },
+		{
+			source: 'state/portal-credentials/slack',
+			target: '/run/openpalm-credentials',
+			readOnly: true
+		}
+	]
 };
 
 const CORE_IMAGES = {
@@ -142,7 +156,7 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 		PORT: '8184',
 		PORTAL_ADAPTER: 'discord',
 		MCP_SERVER_URL: 'http://guardian:8080/mcp',
-		MCP_TOKEN_FILE: '/run/openpalm-credential/key',
+		PORTAL_CREDENTIALS_FILE: '/run/openpalm-credentials/credentials.json',
 		DISCORD_BOT_TOKEN_FILE: '/run/secrets/discord_bot_token',
 		PORTAL_STATE_PATH: '/var/lib/openpalm/portal.db'
 	},
@@ -150,7 +164,7 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 		PORT: '8185',
 		PORTAL_ADAPTER: 'slack',
 		MCP_SERVER_URL: 'http://guardian:8080/mcp',
-		MCP_TOKEN_FILE: '/run/openpalm-credential/key',
+		PORTAL_CREDENTIALS_FILE: '/run/openpalm-credentials/credentials.json',
 		SLACK_BOT_TOKEN_FILE: '/run/secrets/slack_bot_token',
 		SLACK_APP_TOKEN_FILE: '/run/secrets/slack_app_token',
 		PORTAL_STATE_PATH: '/var/lib/openpalm/portal.db'
@@ -562,15 +576,7 @@ export function auditLeanCompose(config: unknown, homeDir: string): string[] {
 			) {
 				issues.push(`service ${name} must retain bounded local logging`);
 			}
-			const expectedMounts = [...(CORE_MOUNTS[name] ?? [])];
-			if (stackConfig.ok && (name === 'discord' || name === 'slack')) {
-				expectedMounts.push({
-					source: `state/credentials/${stackConfig.config.portals[name].credential}`,
-					target: '/run/openpalm-credential',
-					readOnly: true
-				});
-			}
-			auditCoreMounts(name, service.volumes, homeDir, issues, expectedMounts);
+			auditCoreMounts(name, service.volumes, homeDir, issues);
 		}
 		const networks = new Set(strings(service.networks));
 		if (networks.has('agent_net') && networks.has('ingress_net') && name !== 'guardian') {

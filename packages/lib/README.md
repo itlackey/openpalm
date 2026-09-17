@@ -7,7 +7,7 @@ The public surface is intentionally only `@openpalm/lib/lean` (the package
 root resolves to the same module). It owns:
 
 - OP_HOME path and permission handling;
-- StackConfigV2 validation, named-credential policy configuration, and legacy-intent migration;
+- StackConfigV2 validation, named-credential policy and portal-user mapping, and legacy-intent migration;
 - selective Skeleton materialization;
 - file-secret creation;
 - Compose argument construction and Docker process execution;
@@ -15,7 +15,7 @@ root resolves to the same module). It owns:
 - lifecycle locking.
 
 Legacy modules under `src/control-plane/` are not compiled or exported unless
-their filename begins with `lean-` or is `stack-config.ts`. They remain only
+they are explicitly re-exported by `src/lean.ts`. They remain only
 pending exact deletion approval.
 
 ```bash

@@ -2,6 +2,7 @@ import { App, type SayFn } from '@slack/bolt';
 
 import { GuardianChatClient } from './chat-client.js';
 import { ConversationStore } from './conversations.js';
+import { PortalCredentialRegistry, credentialConversationKey } from './credential-registry.js';
 import { ConversationQueue } from './queue.js';
 import {
 	createLogger,
@@ -27,6 +28,7 @@ type SlackMessage = {
 
 export class SlackPortal {
 	private readonly chat = new GuardianChatClient();
+	private readonly credentials = new PortalCredentialRegistry('slack');
 	private readonly conversations = new ConversationStore();
 	private readonly queue = new ConversationQueue();
 	private readonly allowedChannels = parseIds(Bun.env.SLACK_ALLOWED_CHANNELS);
@@ -40,7 +42,7 @@ export class SlackPortal {
 	private botUserId = '';
 
 	async start(): Promise<void> {
-		await this.chat.connect();
+		await this.chat.connect(this.credentials.defaultCredential());
 		this.app.event('app_mention', async ({ event, say }) => {
 			await this.handleMessage(event as SlackMessage, say, true);
 		});
@@ -79,7 +81,8 @@ export class SlackPortal {
 	): Promise<void> {
 		if (!message.user || !message.text || message.subtype || message.bot_id) return;
 		if (this.botUserId && message.user === this.botUserId) return;
-		const key = this.key(message);
+		const credential = this.credentials.forUser(message.user);
+		const key = credentialConversationKey(credential.username, this.key(message));
 		const direct = message.channel_type === 'im';
 		const activeThread = Boolean(message.thread_ts && this.conversations.get('slack', key));
 		if (!mentioned && !direct && !activeThread) return;
@@ -101,7 +104,7 @@ export class SlackPortal {
 		await this.queue.run(key, async () => {
 			const previous = this.conversations.get('slack', key);
 			try {
-				const result = await this.chat.chat(text, previous);
+				const result = await this.chat.chat(text, credential, previous);
 				this.conversations.set('slack', key, result.conversation);
 				for (const chunk of splitMessage(result.text, 3_800)) {
 					await say({ text: chunk, thread_ts: threadTs });

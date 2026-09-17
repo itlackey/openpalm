@@ -36,8 +36,8 @@ Ownership is a security boundary, not just organization:
 - `knowledge/secrets/auth.json` is the provider credential store used by
   OpenCode. It stays in the assistant-readable knowledge tree.
 - `state/credentials/<username>/key` holds named Guardian bearer keys. Guardian
-  receives the store read-only; a portal receives only its selected credential
-  directory; Assistant receives neither.
+  receives the store read-only. Each portal receives a generated keyring with
+  only its fallback and mapped credentials; Assistant receives neither.
 - `state/secrets/` holds the OpenCode server password, Guardian handle key, and
   Discord/Slack platform credentials. It is never bind-mounted into `/stash`.
 - Compose grants those other credentials as individual files under

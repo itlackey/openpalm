@@ -113,8 +113,8 @@ These invariants may not be weakened by a feature or compatibility promise.
 9. **Default-deny portals.** A portal refuses use until at least one explicit scope is configured; every configured scope must match.
 10. **Exact browser origins.** Browser-originated MCP requests require an exact HTTP(S) origin allowlist. Wildcards and path-bearing values are invalid.
 11. **Bounded work.** Guardian limits body size, message size, concurrency, pre-auth traffic, and per-principal traffic.
-12. **File-secret boundary.** Named Guardian keys live in private `state/credentials/<username>/key` directories. Guardian receives the whole read-only credential store; each portal receives only its selected credential directory; Assistant receives neither. Other runtime credentials remain Compose file secrets under `state/secrets/`. Provider `auth.json` is the sole credential file under the Assistant-readable knowledge tree.
-13. **No secrets in stack env.** `state/stack.env` may contain paths, IDs, image versions, binds, ports, profiles, selected credential usernames, and completion state only.
+12. **File-secret boundary.** Named Guardian keys live in private `state/credentials/<username>/key` directories. Guardian receives the whole read-only credential store; each portal receives a generated keyring containing only its fallback and explicitly mapped credentials; Assistant receives neither. Other runtime credentials remain Compose file secrets under `state/secrets/`. Provider `auth.json` is the sole credential file under the Assistant-readable knowledge tree.
+13. **No secrets in stack env.** `state/stack.env` may contain paths, IDs, image versions, binds, ports, profiles, and completion state only.
 14. **No root runtime.** Managed services run as the resolved non-root operator UID/GID and drop all Linux capabilities. The control plane refuses UID or GID 0.
 15. **No shell Docker execution.** The control plane invokes Docker with an executable plus argument array.
 16. **No boot-time installs.** Images contain their runtime dependencies. Entrypoints validate and start; they do not fetch packages.
@@ -154,11 +154,14 @@ tool denial and may relay explicit OpenCode permission decisions; Assistant's
 own OpenCode permission rules remain authoritative. Session, job, and
 interaction references are Guardian handles, never upstream IDs.
 
-The basic credential release uses bearer keys. A portal currently runs under
-one selected credential for all of its allowed platform users. Mapping Discord
-or Slack users to different credentials and adding OAuth authorization are
-future authentication layers; neither may bypass the same named identity,
-policy, ownership, moderation, and audit boundaries.
+The credential registry uses bearer keys. Direct MCP authentication maps the
+presented key to one named identity and policy. Each portal has a fallback
+credential and an operator-owned exact platform-user map; a matching sender is
+routed with that credential's key. Portal allowlists remain an independent,
+default-deny access boundary. Portal keyrings contain only referenced
+credentials, and conversation continuity is credential-scoped. Future OAuth
+authorization may populate the same mappings but may not bypass named identity,
+policy, ownership, moderation, or audit boundaries.
 
 ## 6. Filesystem contract
 
@@ -186,7 +189,8 @@ boundary.
 - Its schema is versioned as `StackConfigV2`.
 - It can enable only Gateway, Discord, and Slack; set Assistant and Guardian
   bind addresses/ports; manage named credential metadata and policy; and select
-  the credential used by each portal. Raw keys remain separate files.
+  the fallback credential used by each portal. Per-user portal maps are
+  operator-owned files under `config/portal/`. Raw keys remain separate files.
 - `state/stack.env` is regenerated from that intent while preserving unrelated operator pins.
 - Unsupported JSON keys are rejected rather than silently becoming product surface.
 

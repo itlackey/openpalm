@@ -18,7 +18,7 @@ has no uninstall or purge command.
 
 ## Stack intent
 
-The sole intent document is `state/stack.json`:
+The core stack intent is `state/stack.json`:
 
 ```json
 {
@@ -55,13 +55,17 @@ openpalm credential add automation read
 openpalm credential set-policy automation full
 openpalm credential rotate automation
 openpalm config portal discord --credential automation
+openpalm credential map discord 123456789012345678 automation
+openpalm credential mappings discord
 openpalm addon list
 openpalm addon enable gateway
 openpalm addon disable gateway
 ```
 
 Discord or Slack implies Gateway. Disable both portals before disabling their
-Gateway. Unknown JSON keys are rejected.
+Gateway. Unknown JSON keys are rejected. Exact platform-user mappings live in
+`config/portal/<adapter>/credentials.json`; use the CLI to keep those maps and
+the private derived portal keyrings synchronized.
 
 ## Interfaces
 

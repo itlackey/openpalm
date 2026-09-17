@@ -2,10 +2,12 @@ import { defineCommand } from 'citty';
 
 import {
 	parseStackConfig,
+	ensureCredentialKeys,
 	readStackConfig,
 	requireLeanInstall,
 	resolveOpenPalmHome,
 	stackConfigFile,
+	syncPortalCredentialBundles,
 	writeStackConfig,
 	type StackConfig
 } from '@openpalm/lib/lean';
@@ -35,6 +37,8 @@ async function save(homeDir: string, config: StackConfig, apply: boolean): Promi
 	const parsed = parseStackConfig(config);
 	if (!parsed.ok) throw new Error(parsed.error);
 	writeStackConfig(homeDir, parsed.config);
+	ensureCredentialKeys(homeDir, parsed.config);
+	syncPortalCredentialBundles(homeDir, parsed.config);
 	if (apply) await runStartAction();
 	return parsed.config;
 }

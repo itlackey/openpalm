@@ -93,7 +93,8 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   requests enter through authenticated Guardian MCP.
 - Guardian bearer credentials are named identities with private file-backed
   keys and independently configured `chat`, `read`, or `full` policies. The
-  same identity may be used by MCP clients or assigned to a portal.
+  same identity may be used directly by MCP clients or mapped to Slack and
+  Discord users.
 - Session, message, job, and interaction handles are encrypted, authenticated, expiring,
   and credential-identity scoped. Guardian session ownership is independently
   bound in OpenCode metadata.
@@ -106,6 +107,8 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
 - Suspicious prompts and interaction answers escalate to a separate loopback moderator. Failure or an ambiguous `flag` verdict blocks the request.
 - Guardian protection cannot be disabled by a Compose flag.
 - Portal allowlists are default-deny.
+- Portal user maps are operator-owned per adapter. Each portal receives only a
+  generated keyring containing its default and explicitly mapped credentials.
 - No managed service runs as root. No service receives additional Linux capabilities.
 - `state/stack.env` contains non-secret derived values only.
 - Lifecycle operations never use shell-interpolated Docker commands.
@@ -123,7 +126,10 @@ All persistent state lives under `OP_HOME` (default `~/.openpalm`):
 | `state/` | control plane | stack intent, derived env, delegated file secrets |
 | `data/` | containers | durable service state and logs |
 
-`state/stack.json` is the sole operator-intent schema. `state/stack.env` is derived runtime input. Updates copy an explicit managed-file allowlist and never wholesale-sync or delete stale paths.
+`state/stack.json` is the core stack-intent schema. Per-user portal assignments
+are operator-owned maps under `config/portal/`. `state/stack.env` and
+`state/portal-credentials/` are derived runtime input. Updates copy an explicit
+managed-file allowlist and never wholesale-sync or delete stale paths.
 
 ## Commands
 

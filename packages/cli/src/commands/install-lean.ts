@@ -55,6 +55,10 @@ export async function bootstrapLeanInstall(options: LeanInstallOptions): Promise
 	} else {
 		ensureStackConfig(state.homeDir);
 	}
+	// A supplied config may add credentials or change portal fallbacks after the
+	// initial filesystem bootstrap. Reconcile keys and scoped portal bundles to
+	// the final intent before declaring installation complete.
+	ensureLeanRuntime(state);
 
 	// Lean setup has no browser wizard: once its files, credentials, and JSON
 	// intent exist, configuration is complete. Runtime health is reported by

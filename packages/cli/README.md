@@ -13,6 +13,8 @@ openpalm config gateway --bind 127.0.0.1 --port 3830
 openpalm credential add automation read
 openpalm credential set-policy automation full
 openpalm config portal discord --credential automation
+openpalm credential map discord 123456789012345678 automation
+openpalm credential mappings discord
 openpalm doctor
 openpalm start
 openpalm restart

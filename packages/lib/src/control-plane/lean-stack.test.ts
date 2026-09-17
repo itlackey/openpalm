@@ -32,7 +32,10 @@ describe('lean release surface', () => {
 		expect(compose).toContain('GUARDIAN_AUTH_DIR: /run/openpalm-credentials');
 		expect(compose).toContain('${OP_HOME:?}/state/credentials:/run/openpalm-credentials:ro');
 		expect(compose).toContain(
-			'${OP_HOME:?}/state/credentials/${OP_DISCORD_CREDENTIAL:-discord}:/run/openpalm-credential:ro'
+			'${OP_HOME:?}/state/portal-credentials/discord:/run/openpalm-credentials:ro'
+		);
+		expect(compose).toContain(
+			'PORTAL_CREDENTIALS_FILE: /run/openpalm-credentials/credentials.json'
 		);
 		expect(compose).not.toContain('GUARDIAN_OWNER_POLICY:');
 	});

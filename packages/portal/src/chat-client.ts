@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
-import { readSecret } from './runtime.js';
+import type { PortalCredential } from './credential-registry.js';
 
 type ChatResult = { conversation: string; text: string };
 
@@ -50,12 +50,12 @@ function interactionText(structured: Record<string, unknown>): string {
 }
 
 export class GuardianChatClient {
-	private client: Client | null = null;
+	private readonly connections = new Map<
+		string,
+		{ key: string; client?: Client; connecting?: Promise<Client> }
+	>();
 
-	async connect(): Promise<void> {
-		if (this.client) return;
-		const token = readSecret('MCP_TOKEN');
-		if (token.length < 32) throw new Error('MCP_TOKEN_FILE contains a weak credential');
+	private async createClient(token: string): Promise<Client> {
 		const url = new URL(Bun.env.MCP_SERVER_URL ?? 'http://guardian:8080/mcp');
 		if (url.protocol !== 'http:' && url.protocol !== 'https:') {
 			throw new Error('MCP_SERVER_URL must use http or https');
@@ -68,13 +68,42 @@ export class GuardianChatClient {
 			{ capabilities: {}, versionNegotiation: { mode: 'auto' } }
 		);
 		await client.connect(transport, { timeout: 15_000 });
-		this.client = client;
+		return client;
 	}
 
-	private async call(name: string, args: Record<string, unknown>) {
-		await this.connect();
-		const client = this.client;
-		if (!client) throw new Error('MCP client is not connected');
+	private async clientFor(credential: PortalCredential): Promise<Client> {
+		let slot = this.connections.get(credential.username);
+		if (slot && slot.key !== credential.key) {
+			this.connections.delete(credential.username);
+			const oldClient = slot.client ?? (await slot.connecting?.catch(() => undefined));
+			if (oldClient) await oldClient.close().catch(() => {});
+			slot = undefined;
+		}
+		if (slot?.client) return slot.client;
+		if (slot?.connecting) return slot.connecting;
+		const next: { key: string; client?: Client; connecting?: Promise<Client> } = {
+			key: credential.key
+		};
+		next.connecting = this.createClient(credential.key);
+		this.connections.set(credential.username, next);
+		try {
+			next.client = await next.connecting;
+			next.connecting = undefined;
+			return next.client;
+		} catch (error) {
+			if (this.connections.get(credential.username) === next) {
+				this.connections.delete(credential.username);
+			}
+			throw error;
+		}
+	}
+
+	async connect(credential: PortalCredential): Promise<void> {
+		await this.clientFor(credential);
+	}
+
+	private async call(name: string, args: Record<string, unknown>, credential: PortalCredential) {
+		const client = await this.clientFor(credential);
 		return client
 			.callTool(
 				{ name, arguments: args },
@@ -86,26 +115,39 @@ export class GuardianChatClient {
 				}
 			)
 			.catch(async (error: unknown) => {
-				this.client = null;
+				const slot = this.connections.get(credential.username);
+				if (slot?.client === client) this.connections.delete(credential.username);
 				await client.close().catch(() => {});
 				throw error;
 			});
 	}
 
-	async chat(message: string, conversation?: string): Promise<ChatResult> {
-		let result = await this.call('openpalm.agent.run', {
-			message,
-			...(conversation ? { session: conversation } : {}),
-			waitMs: 30_000
-		});
+	async chat(
+		message: string,
+		credential: PortalCredential,
+		conversation?: string
+	): Promise<ChatResult> {
+		let result = await this.call(
+			'openpalm.agent.run',
+			{
+				message,
+				...(conversation ? { session: conversation } : {}),
+				waitMs: 30_000
+			},
+			credential
+		);
 		let structured = asRecord(result.structuredContent);
 		const stopAt = Date.now() + 150_000;
 		while (!result.isError && structured?.status === 'running' && Date.now() < stopAt) {
 			if (typeof structured.job !== 'string') break;
-			result = await this.call('openpalm.job.get', {
-				job: structured.job,
-				waitMs: 30_000
-			});
+			result = await this.call(
+				'openpalm.job.get',
+				{
+					job: structured.job,
+					waitMs: 30_000
+				},
+				credential
+			);
 			structured = asRecord(result.structuredContent);
 		}
 
@@ -144,8 +186,13 @@ export class GuardianChatClient {
 	}
 
 	async close(): Promise<void> {
-		const client = this.client;
-		this.client = null;
-		if (client) await client.close();
+		const slots = [...this.connections.values()];
+		this.connections.clear();
+		await Promise.all(
+			slots.map(async (slot) => {
+				const client = slot.client ?? (await slot.connecting?.catch(() => undefined));
+				if (client) await client.close().catch(() => {});
+			})
+		);
 	}
 }

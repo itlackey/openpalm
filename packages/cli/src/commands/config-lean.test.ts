@@ -42,6 +42,14 @@ describe('lean config commands', () => {
 		expect(config.portals.discord.credential).toBe('support-bot');
 		const env = readFileSync(join(process.env.OP_HOME, 'state', 'stack.env'), 'utf8');
 		expect(env).toContain('OP_ASSISTANT_BIND_ADDRESS=0.0.0.0');
-		expect(env).toContain('OP_DISCORD_CREDENTIAL=support-bot');
+		expect(env).not.toContain('OP_DISCORD_CREDENTIAL=');
+		const bundle = JSON.parse(
+			readFileSync(
+				join(process.env.OP_HOME, 'state', 'portal-credentials', 'discord', 'credentials.json'),
+				'utf8'
+			)
+		) as { default: string; credentials: Record<string, string> };
+		expect(bundle.default).toBe('support-bot');
+		expect(Object.keys(bundle.credentials)).toEqual(['support-bot']);
 	});
 });

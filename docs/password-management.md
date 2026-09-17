@@ -13,6 +13,9 @@ credentials, and service-specific runtime secrets.
     credentials/
       registry.json                    # derived key-free Guardian registry
       <username>/key                   # named bearer key
+    portal-credentials/
+      discord/credentials.json         # derived Discord-scoped keyring
+      slack/credentials.json           # derived Slack-scoped keyring
     secrets/
       op_opencode_password             # native OpenCode Basic-auth password
       op_guardian_handle_key           # opaque-handle encryption/ownership key
@@ -45,12 +48,27 @@ is supplied. `show` omits the key unless `--show-key` is explicit. Do not pass
 keys directly in command arguments.
 
 Guardian receives the whole named store read-only because it must authenticate
-every key. A portal receives only the credential directory selected with:
+every key. Select each portal's fallback credential with:
 
 ```bash
 openpalm config portal discord --credential automation
 openpalm config portal slack --credential automation
 ```
+
+Map exact platform users to other credentials with:
+
+```bash
+openpalm credential map discord 123456789012345678 support-read
+openpalm credential map slack U012ABCDEF automation
+openpalm credential mappings discord
+openpalm credential unmap slack U012ABCDEF
+```
+
+The operator-owned maps live at
+`config/portal/<discord|slack>/credentials.json`. The control plane validates
+them and generates a separate private runtime keyring for each portal. A
+keyring contains only the fallback and credentials referenced by that portal's
+map. Mapping does not bypass the portal's default-deny allowlists.
 
 The bearer header contains only the key. Rotating a key preserves the stable
 identity and its owned sessions. Removing and recreating a username creates a
@@ -66,6 +84,6 @@ secrets out of `knowledge/` and `workspace/`.
 ## Non-secret environment
 
 `state/stack.env` contains only derived paths, image pins, bind addresses,
-ports, enabled profiles, selected portal credential usernames, and lifecycle
-state. Never put passwords, bearer keys, provider keys, or credential JSON in
+ports, enabled profiles, and lifecycle state. Never put passwords, bearer keys,
+provider keys, or credential JSON in
 that file, Compose `environment`, logs, or project configuration.

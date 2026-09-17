@@ -57,12 +57,26 @@ the agent inspect non-secret content in `/stash` and `/work`; `full` inherits As
 permissions and should be used only when both the Slack allowlist and every
 permitted user are trusted to trigger state-changing work.
 
-The selected credential currently applies to every allowed Slack user. User-
-or channel-specific credential mapping and OAuth are planned follow-up features.
+The selected credential is the fallback for every allowed Slack user. Map an
+exact Slack user ID to another named credential when that user needs a different
+policy:
+
+```bash
+openpalm credential add support-read read
+openpalm credential map slack U012ABCDEF support-read
+openpalm credential mappings slack
+```
+
+Remove the override with `openpalm credential unmap slack U012ABCDEF`. Channel,
+user, and block-list checks still apply; a credential mapping never grants
+portal access. The portal receives only a generated keyring for its fallback
+and mapped credentials. OAuth remains a future identity source for the same
+registry.
 
 Mention the app in an allowed channel or message it directly when the user
-scope permits that. Thread replies retain an opaque Guardian conversation
-handle. Send `/clear` or `!clear` to reset it.
+scope permits that. Thread replies retain an opaque, credential-scoped Guardian
+conversation handle. Changing a user's mapping starts fresh policy continuity.
+Send `/clear` or `!clear` to reset it.
 
 The Slack adapter is intentionally a conversational subset of the MCP catalog.
 If a `full` agent pauses for a permission decision, the adapter tells the user

@@ -9,6 +9,8 @@ import {
 	credentialKeyFile,
 	credentialRegistryFile,
 	ensureDockerReady,
+	portalCredentialBundleFile,
+	portalCredentialMapFile,
 	readStackConfig,
 	requireLeanInstall,
 	stateSecretFile
@@ -56,6 +58,12 @@ export async function diagnoseLeanStack(): Promise<{ ok: boolean; checks: Check[
 		checks.push(fileCheck('credential registry', credentialRegistryFile(state.homeDir)));
 		for (const username of Object.keys(config.config.credentials)) {
 			checks.push(fileCheck(`credential ${username}`, credentialKeyFile(state.homeDir, username)));
+		}
+		for (const portal of ['discord', 'slack'] as const) {
+			checks.push(
+				fileCheck(`${portal} credential map`, portalCredentialMapFile(state.homeDir, portal)),
+				fileCheck(`${portal} credential bundle`, portalCredentialBundleFile(state.homeDir, portal))
+			);
 		}
 	}
 

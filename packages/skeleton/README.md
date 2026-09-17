@@ -23,6 +23,8 @@ Operator files are seeded only when absent:
 - `config/assistant/opencode.json`
 - `config/guardian/.gitignore`
 - `config/guardian/opencode.json`
+- `config/portal/discord/credentials.json`
+- `config/portal/slack/credentials.json`
 - `knowledge/env/user.env`
 
 The allowlists live in `packages/lib/src/control-plane/lean-seed.ts` and the

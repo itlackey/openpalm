@@ -16,6 +16,7 @@ This document describes the active lean runtime. The executable source is
 | `state/stack.json` | Control plane | Versioned stack intent |
 | `state/stack.env` | Control plane | Non-secret values derived from intent plus operator image pins |
 | `state/credentials/` | Control plane/operator | Named Guardian key directories plus derived key-free registry |
+| `state/portal-credentials/` | Control plane | Derived, adapter-scoped runtime keyrings |
 | `state/secrets/` | Control plane/operator | File-backed runtime credentials |
 | `data/` | Containers | Assistant home, AKM state, portal SQLite files, audit logs |
 
@@ -39,8 +40,6 @@ The control plane writes or preserves these non-secret values in
 | `OP_ASSISTANT_PORT` | Derived native OpenCode host port |
 | `OP_GUARDIAN_BIND_ADDRESS` | Derived Guardian host bind |
 | `OP_GUARDIAN_PORT` | Derived Guardian host port |
-| `OP_DISCORD_CREDENTIAL` | Named credential selected for Discord |
-| `OP_SLACK_CREDENTIAL` | Named credential selected for Slack |
 | `OP_HOST_ENABLED` | Marks this home as a hosted stack |
 | `OP_SETUP_COMPLETE` | Install completion marker |
 
@@ -70,8 +69,9 @@ file. The same sanitized environment is used for preflight and activation.
 
 Named Guardian keys live at `state/credentials/<username>/key`; generated keys
 contain 32 random bytes encoded as base64url. Guardian mounts the complete
-credential store read-only. Each portal mounts only its selected credential
-subdirectory read-only. Bot-token files are
+credential store read-only. Each portal mounts only its generated keyring,
+containing the fallback and credentials referenced by that portal's
+`config/portal/<adapter>/credentials.json` user map. Bot-token files are
 created empty and must be filled by the operator before their portal is enabled.
 Other secrets are mounted through Compose `secrets`; no secret value belongs
 in an environment variable.
@@ -130,8 +130,8 @@ that authorization decision to OpenCode's native file API.
 ## Portal adapters
 
 Discord and Slack join only `ingress_net`, publish no host ports, and call
-`http://guardian:8080/mcp`. Each gets only its selected named Guardian
-credential directory, platform credential files, and one adapter-specific
+`http://guardian:8080/mcp`. Each gets only its generated named-credential
+keyring, platform credential files, and one adapter-specific
 `data/portal/<adapter>` volume containing SQLite continuity state.
 
 ## Container hardening

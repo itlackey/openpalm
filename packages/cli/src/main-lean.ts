@@ -85,7 +85,7 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 	update: 'openpalm update [--no-start]',
 	addon: 'openpalm addon list | enable <gateway|discord|slack> | disable <name>',
 	credential:
-		'openpalm credential list | add <username> <chat|read|full> [--key-file <path>] [--show-key] | show <username> [--show-key] | set-policy <username> <chat|read|full> | rotate <username> [--key-file <path>] [--show-key] | remove <username>',
+		'openpalm credential list | add <username> <chat|read|full> [--key-file <path>] [--show-key] | show <username> [--show-key] | set-policy <username> <chat|read|full> | rotate <username> [--key-file <path>] [--show-key] | remove <username> | map <discord|slack> <user-id> <username> | unmap <discord|slack> <user-id> | mappings <discord|slack>',
 	config:
 		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username>',
 	doctor: 'openpalm doctor [--json]',

@@ -114,8 +114,8 @@ services:
       # Guardian reads this mount itself so workspace resources cannot escape
       # through OpenCode's intentionally broad native file API.
       - ${OP_HOME:?}/workspace:/work:ro
-      # Guardian authenticates every named credential. Portals receive only
-      # their selected credential subdirectory below.
+      # Guardian authenticates every named credential. Each portal receives a
+      # generated keyring containing only its default and mapped credentials.
       - ${OP_HOME:?}/state/credentials:/run/openpalm-credentials:ro
     secrets:
       - guardian_handle_key
@@ -145,7 +145,7 @@ services:
       PORT: "8184"
       PORTAL_ADAPTER: discord
       MCP_SERVER_URL: http://guardian:8080/mcp
-      MCP_TOKEN_FILE: /run/openpalm-credential/key
+      PORTAL_CREDENTIALS_FILE: /run/openpalm-credentials/credentials.json
       PORTAL_STATE_PATH: /var/lib/openpalm/portal.db
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
       DISCORD_ALLOWED_GUILDS: ${DISCORD_ALLOWED_GUILDS:-}
@@ -154,7 +154,7 @@ services:
       DISCORD_BLOCKED_USERS: ${DISCORD_BLOCKED_USERS:-}
     volumes:
       - ${OP_HOME:?}/data/portal/discord:/var/lib/openpalm
-      - ${OP_HOME:?}/state/credentials/${OP_DISCORD_CREDENTIAL:-discord}:/run/openpalm-credential:ro
+      - ${OP_HOME:?}/state/portal-credentials/discord:/run/openpalm-credentials:ro
     secrets:
       - discord_bot_token
     networks: [ingress_net]
@@ -182,7 +182,7 @@ services:
       PORT: "8185"
       PORTAL_ADAPTER: slack
       MCP_SERVER_URL: http://guardian:8080/mcp
-      MCP_TOKEN_FILE: /run/openpalm-credential/key
+      PORTAL_CREDENTIALS_FILE: /run/openpalm-credentials/credentials.json
       PORTAL_STATE_PATH: /var/lib/openpalm/portal.db
       SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
@@ -191,7 +191,7 @@ services:
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     volumes:
       - ${OP_HOME:?}/data/portal/slack:/var/lib/openpalm
-      - ${OP_HOME:?}/state/credentials/${OP_SLACK_CREDENTIAL:-slack}:/run/openpalm-credential:ro
+      - ${OP_HOME:?}/state/portal-credentials/slack:/run/openpalm-credentials:ro
     secrets:
       - slack_bot_token
       - slack_app_token

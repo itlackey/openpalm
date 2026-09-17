@@ -24,6 +24,8 @@ export const LEAN_SEEDED_FILES = [
 	'config/assistant/opencode.json',
 	'config/guardian/.gitignore',
 	'config/guardian/opencode.json',
+	'config/portal/discord/credentials.json',
+	'config/portal/slack/credentials.json',
 	'knowledge/env/user.env'
 ] as const;
 

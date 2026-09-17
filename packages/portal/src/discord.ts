@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, Partials, type Message } from 'disco
 
 import { GuardianChatClient } from './chat-client.js';
 import { ConversationStore } from './conversations.js';
+import { PortalCredentialRegistry, credentialConversationKey } from './credential-registry.js';
 import { ConversationQueue } from './queue.js';
 import {
 	createLogger,
@@ -25,6 +26,7 @@ export class DiscordPortal {
 		partials: [Partials.Channel, Partials.Message]
 	});
 	private readonly chat = new GuardianChatClient();
+	private readonly credentials = new PortalCredentialRegistry('discord');
 	private readonly conversations = new ConversationStore();
 	private readonly queue = new ConversationQueue();
 	private readonly allowedGuilds = parseIds(Bun.env.DISCORD_ALLOWED_GUILDS);
@@ -33,7 +35,7 @@ export class DiscordPortal {
 	private readonly blockedUsers = parseIds(Bun.env.DISCORD_BLOCKED_USERS);
 
 	async start(): Promise<void> {
-		await this.chat.connect();
+		await this.chat.connect(this.credentials.defaultCredential());
 		this.client.on(Events.Error, (error) =>
 			log.error('client_error', { error: errorMessage(error) })
 		);
@@ -75,7 +77,8 @@ export class DiscordPortal {
 
 	private async onMessage(message: Message): Promise<void> {
 		if (message.author.bot || !this.client.user) return;
-		const key = this.conversationKey(message);
+		const credential = this.credentials.forUser(message.author.id);
+		const key = credentialConversationKey(credential.username, this.conversationKey(message));
 		const isDirectMessage = message.guildId === null;
 		const isMention = message.mentions.has(this.client.user.id);
 		const isActiveThread =
@@ -99,7 +102,7 @@ export class DiscordPortal {
 			if ('sendTyping' in message.channel) await message.channel.sendTyping().catch(() => {});
 			const previous = this.conversations.get('discord', key);
 			try {
-				const result = await this.chat.chat(text, previous);
+				const result = await this.chat.chat(text, credential, previous);
 				this.conversations.set('discord', key, result.conversation);
 				for (const chunk of splitMessage(result.text, 1_900)) await message.reply(chunk);
 			} catch (error) {

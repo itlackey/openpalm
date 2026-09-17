@@ -8,7 +8,11 @@ default but never replace an existing file.
 | `assistant/` | Trusted local OpenCode preferences |
 | `guardian/` | Guardian moderator model/provider preferences |
 | `akm/` | AKM configuration |
+| `portal/discord/` | Discord user-to-credential map |
+| `portal/slack/` | Slack user-to-credential map |
 | `stack/` | The sole user Compose overlay |
 
-Credentials do not belong here. Delegated runtime credentials live in
-`state/secrets/`; provider auth lives in `knowledge/secrets/auth.json`.
+The portal maps contain platform IDs and credential usernames, never keys.
+Named bearer keys live in `state/credentials/`, other delegated runtime
+credentials live in `state/secrets/`, and provider auth lives in
+`knowledge/secrets/auth.json`.

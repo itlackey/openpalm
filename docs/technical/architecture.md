@@ -93,10 +93,13 @@ Each adapter:
 - calls Guardian with the standard MCP client; and
 - never receives an OpenCode session ID or Assistant credential.
 
-Each adapter is assigned one named Guardian credential and receives only that
-credential's read-only key directory. The credential may also be used by a
-direct MCP client. Platform-user-to-credential mapping is intentionally not in
-the basic release.
+Each adapter has one fallback named Guardian credential plus an operator-owned
+map from exact platform user IDs to other named credentials. The control plane
+generates an adapter-specific keyring containing only those referenced keys.
+The adapter resolves the sender on each request, and Guardian authenticates the
+selected key and applies its policy. The same credential may also be used by a
+direct MCP client. Conversation continuity is credential-scoped so a mapping
+change cannot reuse a handle owned by the prior identity.
 
 The adapters do not have an `agent_net` path.
 
@@ -128,9 +131,11 @@ The adapters do not have an `agent_net` path.
 }
 ```
 
-It is stored at `state/stack.json`. The control plane derives Compose profiles,
-binds, ports, a key-free Guardian registry, and portal credential mounts from
-it. Raw keys live separately under `state/credentials/<username>/key`.
+It is stored at `state/stack.json`. Portal user maps are separate operator-owned
+files at `config/portal/<adapter>/credentials.json`, keeping the core intent
+schema small. The control plane derives Compose profiles, binds, ports, a
+key-free Guardian registry, and least-privilege portal keyrings. Raw keys live
+separately under `state/credentials/<username>/key`.
 Unsupported keys fail validation.
 
 The Compose project is assembled from:

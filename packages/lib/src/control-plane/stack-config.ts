@@ -55,7 +55,9 @@ const CREDENTIAL_ID_RE = /^(?:owner|discord|slack|cred_[a-f0-9]{32})$/;
 const RETIRED_POLICY_ENV = new Set([
 	'GUARDIAN_OWNER_POLICY',
 	'GUARDIAN_DISCORD_POLICY',
-	'GUARDIAN_SLACK_POLICY'
+	'GUARDIAN_SLACK_POLICY',
+	'OP_DISCORD_CREDENTIAL',
+	'OP_SLACK_CREDENTIAL'
 ]);
 
 const DEFAULT_POLICIES = {
@@ -392,9 +394,7 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 		OP_ASSISTANT_BIND_ADDRESS: config.assistant.bindAddress,
 		OP_ASSISTANT_PORT: String(config.assistant.port),
 		OP_GUARDIAN_BIND_ADDRESS: config.gateway.bindAddress,
-		OP_GUARDIAN_PORT: String(config.gateway.port),
-		OP_DISCORD_CREDENTIAL: config.portals.discord.credential,
-		OP_SLACK_CREDENTIAL: config.portals.slack.credential
+		OP_GUARDIAN_PORT: String(config.gateway.port)
 	};
 }
 

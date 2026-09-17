@@ -9,7 +9,7 @@
 		"bun": ">=1.0.0"
 	},
 	"scripts": {
-		"test": "bun test src/control-plane/credential-store.test.ts src/control-plane/stack-config.test.ts src/control-plane/lean-*.test.ts",
+		"test": "bun test src/control-plane/credential-store.test.ts src/control-plane/portal-credential-store.test.ts src/control-plane/stack-config.test.ts src/control-plane/lean-*.test.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"types": "./src/lean.ts",

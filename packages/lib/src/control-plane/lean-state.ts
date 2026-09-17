@@ -15,6 +15,7 @@ import {
 	type LeanState
 } from './lean-foundation.js';
 import { ensureCredentialKeys } from './credential-store.js';
+import { syncPortalCredentialBundles } from './portal-credential-store.js';
 import { ensureStackConfig } from './stack-config.js';
 
 const PRIVATE_FILE_MODE = 0o600;
@@ -125,6 +126,7 @@ export function ensureLeanRuntime(state: LeanState): void {
 	ensureStackEnv(state);
 	const config = ensureStackConfig(state.homeDir);
 	ensureCredentialKeys(state.homeDir, config);
+	syncPortalCredentialBundles(state.homeDir, config);
 	ensureRegularFile(join(state.homeDir, 'knowledge', 'secrets', 'auth.json'), '{}\n');
 	ensureRegularFile(join(state.homeDir, 'knowledge', 'env', 'user.env'), '');
 	ensureLeanSecrets(state.homeDir);

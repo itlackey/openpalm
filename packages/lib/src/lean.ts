@@ -23,6 +23,26 @@ export {
 	writeCredentialKey
 } from './control-plane/credential-store.js';
 export {
+	PORTAL_CREDENTIAL_BUNDLE_VERSION,
+	PORTAL_CREDENTIAL_MAP_VERSION,
+	PORTAL_NAMES,
+	buildPortalCredentialBundle,
+	ensurePortalCredentialMaps,
+	isPortalName,
+	isPortalUserId,
+	parsePortalCredentialMap,
+	portalCredentialBundleDir,
+	portalCredentialBundleFile,
+	portalCredentialMapFile,
+	portalCredentialUsages,
+	readPortalCredentialMap,
+	syncPortalCredentialBundles,
+	writePortalCredentialMap,
+	type PortalCredentialBundle,
+	type PortalCredentialMap,
+	type PortalName
+} from './control-plane/portal-credential-store.js';
+export {
 	CREDENTIAL_REGISTRY_VERSION,
 	GUARDIAN_POLICIES,
 	STACK_CONFIG_VERSION,
