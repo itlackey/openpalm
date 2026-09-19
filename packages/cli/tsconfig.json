@@ -5,6 +5,8 @@
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
 		"skipLibCheck": true,
 		"types": ["node", "bun-types"],
 		"resolveJsonModule": true,

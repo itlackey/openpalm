@@ -1,0 +1,13 @@
+{
+	"manifests": [
+		"package.json",
+		"packages/skeleton/package.json",
+		"packages/lib/package.json",
+		"packages/cli/package.json",
+		"packages/guardian/package.json",
+		"packages/portal/package.json",
+		"packages/electron/package.json",
+		"packages/claude-desktop/package.json"
+	],
+	"compose": ["packages/skeleton/system/stack/stack.compose.yml"]
+}

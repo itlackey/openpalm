@@ -3,16 +3,13 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
+Usage: scripts/dev-setup.sh [--enable-addon <name>]
 
 Materialize a development home with the same 0.14 installer and control plane
 used by packaged OpenPalm builds. The default is .dev; set
 OPENPALM_DEV_HOME to choose another development-only location.
 
 Options:
-  --seed-env          Compatibility flag; the installer always seeds the
-                      non-secret environment and private file-secret targets.
-  --force             Refresh managed release files (operator files are kept).
   --enable-addon <n>  Enable gateway, discord, or slack. Repeat as needed.
   -h, --help          Show this help.
 EOF
@@ -21,11 +18,6 @@ EOF
 enabled_addons=()
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--seed-env | --force)
-		# Both operations are inherent in the idempotent update path. Retaining
-		# the flags keeps existing developer commands compatible.
-		shift
-		;;
 	--enable-addon)
 		if [[ -z "${2:-}" ]]; then
 			echo "Error: --enable-addon requires a name" >&2

@@ -23,16 +23,16 @@
 		"cli:test": "bun run --cwd packages/cli test",
 		"install:dev": "OP_HOME=/tmp/openpalm-dev bun run packages/cli/src/main.ts install --no-start",
 		"lib:test": "bun run --cwd packages/lib test",
-		"dev:setup": "./scripts/dev-setup.sh --seed-env",
-		"dev:stack": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
-		"dev:build": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
+		"dev:setup": "./scripts/dev-setup.sh",
+		"dev:stack": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
+		"dev:build": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
 		"_dev:stack:note": "The dev shortcut mirrors the two-file runtime: one managed stack plus the user overlay.",
 		"admin:check": "bun run --cwd packages/electron typecheck",
 		"test": "bun run lib:test && bun run guardian:test && bun run cli:test && bun run --cwd packages/claude-desktop test && bun run --cwd packages/electron test && bun test --isolate packages/portal/src/*.test.ts scripts/*.test.ts",
 		"check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck && bun run --cwd packages/claude-desktop typecheck",
-		"lint": "biome lint package.json .github/release-package-groups.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs",
+		"lint": "biome lint package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs",
 		"lint:fix": "bun run lint --write",
-		"format": "biome format --write package.json .github/release-package-groups.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs"
+		"format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.6"

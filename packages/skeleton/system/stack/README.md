@@ -13,7 +13,7 @@ portal `chat` policies are the safe defaults; the owner defaults to `full`.
 
 The operator overlay is
 `OP_HOME/config/stack/custom.compose.yml`. The CLI resolves both files,
-activates profiles from StackConfigV2, audits the final project, and invokes
+activates profiles from the stack configuration, audits the final project, and invokes
 Docker Compose.
 
 No other managed Compose files are supported.

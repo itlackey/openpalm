@@ -40,7 +40,7 @@ async function install(): Promise<{ root: string; home: string }> {
 describe('Admin domain', () => {
 	it('installs the active skeleton and manages credentials and portal mappings', async () => {
 		const { home } = await install();
-		expect(JSON.parse(readFileSync(join(home, 'state', 'stack.json'), 'utf8')).version).toBe(2);
+		expect(JSON.parse(readFileSync(join(home, 'state', 'stack.json'), 'utf8')).version).toBe(1);
 		const created = createAdminCredential(home, { username: 'family', policy: 'read' });
 		const firstKey = readFileSync(created.keyFile, 'utf8');
 		mapAdminPortalUser(home, {

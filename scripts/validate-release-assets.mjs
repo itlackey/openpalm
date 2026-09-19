@@ -52,11 +52,6 @@ export function expectedAdminAssets(version, productName = readElectronProductNa
 	return ADMIN_TARGETS.map((target) => adminAssetName(productName, version, target));
 }
 
-// Compatibility aliases for release tooling that previously called these
-// desktop-oriented names. The implementation now describes only Admin.
-export const desktopAssetName = adminAssetName;
-export const expectedDesktopAssets = expectedAdminAssets;
-
 export function expectedClaudeExtensionAsset(version) {
 	return `openpalm-claude-desktop-${version}.mcpb`;
 }

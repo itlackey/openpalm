@@ -142,7 +142,7 @@ byId('config-form').addEventListener('submit', async (event) => {
 		credentials[select.dataset.credential].policy = select.value;
 	});
 	const config = {
-		version: 2,
+		version: 1,
 		assistant: { bindAddress: assistantBind, port: Number(byId('assistant-port').value) },
 		gateway: {
 			enabled: byId('gateway').checked || discord || slack,

@@ -6,7 +6,7 @@ Only a small script surface remains active.
 |---|---|
 | `dev-setup.sh` | Materialize an isolated `.dev` home for the stack |
 | `set-version.mjs` | Validate semantic versions and stamp package/Compose versions |
-| `bump-unit.mjs` | Stamp the platform or Admin release unit |
+| `bump-release.mjs` | Stamp the complete product release |
 | `restore-release-candidate.sh` | Restore a source bundle for reusable CI gates |
 | `setup.sh`, `setup.ps1` | Release bootstrap installers |
 | `smoke-image.sh` | Assert image startup and runtime security boundaries |
@@ -16,9 +16,9 @@ Only a small script surface remains active.
 ## Local development
 
 ```bash
-./scripts/dev-setup.sh --seed-env
-./scripts/dev-setup.sh --seed-env --enable-addon gateway
-./scripts/dev-setup.sh --seed-env --enable-addon discord
+./scripts/dev-setup.sh
+./scripts/dev-setup.sh --enable-addon gateway
+./scripts/dev-setup.sh --enable-addon discord
 bun run dev:build
 ```
 

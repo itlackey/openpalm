@@ -25,10 +25,10 @@ afterEach(() => {
 	for (const path of homes.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 
-describe('StackConfigV2', () => {
+describe('StackConfig', () => {
 	it('defaults to one assistant, three reusable credentials, and no ingress intent', () => {
 		expect(defaultStackConfig()).toEqual({
-			version: 2,
+			version: 1,
 			assistant: { bindAddress: '127.0.0.1', port: 3810 },
 			gateway: { enabled: false, bindAddress: '127.0.0.1', port: 3830 },
 			credentials: {
@@ -52,9 +52,9 @@ describe('StackConfigV2', () => {
 	});
 
 	it('rejects invalid versions, binds, credentials, and portal references', () => {
-		expect(parseStackConfig({ version: 3 })).toEqual({
+		expect(parseStackConfig({ version: 2 })).toEqual({
 			ok: false,
-			error: 'stack config must use version 2'
+			error: 'stack config must use version 1'
 		});
 		const invalid = defaultStackConfig();
 		invalid.gateway.bindAddress = 'public.example.com';
@@ -119,7 +119,7 @@ describe('StackConfigV2', () => {
 		writeFileSync(
 			stackConfigFile(root),
 			JSON.stringify({
-				version: 1,
+				version: 2,
 				assistant: { bindAddress: '127.0.0.1', port: 3810 },
 				gateway: { enabled: true, bindAddress: '127.0.0.1', port: 3830, policy: 'read' },
 				portals: {
@@ -129,19 +129,19 @@ describe('StackConfigV2', () => {
 			})
 		);
 		const result = readStackConfig(root);
-		expect(result).toEqual({ ok: false, error: 'stack config must use version 2' });
-		expect(() => ensureStackConfig(root)).toThrow('stack config must use version 2');
-		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(1);
+		expect(result).toEqual({ ok: false, error: 'stack config must use version 1' });
+		expect(() => ensureStackConfig(root)).toThrow('stack config must use version 1');
+		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(2);
 
 		writeFileSync(
 			stackConfigFile(root),
 			JSON.stringify({
-				version: 1,
+				version: 2,
 				gateway: { enabled: true, bindAddress: '127.0.0.1', port: 3830 },
 				portals: { discord: { enabled: false }, slack: { enabled: false } }
 			})
 		);
-		expect(readStackConfig(root)).toEqual({ ok: false, error: 'stack config must use version 2' });
+		expect(readStackConfig(root)).toEqual({ ok: false, error: 'stack config must use version 1' });
 	});
 
 	it('atomically writes intent and derives runtime registry and portal selections', () => {
@@ -151,7 +151,7 @@ describe('StackConfigV2', () => {
 		config.portals.slack.access.channels = ['C012ABCDEF'];
 		writeStackConfig(root, config);
 
-		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(2);
+		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(1);
 		const registry = JSON.parse(readFileSync(credentialRegistryFile(root), 'utf8')) as {
 			credentials: Array<{ username: string; policy: string }>;
 		};

@@ -11,16 +11,15 @@ The release surface is deliberately small:
 
 ## Versioning
 
-The platform release unit contains the root, Skeleton, Lib, CLI, Guardian,
-Portal, and Claude Desktop extension manifests. Admin is a separate version unit. Image defaults are stamped
-only in `packages/skeleton/system/stack/stack.compose.yml`.
+One product version covers the root, Skeleton, Lib, CLI, Guardian, Portal,
+Admin, and Claude Desktop manifests. Image defaults are stamped in the same
+operation.
 
-Preview or stamp a unit:
+Preview or stamp the release:
 
 ```bash
-UNIT=platform VERSION=0.14.0 node scripts/bump-unit.mjs
-UNIT=platform VERSION=0.14.0 STAMP=true node scripts/bump-unit.mjs
-UNIT=electron VERSION=0.14.0 STAMP=true node scripts/bump-unit.mjs
+VERSION=0.14.0 node scripts/bump-release.mjs
+VERSION=0.14.0 STAMP=true node scripts/bump-release.mjs
 bun install
 ```
 

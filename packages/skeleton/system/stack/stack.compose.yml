@@ -38,7 +38,7 @@ services:
       TERM: xterm-256color
     ports:
       # Trusted native OpenCode access. Loopback is the secure default; an
-      # operator may explicitly publish another address in StackConfigV2.
+      # operator may explicitly publish another address in the stack configuration.
       - name: opencode
         target: 4096
         published: "${OP_ASSISTANT_PORT:-3810}"

@@ -11,7 +11,7 @@ import {
 
 export { stackConfigFile } from './foundation.js';
 
-export const STACK_CONFIG_VERSION = 2 as const;
+export const STACK_CONFIG_VERSION = 1 as const;
 export const CREDENTIAL_REGISTRY_VERSION = 1 as const;
 
 export const GUARDIAN_POLICIES = ['chat', 'read', 'full'] as const;

@@ -51,7 +51,7 @@ async function save(homeDir: string, config: StackConfig, apply: boolean): Promi
 }
 
 const show = defineCommand({
-	meta: { name: 'show', description: 'Print the effective StackConfigV2 JSON' },
+	meta: { name: 'show', description: 'Print the effective stack configuration JSON' },
 	run() {
 		console.log(JSON.stringify(current().config, null, 2));
 	}

@@ -14,6 +14,7 @@ import type {
 	AssistantSession
 } from './assistant-client.js';
 import type { AuthenticatedCredential, CredentialClass } from './credentials.js';
+import { createSessionHandle } from './conversation.js';
 import { createMcpAgentHandler, createMcpAgentServer, type McpAgentOptions } from './mcp-agent.js';
 import type { WorkspaceAccess } from './workspace-access.js';
 
@@ -414,6 +415,30 @@ describe('full OpenPalm MCP gateway', () => {
 			type: 'text',
 			text: expect.stringContaining('Check error handling')
 		});
+		await client.close();
+		await server.close();
+	});
+
+	it('rejects a valid handle when the Assistant session lacks Guardian ownership', async () => {
+		const assistant = new FakeAssistant();
+		const session = await assistant.createSession('unowned', 'remote-full');
+		const handleKey = 'k'.repeat(64);
+		const { client, server } = await connect({
+			assistant,
+			handleKey,
+			policy: 'full',
+			moderate: allow
+		});
+		const response = await client.callTool({
+			name: 'openpalm.agent.run',
+			arguments: {
+				message: 'continue',
+				session: createSessionHandle(session.id, 'owner', handleKey),
+				waitMs: 0
+			}
+		});
+		expect(response.isError).toBe(true);
+		expect(assistant.sessions.get(session.id)?.metadata).toBeUndefined();
 		await client.close();
 		await server.close();
 	});

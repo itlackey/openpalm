@@ -334,20 +334,7 @@ export class GatewayService {
 		if (hasGuardianOwnership(session.metadata, session.id, this.principal, this.handleKey)) {
 			return session;
 		}
-		if (session.metadata?.openpalmGuardian !== undefined) {
-			throw new GatewayError('Invalid or expired session handle.', 'invalid_handle');
-		}
-		// Sessions from the previous one-tool Guardian release had signed handles
-		// but no ownership metadata. A valid principal-bound handle safely claims
-		// them on first use.
-		return this.assistant.setSessionMetadata(
-			session.id,
-			{
-				...(session.metadata ?? {}),
-				openpalmGuardian: createGuardianOwnership(session.id, this.principal, this.handleKey)
-			},
-			signal
-		);
+		throw new GatewayError('Invalid or expired session handle.', 'invalid_handle');
 	}
 
 	private sessionHandle(sessionId: string): string {

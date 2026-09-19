@@ -4,13 +4,12 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 
-describe("release target validation", () => {
+describe("release version validation", () => {
   test("rejects shell-bearing explicit versions before stamping", () => {
-    const result = spawnSync(process.execPath, ["scripts/bump-unit.mjs"], {
+    const result = spawnSync(process.execPath, ["scripts/bump-release.mjs"], {
       cwd: ROOT,
       env: {
         ...process.env,
-        UNIT: "platform",
         STAMP: "false",
         VERSION: "1.2.3-$(id)",
       },

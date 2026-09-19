@@ -5,8 +5,8 @@ import { isCredentialId, type CredentialClass } from './credentials.js';
 
 const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,256}$/;
 const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,512}$/;
-const HANDLE_PREFIX = 'op2';
-const HANDLE_AAD = Buffer.from('openpalm-guardian-handle-v2', 'utf8');
+const HANDLE_PREFIX = 'op1';
+const HANDLE_AAD = Buffer.from('openpalm-guardian-handle-v1', 'utf8');
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -14,7 +14,7 @@ const DEFAULT_JOB_TTL_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_INTERACTION_TTL_MS = 60 * 60 * 1_000;
 
 type BasePayload = {
-	v: 2;
+	v: 1;
 	principal: CredentialClass;
 	expiresAt: number;
 };
@@ -103,7 +103,7 @@ function payloadShape(value: unknown): HandlePayload | null {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 	const candidate = value as Partial<HandlePayload>;
 	if (
-		candidate.v !== 2 ||
+		candidate.v !== 1 ||
 		!isCredentialId(candidate.principal) ||
 		!validExpiry(candidate.expiresAt) ||
 		typeof candidate.sessionId !== 'string' ||
@@ -194,7 +194,7 @@ export function createSessionHandle(
 	ttlMs = DEFAULT_SESSION_TTL_MS
 ): string {
 	if (!SESSION_ID_RE.test(sessionId)) throw new Error('invalid assistant session id');
-	return seal({ v: 2, kind: 'session', principal, sessionId, expiresAt: now + ttlMs }, secret);
+	return seal({ v: 1, kind: 'session', principal, sessionId, expiresAt: now + ttlMs }, secret);
 }
 
 export function readSessionHandle(
@@ -219,7 +219,7 @@ export function createMessageHandle(
 	}
 	return seal(
 		{
-			v: 2,
+			v: 1,
 			kind: 'message',
 			principal,
 			sessionId: input.sessionId,
@@ -265,7 +265,7 @@ export function createJobHandle(
 	}
 	return seal(
 		{
-			v: 2,
+			v: 1,
 			kind: 'job',
 			principal,
 			sessionId: input.sessionId,
@@ -307,7 +307,7 @@ export function createInteractionHandle(
 	}
 	return seal(
 		{
-			v: 2,
+			v: 1,
 			kind: 'interaction',
 			principal,
 			sessionId: input.sessionId,

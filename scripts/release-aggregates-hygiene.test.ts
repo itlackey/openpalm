@@ -55,33 +55,19 @@ describe('product package boundary', () => {
 	}
 });
 
-describe('release package ownership', () => {
-	const groups = JSON.parse(
-		readFileSync(join(ROOT, '.github/release-package-groups.json'), 'utf8')
-	) as { units: Record<string, string[]> };
+describe('release manifest', () => {
+	const release = JSON.parse(
+		readFileSync(join(ROOT, '.github/release-manifest.json'), 'utf8')
+	) as { manifests: string[]; compose: string[] };
 
-	test('each manifest has exactly one canonical owner', () => {
-		const manifests = Object.values(groups.units).flat();
-		expect(new Set(manifests).size).toBe(manifests.length);
-	});
-
-	test('the platform and optional admin have explicit owner groups', () => {
-		expect(groups.units.electron).toEqual(['packages/electron/package.json']);
-		for (const manifest of [
-			'packages/skeleton/package.json',
-			'packages/guardian/package.json',
-			'packages/portal/package.json',
-			'packages/claude-desktop/package.json'
-		]) {
-			expect(groups.units.platform).toContain(manifest);
-		}
+	test('lists every versioned manifest once', () => {
+		expect(new Set(release.manifests).size).toBe(release.manifests.length);
+		expect(release.manifests).toContain('packages/electron/package.json');
+		expect(release.compose).toEqual(['packages/skeleton/system/stack/stack.compose.yml']);
 	});
 
 	test('every listed manifest exists on disk', () => {
-		// A group entry pointing at a deleted package silently breaks release
-		// version stamping for that whole unit — the admin-tools removal left
-		// exactly such a dangling entry behind.
-		for (const manifest of Object.values(groups.units).flat()) {
+		for (const manifest of release.manifests) {
 			expect(existsSync(join(ROOT, manifest))).toBe(true);
 		}
 	});

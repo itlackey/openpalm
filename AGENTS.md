@@ -177,7 +177,7 @@ bun run lint
 bun run packages/cli/src/main.ts install --no-start
 bun run packages/cli/src/main.ts update --no-start
 
-./scripts/dev-setup.sh --seed-env
+./scripts/dev-setup.sh
 bun run dev:build
 
 bun run --cwd packages/cli build

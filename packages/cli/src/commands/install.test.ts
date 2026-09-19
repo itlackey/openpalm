@@ -37,7 +37,7 @@ describe('install', () => {
 			credentials: Record<string, { policy: string }>;
 		};
 		expect(config).toMatchObject({
-			version: 2,
+			version: 1,
 			assistant: { bindAddress: '127.0.0.1', port: 3810 },
 			gateway: { enabled: false },
 			credentials: { owner: { policy: 'full' } }

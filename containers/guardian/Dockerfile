@@ -48,7 +48,6 @@ COPY packages/guardian/src/assistant-client.ts \
      packages/guardian/src/http-util.ts \
      packages/guardian/src/audit.ts \
      packages/guardian/src/content-screen.ts \
-     packages/guardian/src/index.ts \
      packages/guardian/src/moderation.ts \
      packages/guardian/src/server.ts \
      packages/guardian/src/logger.ts \

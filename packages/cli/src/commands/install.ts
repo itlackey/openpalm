@@ -84,7 +84,7 @@ export default defineCommand({
 		config: {
 			type: 'string',
 			alias: 'f',
-			description: 'StackConfigV2 JSON file'
+			description: 'stack configuration JSON file'
 		}
 	},
 	async run({ args }) {

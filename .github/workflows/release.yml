@@ -46,8 +46,8 @@ jobs:
               !process.env.RELEASE_REF.startsWith('refs/heads/release/')) {
             throw new Error('Live releases are restricted to main and release/* branches');
           }
-          const groups = JSON.parse(readFileSync('.github/release-package-groups.json', 'utf8'));
-          const manifests = [...new Set(Object.values(groups.units).flat())];
+          const release = JSON.parse(readFileSync('.github/release-manifest.json', 'utf8'));
+          const manifests = release.manifests;
           for (const manifest of manifests) {
             const actual = JSON.parse(readFileSync(manifest, 'utf8')).version;
             if (actual !== version) throw new Error(`${manifest} is ${actual}; expected ${version}`);

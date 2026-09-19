@@ -5,34 +5,6 @@
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
-  "types": "./src/index.ts",
-  "main": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts"
-  },
-  "bin": {
-    "openpalm-guardian": "./src/server.ts"
-  },
-  "files": [
-    "src/assistant-client.ts",
-    "src/conversation.ts",
-    "src/credentials.ts",
-    "src/crypto.ts",
-    "src/gateway-service.ts",
-    "src/http-util.ts",
-    "src/audit.ts",
-    "src/content-screen.ts",
-    "src/index.ts",
-    "src/moderation.ts",
-    "src/server.ts",
-    "src/logger.ts",
-    "src/mcp-agent.ts",
-    "src/oauth.ts",
-    "src/rate-limit.ts",
-    "src/workspace-access.ts",
-    "src/workspace-policy.ts"
-  ],
   "scripts": {
     "start": "bun run src/server.ts",
     "test": "bun test --no-orphans src/*.test.ts",

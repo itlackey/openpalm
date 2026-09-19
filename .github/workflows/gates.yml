@@ -88,7 +88,6 @@ jobs:
           ! rg -n '/v1/chat/completions|/v1/messages|/a2a|/oc/' \
             packages/guardian/src/audit.ts \
             packages/guardian/src/content-screen.ts \
-            packages/guardian/src/index.ts \
             packages/guardian/src/moderation.ts \
             packages/guardian/src/server.ts \
             packages/guardian/src/mcp-agent.ts
