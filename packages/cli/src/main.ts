@@ -127,7 +127,7 @@ export function helpText(command?: string): string {
 		return `Usage: ${usage}\n`;
 	}
 	return [
-		'OpenPalm — manage a OpenPalm, self-hosted agent',
+		'OpenPalm — manage your self-hosted personal agent',
 		'',
 		'Usage: openpalm <command> [options]',
 		'',
@@ -145,7 +145,7 @@ export const mainCommand = defineCommand({
 	meta: {
 		name: 'openpalm',
 		version: cliPackage.version,
-		description: 'Manage a OpenPalm, self-hosted OpenPalm agent'
+		description: 'Manage your self-hosted OpenPalm personal agent'
 	},
 	subCommands
 });

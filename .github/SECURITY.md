@@ -28,8 +28,8 @@ Important boundaries include:
 - Assistant receives no Docker socket, Guardian key, Portal key, OAuth token,
   or host-control credential.
 - Native OpenCode access is authenticated and loopback-bound by default.
-- Portal and remote traffic reaches Assistant only through authenticated,
-  policy-scoped Guardian MCP.
+- Managed Portal and guarded remote traffic reaches Assistant only through
+  authenticated, policy-scoped Guardian MCP.
 - Guardian fails closed on authentication, ownership, handle validation,
   moderation, origin, and filesystem-containment errors.
 - Portal allowlists are default-deny and each adapter receives only its

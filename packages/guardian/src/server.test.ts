@@ -26,7 +26,7 @@ function handler() {
 }
 
 describe('Guardian HTTP boundary', () => {
-	it('exposes only health and authenticated MCP', async () => {
+	it('exposes only the managed HTTP surface', async () => {
 		const handle = handler();
 		expect(await (await handle(new Request('http://guardian/health'))).json()).toEqual({
 			ok: true

@@ -58,9 +58,10 @@ Direct dependencies in image manifests use exact versions. Docker builds use
 When changing one, update `bun.lock`, run `bun audit`, and verify the
 corresponding image.
 
-## Release units
+## Release version
 
-The platform unit versions these manifests together:
+OpenPalm has one product version. `.github/release-manifest.json` is the
+authoritative list stamped by `scripts/bump-release.mjs` and includes:
 
 - root `package.json`
 - skeleton
@@ -69,8 +70,10 @@ The platform unit versions these manifests together:
 - Guardian
 - Portal
 - Claude Desktop extension
+- optional Electron Admin
 
-The optional Electron Admin artifact is a separate unit. Compose image defaults are stamped only in `stack.compose.yml`.
+Compose image defaults are stamped in the same operation through the managed
+`stack.compose.yml` entry in the release manifest.
 
 Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian
 and Portal are delivered as signed container images. Admin is delivered as a
@@ -85,5 +88,6 @@ bun run check
 bun run test
 bun run lint
 bun run --cwd packages/cli build
+bun run --cwd packages/claude-desktop pack
 bun run --cwd packages/electron bundle
 ```

@@ -22,8 +22,5 @@ Only a small script surface remains active.
 bun run dev:build
 ```
 
-`--force` refreshes generated non-secret development state. It does not
-replace existing operator-owned files.
-
 The adjacent test files cover release stamping, asset completeness, and the
 deterministic end-to-end product path.

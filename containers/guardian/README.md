@@ -11,6 +11,8 @@ Guardian exposes only:
 
 - `GET /health`
 - MCP Streamable HTTP at `/mcp`
+- RFC 9728 protected-resource metadata at the standard discovery paths when
+  OAuth is enabled
 
 It authenticates named credentials reusable by MCP, Discord, and Slack; rate-limits and
 bounds requests; encrypts expiring session/message/job/interaction handles; screens every message;
@@ -22,6 +24,6 @@ fails closed.
 
 Guardian runs non-root with all capabilities dropped. It mounts managed and
 operator moderator configuration, provider auth, and `/work` read-only; only
-its append-only audit-log directory is read/write. Its direct MCP file reader
+its audit-log directory is read/write. Its direct MCP file reader
 uses the read-only workspace mount to reject symlink escapes before returning
 content.

@@ -56,10 +56,6 @@ export type HandleError =
 
 export type HandleResult<T> = { ok: true; value: T } | { ok: false; error: HandleError };
 
-export type ConversationResult =
-	| { ok: true; sessionId: string }
-	| { ok: false; error: 'invalid_conversation' | 'expired_conversation' | 'wrong_principal' };
-
 export type GuardianOwnership = {
 	v: 1;
 	principal: CredentialClass;
@@ -362,29 +358,4 @@ export function hasGuardianOwnership(
 		typeof candidate.proof === 'string' &&
 		constantTimeEqual(candidate.proof, ownershipProof(sessionId, principal, secret))
 	);
-}
-
-// Compatibility names keep existing Portal conversation rows usable at the API
-// boundary while newly issued values use encrypted session handles.
-export function createConversationHandle(
-	sessionId: string,
-	principal: CredentialClass,
-	secret: string,
-	now = Date.now(),
-	ttlMs = DEFAULT_SESSION_TTL_MS
-): string {
-	return createSessionHandle(sessionId, principal, secret, now, ttlMs);
-}
-
-export function readConversationHandle(
-	handle: string,
-	principal: CredentialClass,
-	secret: string,
-	now = Date.now()
-): ConversationResult {
-	const result = readSessionHandle(handle, principal, secret, now);
-	if (result.ok) return { ok: true, sessionId: result.value.sessionId };
-	if (result.error === 'expired_handle') return { ok: false, error: 'expired_conversation' };
-	if (result.error === 'wrong_principal') return { ok: false, error: 'wrong_principal' };
-	return { ok: false, error: 'invalid_conversation' };
 }

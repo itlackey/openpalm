@@ -10,7 +10,7 @@ secure, integrate, or operate the hosted agent.
 git clone https://code.lab.fwdslsh.dev/founder3/openpalm.git
 cd openpalm
 bun install
-./scripts/dev-setup.sh --seed-env
+./scripts/dev-setup.sh
 ```
 
 Use a non-root account. Docker Compose v2 is required for stack work.
@@ -50,8 +50,12 @@ bun run check
 bun run test
 bun run lint
 bun run --cwd packages/cli build
+bun run --cwd packages/claude-desktop pack
 bun run --cwd packages/electron bundle
 bash -n scripts/dev-setup.sh \
+  scripts/setup.sh \
+  scripts/smoke-image.sh \
+  scripts/restore-release-candidate.sh \
   containers/assistant/entrypoint.sh \
   containers/guardian/entrypoint.sh
 ```

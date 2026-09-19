@@ -1,41 +1,41 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-	createConversationHandle,
 	createGuardianOwnership,
 	createInteractionHandle,
 	createJobHandle,
 	createMessageHandle,
+	createSessionHandle,
 	hasGuardianOwnership,
-	readConversationHandle,
 	readInteractionHandle,
 	readJobHandle,
-	readMessageHandle
+	readMessageHandle,
+	readSessionHandle
 } from './conversation.ts';
 
 describe('opaque Guardian handles', () => {
 	it('round trips within the credential class', () => {
 		const principal = `cred_${'a'.repeat(32)}`;
-		const handle = createConversationHandle('ses_abc', principal, 'secret', 100, 1_000);
-		expect(readConversationHandle(handle, principal, 'secret', 200)).toEqual({
+		const handle = createSessionHandle('ses_abc', principal, 'secret', 100, 1_000);
+		expect(readSessionHandle(handle, principal, 'secret', 200)).toEqual({
 			ok: true,
-			sessionId: 'ses_abc'
+			value: { sessionId: 'ses_abc' }
 		});
 	});
 
 	it('rejects tampering, expiry, and cross-token reuse', () => {
-		const handle = createConversationHandle('ses_abc', 'discord', 'secret', 100, 1_000);
-		expect(readConversationHandle(`${handle}x`, 'discord', 'secret', 200)).toEqual({
+		const handle = createSessionHandle('ses_abc', 'discord', 'secret', 100, 1_000);
+		expect(readSessionHandle(`${handle}x`, 'discord', 'secret', 200)).toEqual({
 			ok: false,
-			error: 'invalid_conversation'
+			error: 'invalid_handle'
 		});
-		expect(readConversationHandle(handle, 'slack', 'secret', 200)).toEqual({
+		expect(readSessionHandle(handle, 'slack', 'secret', 200)).toEqual({
 			ok: false,
 			error: 'wrong_principal'
 		});
-		expect(readConversationHandle(handle, 'discord', 'secret', 1_100)).toEqual({
+		expect(readSessionHandle(handle, 'discord', 'secret', 1_100)).toEqual({
 			ok: false,
-			error: 'expired_conversation'
+			error: 'expired_handle'
 		});
 	});
 

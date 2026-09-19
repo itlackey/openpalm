@@ -43,7 +43,8 @@ The normal path is provider sign-in, a real readiness check, persistent
 knowledge, natural-language recurring work, and access from a familiar client.
 
 - **Assistant** is the only default container. It includes OpenCode, AKM, and supercronic.
-- **Guardian** is optional. It exposes only `/health` and MCP at `/mcp`.
+- **Guardian** is optional. It exposes `/health`, MCP at `/mcp`, and RFC 9728
+  protected-resource metadata when OAuth is enabled.
 - **Portal** is one private package/image with Discord and Slack adapters. Both call Guardian through MCP.
 - **CLI** is the primary installer, importer, and host orchestrator.
 - **Admin** is an optional local setup and management utility over the same

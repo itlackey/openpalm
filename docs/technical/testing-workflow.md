@@ -10,8 +10,12 @@ bun run check
 bun run test
 bun run lint
 bun run --cwd packages/cli build
+bun run --cwd packages/claude-desktop pack
 bun run --cwd packages/electron bundle
 bash -n scripts/dev-setup.sh \
+  scripts/setup.sh \
+  scripts/smoke-image.sh \
+  scripts/restore-release-candidate.sh \
   containers/assistant/entrypoint.sh \
   containers/guardian/entrypoint.sh
 ```
@@ -36,7 +40,7 @@ Compose validation does not require a running daemon:
 
 ```bash
 tmp_home="$(mktemp -d)"
-OP_HOME="$tmp_home" OPENPALM_REPO_ROOT="$PWD" OP_ALLOW_ROOT=1 \
+OP_HOME="$tmp_home" OPENPALM_REPO_ROOT="$PWD" \
   bun run packages/cli/src/main.ts install --no-start
 
 docker compose \
