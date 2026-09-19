@@ -1,9 +1,0 @@
-{
-  "name": "openpalm-portal-image-build",
-  "private": true,
-  "workspaces": [
-    "packages/portal-sdk",
-    "packages/portal-discord",
-    "packages/portal-slack"
-  ]
-}
