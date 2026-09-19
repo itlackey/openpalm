@@ -24,16 +24,11 @@ afterEach(() => {
 });
 
 describe('named credential key store', () => {
-	it('ignores legacy secret names and generates independent credential keys', () => {
+	it('generates independent private credential keys', () => {
 		const root = home();
-		mkdirSync(join(root, 'state', 'secrets'), { recursive: true });
-		writeFileSync(join(root, 'state', 'secrets', 'op_guardian_mcp_token'), `${'o'.repeat(40)}\n`);
 		const config = defaultStackConfig();
 		ensureCredentialKeys(root, config);
-		expect(readCredentialKey(root, 'owner')).not.toBe('o'.repeat(40));
-		expect(readFileSync(join(root, 'state', 'secrets', 'op_guardian_mcp_token'), 'utf8')).toBe(
-			`${'o'.repeat(40)}\n`
-		);
+		expect(readCredentialKey(root, 'owner')).not.toBe(readCredentialKey(root, 'discord'));
 		expect(readCredentialKey(root, 'discord')).toHaveLength(43);
 		expect(readFileSync(credentialKeyFile(root, 'slack'), 'utf8').endsWith('\n')).toBe(true);
 	});

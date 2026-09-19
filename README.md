@@ -14,8 +14,8 @@ install -> sign in to an AI provider -> verify -> use the agent -> schedule work
 ```
 
 0.14 is a clean break from the older all-in-one stack. The maintained
-documentation describes only this lean product path; older material is
-historical reference.
+documentation describes only this product path; earlier material is available
+only through Git history.
 
 ## What is included
 

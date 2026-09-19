@@ -18,6 +18,3 @@ Build locally:
 ```bash
 docker build -f containers/portal/Dockerfile -t openpalm/portal:dev .
 ```
-
-The old entrypoint, start script, workspace manifest, and image-side adapter
-assembly are inactive legacy files pending deletion approval.

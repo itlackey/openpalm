@@ -7,7 +7,7 @@ secure, integrate, or operate the hosted agent.
 ## Setup
 
 ```bash
-git clone https://github.com/itlackey/openpalm.git
+git clone https://code.lab.fwdslsh.dev/founder3/openpalm.git
 cd openpalm
 bun install
 ./scripts/dev-setup.sh --seed-env
@@ -25,8 +25,7 @@ Use a non-root account. Docker Compose v2 is required for stack work.
 - `packages/skeleton`: selectively materialized runtime files
 - `containers/*`: three image definitions
 
-Legacy paths remain only pending exact deletion approval. Do not import or
-extend them.
+Every tracked package belongs to the active product surface.
 
 ## Develop
 

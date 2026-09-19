@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { createHmac } from 'node:crypto';
 
 import {
 	createConversationHandle,
@@ -99,22 +98,5 @@ describe('opaque Guardian handles', () => {
 		expect(hasGuardianOwnership(metadata, 'ses_abc', 'owner', 'secret')).toBe(true);
 		expect(hasGuardianOwnership(metadata, 'ses_other', 'owner', 'secret')).toBe(false);
 		expect(hasGuardianOwnership(metadata, 'ses_abc', 'discord', 'secret')).toBe(false);
-	});
-
-	it('accepts an authentic legacy session handle during migration', () => {
-		const encoded = Buffer.from(
-			JSON.stringify({
-				v: 1,
-				principal: 'owner',
-				sessionId: 'ses_legacy',
-				expiresAt: 2_000
-			}),
-			'utf8'
-		).toString('base64url');
-		const signature = createHmac('sha256', 'secret').update(encoded).digest('base64url');
-		expect(readConversationHandle(`${encoded}.${signature}`, 'owner', 'secret', 1_000)).toEqual({
-			ok: true,
-			sessionId: 'ses_legacy'
-		});
 	});
 });

@@ -83,7 +83,7 @@ akm task sync --rebind
 
 Invalid tasks are reported without preventing OpenCode from starting. OpenPalm
 seeds no default tasks in a fresh installation. The 0.14 importer stages
-allowlisted legacy task definitions as disabled until the user reviews their
+allowlisted task definitions as disabled until the user reviews their
 schedule, policy, tools, secrets, and result destination.
 
 The image-baked `openpalm-task` helper is the single mutation boundary for both

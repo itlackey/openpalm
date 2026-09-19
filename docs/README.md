@@ -29,16 +29,7 @@ OpenCode or optional guarded MCP.
 | [OpenCode configuration](technical/opencode-configuration.md) | Agent profiles and provider ownership |
 | [Testing workflow](technical/testing-workflow.md) | Active local and CI checks |
 | [Release workflow](operations/release.md) | Images, CLI, optional artifacts, and release gate |
-| [Deletion manifest](technical/deletion-manifest.md) | Inert tracked legacy paths awaiting explicit removal approval |
 
-## Historical material
-
-Any other document describes an older release, retired feature, design
-exploration, or point-in-time review. It is evidence, not product direction.
-It must not be used to infer a supported 0.14 service, interface, migration, or
-configuration option.
-
-Historical files remain only because repository cleanup is separate from
-product design and requires exact-path approval. When historical material
-conflicts with the maintained list above, the
-[core principles](technical/core-principles.md) control.
+Older release documentation is retained in Git history, not in the maintained
+documentation tree. The [core principles](technical/core-principles.md) are
+the source of truth when behavior and prose disagree.

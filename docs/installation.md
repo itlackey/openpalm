@@ -18,7 +18,7 @@ npm install --global openpalm
 openpalm install
 ```
 
-`openpalm install` creates the lean home, starts Assistant, checks for a usable
+`openpalm install` creates the OpenPalm home, starts Assistant, checks for a usable
 provider, and hands an interactive terminal to OpenCode's native sign-in flow
 when authentication is needed. Setup is marked complete only after a real,
 no-tool Assistant request succeeds.

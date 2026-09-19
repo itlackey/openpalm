@@ -1,64 +1,58 @@
-# Security Policy
+# Security policy
 
-## Reporting A Vulnerability
+## Reporting a vulnerability
 
-Report vulnerabilities privately through GitHub's private vulnerability
-reporting feature for this repository. Do not open a public issue containing an
-exploit, credential, or undisclosed weakness.
+Contact the maintainers privately through the primary Gitea repository. If a
+private channel is not visible, open a minimal issue asking for one without
+including exploit details, credentials, private data, or an undisclosed
+weakness.
 
-Include:
+Include the affected component and version, reproduction steps, expected
+impact, sanitized logs, and a suggested mitigation when available. Maintainers
+aim to acknowledge reports within 48 hours and provide an initial assessment
+within one week.
 
-- affected component and version
-- reproduction steps
-- expected impact
-- relevant logs with all credentials removed
-- a suggested mitigation, if available
+## Supported version
 
-Maintainers aim to acknowledge a report within 48 hours and provide an initial
-assessment within one week. Disclosure timing is coordinated with the reporter.
+OpenPalm 0.14 is the supported product line. Earlier versions describe a
+different stack and do not receive routine backports.
 
-## Supported Versions
+## Security boundaries
 
-| Version | Status |
-|---|---|
-| Latest `0.13.x` prerelease/release | Active development |
-| Earlier `0.x` versions | No routine backports |
-
-## Security Boundaries
-
-The authoritative security invariants are in
+The normative contract is
 [`docs/technical/core-principles.md`](../docs/technical/core-principles.md).
-Key boundaries include:
+Important boundaries include:
 
-- The host CLI or admin-capable host UI is the only Docker orchestrator.
-- The assistant has no Docker socket, admin credential, or default network path
-  to the host admin process.
-- Portal traffic reaches Assistant only through Guardian.
-- Guardian authenticates principals with HTTP Basic credentials, persists
-  ownership, rate-limits traffic, filters events, and validates content by
-  default.
-- Host listeners default to loopback. Broader exposure is explicit and
-  service-specific.
-- Provider `auth.json` is assistant-readable by design. Delegated UI, Guardian,
-  API, portal, and bot credentials live under `state/secrets/` and are granted
-  to containers as named files.
-- Admin browser sessions use an HttpOnly, SameSite=Lax HMAC-signed cookie;
-  host routes also require a server-side capability.
+- The host CLI and optional local Admin utility are the only Docker
+  orchestrators.
+- Assistant receives no Docker socket, Guardian key, Portal key, OAuth token,
+  or host-control credential.
+- Native OpenCode access is authenticated and loopback-bound by default.
+- Portal and remote traffic reaches Assistant only through authenticated,
+  policy-scoped Guardian MCP.
+- Guardian fails closed on authentication, ownership, handle validation,
+  moderation, origin, and filesystem-containment errors.
+- Portal allowlists are default-deny and each adapter receives only its
+  delegated credential subset.
+- Provider authentication is Assistant-readable by design. Other runtime
+  credentials are private files with explicit consumers.
+- Managed services run without root, added Linux capabilities, or a container
+  runtime mount.
 
-## In Scope
+## In scope
 
-- Authentication, authorization, ownership, or capability bypasses
-- Guardian principal or content-validation bypasses
-- Secret exposure through files, mounts, logs, bundles, or API responses
-- Assistant escape into host control-plane capabilities
-- Container privilege escalation or unsafe default network publication
-- Cross-site scripting or CSRF bypasses in authenticated UI actions
-- Supply-chain or installer flaws in shipped release artifacts
+- Authentication, authorization, ownership, or policy bypasses
+- Prompt-screening or moderation bypasses at the Guardian boundary
+- Secret exposure through files, mounts, logs, bundles, or protocol responses
+- Assistant or Portal access to host/control-plane capabilities
+- Workspace traversal or symlink escape through Guardian
+- Unsafe network publication, container privilege, installer, or release
+  supply-chain flaws
 
-## Out Of Scope
+## Out of scope
 
-- Upstream dependency vulnerabilities with no OpenPalm-specific exploit
+- Upstream vulnerabilities without an OpenPalm-specific exploit
 - Social engineering
 - Issues requiring physical host access without crossing an OpenPalm boundary
-- Resource exhaustion against an intentionally local service unless it crosses
-  an authentication or isolation boundary
+- Resource exhaustion of an intentionally local service unless it bypasses an
+  authentication, rate, or isolation boundary

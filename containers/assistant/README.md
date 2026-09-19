@@ -27,6 +27,3 @@ credentials are not.
 
 Managed Guardian sessions select one of three Assistant profiles: tool-disabled
 `remote`, read-only `remote-read`, or permission-inheriting `remote-full`.
-
-The old `Dockerfile`, `Dockerfile.models`, and `entrypoint.sh` are inactive
-legacy files pending deletion approval.

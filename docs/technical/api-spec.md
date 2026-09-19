@@ -228,9 +228,7 @@ handles default to 30 days, jobs to 24 hours, and interactions to one hour.
 Guardian also writes an HMAC-bound ownership record into each created OpenCode
 session. Listing, polling, resource reads, and mutations require that proof.
 This keeps Guardian stateless without trusting user-supplied session IDs or
-adding a database. Legacy signed conversation handles can claim only the
-session they originally authenticated; Guardian upgrades that session with an
-ownership record on first use.
+adding a database. Only current encrypted handles are accepted.
 
 Each new job handle is also bound to the exact OpenCode user-message ID created
 for that run. Polling an older completed job remains deterministic, while an

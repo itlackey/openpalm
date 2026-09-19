@@ -26,8 +26,8 @@ What actually happened.
 
 - **OS:** (e.g., Ubuntu 24.04, macOS 15)
 - **Docker version:** (output of `docker --version`)
-- **OpenPalm version:** (e.g., 0.9.0)
-- **Install method:** (CLI, manual Docker Compose, etc.)
+- **OpenPalm version:** (e.g., 0.14.0)
+- **Install method:** (npm bootstrap, release binary, or source)
 
 ## Logs (optional)
 

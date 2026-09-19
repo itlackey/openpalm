@@ -1,6 +1,6 @@
 # Testing workflow
 
-The active checks intentionally ignore preserved legacy source.
+The active checks cover the complete tracked product surface.
 
 ## Local quality gate
 

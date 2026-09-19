@@ -75,7 +75,8 @@ containers/guardian/Dockerfile
 containers/portal/Dockerfile
 ```
 
-Legacy source remains in the branch only because removal requires path-specific approval. It is absent from root workspaces, package exports, active TypeScript programs, image COPY lists, tests, CI, and release jobs. See `docs/technical/deletion-manifest.md`.
+The repository contains only the active 0.14 product surface. Historical
+implementations remain available in Git history, not in the worktree.
 
 ## Runtime architecture
 

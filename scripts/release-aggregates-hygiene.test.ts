@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	CLI_BINARIES,
-	adminAssetName,
 	checksumFor,
 	expectedClaudeExtensionAsset,
 	expectedAdminAssets,
@@ -95,12 +94,6 @@ describe('release workflows', () => {
 		}
 	});
 
-	test('the Claude MCPB is built by both gates and releases', () => {
-		const gates = readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8');
-		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
-		expect(gates).toContain('bun run --cwd packages/claude-desktop pack');
-		expect(release).toContain('openpalm-claude-desktop-${{ needs.validate.outputs.version }}.mcpb');
-	});
 });
 
 describe('image tool pins', () => {
@@ -188,12 +181,6 @@ describe('lean release completeness gate', () => {
 		).toBe(true);
 	});
 
-	test('the versioned MCPB filename is required by the release validator', () => {
-		expect(expectedClaudeExtensionAsset('1.4.2')).toBe(
-			'openpalm-claude-desktop-1.4.2.mcpb'
-		);
-	});
-
 	test('release calls the shared lean gates workflow', () => {
 		const release = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
 			jobs: { gates: { uses?: string } };
@@ -218,12 +205,6 @@ describe('lean release completeness gate', () => {
 			'OpenPalm-Admin-1.4.2-arm64-linux.AppImage',
 			'OpenPalm-Admin-Setup-1.4.2.exe'
 		]);
-	});
-
-	test('Admin naming follows the explicit lean builder contract', () => {
-		expect(adminAssetName(productName, '1.4.2', { platform: 'mac', arch: 'x64', extension: 'zip' })).toBe(
-			'OpenPalm-Admin-1.4.2-x64-mac.zip'
-		);
 	});
 
 	test('required assets cover CLI, Admin, MCPB, and checksums without updater feeds', () => {

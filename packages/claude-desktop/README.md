@@ -9,5 +9,5 @@ OpenPalm Guardian. It does not install, start, or control the OpenPalm stack.
 4. Enter the loopback Guardian URL and credential key when prompted.
 
 The bridge accepts only an HTTP loopback `/mcp` URL. Public deployments should
-connect through Claude's remote-connector flow and OAuth instead. Full setup:
-https://github.com/itlackey/openpalm/blob/main/docs/claude-desktop.md
+connect through Claude's remote-connector flow and OAuth instead. Full setup is
+in [`docs/claude-desktop.md`](../../docs/claude-desktop.md).

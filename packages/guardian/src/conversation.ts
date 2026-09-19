@@ -186,45 +186,6 @@ function readKind<T extends HandlePayload['kind']>(
 	return { ok: true, value: result.value as Extract<HandlePayload, { kind: T }> };
 }
 
-function readLegacySessionHandle(
-	handle: string,
-	principal: CredentialClass,
-	secret: string,
-	now: number
-): HandleResult<{ sessionId: string }> {
-	if (!secret || handle.length > 4_096) return { ok: false, error: 'invalid_handle' };
-	const [encoded, supplied, extra] = handle.split('.');
-	if (!encoded || !supplied || extra) return { ok: false, error: 'invalid_handle' };
-	const expected = createHmac('sha256', secret).update(encoded).digest('base64url');
-	if (!constantTimeEqual(supplied, expected)) return { ok: false, error: 'invalid_handle' };
-	let value: unknown;
-	try {
-		value = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
-	} catch {
-		return { ok: false, error: 'invalid_handle' };
-	}
-	if (!value || typeof value !== 'object' || Array.isArray(value)) {
-		return { ok: false, error: 'invalid_handle' };
-	}
-	const payload = value as {
-		v?: unknown;
-		principal?: unknown;
-		sessionId?: unknown;
-		expiresAt?: unknown;
-	};
-	if (
-		payload.v !== 1 ||
-		typeof payload.sessionId !== 'string' ||
-		!SESSION_ID_RE.test(payload.sessionId) ||
-		!validExpiry(payload.expiresAt)
-	) {
-		return { ok: false, error: 'invalid_handle' };
-	}
-	if (payload.principal !== principal) return { ok: false, error: 'wrong_principal' };
-	if (payload.expiresAt <= now) return { ok: false, error: 'expired_handle' };
-	return { ok: true, value: { sessionId: payload.sessionId } };
-}
-
 export function createSessionHandle(
 	sessionId: string,
 	principal: CredentialClass,
@@ -242,9 +203,6 @@ export function readSessionHandle(
 	secret: string,
 	now = Date.now()
 ): HandleResult<{ sessionId: string }> {
-	if (!handle.startsWith(`${HANDLE_PREFIX}.`)) {
-		return readLegacySessionHandle(handle, principal, secret, now);
-	}
 	const result = readKind(handle, 'session', principal, secret, now);
 	return result.ok ? { ok: true, value: { sessionId: result.value.sessionId } } : result;
 }

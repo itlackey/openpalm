@@ -35,8 +35,7 @@ Operator files are seeded only when absent:
 
 The allowlists live in `packages/lib/src/control-plane/lean-seed.ts` and the
 compiled CLI archive packer. Adding a file to this directory does not activate
-it. Legacy files remain present only until their exact deletion paths are
-approved.
+it.
 
 Fresh 0.14 homes seed no task definitions. Users create recurring work through
 the agent's natural-language schedule flow; task files imported from an older

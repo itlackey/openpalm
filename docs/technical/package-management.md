@@ -25,7 +25,8 @@ Dependency changes are made from the repository root so the workspace graph and 
 | `@openpalm/assistant-tools` | OpenCode and AKM | Assistant image tool layer |
 | `@openpalm/guardian-tools` | OpenCode | Guardian moderator tool layer |
 
-The root `workspaces` list is the authoritative active package list. Packages left outside it are legacy removal candidates, not extension release units.
+The root `workspaces` list is the authoritative package list. Every tracked
+package belongs to that list.
 
 ## Internal APIs
 
@@ -35,7 +36,8 @@ Active host consumers import only:
 import { ... } from '@openpalm/lib/lean';
 ```
 
-The package root resolves to the same narrow API. Legacy wildcard exports are intentionally absent.
+The package root resolves to the same narrow API. Broad wildcard exports are
+intentionally absent.
 
 Guardian and Portal communicate through MCP. There is no published OpenPalm portal SDK and no workspace dependency between their packages.
 
@@ -66,6 +68,7 @@ The platform unit versions these manifests together:
 - CLI
 - Guardian
 - Portal
+- Claude Desktop extension
 
 The optional Electron Admin artifact is a separate unit. Compose image defaults are stamped only in `stack.compose.yml`.
 

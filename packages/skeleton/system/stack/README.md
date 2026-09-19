@@ -16,5 +16,4 @@ The operator overlay is
 activates profiles from StackConfigV2, audits the final project, and invokes
 Docker Compose.
 
-All other Compose files in this directory are inactive legacy candidates
-pending path-specific deletion approval.
+No other managed Compose files are supported.
