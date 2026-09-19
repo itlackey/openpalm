@@ -1,6 +1,6 @@
 # OpenPalm CLI
 
-The CLI is the primary host-side orchestrator for the lean stack.
+The CLI is the primary host-side orchestrator for the stack.
 
 ```bash
 openpalm install
@@ -59,7 +59,7 @@ scheduler API.
 bun run --cwd packages/cli typecheck
 bun run --cwd packages/cli test
 bun run --cwd packages/cli build
-bun run packages/cli/src/main-lean.ts install --no-start
+bun run packages/cli/src/main.ts install --no-start
 ```
 
 Set `OP_HOME` for isolated testing and `OPENPALM_REPO_ROOT` when running

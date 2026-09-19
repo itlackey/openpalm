@@ -4,7 +4,7 @@
 // The published `openpalm` npm package ships ONLY this file (see package.json
 // `files`) — it has zero runtime dependencies and must run under plain Node
 // (no Bun, no TypeScript). The actual CLI is a Bun-compiled standalone binary
-// published as a GitHub release asset (see scripts/setup.sh, which
+// published as a Gitea release asset (see scripts/setup.sh, which
 // resolves and verifies the same artifacts).
 //
 // On each invocation this script:
@@ -24,7 +24,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const GITHUB_REPO = 'itlackey/openpalm';
+export const RELEASE_BASE_URL = 'https://code.lab.fwdslsh.dev/founder3/openpalm';
 
 /**
  * Map a Node `platform`/`arch` pair to the published release binary name.
@@ -40,7 +40,7 @@ export function resolveArtifactName(platform = process.platform, arch = process.
 	if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-x64.exe';
 	throw new Error(
 		`Unsupported platform: ${platform}/${arch}. OpenPalm does not publish a prebuilt CLI binary ` +
-			`for this platform yet. See https://github.com/${GITHUB_REPO}#installation for supported platforms.`
+			`for this platform yet. See ${RELEASE_BASE_URL}#installation for supported platforms.`
 	);
 }
 
@@ -103,8 +103,8 @@ export async function ensureCachedBinary({
 
 	fs.mkdirSync(versionDir, { recursive: true });
 
-	const binaryUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${artifact}`;
-	const checksumUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/checksums-sha256.txt`;
+	const binaryUrl = `${RELEASE_BASE_URL}/releases/download/${version}/${artifact}`;
+	const checksumUrl = `${RELEASE_BASE_URL}/releases/download/${version}/checksums-sha256.txt`;
 
 	const [binaryRes, checksumRes] = await Promise.all([
 		fetchImpl(binaryUrl, { signal: AbortSignal.timeout(120_000) }),

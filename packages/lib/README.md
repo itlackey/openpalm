@@ -3,7 +3,7 @@
 Private zero-runtime-dependency control plane shared by the CLI and optional
 Admin utility.
 
-The public surface is intentionally only `@openpalm/lib/lean` (the package
+The public surface is intentionally only `@openpalm/lib` (the package
 root resolves to the same module). It owns:
 
 - OP_HOME path and permission handling;

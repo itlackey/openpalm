@@ -2,7 +2,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } f
 import { join } from 'node:path';
 
 import { readCredentialKey } from './credential-store.js';
-import { writeFileAtomic } from './lean-foundation.js';
+import { writeFileAtomic } from './foundation.js';
 import { isCredentialUsername, type StackConfig } from './stack-config.js';
 
 const PRIVATE_DIR_MODE = 0o700;

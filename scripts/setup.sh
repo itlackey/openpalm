@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the checksum-verified OpenPalm CLI, then install the lean stack.
+# Install the checksum-verified OpenPalm CLI, then install the stack.
 set -euo pipefail
 
 die() {
@@ -50,10 +50,10 @@ while (($#)); do
 done
 
 if [[ -z "$version" ]]; then
-  latest_url="$(curl -fsSL --retry 3 --retry-delay 2     -o /dev/null -w '%{url_effective}'     https://github.com/itlackey/openpalm/releases/latest)" ||
+  latest_url="$(curl -fsSL --retry 3 --retry-delay 2     -o /dev/null -w '%{url_effective}'     https://code.lab.fwdslsh.dev/founder3/openpalm/releases/latest)" ||
     die "could not resolve the latest release"
   [[ "$latest_url" == */releases/tag/* ]] ||
-    die "GitHub returned an invalid latest-release URL"
+    die "the release server returned an invalid latest-release URL"
   version="${latest_url##*/}"
 fi
 version="$(normalize_version "$version")"
@@ -67,7 +67,7 @@ temporary="$(mktemp "$install_dir/.openpalm.XXXXXX")" ||
   die "could not create a temporary file in $install_dir"
 trap 'rm -f "$temporary"' EXIT
 
-release_url="https://github.com/itlackey/openpalm/releases/download/$version"
+release_url="https://code.lab.fwdslsh.dev/founder3/openpalm/releases/download/$version"
 printf 'Downloading OpenPalm %s...\n' "$version"
 curl -fsSL --retry 5 --retry-delay 2 "$release_url/$binary" -o "$temporary" ||
   die "could not download $binary for release $version"

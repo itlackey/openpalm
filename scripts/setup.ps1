@@ -1,4 +1,4 @@
-# Install the checksum-verified OpenPalm CLI, then install the lean stack.
+# Install the checksum-verified OpenPalm CLI, then install the stack.
 $PreviousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Stop'
 
@@ -28,7 +28,7 @@ try {
 
     if ($Version -and $Version.StartsWith('v')) { $Version = $Version.Substring(1) }
     if (-not $Version) {
-        $Response = Invoke-WebRequest -Uri 'https://github.com/itlackey/openpalm/releases/latest' -UseBasicParsing
+        $Response = Invoke-WebRequest -Uri 'https://code.lab.fwdslsh.dev/founder3/openpalm/releases/latest' -UseBasicParsing
         $LatestUri = if ($Response.BaseResponse.ResponseUri) {
             $Response.BaseResponse.ResponseUri.AbsoluteUri
         } else {
@@ -63,7 +63,7 @@ try {
     $Destination = Join-Path $InstallDir 'openpalm.exe'
     $Temporary = "$Destination.tmp.$([guid]::NewGuid().ToString('N'))"
     $ChecksumFile = "$Destination.sha256.$([guid]::NewGuid().ToString('N'))"
-    $ReleaseUrl = "https://github.com/itlackey/openpalm/releases/download/$Version"
+    $ReleaseUrl = "https://code.lab.fwdslsh.dev/founder3/openpalm/releases/download/$Version"
 
     try {
         Write-Host "Downloading OpenPalm $Version..."

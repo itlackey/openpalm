@@ -13,14 +13,6 @@ node_modules
 
 packages/*/build
 packages/*/dist
-packages/*/.svelte-kit
-
-# Inactive source is never part of an active image build context.
-packages/ui/
-packages/portal-sdk/
-packages/portal-discord/
-packages/portal-slack/
-containers/voice/
 
 docs/
 *.md

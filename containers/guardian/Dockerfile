@@ -46,11 +46,11 @@ COPY packages/guardian/src/assistant-client.ts \
      packages/guardian/src/crypto.ts \
      packages/guardian/src/gateway-service.ts \
      packages/guardian/src/http-util.ts \
-     packages/guardian/src/lean-audit.ts \
-     packages/guardian/src/lean-content-screen.ts \
-     packages/guardian/src/lean-index.ts \
-     packages/guardian/src/lean-moderation.ts \
-     packages/guardian/src/lean-server.ts \
+     packages/guardian/src/audit.ts \
+     packages/guardian/src/content-screen.ts \
+     packages/guardian/src/index.ts \
+     packages/guardian/src/moderation.ts \
+     packages/guardian/src/server.ts \
      packages/guardian/src/logger.ts \
      packages/guardian/src/mcp-agent.ts \
      packages/guardian/src/oauth.ts \
@@ -58,7 +58,7 @@ COPY packages/guardian/src/assistant-client.ts \
      packages/guardian/src/workspace-access.ts \
      packages/guardian/src/workspace-policy.ts \
      ./src/
-COPY containers/guardian/entrypoint.lean.sh /usr/local/bin/openpalm-guardian
+COPY containers/guardian/entrypoint.sh /usr/local/bin/openpalm-guardian
 
 RUN test -n "$GUARDIAN_VERSION" \
     && chmod 0755 /usr/local/bin/openpalm-guardian \

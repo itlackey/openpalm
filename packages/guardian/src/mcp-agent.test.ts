@@ -535,7 +535,7 @@ describe('full OpenPalm MCP gateway', () => {
 		await server.close();
 	});
 
-	it('negotiates the modern HTTP protocol while retaining legacy serving', async () => {
+	it('negotiates discovery and supports clients that initialize directly', async () => {
 		const assistant = new FakeAssistant();
 		const handler = createMcpAgentHandler('owner', {
 			assistant,
@@ -570,14 +570,17 @@ describe('full OpenPalm MCP gateway', () => {
 		expect(methods).not.toContain('initialize');
 		await client.close();
 
-		const legacyTransport = new StreamableHTTPClientTransport(new URL('http://guardian/mcp'), {
+		const initializeTransport = new StreamableHTTPClientTransport(new URL('http://guardian/mcp'), {
 			fetch: fetchHandler
 		});
-		const legacyClient = new Client({ name: 'legacy-test', version: '1' }, { capabilities: {} });
-		await legacyClient.connect(legacyTransport, { timeout: 5_000 });
-		expect((await legacyClient.listTools()).tools).toHaveLength(11);
+		const initializeClient = new Client(
+			{ name: 'initialize-test', version: '1' },
+			{ capabilities: {} }
+		);
+		await initializeClient.connect(initializeTransport, { timeout: 5_000 });
+		expect((await initializeClient.listTools()).tools).toHaveLength(11);
 		expect(methods).toContain('initialize');
-		await legacyClient.close();
+		await initializeClient.close();
 		await handler.close();
 	});
 });

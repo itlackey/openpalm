@@ -17,7 +17,7 @@ Use a non-root account. Docker Compose v2 is required for stack work.
 
 ## Active source
 
-- `packages/lib`: lean host control plane
+- `packages/lib`: host control plane
 - `packages/cli`: primary lifecycle CLI
 - `packages/guardian`: MCP security gateway
 - `packages/portal`: unified Discord/Slack adapters
@@ -32,7 +32,7 @@ Every tracked package belongs to the active product surface.
 ```bash
 bun run guardian:dev
 PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts
-bun run packages/cli/src/main-lean.ts --help
+bun run packages/cli/src/main.ts --help
 bun run admin:dev
 ```
 
@@ -52,8 +52,8 @@ bun run lint
 bun run --cwd packages/cli build
 bun run --cwd packages/electron bundle
 bash -n scripts/dev-setup.sh \
-  containers/assistant/entrypoint.lean.sh \
-  containers/guardian/entrypoint.lean.sh
+  containers/assistant/entrypoint.sh \
+  containers/guardian/entrypoint.sh
 ```
 
 Also validate Compose with all profiles and build the affected image when Docker

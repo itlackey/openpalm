@@ -25,7 +25,7 @@ import {
 	type CredentialClass,
 	type GuardianPolicy
 } from './credentials.js';
-import { moderateMessage, type ModerationResult } from './lean-moderation.js';
+import { moderateMessage, type ModerationResult } from './moderation.js';
 import {
 	createWorkspaceAccess,
 	type WorkspaceAccess,

@@ -33,7 +33,7 @@ Operator files are seeded only when absent:
 - `config/portal/slack/credentials.json`
 - `knowledge/env/user.env`
 
-The allowlists live in `packages/lib/src/control-plane/lean-seed.ts` and the
+The allowlists live in `packages/lib/src/control-plane/seed.ts` and the
 compiled CLI archive packer. Adding a file to this directory does not activate
 it.
 

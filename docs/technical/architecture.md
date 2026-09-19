@@ -107,7 +107,7 @@ can reach Guardian but not Assistant directly.
 ## Control plane
 
 The CLI is the primary host orchestrator. Admin is an optional local wrapper
-over the same `@openpalm/lib/lean` functions and has no server or background
+over the same `@openpalm/lib` functions and has no server or background
 process.
 
 `state/stack.json` contains only:
@@ -131,7 +131,7 @@ There is no managed overlay graph, add-on catalog, or service discovery layer.
 ## Package graph
 
 ```text
-@openpalm/lib/lean <--------- CLI
+@openpalm/lib <--------- CLI
         ^                     optional Admin
         |
 managed home + Compose

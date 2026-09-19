@@ -79,7 +79,7 @@ describe('StackConfigV2', () => {
 			ok: false,
 			error: 'discord users contains an invalid platform ID'
 		});
-		expect(parseStackConfig({ ...defaultStackConfig(), voice: { enabled: true } })).toEqual({
+		expect(parseStackConfig({ ...defaultStackConfig(), unsupported: true })).toEqual({
 			ok: false,
 			error: 'stack config contains unsupported settings'
 		});
@@ -93,18 +93,16 @@ describe('StackConfigV2', () => {
 		if (parsed.ok) expect(parsed.config.gateway.enabled).toBe(true);
 	});
 
-	it('requires an explicit 0.14 stack config instead of inferring legacy environment intent', () => {
+	it('requires an explicit stack config instead of inferring environment intent', () => {
 		const root = home();
 		mkdirSync(join(root, 'state'), { recursive: true });
 		writeFileSync(
 			join(root, 'state', 'stack.env'),
 			[
-				'OP_ENABLED_ADDONS=api,discord,ollama,voice',
+				'OP_ENABLED_ADDONS=gateway,discord',
 				'OP_ASSISTANT_BIND_ADDRESS=192.168.1.12',
 				'OP_ASSISTANT_PORT=4910',
 				'OP_GUARDIAN_BIND_ADDRESS=0.0.0.0',
-				'GUARDIAN_OWNER_POLICY=read',
-				'GUARDIAN_DISCORD_POLICY=full',
 				''
 			].join('\n')
 		);
@@ -115,7 +113,7 @@ describe('StackConfigV2', () => {
 		});
 	});
 
-	it('rejects V1 configs instead of mutating an old installation in place', () => {
+	it('rejects unsupported config versions without mutating the file', () => {
 		const root = home();
 		mkdirSync(join(root, 'state'), { recursive: true });
 		writeFileSync(
@@ -173,14 +171,14 @@ describe('StackConfigV2', () => {
 		writeStackConfig(root, config);
 		writeFileSync(
 			join(root, 'state', 'stack.env'),
-			'OP_ENABLED_ADDONS=voice\nGUARDIAN_OWNER_POLICY=full\n'
+			'OP_ENABLED_ADDONS=unknown\nOP_ASSISTANT_PORT=9999\n'
 		);
 
 		ensureStackConfig(root);
 
 		const env = readFileSync(join(root, 'state', 'stack.env'), 'utf8');
 		expect(env).toContain('OP_ENABLED_ADDONS=gateway');
-		expect(env).not.toContain('voice');
-		expect(env).not.toContain('GUARDIAN_OWNER_POLICY');
+		expect(env).not.toContain('unknown');
+		expect(env).toContain('OP_ASSISTANT_PORT=3810');
 	});
 });

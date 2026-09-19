@@ -69,4 +69,4 @@ internal and does not become a network service.
 Only user-owned, allowlisted files are portable into 0.14. `system/`, `state/`,
 `data/`, legacy Compose files, and retired feature configuration are never
 used to reconstruct the new control plane. See the
-[0.14 transition contract](../operations/migration-to-lean-stack.md).
+[0.14 transition contract](../operations/migration-to-0.14.md).

@@ -6,11 +6,11 @@ usage() {
 Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
 
 Materialize a development home with the same 0.14 installer and control plane
-used by packaged OpenPalm builds. The default is .dev-lean; set
+used by packaged OpenPalm builds. The default is .dev; set
 OPENPALM_DEV_HOME to choose another development-only location.
 
 Options:
-  --seed-env          Compatibility flag; the lean installer always seeds the
+  --seed-env          Compatibility flag; the installer always seeds the
                       non-secret environment and private file-secret targets.
   --force             Refresh managed release files (operator files are kept).
   --enable-addon <n>  Enable gateway, discord, or slack. Repeat as needed.
@@ -53,8 +53,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEV_ROOT="${OPENPALM_DEV_HOME:-$ROOT_DIR/.dev-lean}"
-CLI=(bun run packages/cli/src/main-lean.ts)
+DEV_ROOT="${OPENPALM_DEV_HOME:-$ROOT_DIR/.dev}"
+CLI=(bun run packages/cli/src/main.ts)
 
 export OP_HOME="$DEV_ROOT"
 export OPENPALM_REPO_ROOT="$ROOT_DIR"

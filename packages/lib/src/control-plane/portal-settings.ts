@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 
-import { stateSecretFile, writeFileAtomic } from './lean-foundation.js';
+import { stateSecretFile, writeFileAtomic } from './foundation.js';
 import type { PortalName } from './portal-credential-store.js';
 
 export type PortalSecretName = 'discord_bot_token' | 'slack_bot_token' | 'slack_app_token';

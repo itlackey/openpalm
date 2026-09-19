@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { writeFileAtomic } from './lean-foundation.js';
+import { writeFileAtomic } from './foundation.js';
 import { isCredentialUsername, type StackConfig } from './stack-config.js';
 
 const PRIVATE_DIR_MODE = 0o700;

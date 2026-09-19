@@ -1,7 +1,7 @@
 # Installation
 
 OpenPalm 0.14 is designed as a fresh install. Do not point it at a 0.13 or
-legacy `OP_HOME`; follow the [0.14 transition guide](operations/migration-to-lean-stack.md)
+legacy `OP_HOME`; follow the [0.14 transition guide](operations/migration-to-0.14.md)
 instead.
 
 ## Requirements
@@ -98,7 +98,7 @@ openpalm task show example
 openpalm task resume example
 ```
 
-See [Moving to 0.14](operations/migration-to-lean-stack.md) for the full safety
+See [Moving to 0.14](operations/migration-to-0.14.md) for the full safety
 contract.
 
 ## Connect a trusted local client

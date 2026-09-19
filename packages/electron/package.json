@@ -13,10 +13,10 @@
 		"typecheck": "tsc --noEmit",
 		"bundle": "bun build src/admin-main.ts --bundle --target=node --outfile dist/admin-main.js --external electron && bun build src/admin-preload.ts --bundle --target=node --format=cjs --outfile dist/admin-preload.cjs --external electron",
 		"test": "bun test src/admin-domain.test.ts src/admin-static.test.ts",
-		"build:mac": "bun run bundle && electron-builder --config electron-builder.lean.yml --mac",
-		"build:linux": "bun run bundle && electron-builder --config electron-builder.lean.yml --linux",
-		"build:linux-x64": "bun run bundle && electron-builder --config electron-builder.lean.yml --linux --x64",
-		"build:win": "bun run bundle && electron-builder --config electron-builder.lean.yml --win"
+		"build:mac": "bun run bundle && electron-builder --config electron-builder.yml --mac",
+		"build:linux": "bun run bundle && electron-builder --config electron-builder.yml --linux",
+		"build:linux-x64": "bun run bundle && electron-builder --config electron-builder.yml --linux --x64",
+		"build:win": "bun run bundle && electron-builder --config electron-builder.yml --win"
 	},
 	"devDependencies": {
 		"@openpalm/lib": "workspace:*",

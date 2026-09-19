@@ -68,7 +68,7 @@ From this repository:
 
 ```bash
 bun install
-bun run packages/cli/src/main-lean.ts install
+bun run packages/cli/src/main.ts install
 ```
 
 OpenPalm installs to `~/.openpalm` unless `OP_HOME` names another absolute
@@ -184,7 +184,7 @@ schedules remain inactive until reviewed.
 `--apply`. It never mutates the old home, refuses conflicts and symlinks,
 requires explicit flags for secrets and identity maps, and stages old task
 sources outside the active scheduler until they are reviewed. See
-[the 0.14 transition guide](docs/operations/migration-to-lean-stack.md).
+[the 0.14 transition guide](docs/operations/migration-to-0.14.md).
 
 ## Development
 

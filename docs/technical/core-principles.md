@@ -171,7 +171,7 @@ not imported.
 The old home remains the rollback artifact. OpenPalm does not maintain runtime
 compatibility shims merely to reuse it.
 
-See [the 0.14 transition contract](../operations/migration-to-lean-stack.md).
+See [the 0.14 transition contract](../operations/migration-to-0.14.md).
 
 ## Explicit non-goals
 

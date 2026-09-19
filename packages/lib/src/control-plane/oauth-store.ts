@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { writeFileAtomic } from './lean-foundation.js';
+import { writeFileAtomic } from './foundation.js';
 import { isCredentialUsername } from './stack-config.js';
 
 const PRIVATE_DIR_MODE = 0o700;

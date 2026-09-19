@@ -1,4 +1,4 @@
-# OpenPalm lean stack
+# OpenPalm stack
 #
 # One required service (assistant), one optional security gateway (guardian),
 # and two optional chat adapters. Operator overlays belong exclusively in

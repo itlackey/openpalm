@@ -1,6 +1,6 @@
 # Assistant image
 
-The active image is built from `Dockerfile.lean`.
+The active image is built from `Dockerfile`.
 
 It contains only:
 

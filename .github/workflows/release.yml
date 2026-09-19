@@ -1,4 +1,4 @@
-name: Release lean OpenPalm
+name: Release OpenPalm
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
         default: true
 
 concurrency:
-  group: release-lean-openpalm
+  group: release-OpenPalm-openpalm
   cancel-in-progress: false
 
 permissions:
@@ -71,7 +71,7 @@ jobs:
       matrix:
         include:
           - image: assistant
-            file: containers/assistant/Dockerfile.lean
+            file: containers/assistant/Dockerfile
             build_args: PLATFORM_VERSION=${{ needs.validate.outputs.version }}
           - image: guardian
             file: containers/guardian/Dockerfile
@@ -215,25 +215,50 @@ jobs:
         run: |
           cd dist
           sha256sum -- * > checksums-sha256.txt
-      - name: Write manifest and validate the complete lean release
+      - name: Write manifest and validate the complete release
         env:
           RELEASE_ASSETS_DIR: dist
           VERSION: ${{ needs.validate.outputs.version }}
         run: node scripts/validate-release-assets.mjs --write-manifest
       - uses: actions/upload-artifact@v7
         with:
-          name: lean-release-assets
+          name: OpenPalm-release-assets
           path: dist
-      - name: Publish immutable GitHub release
+      - name: Publish immutable Gitea release
         if: inputs.dry_run != true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_SERVER_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
           VERSION: ${{ needs.validate.outputs.version }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
-          args=(release create "${VERSION}" dist/* --title "OpenPalm ${VERSION}" --generate-notes)
-          if [ "${PRERELEASE}" = true ]; then args+=(--prerelease --latest=false); fi
-          gh "${args[@]}"
+          test -n "${GITEA_TOKEN}"
+          payload="$(jq -n \
+            --arg tag "${VERSION}" \
+            --arg target "${RELEASE_SHA}" \
+            --arg name "OpenPalm ${VERSION}" \
+            --arg body "OpenPalm ${VERSION}. Verify downloads with checksums-sha256.txt." \
+            --argjson prerelease "${PRERELEASE}" \
+            '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,draft:false,prerelease:$prerelease}')"
+          response="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: token ${GITEA_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "${payload}" \
+            "${GITEA_SERVER_URL}/api/v1/repos/${GITEA_REPOSITORY}/releases")"
+          release_id="$(jq -er '.id' <<<"${response}")"
+          for asset in dist/*; do
+            name="$(basename "${asset}")"
+            encoded_name="$(jq -rn --arg value "${name}" '$value|@uri')"
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Authorization: token ${GITEA_TOKEN}" \
+              --form "attachment=@${asset}" \
+              "${GITEA_SERVER_URL}/api/v1/repos/${GITEA_REPOSITORY}/releases/${release_id}/assets?name=${encoded_name}" \
+              >/dev/null
+          done
 
   publish-bootstrap:
     needs: [validate, release]

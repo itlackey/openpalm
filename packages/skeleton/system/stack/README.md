@@ -1,6 +1,6 @@
 # Managed stack
 
-`stack.compose.yml` is the complete managed lean topology:
+`stack.compose.yml` is the complete managed topology:
 
 - Assistant is the only default service.
 - `gateway` enables Guardian.

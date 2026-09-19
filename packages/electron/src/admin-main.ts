@@ -4,31 +4,31 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-	activateLeanComposeCommand,
-	buildLeanComposeOptions,
-	classifyLeanInstall,
+	activateComposeCommand,
+	buildComposeOptions,
+	classifyInstall,
 	composeLogs,
 	composePs,
-	createLeanState,
+	createOpenPalmState,
 	defaultStackConfig,
-	deactivateLeanComposeCommand,
+	deactivateComposeCommand,
 	ensureDockerReady,
-	ensureLeanRuntime,
+	ensureRuntime,
 	isCredentialUsername,
 	isPortalName,
 	listProviders,
-	markLeanInstalled,
+	markInstalled,
 	parseComposePsRows,
 	parseStackConfig,
 	portalSecretConfigured,
 	readCredentialKey,
 	readStackConfig,
-	requireLeanInstall,
+	requireInstall,
 	setProviderApiKey,
 	stackConfigFile,
 	testAssistantReadiness,
 	writePortalSecret
-} from '@openpalm/lib/lean';
+} from '@openpalm/lib';
 
 import { ADMIN_CHANNELS, type AdminSnapshot, type StackAction } from './admin-types.js';
 import {
@@ -58,15 +58,15 @@ function requireAdminSender(event: IpcMainInvokeEvent): void {
 }
 
 function state() {
-	const value = createLeanState();
-	requireLeanInstall(value.homeDir);
-	ensureLeanRuntime(value);
+	const value = createOpenPalmState();
+	requireInstall(value.homeDir);
+	ensureRuntime(value);
 	return value;
 }
 
 async function snapshot(): Promise<AdminSnapshot> {
-	const candidate = createLeanState();
-	const installState = classifyLeanInstall(candidate.homeDir);
+	const candidate = createOpenPalmState();
+	const installState = classifyInstall(candidate.homeDir);
 	if (installState === 'not_installed') {
 		return {
 			installed: false,
@@ -84,7 +84,7 @@ async function snapshot(): Promise<AdminSnapshot> {
 	const current = state();
 	const config = readStackConfig(current.homeDir);
 	if (!config.ok) throw new Error(config.error);
-	const result = await composePs(buildLeanComposeOptions(current));
+	const result = await composePs(buildComposeOptions(current));
 	const services = result.ok
 		? parseComposePsRows(result.stdout).map((row) => ({
 				name: row.service,
@@ -110,9 +110,9 @@ async function snapshot(): Promise<AdminSnapshot> {
 async function runAction(action: StackAction): Promise<AdminSnapshot> {
 	const current = state();
 	if (action === 'stop') {
-		await deactivateLeanComposeCommand(current);
+		await deactivateComposeCommand(current);
 	} else if (action === 'restart') {
-		await activateLeanComposeCommand(current, [
+		await activateComposeCommand(current, [
 			'up',
 			'-d',
 			'--force-recreate',
@@ -120,7 +120,7 @@ async function runAction(action: StackAction): Promise<AdminSnapshot> {
 			'--wait'
 		]);
 	} else {
-		await activateLeanComposeCommand(current, ['up', '-d', '--remove-orphans', '--wait']);
+		await activateComposeCommand(current, ['up', '-d', '--remove-orphans', '--wait']);
 	}
 	return snapshot();
 }
@@ -155,7 +155,7 @@ function registerIpc(): void {
 	ipcMain.handle(ADMIN_CHANNELS.logs, async (event) => {
 		requireAdminSender(event);
 		const current = state();
-		const result = await composeLogs(buildLeanComposeOptions(current), 250);
+		const result = await composeLogs(buildComposeOptions(current), 250);
 		if (!result.ok) throw new Error(result.stderr || 'Could not read Docker logs');
 		return result.stdout.slice(-200_000);
 	});
@@ -174,14 +174,14 @@ function registerIpc(): void {
 		const current = state();
 		await setProviderApiKey(current.homeDir, input.provider, input.key);
 		const readiness = await testAssistantReadiness(current.homeDir);
-		if (readiness.ok) markLeanInstalled(current.homeDir);
+		if (readiness.ok) markInstalled(current.homeDir);
 		return readiness;
 	});
 	ipcMain.handle(ADMIN_CHANNELS.readiness, (event) => {
 		requireAdminSender(event);
 		const current = state();
 		return testAssistantReadiness(current.homeDir).then((readiness) => {
-			if (readiness.ok) markLeanInstalled(current.homeDir);
+			if (readiness.ok) markInstalled(current.homeDir);
 			return readiness;
 		});
 	});

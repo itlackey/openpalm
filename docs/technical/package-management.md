@@ -15,7 +15,7 @@ Dependency changes are made from the repository root so the workspace graph and 
 
 | Workspace | Runtime dependencies | Release role |
 |---|---|---|
-| `@openpalm/lib` | none | private lean control-plane source bundled into consumers |
+| `@openpalm/lib` | none | private control-plane source bundled into consumers |
 | `openpalm` | zero runtime dependencies in npm bootstrap | compiled standalone CLI + npm bootstrap |
 | `@openpalm/guardian` | MCP server, OpenCode SDK, Zod | private Guardian image component |
 | `@openpalm/portal` | MCP client, Discord, Slack SDKs | private unified portal image component |
@@ -33,7 +33,7 @@ package belongs to that list.
 Active host consumers import only:
 
 ```ts
-import { ... } from '@openpalm/lib/lean';
+import { ... } from '@openpalm/lib';
 ```
 
 The package root resolves to the same narrow API. Broad wildcard exports are
@@ -64,7 +64,7 @@ The platform unit versions these manifests together:
 
 - root `package.json`
 - skeleton
-- lean library
+- library
 - CLI
 - Guardian
 - Portal
@@ -72,7 +72,9 @@ The platform unit versions these manifests together:
 
 The optional Electron Admin artifact is a separate unit. Compose image defaults are stamped only in `stack.compose.yml`.
 
-Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian and Portal are delivered as signed container images. Admin is delivered as a GitHub release artifact.
+Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian
+and Portal are delivered as signed container images. Admin is delivered as a
+Gitea release artifact.
 
 ## Verification
 

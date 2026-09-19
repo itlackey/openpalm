@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ELECTRON_BUILDER_YML = join(REPO_ROOT, 'packages/electron/electron-builder.lean.yml');
+const ELECTRON_BUILDER_YML = join(REPO_ROOT, 'packages/electron/electron-builder.yml');
 
 export const CLI_BINARIES = [
 	'openpalm-cli-linux-x64',
@@ -53,7 +53,7 @@ export function expectedAdminAssets(version, productName = readElectronProductNa
 }
 
 // Compatibility aliases for release tooling that previously called these
-// desktop-oriented names. The implementation now describes only lean Admin.
+// desktop-oriented names. The implementation now describes only Admin.
 export const desktopAssetName = adminAssetName;
 export const expectedDesktopAssets = expectedAdminAssets;
 

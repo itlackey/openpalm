@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { ADMIN_CHANNELS, type AdminApi, type StackAction } from './admin-types.js';
-import type { StackConfig } from '@openpalm/lib/lean';
+import type { StackConfig } from '@openpalm/lib';
 
 const api: AdminApi = {
 	snapshot: () => ipcRenderer.invoke(ADMIN_CHANNELS.snapshot),

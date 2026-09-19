@@ -2,7 +2,7 @@
 
 > Keep [docs/technical/core-principles.md](docs/technical/core-principles.md)
 > aligned with the active architecture and security contract. It is a living
-> decision record: change it with the implementation when the lean product is
+> decision record: change it with the implementation when the product is
 > better served by a new boundary.
 >
 > OpenPalm 0.14 is a single-install personal agent with persistent knowledge,
@@ -47,7 +47,7 @@ knowledge, natural-language recurring work, and access from a familiar client.
 - **Portal** is one private package/image with Discord and Slack adapters. Both call Guardian through MCP.
 - **CLI** is the primary installer, importer, and host orchestrator.
 - **Admin** is an optional local setup and management utility over the same
-  lean library. It has no server, chat, updater, tray, or background control
+  library. It has no server, chat, updater, tray, or background control
   plane.
 - **Claude Desktop MCPB** is an optional local stdio-to-Guardian bridge.
 
@@ -62,14 +62,14 @@ durable result for every run.
 ## Active repository surface
 
 ```text
-packages/lib/        lean filesystem + Compose control plane
+packages/lib/        filesystem + Compose control plane
 packages/cli/        install, import, configure, and lifecycle CLI
 packages/guardian/   authenticated MCP security gateway
 packages/portal/     unified Discord/Slack MCP adapters
 packages/electron/   optional static local admin utility
 packages/claude-desktop/ optional local MCPB bridge
 packages/skeleton/   files selectively materialized into OP_HOME
-containers/assistant/Dockerfile.lean
+containers/assistant/Dockerfile
 containers/assistant/openpalm-task.mjs
 containers/guardian/Dockerfile
 containers/portal/Dockerfile
@@ -174,8 +174,8 @@ bun run check
 bun run test
 bun run lint
 
-bun run packages/cli/src/main-lean.ts install --no-start
-bun run packages/cli/src/main-lean.ts update --no-start
+bun run packages/cli/src/main.ts install --no-start
+bun run packages/cli/src/main.ts update --no-start
 
 ./scripts/dev-setup.sh --seed-env
 bun run dev:build
@@ -189,12 +189,12 @@ Docker-dependent verification may be unavailable in restricted environments. `do
 ## Code rules
 
 - TypeScript strict mode; use `unknown` at trust boundaries.
-- ES modules only; relative TS imports include `.js` in the lean packages.
+- ES modules only; relative TS imports include `.js` in the packages.
 - Prefer named imports and `import type`.
 - Prefer Bun, Node, and Web Platform built-ins over dependencies.
 - Transport handlers parse/authenticate/validate, then call small domain functions.
 - Fail closed on authentication, handle validation, moderation, origin, and secret-boundary errors.
-- Keep the active dependency graph narrow. Do not import the legacy `@openpalm/lib` barrel; use `@openpalm/lib/lean`.
+- Keep the active dependency graph narrow. Import shared control-plane APIs from `@openpalm/lib`.
 - Do not add a legacy migration or compatibility shim to the 0.14 runtime;
   extend the previewable allowlisted importer when user-owned data is missing.
 - Do not add another managed Compose overlay, another public protocol, or another runtime service without changing the core principles first.

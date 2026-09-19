@@ -5,14 +5,14 @@
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
-  "types": "./src/lean-index.ts",
-  "main": "./src/lean-index.ts",
+  "types": "./src/index.ts",
+  "main": "./src/index.ts",
   "exports": {
-    ".": "./src/lean-index.ts",
-    "./server": "./src/lean-server.ts"
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
   },
   "bin": {
-    "openpalm-guardian": "./src/lean-server.ts"
+    "openpalm-guardian": "./src/server.ts"
   },
   "files": [
     "src/assistant-client.ts",
@@ -21,11 +21,11 @@
     "src/crypto.ts",
     "src/gateway-service.ts",
     "src/http-util.ts",
-    "src/lean-audit.ts",
-    "src/lean-content-screen.ts",
-    "src/lean-index.ts",
-    "src/lean-moderation.ts",
-    "src/lean-server.ts",
+    "src/audit.ts",
+    "src/content-screen.ts",
+    "src/index.ts",
+    "src/moderation.ts",
+    "src/server.ts",
     "src/logger.ts",
     "src/mcp-agent.ts",
     "src/oauth.ts",
@@ -34,13 +34,13 @@
     "src/workspace-policy.ts"
   ],
   "scripts": {
-    "start": "bun run src/lean-server.ts",
-    "test": "bun test --no-orphans src/assistant-client.test.ts src/conversation.test.ts src/credentials.test.ts src/crypto.test.ts src/http-util.test.ts src/lean-moderation.test.ts src/mcp-agent.test.ts src/oauth.test.ts src/rate-limit.test.ts src/lean-server.test.ts src/workspace-access.test.ts src/workspace-policy.test.ts",
+    "start": "bun run src/server.ts",
+    "test": "bun test --no-orphans src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/itlackey/openpalm",
+    "url": "https://code.lab.fwdslsh.dev/founder3/openpalm",
     "directory": "packages/guardian"
   },
   "dependencies": {

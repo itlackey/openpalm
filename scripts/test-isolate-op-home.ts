@@ -2,7 +2,7 @@
  * Bun test preload — OP_HOME isolation.
  *
  * Loaded via root bunfig.toml [test] preload = [...] for every `bun test`
- * invocation in this repo (lib, cli, guardian, portal-discord, portal-slack).
+ * invocation in this repo (lib, CLI, Guardian, and Portal).
  *
  * Guarantees:
  *   1. OP_HOME is pointed at a fresh mkdtemp dir, unconditionally overriding

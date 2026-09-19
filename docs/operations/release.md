@@ -1,4 +1,4 @@
-# Releasing the lean stack
+# Releasing the stack
 
 The release surface is deliberately small:
 
@@ -59,13 +59,13 @@ Dispatch `.github/workflows/release.yml` with:
 - `dry_run: true` first.
 
 The workflow validates stamps, calls the shared gate, builds every artifact,
-creates checksums and `release-assets-manifest.json`, and runs the same lean
-asset validator for dry and live releases. The required set is five CLI
+creates checksums and `release-assets-manifest.json`, and runs the same asset validator for dry and live releases. The required set is five CLI
 binaries, five updater-free Admin artifacts, the versioned MCPB, and checksums.
-A live dispatch from `main` or `release/*` additionally
-pushes SBOM/provenance-enabled images, signs immutable image digests with
-Cosign, creates the GitHub release, and publishes the npm bootstrap with
-provenance.
+A live dispatch from `main` or `release/*` additionally pushes
+SBOM/provenance-enabled images, signs immutable image digests with Cosign,
+creates the Gitea release, and publishes the npm bootstrap with provenance.
+Configure a repository Actions secret named `GITEA_TOKEN` with release-write
+access before a live dispatch.
 
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.

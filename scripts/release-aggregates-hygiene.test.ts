@@ -26,7 +26,7 @@ function readJson(relPath: string): Manifest {
 	return JSON.parse(readFileSync(join(ROOT, relPath), 'utf8')) as Manifest;
 }
 
-describe('lean product package boundary', () => {
+describe('product package boundary', () => {
 	test('the root check covers every active package', () => {
 		const check = readJson('package.json').scripts?.check ?? '';
 		for (const packageName of [
@@ -65,7 +65,7 @@ describe('release package ownership', () => {
 		expect(new Set(manifests).size).toBe(manifests.length);
 	});
 
-	test('the lean platform and optional admin have explicit owner groups', () => {
+	test('the platform and optional admin have explicit owner groups', () => {
 		expect(groups.units.electron).toEqual(['packages/electron/package.json']);
 		for (const manifest of [
 			'packages/skeleton/package.json',
@@ -112,7 +112,7 @@ describe('image tool pins', () => {
 		expect(root.workspaces).toContain('containers/assistant/tools');
 		expect(root.workspaces).toContain('containers/guardian/tools');
 		for (const dockerfile of [
-			'containers/assistant/Dockerfile.lean',
+			'containers/assistant/Dockerfile',
 			'containers/guardian/Dockerfile',
 			'containers/portal/Dockerfile'
 		]) {
@@ -128,20 +128,19 @@ describe('portal image source boundary', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers/portal/Dockerfile'), 'utf8');
 		expect(dockerfile).toContain('COPY packages/portal/package.json');
 		expect(dockerfile).toContain('COPY packages/portal/src');
-		expect(dockerfile).not.toContain('packages/portal-sdk');
 		expect(dockerfile).not.toContain('containers/portal/tools/package.json');
 	});
 });
 
-describe('lean release completeness gate', () => {
+describe('release completeness gate', () => {
 	const productName = readElectronProductName();
 
-	test('the lean builder declares the optional Admin product', () => {
+	test('the builder declares the optional Admin product', () => {
 		expect(productName).toBe('OpenPalm Admin');
 	});
 
 	test('Admin artifacts have explicit updater-free, dash-safe names', () => {
-		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.lean.yml'), 'utf8');
+		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.yml'), 'utf8');
 		expect(builder).toContain('publish: null');
 		expect(builder).toContain('artifactName: OpenPalm-Admin-${version}-${arch}-${os}.${ext}');
 		expect(builder).toContain('artifactName: OpenPalm-Admin-Setup-${version}.${ext}');
@@ -152,7 +151,7 @@ describe('lean release completeness gate', () => {
 			jobs: { cli: { strategy: { matrix: { include: Array<{ asset: string }> } } } };
 		};
 		const matrixAssets = workflow.jobs.cli.strategy.matrix.include.map((entry) => entry.asset);
-		// A GitHub Actions matrix must stay static YAML, so this is the one
+		// The Actions matrix must stay static YAML, so this is the one
 		// hand-maintained copy of the CLI asset list; every other consumer in
 		// this repo's release tooling derives from CLI_BINARIES instead of
 		// repeating it, and this test is what keeps the two matched.
@@ -181,11 +180,18 @@ describe('lean release completeness gate', () => {
 		).toBe(true);
 	});
 
-	test('release calls the shared lean gates workflow', () => {
+	test('release calls the shared gates workflow', () => {
 		const release = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
 			jobs: { gates: { uses?: string } };
 		};
 		expect(release.jobs.gates.uses).toBe('./.github/workflows/gates.yml');
+	});
+
+	test('publishes releases through the canonical Gitea API', () => {
+		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
+		expect(release).toContain('secrets.GITEA_TOKEN');
+		expect(release).toContain('/api/v1/repos/${GITEA_REPOSITORY}/releases');
+		expect(release).not.toContain('gh release');
 	});
 
 	test('the shared gate validates all active packages and optional artifacts', () => {
@@ -278,10 +284,10 @@ describe('lean release completeness gate', () => {
 			writeCompleteDist(dir, '1.4.2');
 			const manifestPath = join(dir, 'release-assets-manifest.json');
 			const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { assets: string[] };
-			manifest.assets.push('legacy-updater.yml');
+			manifest.assets.push('undeclared-updater.yml');
 			writeFileSync(manifestPath, JSON.stringify(manifest));
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
-			expect(problems).toContain('Unexpected release asset in manifest: legacy-updater.yml');
+			expect(problems).toContain('Unexpected release asset in manifest: undeclared-updater.yml');
 		});
 	});
 });

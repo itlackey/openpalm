@@ -36,8 +36,8 @@ describe("set-version", () => {
 
   it("accepts prerelease semver", () => {
     const f = write({ name: "x", version: "0.0.0" });
-    setVersion(f, "0.11.0-rc.18");
-    expect(read(f).version).toBe("0.11.0-rc.18");
+    setVersion(f, "1.2.3-rc.18");
+    expect(read(f).version).toBe("1.2.3-rc.18");
   });
 
   it("rejects non-semver", () => {
@@ -49,21 +49,21 @@ describe("set-version", () => {
   it("leaves dependency references untouched", () => {
     const f = write({
       name: "x",
-      version: "0.10.0",
-      dependencies: { "@openpalm/lib": ">=0.10.0 <1.0.0", other: "^1.0.0" },
-      peerDependencies: { "@openpalm/lib": ">=0.10.0 <1.0.0" },
+      version: "1.2.3",
+      dependencies: { "@openpalm/lib": ">=1.0.0 <2.0.0", other: "^1.0.0" },
+      peerDependencies: { "@openpalm/lib": ">=1.0.0 <2.0.0" },
     });
-    setVersion(f, "0.11.0");
+    setVersion(f, "1.3.0");
     const pkg = read(f);
-    expect(pkg.dependencies["@openpalm/lib"]).toBe(">=0.10.0 <1.0.0");
-    expect(pkg.peerDependencies["@openpalm/lib"]).toBe(">=0.10.0 <1.0.0");
+    expect(pkg.dependencies["@openpalm/lib"]).toBe(">=1.0.0 <2.0.0");
+    expect(pkg.peerDependencies["@openpalm/lib"]).toBe(">=1.0.0 <2.0.0");
     expect(pkg.dependencies.other).toBe("^1.0.0");
   });
 
   it("SEMVER_RE matches stable + prerelease, rejects junk", () => {
-    expect(SEMVER_RE.test("0.11.0")).toBe(true);
-    expect(SEMVER_RE.test("0.11.0-rc.17")).toBe(true);
-    expect(SEMVER_RE.test("0.11")).toBe(false);
+    expect(SEMVER_RE.test("1.2.3")).toBe(true);
+    expect(SEMVER_RE.test("1.2.3-rc.17")).toBe(true);
+    expect(SEMVER_RE.test("1.2")).toBe(false);
   });
 
   it("rejects shell-bearing and non-canonical release targets", () => {
@@ -85,19 +85,19 @@ describe("set-version", () => {
   // lower than the highest published version and allows equal re-runs, so
   // these orderings are load-bearing for the 'latest' pointers.
   it("compareSemver orders release tuples, prereleases, and identifiers per semver §11", () => {
-    expect(compareSemver("0.13.0", "0.13.0")).toBe(0);
-    expect(compareSemver("0.12.9", "0.13.0")).toBe(-1);
-    expect(compareSemver("0.14.0", "0.13.0")).toBe(1);
+    expect(compareSemver("1.3.0", "1.3.0")).toBe(0);
+    expect(compareSemver("1.2.9", "1.3.0")).toBe(-1);
+    expect(compareSemver("1.4.0", "1.3.0")).toBe(1);
     // A prerelease sorts BEFORE its release...
-    expect(compareSemver("0.13.0-beta.24", "0.13.0")).toBe(-1);
+    expect(compareSemver("1.3.0-beta.24", "1.3.0")).toBe(-1);
     // ...but a prerelease of the NEXT version sorts after the current release.
-    expect(compareSemver("0.14.0-beta.1", "0.13.0")).toBe(1);
+    expect(compareSemver("1.4.0-beta.1", "1.3.0")).toBe(1);
     // Numeric identifiers compare numerically (beta.4 < beta.10).
-    expect(compareSemver("0.13.0-beta.10", "0.13.0-beta.4")).toBe(1);
+    expect(compareSemver("1.3.0-beta.10", "1.3.0-beta.4")).toBe(1);
     // A longer identifier set wins over its own prefix.
-    expect(compareSemver("0.13.0-beta.1.1", "0.13.0-beta.1")).toBe(1);
+    expect(compareSemver("1.3.0-beta.1.1", "1.3.0-beta.1")).toBe(1);
     // Non-numeric identifiers compare lexically (rc > beta).
-    expect(compareSemver("0.13.0-rc.1", "0.13.0-beta.9")).toBe(1);
-    expect(() => compareSemver("nope", "0.13.0")).toThrow();
+    expect(compareSemver("1.3.0-rc.1", "1.3.0-beta.9")).toBe(1);
+    expect(() => compareSemver("nope", "1.3.0")).toThrow();
   });
 });

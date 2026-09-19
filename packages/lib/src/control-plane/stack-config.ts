@@ -7,9 +7,9 @@ import {
 	stackConfigFile,
 	stackEnvFile,
 	writeFileAtomic
-} from './lean-foundation.js';
+} from './foundation.js';
 
-export { stackConfigFile } from './lean-foundation.js';
+export { stackConfigFile } from './foundation.js';
 
 export const STACK_CONFIG_VERSION = 2 as const;
 export const CREDENTIAL_REGISTRY_VERSION = 1 as const;
@@ -61,7 +61,7 @@ const DEFAULT_BIND_ADDRESS = '127.0.0.1';
 const DEFAULT_ASSISTANT_PORT = 3810;
 const DEFAULT_GATEWAY_PORT = 3830;
 const MAX_CREDENTIALS = 128;
-const LEAN_ADDONS = new Set(['gateway', 'discord', 'slack']);
+const ADDONS = new Set(['gateway', 'discord', 'slack']);
 const USERNAME_RE = /^[a-z][a-z0-9._-]{0,63}$/;
 const CREDENTIAL_ID_RE = /^(?:owner|discord|slack|cred_[a-f0-9]{32})$/;
 const DEFAULT_POLICIES = {
@@ -389,20 +389,6 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 	};
 }
 
-function withoutRetiredPolicyEnv(content: string): string {
-	return content
-		.split(/\r?\n/)
-		.filter((line) => {
-			const key = line
-				.trimStart()
-				.replace(/^export\s+/, '')
-				.split('=', 1)[0]
-				?.trim();
-			return !/^GUARDIAN_(?:OWNER|DISCORD|SLACK)_POLICY$/.test(key ?? '');
-		})
-		.join('\n');
-}
-
 export function writeStackConfig(homeDir: string, value: StackConfig): StackConfig {
 	const parsed = parseStackConfig(value);
 	if (!parsed.ok) throw new Error(parsed.error);
@@ -412,7 +398,7 @@ export function writeStackConfig(homeDir: string, value: StackConfig): StackConf
 	writeCredentialRegistry(homeDir, config);
 
 	const envPath = stackEnvFile(homeDir);
-	const current = withoutRetiredPolicyEnv(existsSync(envPath) ? readFileSync(envPath, 'utf8') : '');
+	const current = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
 	writeFileAtomic(envPath, mergeEnvContent(current, stackConfigEnv(config)), 0o600);
 	return config;
 }
@@ -423,18 +409,17 @@ export function ensureStackConfig(homeDir: string): StackConfig {
 	if (!result.ok) throw new Error(result.error);
 	const envPath = stackEnvFile(homeDir);
 	const disk = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
-	const raw = withoutRetiredPolicyEnv(disk);
-	const next = mergeEnvContent(raw, stackConfigEnv(result.config));
+	const next = mergeEnvContent(disk, stackConfigEnv(result.config));
 	if (next !== disk) writeFileAtomic(envPath, next, 0o600);
 	writeCredentialRegistry(homeDir, result.config);
 	return result.config;
 }
 
-export function leanEnabledAddons(homeDir: string): string[] {
+export function enabledAddons(homeDir: string): string[] {
 	const result = readStackConfig(homeDir);
 	if (!result.ok) throw new Error(result.error);
 	return parseAddons(stackConfigEnv(result.config).OP_ENABLED_ADDONS).filter((addon) =>
-		LEAN_ADDONS.has(addon)
+		ADDONS.has(addon)
 	);
 }
 

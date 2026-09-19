@@ -37,7 +37,7 @@ async function install(): Promise<{ root: string; home: string }> {
 	return { root, home };
 }
 
-describe('Admin lean domain', () => {
+describe('Admin domain', () => {
 	it('installs the active skeleton and manages credentials and portal mappings', async () => {
 		const { home } = await install();
 		expect(JSON.parse(readFileSync(join(home, 'state', 'stack.json'), 'utf8')).version).toBe(2);

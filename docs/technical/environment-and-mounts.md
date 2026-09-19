@@ -1,6 +1,6 @@
 # Environment, mounts, and networks
 
-This document describes the active lean runtime. The executable source is
+This document describes the active runtime. The executable source is
 `packages/skeleton/system/stack/stack.compose.yml`.
 
 ## Host layout
@@ -22,7 +22,7 @@ This document describes the active lean runtime. The executable source is
 | `state/secrets/` | Control plane/operator | File-backed runtime credentials |
 | `data/` | Containers | Assistant home, AKM state, portal SQLite files, audit logs |
 
-Updates replace only the allowlisted managed files in `lean-seed.ts`. They seed
+Updates replace only the allowlisted managed files in `seed.ts`. They seed
 operator files only when absent and never synchronize or delete whole directories.
 
 ## Host-side Compose variables

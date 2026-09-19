@@ -1,10 +1,10 @@
 import type {
 	AssistantReadiness,
-	LeanBackupManifest,
-	LeanImportPlan,
+	BackupManifest,
+	ImportPlan,
 	ProviderSummary,
 	StackConfig
-} from '@openpalm/lib/lean';
+} from '@openpalm/lib';
 
 export type AdminSnapshot = {
 	installed: boolean;
@@ -54,7 +54,7 @@ export type AdminApi = {
 		includeUserEnv?: boolean;
 		includePortalMaps?: boolean;
 		includeOAuth?: boolean;
-	}): Promise<LeanBackupManifest>;
+	}): Promise<BackupManifest>;
 	importData(value: {
 		sourceHome: string;
 		apply?: boolean;
@@ -62,7 +62,7 @@ export type AdminApi = {
 		includeUserEnv?: boolean;
 		includePortalMaps?: boolean;
 		includeOAuth?: boolean;
-	}): Promise<LeanImportPlan>;
+	}): Promise<ImportPlan>;
 };
 
 export const ADMIN_CHANNELS = {

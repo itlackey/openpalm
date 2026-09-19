@@ -66,7 +66,7 @@
       "name": "@openpalm/guardian",
       "version": "0.14.0",
       "bin": {
-        "openpalm-guardian": "./src/lean-server.ts",
+        "openpalm-guardian": "./src/server.ts",
       },
       "dependencies": {
         "@modelcontextprotocol/server": "2.0.0",

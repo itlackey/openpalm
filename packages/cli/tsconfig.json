@@ -10,12 +10,6 @@
 		"resolveJsonModule": true,
 		"noEmit": true
 	},
-	"include": [
-		"src/main-lean.ts",
-		"src/commands/*-lean.ts",
-		"src/lib/action.ts",
-		"src/lib/embedded-lean-assets.ts",
-		"src/types/embedded-assets.d.ts"
-	],
+	"include": ["src/**/*.ts"],
 	"exclude": ["src/**/*.test.ts"]
 }

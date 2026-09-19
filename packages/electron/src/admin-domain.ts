@@ -1,15 +1,15 @@
 import {
-	applyLeanHomeSeed,
-	applyLeanImport,
-	acquireLeanLock,
-	classifyLeanInstall,
+	applyHomeSeed,
+	applyImport,
+	acquireStackLock,
+	classifyInstall,
 	createCredentialId,
-	createLeanBackup,
-	createLeanState,
+	createBackup,
+	createOpenPalmState,
 	defaultStackConfig,
 	ensureCredentialKeys,
-	ensureLeanDirs,
-	ensureLeanRuntime,
+	ensureHomeDirs,
+	ensureRuntime,
 	ensureOAuthFiles,
 	generateCredentialKey,
 	isCredentialUsername,
@@ -17,12 +17,12 @@ import {
 	isPortalName,
 	isPortalUserId,
 	oauthCredentialUsages,
-	planLeanImport,
+	planImport,
 	portalCredentialUsages,
 	readPortalCredentialMap,
 	readStackConfig,
 	removeCredentialKey,
-	releaseLeanLock,
+	releaseStackLock,
 	syncPortalCredentialBundles,
 	writeCredentialKey,
 	writePortalCredentialMap,
@@ -30,17 +30,17 @@ import {
 	type GuardianPolicy,
 	type PortalName,
 	type StackConfig
-} from '@openpalm/lib/lean';
+} from '@openpalm/lib';
 
 export async function installFromAdmin(): Promise<string> {
-	const state = createLeanState();
-	if (classifyLeanInstall(state.homeDir) !== 'not_installed') {
+	const state = createOpenPalmState();
+	if (classifyInstall(state.homeDir) !== 'not_installed') {
 		throw new Error('OpenPalm is already installed or the selected home is not empty.');
 	}
-	ensureLeanDirs(state.homeDir);
-	await applyLeanHomeSeed(state.homeDir);
+	ensureHomeDirs(state.homeDir);
+	await applyHomeSeed(state.homeDir);
 	writeStackConfig(state.homeDir, defaultStackConfig());
-	ensureLeanRuntime(state);
+	ensureRuntime(state);
 	return state.homeDir;
 }
 
@@ -156,7 +156,7 @@ export async function backupFromAdmin(
 		includeOAuth?: boolean;
 	}
 ) {
-	return createLeanBackup({ sourceHome: homeDir, ...value });
+	return createBackup({ sourceHome: homeDir, ...value });
 }
 
 export function importFromAdmin(
@@ -170,20 +170,20 @@ export function importFromAdmin(
 		includeOAuth?: boolean;
 	}
 ) {
-	if (classifyLeanInstall(homeDir) !== 'setup_incomplete') {
+	if (classifyInstall(homeDir) !== 'setup_incomplete') {
 		throw new Error('Import is available only before setup is completed on a fresh installation.');
 	}
 	const options = { destinationHome: homeDir, ...value };
-	if (!value.apply) return planLeanImport(options);
-	const state = createLeanState();
+	if (!value.apply) return planImport(options);
+	const state = createOpenPalmState();
 	if (state.homeDir !== homeDir) throw new Error('Admin import destination changed unexpectedly.');
-	const lock = acquireLeanLock(state.dataDir);
+	const lock = acquireStackLock(state.dataDir);
 	if (!lock) throw new Error('Another OpenPalm lifecycle operation is in progress.');
 	try {
-		const plan = applyLeanImport(options);
-		ensureLeanRuntime(state);
+		const plan = applyImport(options);
+		ensureRuntime(state);
 		return plan;
 	} finally {
-		releaseLeanLock(lock);
+		releaseStackLock(lock);
 	}
 }

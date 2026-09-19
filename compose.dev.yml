@@ -5,14 +5,14 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f .dev-lean/system/stack/stack.compose.yml \
-#     -f .dev-lean/config/stack/custom.compose.yml \
+#     -f .dev/system/stack/stack.compose.yml \
+#     -f .dev/config/stack/custom.compose.yml \
 #     -f compose.dev.yml \
-#     --env-file .dev-lean/state/stack.env \
+#     --env-file .dev/state/stack.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the managed compose files live
-# in a different directory (.openpalm/system/stack/ or .dev-lean/system/stack/).
+# in a different directory (.openpalm/system/stack/ or .dev/system/stack/).
 # Without it, Docker Compose resolves build contexts relative to the first -f
 # file's directory, which breaks builds.
 
@@ -30,12 +30,12 @@ services:
       args:
         GUARDIAN_VERSION: ${GUARDIAN_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
-    # Publication remains controlled by the managed lean compose file.
+    # Publication remains controlled by the managed compose file.
 
   assistant:
     build:
       context: .
-      dockerfile: containers/assistant/Dockerfile.lean
+      dockerfile: containers/assistant/Dockerfile
       args:
         PLATFORM_VERSION: ${PLATFORM_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev

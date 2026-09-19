@@ -195,7 +195,7 @@ your operating system's backup tool on its full `OP_HOME`. Do not treat
 0.14 recovery and migration use a fresh installation followed by an
 allowlisted import. Provider credentials require an explicit secret import;
 Guardian and portal access credentials are recreated. Imported schedules stay
-inactive until reviewed. See [the 0.14 transition guide](operations/migration-to-lean-stack.md).
+inactive until reviewed. See [the 0.14 transition guide](operations/migration-to-0.14.md).
 
 ## Optional Admin
 

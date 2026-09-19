@@ -4,12 +4,12 @@ Only a small script surface remains active.
 
 | Script | Purpose |
 |---|---|
-| `dev-setup.sh` | Materialize an isolated `.dev` home for the lean stack |
+| `dev-setup.sh` | Materialize an isolated `.dev` home for the stack |
 | `set-version.mjs` | Validate semantic versions and stamp package/Compose versions |
 | `bump-unit.mjs` | Stamp the platform or Admin release unit |
 | `restore-release-candidate.sh` | Restore a source bundle for reusable CI gates |
 | `setup.sh`, `setup.ps1` | Release bootstrap installers |
-| `smoke-lean-image.sh` | Assert image startup and runtime security boundaries |
+| `smoke-image.sh` | Assert image startup and runtime security boundaries |
 | `test-isolate-op-home.ts` | Force every Bun test into a throwaway `OP_HOME` |
 | `validate-release-assets.mjs` | Verify the complete checksummed release set |
 

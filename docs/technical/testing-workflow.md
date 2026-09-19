@@ -12,15 +12,15 @@ bun run lint
 bun run --cwd packages/cli build
 bun run --cwd packages/electron bundle
 bash -n scripts/dev-setup.sh \
-  containers/assistant/entrypoint.lean.sh \
-  containers/guardian/entrypoint.lean.sh
+  containers/assistant/entrypoint.sh \
+  containers/guardian/entrypoint.sh
 ```
 
 `check` type-checks Lib, Guardian, Portal, CLI, Admin, and the Claude Desktop
 bridge. `test` runs stack intent/import/security tests, Guardian protocol tests,
 portal policy/state tests, and fresh-install tests.
 
-`scripts/lean-acceptance.test.ts` exercises the complete deterministic product
+`scripts/acceptance.test.ts` exercises the complete deterministic product
 path: fresh install, authenticated provider readiness against a controllable
 provider boundary, persistent knowledge across runtime reconciliation, a
 recurring task with durable history and inbox output, credential-to-portal
@@ -37,7 +37,7 @@ Compose validation does not require a running daemon:
 ```bash
 tmp_home="$(mktemp -d)"
 OP_HOME="$tmp_home" OPENPALM_REPO_ROOT="$PWD" OP_ALLOW_ROOT=1 \
-  bun run packages/cli/src/main-lean.ts install --no-start
+  bun run packages/cli/src/main.ts install --no-start
 
 docker compose \
   --project-name openpalm-test \
@@ -56,7 +56,7 @@ Remove only the exact generated temporary directory after the check.
 Build all active images:
 
 ```bash
-docker build -f containers/assistant/Dockerfile.lean \
+docker build -f containers/assistant/Dockerfile \
   --build-arg PLATFORM_VERSION=dev -t openpalm/assistant:dev .
 docker build -f containers/guardian/Dockerfile \
   --build-arg GUARDIAN_VERSION=dev -t openpalm/guardian:dev .
@@ -64,7 +64,7 @@ docker build -f containers/portal/Dockerfile \
   -t openpalm/portal:dev .
 ```
 
-`scripts/smoke-lean-image.sh` verifies each image as its configured non-root
+`scripts/smoke-image.sh` verifies each image as its configured non-root
 user. Assistant and Guardian must become healthy; Guardian must reject an
 unknown key and accept an authenticated MCP initialize request. Portal must
 contain its runtime and fail closed when no adapter is selected.
