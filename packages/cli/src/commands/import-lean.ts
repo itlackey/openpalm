@@ -31,7 +31,9 @@ function printPlan(plan: LeanImportPlan, json: boolean): void {
 	console.log(`Import source: ${plan.sourceHome}`);
 	console.log(`Fresh 0.14 destination: ${plan.destinationHome}`);
 	for (const entry of plan.entries) {
-		console.log(`${entry.action.padEnd(16)} ${entry.relativeSource} -> ${entry.relativeDestination}`);
+		console.log(
+			`${entry.action.padEnd(16)} ${entry.relativeSource} -> ${entry.relativeDestination}`
+		);
 	}
 	for (const warning of plan.warnings) console.warn(`warning: ${warning}`);
 	console.log(
@@ -87,7 +89,9 @@ export default defineCommand({
 			ensureLeanRuntime(state);
 			printPlan(plan, args.json === true);
 			if (!args.json) {
-				console.log('Import complete. Imported task definitions are staged outside the active task directory.');
+				console.log(
+					'Import complete. Imported task definitions are staged outside the active task directory.'
+				);
 				console.log('Review them with `openpalm task adopt <file>`, then run `openpalm setup`.');
 			}
 		} finally {

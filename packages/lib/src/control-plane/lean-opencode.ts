@@ -176,12 +176,7 @@ export async function removeProviderAuth(
 	options: { fetch?: FetchLike } = {}
 ): Promise<void> {
 	if (!/^[A-Za-z0-9._-]{1,128}$/.test(providerId)) throw new Error('Invalid provider id');
-	await request(
-		homeDir,
-		`/auth/${encodeURIComponent(providerId)}`,
-		{ method: 'DELETE' },
-		options
-	);
+	await request(homeDir, `/auth/${encodeURIComponent(providerId)}`, { method: 'DELETE' }, options);
 }
 
 export async function waitForAssistant(
@@ -254,7 +249,8 @@ export async function testAssistantReadiness(
 				{ fetch: options.fetch, timeoutMs: 10_000 }
 			)
 		);
-		if (!created || typeof created.id !== 'string') throw new Error('Could not create readiness session');
+		if (!created || typeof created.id !== 'string')
+			throw new Error('Could not create readiness session');
 		sessionId = created.id;
 		const response = await request(
 			homeDir,

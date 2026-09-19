@@ -29,8 +29,10 @@ Voice runtime, point-in-time reviews, and old roadmap material.
 
 ## Exact files in mixed active trees
 
-The following 494 tracked files share a parent with active files, so
-they are enumerated individually rather than hidden behind a wildcard.
+The following tracked files share a parent with active files, so they are
+enumerated individually rather than hidden behind a wildcard. The list is
+reviewed against the active package, image, test, and Skeleton graphs before
+each deletion batch; it intentionally carries no fragile hand-maintained count.
 
 ## CLI legacy files
 
@@ -345,7 +347,8 @@ packages/lib/src/provider-constants.ts
 ```text
 packages/guardian/src/admin.test.ts
 packages/guardian/src/admin.ts
-packages/guardian/src/assistant-client.ts
+packages/guardian/src/assistant-chat.test.ts
+packages/guardian/src/assistant-chat.ts
 packages/guardian/src/audit.ts
 packages/guardian/src/auth.test.ts
 packages/guardian/src/auth.ts
@@ -356,6 +359,8 @@ packages/guardian/src/content-screen.ts
 packages/guardian/src/event-fanout.ts
 packages/guardian/src/index.ts
 packages/guardian/src/mcp.ts
+packages/guardian/src/mcp-chat.test.ts
+packages/guardian/src/mcp-chat.ts
 packages/guardian/src/moderation.test.ts
 packages/guardian/src/moderation.ts
 packages/guardian/src/oc-path.test.ts
@@ -422,9 +427,7 @@ packages/electron/vitest.config.ts
 
 ```text
 packages/skeleton/config/akm/.gitkeep
-packages/skeleton/config/assistant/persona.md
 packages/skeleton/config/assistant/tui.json
-packages/skeleton/config/assistant/user-profile.md
 packages/skeleton/config/guardian/.gitkeep
 packages/skeleton/config/paperclip/akm/config.json
 packages/skeleton/config/paperclip/opencode/opencode.json

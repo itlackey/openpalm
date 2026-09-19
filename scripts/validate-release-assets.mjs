@@ -1,236 +1,163 @@
 #!/usr/bin/env node
-/**
- * Gate a release on shipping the COMPLETE product, not just the CLI.
- *
- * CLI-only releases are no longer a supported outcome
- * (docs/reviews/onboarding-setup-review.md, D1/D4): the latest stable release
- * (0.12.52) shipped with zero desktop assets while the README told users to
- * download the desktop app from it, because this gate only ever checked the
- * five CLI binaries. A release is now invalid unless it carries:
- *   - the CLI binary for every platform (matches the `cli` job matrix in
- *     release.yml — see CLI_BINARIES below),
- *   - the desktop artifact for every target electron-builder produces
- *     (packages/electron/electron-builder.yml's mac/win/linux `target` lists),
- *   - the electron-updater feed files for the release's channel (derived from
- *     validate-updater-feed.mjs — the single place that already knows how
- *     electron-builder names them), and
- *   - the optional Claude Desktop MCPB extension, and
- *   - checksums-sha256.txt, covering every one of the above.
- *
- * Desktop artifact names are DERIVED from `version` using electron-builder's
- * own default naming rules rather than hard-coded per release, so this stays
- * correct without hand-editing as versions change. See expectedDesktopAssets
- * for exactly how each name is built and where that rule comes from.
- */
+/** Validate the complete, updater-free OpenPalm 0.14 release asset set. */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  feedChannelForVersion,
-  updaterFeedsFor,
-  validateUpdaterFeeds,
-} from './validate-updater-feed.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ELECTRON_BUILDER_YML = join(REPO_ROOT, 'packages/electron/electron-builder.yml');
+const ELECTRON_BUILDER_YML = join(REPO_ROOT, 'packages/electron/electron-builder.lean.yml');
 
-/**
- * CLI binary assets, one per `cli` job matrix entry in release.yml. Kept as a
- * plain list (not parsed out of the workflow YAML) because a GitHub Actions
- * matrix must stay static; release-aggregates-hygiene.test.ts cross-checks
- * this list against that matrix so the two cannot drift silently, and
- * release.yml's publish-bootstrap job imports this list instead of keeping a
- * third copy.
- */
 export const CLI_BINARIES = [
-  'openpalm-cli-linux-x64',
-  'openpalm-cli-linux-arm64',
-  'openpalm-cli-darwin-x64',
-  'openpalm-cli-darwin-arm64',
-  'openpalm-cli-windows-x64.exe',
+	'openpalm-cli-linux-x64',
+	'openpalm-cli-linux-arm64',
+	'openpalm-cli-darwin-x64',
+	'openpalm-cli-darwin-arm64',
+	'openpalm-cli-windows-x64.exe'
 ];
 
-/**
- * The `productName` electron-builder.yml declares. Read from the file rather
- * than duplicated here so a rename doesn't require touching this validator —
- * intentionally not a general YAML parser (same rationale as
- * validate-updater-feed.mjs's parseUpdaterFeed): this file is short,
- * human-maintained, and `productName:` is a single top-level scalar.
- */
+const ADMIN_TARGETS = [
+	{ platform: 'mac', arch: 'arm64', extension: 'zip' },
+	{ platform: 'mac', arch: 'x64', extension: 'zip' },
+	{ platform: 'linux', arch: 'x64', extension: 'AppImage' },
+	{ platform: 'linux', arch: 'arm64', extension: 'AppImage' },
+	{ platform: 'windows', arch: 'x64', extension: 'exe' }
+];
+
 export function readElectronProductName(path = ELECTRON_BUILDER_YML) {
-  const text = readFileSync(path, 'utf8');
-  const match = /^productName:\s*(.+?)\s*$/m.exec(text);
-  if (!match) throw new Error(`Could not find productName in ${path}`);
-  const value = match[1].trim();
-  return value.startsWith('"') || value.startsWith("'") ? value.slice(1, -1) : value;
+	const text = readFileSync(path, 'utf8');
+	const match = /^productName:\s*(.+?)\s*$/m.exec(text);
+	if (!match) throw new Error(`Could not find productName in ${path}`);
+	const value = match[1].trim();
+	return value.startsWith('"') || value.startsWith("'") ? value.slice(1, -1) : value;
 }
 
-const DEFAULT_ARCH = 'x64';
-
-/**
- * Desktop targets electron-builder.yml configures, one entry per artifact it
- * produces. Update this alongside electron-builder.yml's mac/win/linux
- * `target` lists if a platform or arch is ever added or removed — it is the
- * one place in this validator that encodes that table.
- *
- *   mac:   zip,   arch [arm64, x64]
- *   win:   nsis,  arch [x64]   (the updater-capable installer)
- *          zip,   arch [x64]   (manual/portable download, no updater feed)
- *   linux: AppImage, arch [x64, arm64]
- */
-const DESKTOP_TARGETS = [
-  { platform: 'mac', arch: 'arm64', kind: 'zip' },
-  { platform: 'mac', arch: 'x64', kind: 'zip' },
-  { platform: 'win', arch: 'x64', kind: 'nsis' },
-  { platform: 'win', arch: 'x64', kind: 'zip' },
-  { platform: 'linux', arch: 'x64', kind: 'appimage' },
-  { platform: 'linux', arch: 'arm64', kind: 'appimage' },
-];
-
-/**
- * Name one desktop artifact the way electron-builder actually names it
- * (traced from the installed electron-builder package):
- *   - zip (mac/win):    default pattern, electron-builder.yml sets no
- *                       `artifactName` for these — "${productName}-${version}[-${arch}]-${os}.zip"
- *   - AppImage (linux): same, no override — "${productName}-${version}[-${arch}].AppImage"
- *   - nsis (win):       electron-builder.yml SETS `nsis.artifactName` to
- *                       "${productName}-Setup-${version}.${ext}" (review
- *                       finding #1): the built-in default
- *                       "${productName} Setup ${version}.${ext}" contains a
- *                       space, which is not a valid GitHub release asset
- *                       character — app-builder-lib's
- *                       computeSafeArtifactNameIfNeeded rewrites it to
- *                       "${productName}-Setup-${version}.exe" for the
- *                       electron-updater feed (updateInfoBuilder.js) while
- *                       the on-disk file kept the space, so the feed
- *                       referenced a file that was never uploaded. Setting
- *                       the artifactName explicitly makes the on-disk name,
- *                       the feed, and the GitHub-uploaded asset all agree.
- * The `-${arch}` segment is dropped for the configured default arch (x64);
- * every non-default arch (arm64) keeps it. NSIS only ever builds x64 (see
- * DESKTOP_TARGETS), so it never carries an arch suffix.
- */
-export function desktopAssetName(productName, version, { platform, arch, kind }) {
-  const archSuffix = arch === DEFAULT_ARCH ? '' : `-${arch}`;
-  switch (kind) {
-    case 'zip':
-      return `${productName}-${version}${archSuffix}-${platform}.zip`;
-    case 'appimage':
-      return `${productName}-${version}${archSuffix}.AppImage`;
-    case 'nsis':
-      return `${productName}-Setup-${version}${archSuffix}.exe`;
-    default:
-      throw new Error(`Unknown desktop target kind: ${kind}`);
-  }
+function productSlug(productName) {
+	const slug = productName
+		.trim()
+		.replace(/[^A-Za-z0-9._-]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	if (!slug) throw new Error('Electron productName does not produce a safe artifact prefix');
+	return slug;
 }
 
-/** Every desktop artifact the release must carry, one per DESKTOP_TARGETS entry. */
-export function expectedDesktopAssets(version, productName = readElectronProductName()) {
-  return DESKTOP_TARGETS.map((target) => desktopAssetName(productName, version, target));
+export function adminAssetName(productName, version, { platform, arch, extension }) {
+	const prefix = productSlug(productName);
+	if (platform === 'windows') return `${prefix}-Setup-${version}.${extension}`;
+	const artifactArch = platform === 'linux' && arch === 'x64' ? 'x86_64' : arch;
+	return `${prefix}-${version}-${artifactArch}-${platform}.${extension}`;
 }
 
-/**
- * The electron-updater feed files for `version`'s channel. Delegates to
- * validate-updater-feed.mjs so the channel-naming rule (stable → latest.yml,
- * any prerelease → beta.yml) lives in exactly one place.
- */
-export function expectedUpdaterFeeds(version) {
-  return updaterFeedsFor(feedChannelForVersion(version));
+export function expectedAdminAssets(version, productName = readElectronProductName()) {
+	return ADMIN_TARGETS.map((target) => adminAssetName(productName, version, target));
 }
+
+// Compatibility aliases for release tooling that previously called these
+// desktop-oriented names. The implementation now describes only lean Admin.
+export const desktopAssetName = adminAssetName;
+export const expectedDesktopAssets = expectedAdminAssets;
 
 export function expectedClaudeExtensionAsset(version) {
-  return `openpalm-claude-desktop-${version}.mcpb`;
+	return `openpalm-claude-desktop-${version}.mcpb`;
 }
 
-/** The complete required-asset set for `version`. */
 export function requiredReleaseAssets(version, productName = readElectronProductName()) {
-  return [
-    ...CLI_BINARIES,
-    ...expectedDesktopAssets(version, productName),
-    ...expectedUpdaterFeeds(version),
-    expectedClaudeExtensionAsset(version),
-    'checksums-sha256.txt',
-  ];
+	return [
+		...CLI_BINARIES,
+		...expectedAdminAssets(version, productName),
+		expectedClaudeExtensionAsset(version),
+		'checksums-sha256.txt'
+	];
 }
 
-/**
- * Look up the sha256 `checksums-sha256.txt` (as written by `sha256sum --`)
- * records for `filename`. Match only on the fixed 64-hex-character hash prefix
- * so filenames remain opaque to the parser.
- */
 export function checksumFor(checksumsText, filename) {
-  for (const rawLine of checksumsText.split('\n')) {
-    const line = rawLine.trimEnd();
-    if (!line) continue;
-    const match = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line);
-    if (match && match[2] === filename) return match[1];
-  }
-  return undefined;
+	for (const rawLine of checksumsText.split('\n')) {
+		const match = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(rawLine.trimEnd());
+		if (match?.[2] === filename) return match[1];
+	}
+	return undefined;
 }
 
-/**
- * Validate the asset set in `dir` against `version`. Returns every problem
- * found (empty means valid) instead of throwing on the first one, so a single
- * run reports the complete gap rather than one missing asset per re-run.
- */
+export function writeReleaseAssetManifest(dir, version, productName = readElectronProductName()) {
+	const manifest = {
+		version,
+		product: productName,
+		assets: [...requiredReleaseAssets(version, productName)].sort()
+	};
+	writeFileSync(
+		join(dir, 'release-assets-manifest.json'),
+		`${JSON.stringify(manifest, null, 2)}\n`,
+		{ mode: 0o644 }
+	);
+	return manifest;
+}
+
 export function validateReleaseAssets(dir, version, productName = readElectronProductName()) {
-  const problems = [];
-  const manifestPath = join(dir, 'release-assets-manifest.json');
-  if (!existsSync(manifestPath)) {
-    problems.push(`Missing ${manifestPath}`);
-    return problems;
-  }
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (manifest.version !== version || !Array.isArray(manifest.assets)) {
-    problems.push('Release asset manifest has the wrong version or asset list');
-  }
+	const problems = [];
+	const manifestPath = join(dir, 'release-assets-manifest.json');
+	if (!existsSync(manifestPath)) return [`Missing ${manifestPath}`];
 
-  const assets = new Set(Array.isArray(manifest.assets) ? manifest.assets : []);
-  const required = requiredReleaseAssets(version, productName);
-  for (const name of required) {
-    if (!assets.has(name) || !existsSync(join(dir, name))) {
-      problems.push(`Missing release asset: ${name}`);
-    }
-  }
+	let manifest;
+	try {
+		manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+	} catch (error) {
+		return [
+			`Invalid release asset manifest: ${error instanceof Error ? error.message : String(error)}`
+		];
+	}
+	if (
+		manifest.version !== version ||
+		manifest.product !== productName ||
+		!Array.isArray(manifest.assets) ||
+		!manifest.assets.every((item) => typeof item === 'string')
+	) {
+		problems.push('Release asset manifest has the wrong version, product, or asset list');
+	}
 
-  // This is the one release-asset gate used by both dry runs and live releases.
-  // Compose the semantic updater validation here so neither workflow path can
-  // validate only feed presence while skipping its artifact contract.
-  const presentFiles = new Set(readdirSync(dir));
-  problems.push(...validateUpdaterFeeds(dir, version, presentFiles, productName));
+	const required = requiredReleaseAssets(version, productName);
+	const assets = new Set(Array.isArray(manifest.assets) ? manifest.assets : []);
+	if (assets.size !== (Array.isArray(manifest.assets) ? manifest.assets.length : 0)) {
+		problems.push('Release asset manifest contains duplicate filenames');
+	}
+	for (const name of required) {
+		if (!assets.has(name) || !existsSync(join(dir, name))) {
+			problems.push(`Missing release asset: ${name}`);
+		}
+	}
+	for (const name of assets) {
+		if (!required.includes(name)) problems.push(`Unexpected release asset in manifest: ${name}`);
+	}
 
-  const checksumsPath = join(dir, 'checksums-sha256.txt');
-  if (!existsSync(checksumsPath)) {
-    problems.push('Missing checksums-sha256.txt');
-    return problems;
-  }
-  const checksums = readFileSync(checksumsPath, 'utf8');
-  for (const name of required) {
-    if (name === 'checksums-sha256.txt' || !existsSync(join(dir, name))) continue; // already reported above
-    const expected = checksumFor(checksums, name);
-    if (!expected) {
-      problems.push(`Missing checksum for ${name}`);
-      continue;
-    }
-    const actual = createHash('sha256').update(readFileSync(join(dir, name))).digest('hex');
-    if (actual !== expected) problems.push(`Checksum mismatch for ${name}`);
-  }
-
-  return problems;
+	const checksumsPath = join(dir, 'checksums-sha256.txt');
+	if (!existsSync(checksumsPath)) return [...problems, 'Missing checksums-sha256.txt'];
+	const checksums = readFileSync(checksumsPath, 'utf8');
+	for (const name of required) {
+		if (name === 'checksums-sha256.txt' || !existsSync(join(dir, name))) continue;
+		const expected = checksumFor(checksums, name);
+		if (!expected) {
+			problems.push(`Missing checksum for ${name}`);
+			continue;
+		}
+		const actual = createHash('sha256')
+			.update(readFileSync(join(dir, name)))
+			.digest('hex');
+		if (actual !== expected) problems.push(`Checksum mismatch for ${name}`);
+	}
+	return problems;
 }
 
-// Run as a script (not when imported by tests).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[/\\]/, ''))) {
-  const dir = process.env.RELEASE_ASSETS_DIR ?? 'dist';
-  const version = process.env.VERSION;
-  if (!version) throw new Error('VERSION is required');
-
-  const problems = validateReleaseAssets(dir, version);
-  if (problems.length > 0) {
-    console.error(`Release asset set for ${version} is incomplete:`);
-    for (const problem of problems) console.error(`  - ${problem}`);
-    process.exit(1);
-  }
-  console.log(`Validated ${requiredReleaseAssets(version).length} required release assets for ${version}`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	const dir = resolve(process.env.RELEASE_ASSETS_DIR ?? 'dist');
+	const version = process.env.VERSION;
+	if (!version) throw new Error('VERSION is required');
+	if (process.argv.includes('--write-manifest')) writeReleaseAssetManifest(dir, version);
+	const problems = validateReleaseAssets(dir, version);
+	if (problems.length > 0) {
+		console.error(`Release asset set for ${version} is incomplete:`);
+		for (const problem of problems) console.error(`  - ${problem}`);
+		process.exit(1);
+	}
+	console.log(
+		`Validated ${requiredReleaseAssets(version).length} required release assets for ${version}`
+	);
 }

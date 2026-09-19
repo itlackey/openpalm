@@ -25,6 +25,10 @@ header,
 	justify-content: space-between;
 	gap: 16px;
 }
+.actions.wrap {
+	flex-wrap: wrap;
+	justify-content: flex-start;
+}
 h1 {
 	margin: 4px 0;
 	font-size: 32px;
@@ -112,6 +116,9 @@ input[type="checkbox"] {
 	gap: 14px;
 	margin: 20px 0;
 }
+.grid.wide {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .policy-grid {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
@@ -127,7 +134,9 @@ input[type="checkbox"] {
 	font-size: 13px;
 }
 .grid input,
-.policy-grid select {
+.grid select,
+.policy-grid select,
+.actions select {
 	width: 100%;
 	margin-top: 7px;
 	padding: 10px;
@@ -135,6 +144,9 @@ input[type="checkbox"] {
 	border-radius: 7px;
 	background: #0b1311;
 	color: #fff;
+}
+.grid button {
+	align-self: end;
 }
 pre {
 	max-height: 300px;

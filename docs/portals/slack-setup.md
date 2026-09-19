@@ -14,11 +14,12 @@ Create an app in the Slack API console and:
    types; and
 5. install the app to the workspace.
 
-Write the bot and app tokens to the host:
+Store the bot and app tokens through the CLI:
 
-```text
-~/.openpalm/state/secrets/slack_bot_token
-~/.openpalm/state/secrets/slack_app_token
+```bash
+openpalm portal token slack \
+  --bot-token-file /private/path/to/bot-token \
+  --app-token-file /private/path/to/app-token
 ```
 
 Both files must be mode 0600. Do not store the values in Compose environment
@@ -26,15 +27,10 @@ variables.
 
 ## 2. Configure a default-deny scope
 
-Edit `config/stack/custom.compose.yml`:
+Configure access through validated stack intent:
 
-```yaml
-services:
-  slack:
-    environment:
-      SLACK_ALLOWED_CHANNELS: "C0123456789"
-      SLACK_ALLOWED_USERS: ""
-      SLACK_BLOCKED_USERS: ""
+```bash
+openpalm portal access slack --channels C0123456789 --no-apply
 ```
 
 Values are comma-separated Slack IDs. Every non-empty allowlist must match. A
@@ -70,8 +66,9 @@ openpalm credential mappings slack
 Remove the override with `openpalm credential unmap slack U012ABCDEF`. Channel,
 user, and block-list checks still apply; a credential mapping never grants
 portal access. The portal receives only a generated keyring for its fallback
-and mapped credentials. OAuth remains a future identity source for the same
-registry.
+and mapped credentials. Guardian OAuth issuer/subject mappings use the same
+registry for remote MCP clients; Slack itself continues to use exact
+platform-user mappings.
 
 Mention the app in an allowed channel or message it directly when the user
 scope permits that. Thread replies retain an opaque, credential-scoped Guardian

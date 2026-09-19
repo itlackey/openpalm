@@ -99,7 +99,10 @@ const history = defineCommand({
 });
 
 const adopt = defineCommand({
-	meta: { name: 'adopt', description: 'Validate and adopt one staged imported task in paused state' },
+	meta: {
+		name: 'adopt',
+		description: 'Validate and adopt one staged imported task in paused state'
+	},
 	args: { file: { type: 'positional', required: true, description: 'staged task file' } },
 	run: defineAction(async ({ args }) => {
 		const state = createLeanState();

@@ -34,6 +34,16 @@ install plus explicit import makes that boundary visible and recoverable.
 
 Do not run old and new stacks against the same writable directories.
 
+For an already-running 0.14 home, create a portable recovery source with:
+
+```bash
+openpalm backup --to /absolute/path/to/new-or-empty-backup
+```
+
+The resulting directory follows the same allowlisted layout accepted by the
+importer and includes an integrity manifest. Secrets and identity maps remain
+explicit opt-ins.
+
 ## Import contract
 
 The 0.14 CLI provides:
@@ -48,6 +58,8 @@ Dry-run is also the default when neither flag is supplied. The implementation:
 - dry-run is the first documented action;
 - the source is opened read-only and never modified;
 - every candidate source and destination path is listed before copying;
+- portable 0.14 backups are checked against their integrity manifest before
+  any candidate is accepted;
 - existing destination files are preserved and any non-pristine conflict
   blocks the entire apply;
 - imports are restricted to an explicit allowlist;

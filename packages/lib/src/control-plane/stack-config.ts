@@ -2,7 +2,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 
-import { mergeEnvContent, stackConfigFile, stackEnvFile, writeFileAtomic } from './lean-foundation.js';
+import {
+	mergeEnvContent,
+	stackConfigFile,
+	stackEnvFile,
+	writeFileAtomic
+} from './lean-foundation.js';
 
 export { stackConfigFile } from './lean-foundation.js';
 
@@ -15,6 +20,19 @@ export type GuardianPolicy = (typeof GUARDIAN_POLICIES)[number];
 export type CredentialConfig = {
 	id: string;
 	policy: GuardianPolicy;
+};
+
+export type DiscordPortalAccess = {
+	guilds: string[];
+	roles: string[];
+	users: string[];
+	blockedUsers: string[];
+};
+
+export type SlackPortalAccess = {
+	channels: string[];
+	users: string[];
+	blockedUsers: string[];
 };
 
 export type StackConfig = {
@@ -30,8 +48,8 @@ export type StackConfig = {
 	};
 	credentials: Record<string, CredentialConfig>;
 	portals: {
-		discord: { enabled: boolean; credential: string };
-		slack: { enabled: boolean; credential: string };
+		discord: { enabled: boolean; credential: string; access: DiscordPortalAccess };
+		slack: { enabled: boolean; credential: string; access: SlackPortalAccess };
 	};
 };
 
@@ -89,8 +107,16 @@ export function defaultStackConfig(): StackConfig {
 			slack: { id: 'slack', policy: DEFAULT_POLICIES.slack }
 		},
 		portals: {
-			discord: { enabled: false, credential: 'discord' },
-			slack: { enabled: false, credential: 'slack' }
+			discord: {
+				enabled: false,
+				credential: 'discord',
+				access: { guilds: [], roles: [], users: [], blockedUsers: [] }
+			},
+			slack: {
+				enabled: false,
+				credential: 'slack',
+				access: { channels: [], users: [], blockedUsers: [] }
+			}
 		}
 	};
 }
@@ -110,6 +136,73 @@ function parsePort(value: unknown): number | null {
 	return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65_535
 		? value
 		: null;
+}
+
+function parseIdList(
+	value: unknown,
+	label: string,
+	pattern: RegExp
+): { ok: true; value: string[] } | { ok: false; error: string } {
+	if (!Array.isArray(value) || value.length > 1_000) {
+		return { ok: false, error: `${label} must be an array of at most 1000 IDs` };
+	}
+	const result: string[] = [];
+	const seen = new Set<string>();
+	for (const item of value) {
+		if (typeof item !== 'string' || !pattern.test(item)) {
+			return { ok: false, error: `${label} contains an invalid platform ID` };
+		}
+		if (!seen.has(item)) result.push(item);
+		seen.add(item);
+	}
+	return { ok: true, value: result.sort() };
+}
+
+function parseDiscordAccess(value: unknown) {
+	const source = value === undefined ? {} : asRecord(value);
+	if (!source || !hasOnlyKeys(source, ['guilds', 'roles', 'users', 'blockedUsers'])) {
+		return { ok: false as const, error: 'discord access contains unsupported settings' };
+	}
+	const result = {
+		guilds: parseIdList(source.guilds ?? [], 'discord guilds', /^[0-9]{5,32}$/),
+		roles: parseIdList(source.roles ?? [], 'discord roles', /^[0-9]{5,32}$/),
+		users: parseIdList(source.users ?? [], 'discord users', /^[0-9]{5,32}$/),
+		blockedUsers: parseIdList(source.blockedUsers ?? [], 'discord blocked users', /^[0-9]{5,32}$/)
+	};
+	if (!result.guilds.ok) return result.guilds;
+	if (!result.roles.ok) return result.roles;
+	if (!result.users.ok) return result.users;
+	if (!result.blockedUsers.ok) return result.blockedUsers;
+	return {
+		ok: true as const,
+		value: {
+			guilds: result.guilds.value,
+			roles: result.roles.value,
+			users: result.users.value,
+			blockedUsers: result.blockedUsers.value
+		}
+	};
+}
+
+function parseSlackAccess(value: unknown) {
+	const source = value === undefined ? {} : asRecord(value);
+	if (!source || !hasOnlyKeys(source, ['channels', 'users', 'blockedUsers'])) {
+		return { ok: false as const, error: 'slack access contains unsupported settings' };
+	}
+	const channels = parseIdList(source.channels ?? [], 'slack channels', /^[CDG][A-Z0-9]{2,31}$/);
+	if (!channels.ok) return channels;
+	const users = parseIdList(source.users ?? [], 'slack users', /^[UW][A-Z0-9]{2,31}$/);
+	if (!users.ok) return users;
+	const blockedUsers = parseIdList(
+		source.blockedUsers ?? [],
+		'slack blocked users',
+		/^[UW][A-Z0-9]{2,31}$/
+	);
+	if (!blockedUsers.ok) return blockedUsers;
+	return {
+		ok: true as const,
+		value: { channels: channels.value, users: users.value, blockedUsers: blockedUsers.value }
+	};
 }
 
 function validBindAddress(value: string): boolean {
@@ -179,8 +272,8 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 		!hasOnlyKeys(assistant, ['bindAddress', 'port']) ||
 		!hasOnlyKeys(gateway, ['enabled', 'bindAddress', 'port']) ||
 		!hasOnlyKeys(portals, ['discord', 'slack']) ||
-		!hasOnlyKeys(discord, ['enabled', 'credential']) ||
-		!hasOnlyKeys(slack, ['enabled', 'credential'])
+		!hasOnlyKeys(discord, ['enabled', 'credential', 'access']) ||
+		!hasOnlyKeys(slack, ['enabled', 'credential', 'access'])
 	) {
 		return { ok: false, error: 'stack config contains unsupported settings' };
 	}
@@ -208,6 +301,10 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	if (!isCredentialUsername(discord.credential) || !isCredentialUsername(slack.credential)) {
 		return { ok: false, error: 'portal credential values must be valid credential usernames' };
 	}
+	const discordAccess = parseDiscordAccess(discord.access);
+	if (!discordAccess.ok) return discordAccess;
+	const slackAccess = parseSlackAccess(slack.access);
+	if (!slackAccess.ok) return slackAccess;
 	const credentials = parseCredentials(root.credentials);
 	if (!credentials.ok) return credentials;
 	if (
@@ -227,8 +324,12 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 		},
 		credentials: credentials.value,
 		portals: {
-			discord: { enabled: discord.enabled, credential: discord.credential },
-			slack: { enabled: slack.enabled, credential: slack.credential }
+			discord: {
+				enabled: discord.enabled,
+				credential: discord.credential,
+				access: discordAccess.value
+			},
+			slack: { enabled: slack.enabled, credential: slack.credential, access: slackAccess.value }
 		}
 	};
 	return { ok: true, config, source: 'file' };
@@ -277,7 +378,14 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 		OP_ASSISTANT_BIND_ADDRESS: config.assistant.bindAddress,
 		OP_ASSISTANT_PORT: String(config.assistant.port),
 		OP_GUARDIAN_BIND_ADDRESS: config.gateway.bindAddress,
-		OP_GUARDIAN_PORT: String(config.gateway.port)
+		OP_GUARDIAN_PORT: String(config.gateway.port),
+		DISCORD_ALLOWED_GUILDS: config.portals.discord.access.guilds.join(','),
+		DISCORD_ALLOWED_ROLES: config.portals.discord.access.roles.join(','),
+		DISCORD_ALLOWED_USERS: config.portals.discord.access.users.join(','),
+		DISCORD_BLOCKED_USERS: config.portals.discord.access.blockedUsers.join(','),
+		SLACK_ALLOWED_CHANNELS: config.portals.slack.access.channels.join(','),
+		SLACK_ALLOWED_USERS: config.portals.slack.access.users.join(','),
+		SLACK_BLOCKED_USERS: config.portals.slack.access.blockedUsers.join(',')
 	};
 }
 
@@ -285,7 +393,11 @@ function withoutRetiredPolicyEnv(content: string): string {
 	return content
 		.split(/\r?\n/)
 		.filter((line) => {
-			const key = line.trimStart().replace(/^export\s+/, '').split('=', 1)[0]?.trim();
+			const key = line
+				.trimStart()
+				.replace(/^export\s+/, '')
+				.split('=', 1)[0]
+				?.trim();
 			return !/^GUARDIAN_(?:OWNER|DISCORD|SLACK)_POLICY$/.test(key ?? '');
 		})
 		.join('\n');
@@ -300,9 +412,7 @@ export function writeStackConfig(homeDir: string, value: StackConfig): StackConf
 	writeCredentialRegistry(homeDir, config);
 
 	const envPath = stackEnvFile(homeDir);
-	const current = withoutRetiredPolicyEnv(
-		existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
-	);
+	const current = withoutRetiredPolicyEnv(existsSync(envPath) ? readFileSync(envPath, 'utf8') : '');
 	writeFileAtomic(envPath, mergeEnvContent(current, stackConfigEnv(config)), 0o600);
 	return config;
 }

@@ -115,7 +115,8 @@ process.
 - Assistant bind and port;
 - Guardian enablement, bind, and port;
 - named credential IDs and policies; and
-- Discord and Slack enablement and fallback identities.
+- Discord and Slack enablement, fallback identities, and validated default-deny
+  access lists.
 
 Portal user maps and OAuth identity maps are operator-owned files. Raw keys are
 private files. `state/stack.env` is derived and contains no secrets.

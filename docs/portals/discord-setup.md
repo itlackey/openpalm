@@ -13,11 +13,11 @@ In the Discord developer portal:
    send messages; and
 4. copy the bot token once.
 
-Write the token on the host:
+Store the token through the CLI. `-` reads it from standard input and the value
+is never written to Compose, stack intent, logs, or command output:
 
 ```bash
-install -m 600 /dev/null ~/.openpalm/state/secrets/discord_bot_token
-printf '%s' 'BOT_TOKEN' > ~/.openpalm/state/secrets/discord_bot_token
+openpalm portal token discord --bot-token-file -
 ```
 
 Avoid putting the token in shell history; an interactive secret editor or
@@ -25,16 +25,13 @@ password-manager command is preferable.
 
 ## 2. Configure a default-deny scope
 
-Edit `config/stack/custom.compose.yml` and set at least one allowlist:
+Configure at least one allowlist through validated stack intent:
 
-```yaml
-services:
-  discord:
-    environment:
-      DISCORD_ALLOWED_GUILDS: "guild-id"
-      DISCORD_ALLOWED_ROLES: "role-id"
-      DISCORD_ALLOWED_USERS: ""
-      DISCORD_BLOCKED_USERS: ""
+```bash
+openpalm portal access discord \
+  --guilds 123456789012345678 \
+  --roles 234567890123456789 \
+  --no-apply
 ```
 
 Values are comma-separated Discord snowflake IDs. Every non-empty allowlist must
@@ -73,8 +70,9 @@ openpalm credential mappings discord
 Remove the override with `openpalm credential unmap discord
 123456789012345678`. All guild, role, user, and block-list checks still apply;
 a credential mapping never grants portal access. The portal receives only a
-generated keyring for its fallback and mapped credentials. OAuth remains a
-future identity source for the same registry.
+generated keyring for its fallback and mapped credentials. Guardian OAuth
+issuer/subject mappings resolve through the same registry for remote MCP
+clients; Discord itself continues to use exact platform-user mappings.
 
 Mention the bot in an allowed server channel or send an allowed direct message.
 Replies continue within a per-user channel/thread and credential-scoped

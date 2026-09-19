@@ -23,7 +23,13 @@
 
       <p id="notice" role="status" aria-live="polite"></p>
 
-      <section>
+      <section id="install-section" hidden>
+        <h2>Install your personal agent</h2>
+        <p class="muted">OpenPalm will create a private local home, verify Docker, and start the Assistant. Existing non-empty locations are never replaced.</p>
+        <button id="install" type="button">Install OpenPalm</button>
+      </section>
+
+      <section class="installed-only">
         <h2>Runtime</h2>
         <div class="actions">
           <button data-action="start" type="button">Start</button>
@@ -33,7 +39,22 @@
         <div id="services" class="services"></div>
       </section>
 
-      <section>
+      <section class="installed-only">
+        <h2>Provider readiness</h2>
+        <p class="muted">OpenCode owns provider discovery and authentication. API keys are sent directly to the local Assistant and are never displayed again.</p>
+        <div class="actions wrap">
+          <button id="load-providers" class="quiet" type="button">Load providers</button>
+          <button id="test-provider" class="quiet" type="button">Run readiness test</button>
+        </div>
+        <form id="provider-form" class="grid wide">
+          <label>Provider <select id="provider"></select></label>
+          <label>API key <input id="provider-key" type="password" autocomplete="off" /></label>
+          <button type="submit">Save key and test</button>
+        </form>
+        <pre id="provider-result">Provider status has not been checked.</pre>
+      </section>
+
+      <section class="installed-only">
         <h2>Access</h2>
         <form id="config-form">
           <h3>Native OpenCode</h3>
@@ -57,12 +78,83 @@
             <label>Discord credential <select id="discord-credential"></select></label>
             <label>Slack credential <select id="slack-credential"></select></label>
           </div>
+          <h3>Discord access</h3>
+          <div class="grid wide">
+            <label>Allowed guild IDs <input id="discord-guilds" autocomplete="off" /></label>
+            <label>Allowed role IDs <input id="discord-roles" autocomplete="off" /></label>
+            <label>Allowed user IDs <input id="discord-users" autocomplete="off" /></label>
+            <label>Blocked user IDs <input id="discord-blocked-users" autocomplete="off" /></label>
+          </div>
+          <h3>Slack access</h3>
+          <div class="grid wide">
+            <label>Allowed channel IDs <input id="slack-channels" autocomplete="off" /></label>
+            <label>Allowed user IDs <input id="slack-users" autocomplete="off" /></label>
+            <label>Blocked user IDs <input id="slack-blocked-users" autocomplete="off" /></label>
+          </div>
+          <p class="muted policy-note">Portal access is default-deny. Configure an allowed user, channel, guild, or role before enabling an adapter.</p>
           <p class="muted policy-note">chat: no tools · read: non-secret file access · full: inherit Assistant permissions</p>
           <button type="submit">Save and apply</button>
         </form>
+
+        <h3>Credential registry</h3>
+        <form id="credential-form" class="grid wide">
+          <label>Username <input id="credential-username" autocomplete="off" /></label>
+          <label>Policy
+            <select id="credential-policy"><option>chat</option><option>read</option><option>full</option></select>
+          </label>
+          <button type="submit">Create credential</button>
+        </form>
+        <div class="actions wrap">
+          <label>Selected credential <select id="credential-action-name"></select></label>
+          <button id="rotate-credential" class="quiet" type="button">Rotate key</button>
+          <button id="remove-credential" class="danger" type="button">Remove</button>
+        </div>
+        <div class="grid wide">
+          <label>Credential key <input id="credential-key" type="password" readonly autocomplete="off" /></label>
+          <label class="toggle"><input id="show-credential-key" type="checkbox" /> Show revealed key</label>
+          <button id="reveal-credential" class="quiet" type="button">Reveal selected key</button>
+        </div>
+
+        <h3>Portal user mapping</h3>
+        <form id="mapping-form" class="grid wide">
+          <label>Portal <select id="mapping-portal"><option>discord</option><option>slack</option></select></label>
+          <label>Platform user ID <input id="mapping-user" autocomplete="off" /></label>
+          <label>Credential <select id="mapping-credential"></select></label>
+          <button type="submit">Save mapping</button>
+        </form>
+        <pre id="mappings">No mappings.</pre>
+
+        <h3>Portal tokens</h3>
+        <form id="portal-token-form" class="grid wide">
+          <label>Portal <select id="token-portal"><option>discord</option><option>slack</option></select></label>
+          <label>Bot token <input id="bot-token" type="password" autocomplete="off" /></label>
+          <label>Slack app token <input id="app-token" type="password" autocomplete="off" /></label>
+          <button type="submit">Store tokens</button>
+        </form>
+        <p id="token-status" class="muted"></p>
       </section>
 
-      <section>
+      <section class="installed-only">
+        <h2>Backup and import</h2>
+        <form id="backup-form" class="grid wide">
+          <label>New or empty backup directory <input id="backup-destination" autocomplete="off" /></label>
+          <label class="toggle"><input id="backup-auth" type="checkbox" /> Include provider authentication</label>
+          <label class="toggle"><input id="backup-env" type="checkbox" /> Include the private user environment file</label>
+          <label class="toggle"><input id="backup-maps" type="checkbox" /> Include portal/OAuth mappings</label>
+          <button type="submit">Create backup</button>
+        </form>
+        <form id="import-form" class="grid wide">
+          <label>Existing backup or old OpenPalm home <input id="import-source" autocomplete="off" /></label>
+          <label class="toggle"><input id="import-auth" type="checkbox" /> Include provider authentication</label>
+          <label class="toggle"><input id="import-env" type="checkbox" /> Include the private user environment file</label>
+          <label class="toggle"><input id="import-maps" type="checkbox" /> Include portal/OAuth mappings after recreating their credentials</label>
+          <button id="preview-import" class="quiet" type="button">Preview import</button>
+          <button id="apply-import" type="button">Apply import</button>
+        </form>
+        <pre id="data-result">No backup or import operation has run.</pre>
+      </section>
+
+      <section class="installed-only">
         <div class="section-title">
           <h2>Recent logs</h2>
           <button id="load-logs" class="quiet" type="button">Load logs</button>

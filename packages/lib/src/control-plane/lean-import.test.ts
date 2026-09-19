@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createLeanBackup } from './lean-backup.js';
 import { applyLeanImport, planLeanImport } from './lean-import.js';
 import { managedComposeFile } from './lean-foundation.js';
 import { defaultStackConfig, writeStackConfig } from './stack-config.js';
@@ -58,7 +59,9 @@ describe('0.14 fresh-install importer', () => {
 			'knowledge/imported-tasks/news.yml',
 			'stage-task'
 		]);
-		expect(plan.entries.some((entry) => entry.relativeSource.includes('secrets/auth.json'))).toBe(false);
+		expect(plan.entries.some((entry) => entry.relativeSource.includes('secrets/auth.json'))).toBe(
+			false
+		);
 
 		applyLeanImport({ sourceHome: source, destinationHome: destination });
 		expect(readFileSync(join(destination, 'knowledge', 'notes', 'person.md'), 'utf8')).toBe(
@@ -105,5 +108,20 @@ describe('0.14 fresh-install importer', () => {
 				includePortalMaps: true
 			})
 		).toThrow('recreate it before import');
+	});
+
+	it('verifies a portable backup manifest before planning its restore', async () => {
+		const { root, destination } = fixture();
+		const live = join(root, 'live-home');
+		const backup = join(root, 'backup');
+		mkdirSync(join(live, 'knowledge'), { recursive: true });
+		writeStackConfig(live, defaultStackConfig());
+		writeFileSync(join(live, 'knowledge', 'memory.md'), 'remember this');
+		await createLeanBackup({ sourceHome: live, destination: backup });
+		expect(planLeanImport({ sourceHome: backup, destinationHome: destination }).conflicts).toBe(0);
+		writeFileSync(join(backup, 'knowledge', 'memory.md'), 'tampered data');
+		expect(() => planLeanImport({ sourceHome: backup, destinationHome: destination })).toThrow(
+			'Backup checksum mismatch'
+		);
 	});
 });

@@ -1,8 +1,8 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ensureLeanDirs } from './lean-foundation.js';
+import { ensureLeanDirs, writeFileAtomic } from './lean-foundation.js';
 
 export const LEAN_MANAGED_FILES = [
 	'system/stack/stack.compose.yml',
@@ -63,13 +63,39 @@ function copy(
 ): boolean {
 	const source = join(sourceRoot, relativePath);
 	const destination = join(homeDir, relativePath);
-	if (!existsSync(source)) throw new Error(`Required skeleton asset is missing: ${relativePath}`);
-	if (!overwrite && existsSync(destination)) return false;
-	if (overwrite && existsSync(destination) && !lstatSync(destination).isFile()) {
-		throw new Error(`Refusing to replace non-file managed path: ${destination}`);
+	const sourceStat = lstatSync(source, { throwIfNoEntry: false });
+	if (!sourceStat?.isFile()) {
+		throw new Error(`Required skeleton asset is missing or invalid: ${relativePath}`);
 	}
-	mkdirSync(dirname(destination), { recursive: true });
-	copyFileSync(source, destination);
+	const parentPath = dirname(destination);
+	const parentRelative = relative(homeDir, parentPath);
+	if (
+		parentRelative === '..' ||
+		parentRelative.startsWith(`..${sep}`) ||
+		isAbsolute(parentRelative)
+	) {
+		throw new Error(`Skeleton destination escapes OP_HOME: ${destination}`);
+	}
+	let current = homeDir;
+	for (const segment of parentRelative.split(sep).filter(Boolean)) {
+		current = join(current, segment);
+		let stat = lstatSync(current, { throwIfNoEntry: false });
+		if (!stat) {
+			mkdirSync(current, { mode: 0o700 });
+			stat = lstatSync(current);
+		}
+		if (!stat.isDirectory()) {
+			throw new Error(`Refusing non-directory or symlink seed path: ${current}`);
+		}
+	}
+	const destinationStat = lstatSync(destination, { throwIfNoEntry: false });
+	if (destinationStat) {
+		if (!destinationStat.isFile()) {
+			throw new Error(`Refusing to replace non-file seed path: ${destination}`);
+		}
+		if (!overwrite) return false;
+	}
+	writeFileAtomic(destination, readFileSync(source), sourceStat.mode & 0o777);
 	return true;
 }
 

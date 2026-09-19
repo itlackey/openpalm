@@ -126,7 +126,8 @@ export function parseOAuthConfig(value: unknown): OAuthConfig {
 		throw new Error('Enabled OAuth config contains unsupported settings');
 	}
 	const resource = httpsUrl('OAuth resource', root.resource);
-	if (new URL(resource).pathname === '/') throw new Error('OAuth resource must identify the MCP path');
+	if (new URL(resource).pathname === '/')
+		throw new Error('OAuth resource must identify the MCP path');
 	const issuer = httpsUrl('OAuth issuer', root.issuer);
 	const jwksUrl = httpsUrl('OAuth JWKS URL', root.jwksUrl);
 	if (!boundedIdentifier(root.audience)) {
@@ -193,8 +194,10 @@ function ensurePrivateDirectory(path: string): void {
 }
 
 function readJson(path: string): unknown {
-	if (!existsSync(path) || !lstatSync(path).isFile()) throw new Error(`OAuth file is missing: ${path}`);
-	if (statSync(path).size > MAX_FILE_BYTES) throw new Error(`OAuth file exceeds ${MAX_FILE_BYTES} bytes`);
+	if (!existsSync(path) || !lstatSync(path).isFile())
+		throw new Error(`OAuth file is missing: ${path}`);
+	if (statSync(path).size > MAX_FILE_BYTES)
+		throw new Error(`OAuth file exceeds ${MAX_FILE_BYTES} bytes`);
 	return JSON.parse(readFileSync(path, 'utf8')) as unknown;
 }
 
@@ -220,10 +223,7 @@ export function readOAuthIdentityMap(homeDir: string): OAuthIdentityMap {
 	return parseOAuthIdentityMap(readJson(oauthIdentityMapFile(homeDir)));
 }
 
-export function writeOAuthIdentityMap(
-	homeDir: string,
-	value: OAuthIdentityMap
-): OAuthIdentityMap {
+export function writeOAuthIdentityMap(homeDir: string, value: OAuthIdentityMap): OAuthIdentityMap {
 	const parsed = parseOAuthIdentityMap(value);
 	writeJson(oauthIdentityMapFile(homeDir), parsed);
 	return parsed;
@@ -241,7 +241,7 @@ export function ensureOAuthFiles(homeDir: string): void {
 }
 
 export function oauthCredentialUsages(homeDir: string, username: string): string[] {
-	return readOAuthIdentityMap(homeDir).identities
-		.filter((identity) => identity.username === username)
+	return readOAuthIdentityMap(homeDir)
+		.identities.filter((identity) => identity.username === username)
 		.map((identity) => `oauth ${identity.issuer} subject ${identity.subject}`);
 }

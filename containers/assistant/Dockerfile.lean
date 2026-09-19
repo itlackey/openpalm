@@ -1,11 +1,40 @@
 FROM oven/bun:1.3.14 AS tools
-WORKDIR /opt/openpalm/tools
-COPY containers/assistant/tools/package.json ./package.json
-RUN bun install --production \
+ARG TARGETARCH
+WORKDIR /repo
+COPY package.json bun.lock ./
+COPY packages/lib/package.json ./packages/lib/package.json
+COPY packages/skeleton/package.json ./packages/skeleton/package.json
+COPY packages/guardian/package.json ./packages/guardian/package.json
+COPY packages/cli/package.json ./packages/cli/package.json
+COPY packages/portal/package.json ./packages/portal/package.json
+COPY packages/electron/package.json ./packages/electron/package.json
+COPY packages/claude-desktop/package.json ./packages/claude-desktop/package.json
+COPY containers/assistant/tools/package.json ./containers/assistant/tools/package.json
+COPY containers/guardian/tools/package.json ./containers/guardian/tools/package.json
+RUN bun install --frozen-lockfile --production --linker hoisted --filter @openpalm/assistant-tools \
     && rm -rf node_modules/opencode-linux-x64-musl \
               node_modules/opencode-linux-x64-baseline \
               node_modules/opencode-linux-x64-baseline-musl \
-              node_modules/opencode-linux-arm64-musl
+              node_modules/opencode-linux-arm64-musl \
+              node_modules/onnxruntime-node/bin/napi-v6/darwin \
+              node_modules/onnxruntime-node/bin/napi-v6/win32 \
+    && case "${TARGETARCH}" in \
+      amd64) rm -rf node_modules/onnxruntime-node/bin/napi-v6/linux/arm64 \
+                    node_modules/@img/sharp-libvips-linux-arm64 \
+                    node_modules/@img/sharp-libvips-linuxmusl-arm64 \
+                    node_modules/@img/sharp-linux-arm64 \
+                    node_modules/@img/sharp-linuxmusl-arm64 \
+                    node_modules/@img/sharp-libvips-linuxmusl-x64 \
+                    node_modules/@img/sharp-linuxmusl-x64 ;; \
+      arm64) rm -rf node_modules/onnxruntime-node/bin/napi-v6/linux/x64 \
+                    node_modules/@img/sharp-libvips-linux-x64 \
+                    node_modules/@img/sharp-libvips-linuxmusl-x64 \
+                    node_modules/@img/sharp-linux-x64 \
+                    node_modules/@img/sharp-linuxmusl-x64 \
+                    node_modules/@img/sharp-libvips-linuxmusl-arm64 \
+                    node_modules/@img/sharp-linuxmusl-arm64 ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac
 
 FROM oven/bun:1.3.14-slim
 
@@ -27,7 +56,8 @@ RUN apt-get update \
     && echo "${supercronic_sha}  /usr/local/bin/supercronic" | sha256sum -c - \
     && chmod 0755 /usr/local/bin/supercronic
 
-COPY --from=tools /opt/openpalm/tools /opt/openpalm/tools
+COPY --from=tools /repo/node_modules /opt/openpalm/tools/node_modules
+COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
 COPY containers/assistant/entrypoint.lean.sh /usr/local/bin/openpalm-assistant
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 

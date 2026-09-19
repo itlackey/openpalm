@@ -1,6 +1,6 @@
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from 'jose';
 
 import {
 	bearerToken,
@@ -134,7 +134,8 @@ export function parseGuardianOAuthConfig(value: unknown): GuardianOAuthConfig | 
 		throw new Error('Enabled OAuth config contains unsupported settings');
 	}
 	const resource = httpsUrl('OAuth resource', root.resource);
-	if (new URL(resource).pathname === '/') throw new Error('OAuth resource must identify the MCP path');
+	if (new URL(resource).pathname === '/')
+		throw new Error('OAuth resource must identify the MCP path');
 	const issuer = httpsUrl('OAuth issuer', root.issuer);
 	const jwksUrl = httpsUrl('OAuth JWKS URL', root.jwksUrl);
 	if (!boundedIdentifier(root.audience)) {
@@ -208,12 +209,12 @@ function tokenScopes(payload: JWTPayload): ReadonlySet<string> {
 	return result;
 }
 
-function createTokenVerifier(
-	config: GuardianOAuthConfig
+export function createOAuthTokenVerifier(
+	config: GuardianOAuthConfig,
+	keySet: JWTVerifyGetKey = createRemoteJWKSet(new URL(config.jwksUrl), { timeoutDuration: 5_000 })
 ): (token: string, config: GuardianOAuthConfig) => Promise<OAuthClaims> {
-	const jwks = createRemoteJWKSet(new URL(config.jwksUrl), { timeoutDuration: 5_000 });
 	return async (token, current) => {
-		const verified = await jwtVerify(token, jwks, {
+		const verified = await jwtVerify(token, keySet, {
 			issuer: current.issuer,
 			audience: current.audience,
 			algorithms: current.algorithms
@@ -233,8 +234,7 @@ export function createGuardianOAuth(
 	options: CreateGuardianOAuthOptions = {}
 ): GuardianOAuth | null {
 	const configFile = options.configFile ?? Bun.env.GUARDIAN_OAUTH_CONFIG_FILE;
-	const identityMapFile =
-		options.identityMapFile ?? Bun.env.GUARDIAN_OAUTH_IDENTITIES_FILE;
+	const identityMapFile = options.identityMapFile ?? Bun.env.GUARDIAN_OAUTH_IDENTITIES_FILE;
 	const authDirectory = options.authDirectory ?? Bun.env.GUARDIAN_AUTH_DIR ?? '';
 	const config = loadGuardianOAuthConfig(configFile);
 	if (!config) return null;
@@ -246,7 +246,7 @@ export function createGuardianOAuth(
 		'/.well-known/oauth-protected-resource',
 		`/.well-known/oauth-protected-resource/${resourcePath}`
 	]);
-	const verify = options.verify ?? createTokenVerifier(config);
+	const verify = options.verify ?? createOAuthTokenVerifier(config);
 	return {
 		config,
 		metadataPaths,
@@ -271,12 +271,9 @@ export function createGuardianOAuth(
 				}
 				const identityMap = parseGuardianOAuthIdentityMap(readJson(identityMapFile));
 				const match = identityMap.identities.find(
-					(identity) =>
-						identity.issuer === claims.issuer && identity.subject === claims.subject
+					(identity) => identity.issuer === claims.issuer && identity.subject === claims.subject
 				);
-				return match
-					? findCredentialByUsername(match.username, authDirectory)
-					: null;
+				return match ? findCredentialByUsername(match.username, authDirectory) : null;
 			} catch {
 				return null;
 			}

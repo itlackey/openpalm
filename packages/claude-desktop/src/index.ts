@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 
-import {
-	StreamableHTTPClientTransport,
-	type JSONRPCMessage
-} from '@modelcontextprotocol/client';
+import { StreamableHTTPClientTransport, type JSONRPCMessage } from '@modelcontextprotocol/client';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,5 +1,6 @@
 appId: com.openpalm.admin
 productName: OpenPalm Admin
+artifactName: OpenPalm-Admin-${version}-${arch}-${os}.${ext}
 
 directories:
   output: dist/packages
@@ -10,6 +11,36 @@ files:
   - dist/admin-preload.cjs
   - admin/**/*
   - package.json
+
+extraResources:
+  - from: ../skeleton
+    to: skeleton
+    filter:
+      - system/stack/stack.compose.yml
+      - system/assistant/.gitignore
+      - system/assistant/opencode.jsonc
+      - system/assistant/AGENTS.md
+      - system/assistant/agents/remote.md
+      - system/assistant/agents/remote-read.md
+      - system/assistant/agents/remote-full.md
+      - system/assistant/agents/scheduled.md
+      - system/assistant/plugins/akm.js
+      - system/guardian/.gitignore
+      - system/guardian/opencode.jsonc
+      - system/guardian/instructions/moderation.md
+      - config/stack/custom.compose.yml
+      - config/assistant/.gitignore
+      - config/assistant/opencode.json
+      - config/assistant/persona.md
+      - config/assistant/user-profile.md
+      - config/akm/config.json
+      - config/guardian/.gitignore
+      - config/guardian/opencode.json
+      - config/guardian/oauth.json
+      - config/guardian/oauth-identities.json
+      - config/portal/discord/credentials.json
+      - config/portal/slack/credentials.json
+      - knowledge/env/user.env
 
 publish: null
 npmRebuild: false
@@ -23,6 +54,7 @@ mac:
 
 linux:
   executableName: openpalm-admin
+  syncDesktopName: true
   target:
     - target: AppImage
       arch: [x64, arm64]

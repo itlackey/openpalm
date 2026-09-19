@@ -161,9 +161,7 @@ describe('lean Compose security audit', () => {
 				}
 			}
 		};
-		expect(auditLeanCompose(config, home)).toContain(
-			'service assistant may not be privileged'
-		);
+		expect(auditLeanCompose(config, home)).toContain('service assistant may not be privileged');
 		expect(auditLeanCompose(config, home)).toContain(
 			'service assistant may not mount a container runtime'
 		);

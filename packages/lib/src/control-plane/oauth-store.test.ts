@@ -58,9 +58,9 @@ describe('OAuth operator configuration', () => {
 			algorithms: ['RS256']
 		});
 		expect(readOAuthConfig(root)).toEqual(value);
-		expect(() =>
-			parseOAuthConfig({ ...value, resource: 'http://agent.example.com/mcp' })
-		).toThrow('HTTPS');
+		expect(() => parseOAuthConfig({ ...value, resource: 'http://agent.example.com/mcp' })).toThrow(
+			'HTTPS'
+		);
 		expect(() => parseOAuthConfig({ ...value, extra: true })).toThrow('unsupported');
 	});
 

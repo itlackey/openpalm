@@ -97,6 +97,10 @@ openpalm credential rotate research
 openpalm credential show research --show-key
 ```
 
+Use `openpalm connect opencode|mcp|claude|remote` to print the exact settings
+for a client. Secrets are represented by private file paths unless their
+explicit reveal flag is supplied.
+
 Policies are:
 
 | Policy | Capability |
@@ -160,16 +164,33 @@ managed security boundaries.
 
 ## Backup and recovery
 
-Stop the stack before taking a consistent whole-home backup. The most important
-portable data is:
+Create a portable recovery directory without stopping the agent:
 
-- `knowledge/`;
-- `workspace/`; and
-- selected operator files under `config/`.
+```bash
+openpalm backup --to /absolute/path/to/new-or-empty-backup
+```
 
-Back up the full `OP_HOME` when rollback matters, but do not treat `system/`,
-`state/`, or `data/` as a portable configuration API. They may include secrets,
-generated values, version-specific databases, and caches.
+The backup copies the allowlisted `knowledge/`, `workspace/`, Assistant
+preferences, and AKM configuration, records a SHA-256 integrity manifest, and
+can be passed to `openpalm import --from`. Active task definitions are restored
+into the review-required staging area. Restore verifies every recorded size and
+checksum and refuses unrecorded allowlisted files. Symlinks and non-regular
+files are reported rather than followed.
+
+Provider authentication, user environment values, portal identity maps, and
+OAuth configuration require explicit backup flags:
+
+```bash
+openpalm backup --to /absolute/path/to/private-backup \
+  --include-provider-auth \
+  --include-user-env \
+  --include-portal-maps \
+  --include-oauth
+```
+
+For a complete rollback snapshot of an old release, stop the old stack and use
+your operating system's backup tool on its full `OP_HOME`. Do not treat
+`system/`, `state/`, or `data/` as a portable configuration API.
 
 0.14 recovery and migration use a fresh installation followed by an
 allowlisted import. Provider credentials require an explicit secret import;
@@ -178,6 +199,14 @@ inactive until reviewed. See [the 0.14 transition guide](operations/migration-to
 
 ## Optional Admin
 
-Admin may wrap the same setup, status, credential, backup/import, and lifecycle
-operations in a local GUI. It must not become the chat client, a web server, a
-background control plane, or a requirement for headless installs.
+Admin wraps fresh installation and Assistant startup, stack configuration and lifecycle, provider
+API-key readiness, credential creation/rotation/removal, Discord and Slack user
+mapping, portal tokens and allowlists, backup/import, and bounded log viewing
+in a local GUI. Interactive provider OAuth remains delegated to the CLI's
+native OpenCode sign-in flow.
+
+Admin is not the chat client, a web server, a background control plane, or a
+requirement for headless installs. It uses the same filesystem and control-plane
+library as the CLI. Sensitive inputs are password fields; bearer-key reveal is
+an explicit confirmed action and remains masked until the operator chooses to
+show it.

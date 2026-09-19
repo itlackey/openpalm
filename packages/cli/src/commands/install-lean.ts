@@ -63,7 +63,11 @@ export async function bootstrapLeanInstall(options: LeanInstallOptions): Promise
 	const configPath = `${state.homeDir}/state/stack.json`;
 	console.log(`OpenPalm installed at ${state.homeDir}`);
 	console.log(`Stack intent: ${configPath}`);
-	console.log(options.start ? 'Assistant and provider are ready.' : 'Run `openpalm setup` to start and verify your provider.');
+	console.log(
+		options.start
+			? 'Assistant and provider are ready.'
+			: 'Run `openpalm setup` to start and verify your provider.'
+	);
 }
 
 export default defineCommand({

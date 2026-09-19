@@ -150,8 +150,7 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 		GUARDIAN_AUTH_DIR: '/run/openpalm-credentials',
 		GUARDIAN_HANDLE_KEY_FILE: '/run/secrets/guardian_handle_key',
 		GUARDIAN_OAUTH_CONFIG_FILE: '/opt/openpalm/guardian/.config/opencode/oauth.json',
-		GUARDIAN_OAUTH_IDENTITIES_FILE:
-			'/opt/openpalm/guardian/.config/opencode/oauth-identities.json',
+		GUARDIAN_OAUTH_IDENTITIES_FILE: '/opt/openpalm/guardian/.config/opencode/oauth-identities.json',
 		GUARDIAN_MODERATION_URL: 'http://127.0.0.1:4097',
 		GUARDIAN_MODERATION_PORT: '4097',
 		GUARDIAN_MODERATION_THRESHOLD: '3'

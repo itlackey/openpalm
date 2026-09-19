@@ -65,8 +65,7 @@ const listCommand = defineCommand({
 		await runStartAction();
 		await waitForAssistant(state.homeDir, { timeoutMs: 5_000 });
 		const providers = (await listProviders(state.homeDir)).filter(
-			(provider) =>
-				provider.authMethods.length > 0 || provider.authenticated || provider.connected
+			(provider) => provider.authMethods.length > 0 || provider.authenticated || provider.connected
 		);
 		if (args.json) {
 			console.log(JSON.stringify(providers, null, 2));
@@ -114,7 +113,11 @@ const keyCommand = defineCommand({
 		requireLeanInstall(state.homeDir);
 		await runStartAction();
 		await waitForAssistant(state.homeDir);
-		await setProviderApiKey(state.homeDir, String(args.provider), readKey(String(args['key-file'])));
+		await setProviderApiKey(
+			state.homeDir,
+			String(args.provider),
+			readKey(String(args['key-file']))
+		);
 		await verifyAndComplete(state.homeDir);
 	})
 });

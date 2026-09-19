@@ -3,11 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-	listProviders,
-	setProviderApiKey,
-	testAssistantReadiness
-} from './lean-opencode.js';
+import { listProviders, setProviderApiKey, testAssistantReadiness } from './lean-opencode.js';
 import { defaultStackConfig, writeStackConfig } from './stack-config.js';
 
 const homes: string[] = [];
@@ -34,9 +30,7 @@ describe('lean OpenCode setup client', () => {
 			const path = new URL(String(input)).pathname;
 			if (path === '/provider') {
 				return Response.json({
-					all: [
-						{ id: 'anthropic', name: 'Anthropic', source: 'api', models: { sonnet: {} } }
-					],
+					all: [{ id: 'anthropic', name: 'Anthropic', source: 'api', models: { sonnet: {} } }],
 					connected: ['anthropic']
 				});
 			}

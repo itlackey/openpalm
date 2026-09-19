@@ -1,3 +1,23 @@
+FROM oven/bun:1.3.14 AS dependencies
+
+WORKDIR /repo
+COPY package.json bun.lock ./
+COPY packages/lib/package.json ./packages/lib/package.json
+COPY packages/skeleton/package.json ./packages/skeleton/package.json
+COPY packages/guardian/package.json ./packages/guardian/package.json
+COPY packages/cli/package.json ./packages/cli/package.json
+COPY packages/portal/package.json ./packages/portal/package.json
+COPY packages/electron/package.json ./packages/electron/package.json
+COPY packages/claude-desktop/package.json ./packages/claude-desktop/package.json
+COPY containers/assistant/tools/package.json ./containers/assistant/tools/package.json
+COPY containers/guardian/tools/package.json ./containers/guardian/tools/package.json
+RUN bun install --frozen-lockfile --production --linker hoisted \
+        --filter @openpalm/guardian --filter @openpalm/guardian-tools \
+    && rm -rf node_modules/opencode-linux-x64-musl \
+              node_modules/opencode-linux-x64-baseline \
+              node_modules/opencode-linux-x64-baseline-musl \
+              node_modules/opencode-linux-arm64-musl
+
 FROM oven/bun:1.3.14-slim
 
 ENV HOME=/opt/openpalm/guardian \
@@ -7,27 +27,19 @@ ENV HOME=/opt/openpalm/guardian \
     OPENCODE_DISABLE_CLAUDE_CODE=true \
     OPENCODE_DISABLE_EXTERNAL_SKILLS=true \
     OPENCODE_DISABLE_EMBEDDED_WEB_UI=true \
-    PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    PATH="/opt/openpalm/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
-RUN bun install --cwd /opt/openpalm/tools --production \
-    && rm -rf /opt/openpalm/tools/node_modules/opencode-linux-x64-musl \
-              /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline \
-              /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline-musl \
-              /opt/openpalm/tools/node_modules/opencode-linux-arm64-musl \
-              /opt/openpalm/guardian/.bun
+COPY --from=dependencies /repo/node_modules /opt/openpalm/node_modules
 
 ARG GUARDIAN_VERSION
 ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
 
 WORKDIR /opt/openpalm/guardian-app
 COPY packages/guardian/package.json ./package.json
-RUN bun install --production --ignore-scripts \
-    && rm -rf /opt/openpalm/guardian/.bun
 COPY packages/guardian/src/assistant-client.ts \
      packages/guardian/src/conversation.ts \
      packages/guardian/src/credentials.ts \

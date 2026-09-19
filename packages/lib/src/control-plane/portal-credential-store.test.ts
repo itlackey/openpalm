@@ -41,6 +41,9 @@ describe('portal credential maps', () => {
 		expect(() =>
 			parsePortalCredentialMap('slack', { version: 1, users: { U123ABC: 'UPPER' } })
 		).toThrow('invalid credential username');
+		expect(() =>
+			parsePortalCredentialMap('slack', { version: 1, users: { C123ABC: 'owner' } })
+		).toThrow('Invalid slack user ID');
 	});
 
 	it('builds a portal-only keyring from the default and mapped credentials', () => {

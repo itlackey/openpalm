@@ -72,6 +72,14 @@ describe('portal credential registry', () => {
 				credentials: { slack: 's'.repeat(32) }
 			})
 		).toThrow('unavailable credential');
+		expect(() =>
+			parseCredentialBundle('slack', {
+				version: 1,
+				default: 'slack',
+				users: { C123ABC: 'slack' },
+				credentials: { slack: 's'.repeat(32) }
+			})
+		).toThrow('Invalid slack user ID');
 		expect(credentialConversationKey('owner', 'thread:C1:1')).toBe('credential:owner:thread:C1:1');
 	});
 });

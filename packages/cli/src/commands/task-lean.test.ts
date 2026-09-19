@@ -125,9 +125,9 @@ describe('Assistant task helper', () => {
 			'version: 4\nuses: akm/command\nuses: attacker/action\nschedule: "0 8 * * *"\n'
 		);
 
-		expect(
-			run(root, ['adopt', join(root.knowledge, 'imported-tasks', 'safe.yml')]).exitCode
-		).toBe(0);
+		expect(run(root, ['adopt', join(root.knowledge, 'imported-tasks', 'safe.yml')]).exitCode).toBe(
+			0
+		);
 		expect(readFileSync(join(root.knowledge, 'tasks', 'safe.yml'), 'utf8')).toContain(
 			'enabled: false'
 		);

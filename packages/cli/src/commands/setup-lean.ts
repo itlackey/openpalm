@@ -42,7 +42,10 @@ export async function completeLeanSetup(options: {
 }
 
 export default defineCommand({
-	meta: { name: 'setup', description: 'Start Assistant, sign in to a provider, and verify readiness' },
+	meta: {
+		name: 'setup',
+		description: 'Start Assistant, sign in to a provider, and verify readiness'
+	},
 	args: {
 		provider: { type: 'string', description: 'Provider id or name' },
 		method: { type: 'string', description: 'OpenCode login method label' }

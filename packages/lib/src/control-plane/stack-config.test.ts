@@ -37,8 +37,16 @@ describe('StackConfigV2', () => {
 				slack: { id: 'slack', policy: 'chat' }
 			},
 			portals: {
-				discord: { enabled: false, credential: 'discord' },
-				slack: { enabled: false, credential: 'slack' }
+				discord: {
+					enabled: false,
+					credential: 'discord',
+					access: { guilds: [], roles: [], users: [], blockedUsers: [] }
+				},
+				slack: {
+					enabled: false,
+					credential: 'slack',
+					access: { channels: [], users: [], blockedUsers: [] }
+				}
 			}
 		});
 	});
@@ -65,6 +73,12 @@ describe('StackConfigV2', () => {
 		if (!slack) throw new Error('default slack credential missing');
 		slack.id = 'owner';
 		expect(parseStackConfig(duplicate).ok).toBe(false);
+		const invalidAccess = defaultStackConfig();
+		invalidAccess.portals.discord.access.users = ['not-a-snowflake'];
+		expect(parseStackConfig(invalidAccess)).toEqual({
+			ok: false,
+			error: 'discord users contains an invalid platform ID'
+		});
 		expect(parseStackConfig({ ...defaultStackConfig(), voice: { enabled: true } })).toEqual({
 			ok: false,
 			error: 'stack config contains unsupported settings'
@@ -136,6 +150,7 @@ describe('StackConfigV2', () => {
 		const root = home();
 		const config = defaultStackConfig();
 		config.portals.slack.enabled = true;
+		config.portals.slack.access.channels = ['C012ABCDEF'];
 		writeStackConfig(root, config);
 
 		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(2);
@@ -147,6 +162,7 @@ describe('StackConfigV2', () => {
 		expect(env).toContain('OP_ENABLED_ADDONS=gateway,slack');
 		expect(env).not.toContain('OP_DISCORD_CREDENTIAL=');
 		expect(env).not.toContain('OP_SLACK_CREDENTIAL=');
+		expect(env).toContain('SLACK_ALLOWED_CHANNELS=C012ABCDEF');
 		expect(ensureStackConfig(root).portals.slack.enabled).toBe(true);
 	});
 

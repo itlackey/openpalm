@@ -42,6 +42,10 @@ The control plane writes or preserves these non-secret values in
 | `OP_ASSISTANT_PORT` | Derived native OpenCode host port |
 | `OP_GUARDIAN_BIND_ADDRESS` | Derived Guardian host bind |
 | `OP_GUARDIAN_PORT` | Derived Guardian host port |
+| `DISCORD_ALLOWED_GUILDS`, `DISCORD_ALLOWED_ROLES` | Derived Discord scope |
+| `DISCORD_ALLOWED_USERS`, `DISCORD_BLOCKED_USERS` | Derived Discord user scope |
+| `SLACK_ALLOWED_CHANNELS` | Derived Slack channel scope |
+| `SLACK_ALLOWED_USERS`, `SLACK_BLOCKED_USERS` | Derived Slack user scope |
 | `OP_HOST_ENABLED` | Marks this home as a hosted stack |
 | `OP_SETUP_COMPLETE` | Install completion marker |
 
@@ -74,7 +78,8 @@ contain 32 random bytes encoded as base64url. Guardian mounts the complete
 credential store read-only. Each portal mounts only its generated keyring,
 containing the fallback and credentials referenced by that portal's
 `config/portal/<adapter>/credentials.json` user map. Bot-token files are
-created empty and must be filled by the operator before their portal is enabled.
+created empty and must be filled through `openpalm portal token` or Admin before
+their portal is enabled.
 Other secrets are mounted through Compose `secrets`; no secret value belongs
 in an environment variable.
 

@@ -30,8 +30,6 @@ describe('Claude Desktop bridge configuration', () => {
 
 	it('rejects missing and weak credentials', () => {
 		expect(() => readBridgeConfiguration({})).toThrow('credential key');
-		expect(() =>
-			readBridgeConfiguration({ OPENPALM_MCP_TOKEN: 'weak' })
-		).toThrow('credential key');
+		expect(() => readBridgeConfiguration({ OPENPALM_MCP_TOKEN: 'weak' })).toThrow('credential key');
 	});
 });

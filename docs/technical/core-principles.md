@@ -57,6 +57,11 @@ The normal path must not ask the user for a provider base URL, API endpoint,
 model identifier, Compose profile, port, JSON file, or environment variable.
 Advanced users may opt into those controls.
 
+The CLI and optional Admin expose the same guided operations for connection
+settings, access credentials, portal scope, and portable recovery. Ordinary
+portal setup must not require editing Compose YAML or writing secrets with shell
+redirection.
+
 OpenPalm delegates provider discovery, authentication, and model support to
 OpenCode. It may guide and test OpenCode's native sign-in flow, but it must not
 build a competing provider registry, model proxy, or credential format.

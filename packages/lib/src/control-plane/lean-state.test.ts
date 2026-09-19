@@ -46,6 +46,20 @@ describe('0.14 clean install boundary', () => {
 		expect(() => ensureLeanDirs(home)).toThrow('Refusing non-directory or symlink in OP_HOME');
 	});
 
+	it('refuses nested seed symlinks instead of writing managed files outside OP_HOME', async () => {
+		if (process.platform === 'win32') return;
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-seed-symlink-'));
+		roots.push(root);
+		const home = join(root, 'home');
+		const outside = join(root, 'outside');
+		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+		ensureLeanDirs(home);
+		mkdirSync(outside);
+		symlinkSync(outside, join(home, 'system', 'assistant', 'agents'));
+		await expect(applyLeanHomeSeed(home)).rejects.toThrow('symlink seed path');
+		expect(existsSync(join(outside, 'remote.md'))).toBe(false);
+	});
+
 	it('classifies a legacy home as incompatible without mutating its files', () => {
 		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-migration-'));
 		roots.push(root);

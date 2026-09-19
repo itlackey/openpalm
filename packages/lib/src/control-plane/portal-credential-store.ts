@@ -44,7 +44,7 @@ export function isPortalName(value: unknown): value is PortalName {
 
 export function isPortalUserId(portal: PortalName, value: unknown): value is string {
 	if (typeof value !== 'string') return false;
-	return portal === 'discord' ? /^[0-9]{5,32}$/.test(value) : /^[A-Z][A-Z0-9]{2,31}$/.test(value);
+	return portal === 'discord' ? /^[0-9]{5,32}$/.test(value) : /^[UW][A-Z0-9]{2,31}$/.test(value);
 }
 
 export function portalCredentialMapFile(homeDir: string, portal: PortalName): string {

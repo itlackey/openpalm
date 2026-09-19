@@ -283,7 +283,9 @@ const map = defineCommand({
 			if (existing) existing.username = username;
 			else mapping.identities.push({ issuer, subject, username });
 			writeOAuthIdentityMap(homeDir, mapping);
-			console.log(`oauth ${issuer} subject ${subject}: ${username} (${config.credentials[username]?.policy})`);
+			console.log(
+				`oauth ${issuer} subject ${subject}: ${username} (${config.credentials[username]?.policy})`
+			);
 			return;
 		}
 		const portal = requirePortal(target);

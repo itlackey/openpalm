@@ -91,6 +91,17 @@ openpalm restart
 openpalm stop
 ```
 
+Get exact client settings without searching through state files:
+
+```bash
+openpalm connect opencode
+openpalm connect mcp --credential owner
+openpalm connect claude --credential claude-desktop
+openpalm connect remote
+```
+
+Secret values are omitted unless `--show-key` is explicitly requested.
+
 ## Knowledge and recurring work
 
 The agent's durable knowledge, skills, and task definitions live under
@@ -141,16 +152,21 @@ public internet.
 ## Optional Discord and Slack access
 
 ```bash
-openpalm addon enable discord
-openpalm addon enable slack
 openpalm credential add family read
 openpalm credential map discord 123456789012345678 family
 openpalm credential map slack U012ABCDEF family
+openpalm portal token discord --bot-token-file -
+openpalm portal access discord --users 123456789012345678 --no-apply
+openpalm addon enable discord
 ```
 
 Portal allowlists remain default-deny. An exact platform-user mapping selects
 the same named credential and policy used by MCP; an unmapped allowed user gets
 the portal's configured fallback identity.
+
+Create a portable, allowlisted recovery directory with `openpalm backup --to
+/path/to/empty-directory`. Provider authentication and identity maps are
+excluded unless their explicit `--include-*` flags are supplied.
 
 ## 0.14 is a clean break
 

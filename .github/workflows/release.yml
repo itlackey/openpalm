@@ -215,6 +215,11 @@ jobs:
         run: |
           cd dist
           sha256sum -- * > checksums-sha256.txt
+      - name: Write manifest and validate the complete lean release
+        env:
+          RELEASE_ASSETS_DIR: dist
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: node scripts/validate-release-assets.mjs --write-manifest
       - uses: actions/upload-artifact@v7
         with:
           name: lean-release-assets

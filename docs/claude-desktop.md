@@ -18,7 +18,7 @@ Claude must modify the workspace or approve Assistant permissions:
 ```bash
 openpalm addon enable gateway
 openpalm credential add claude-desktop read
-openpalm credential show claude-desktop --show-key
+openpalm connect claude --credential claude-desktop
 ```
 
 Download `openpalm-claude-desktop-<version>.mcpb` from the matching OpenPalm

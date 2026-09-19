@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
-const version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string })
-	.version;
+const version = (
+	JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }
+).version;
 const artifacts = join(root, 'artifacts');
 mkdirSync(artifacts, { recursive: true });
 const destination = join(artifacts, `openpalm-claude-desktop-${version}.mcpb`);

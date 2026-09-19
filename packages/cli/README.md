@@ -8,6 +8,9 @@ openpalm setup
 openpalm provider list
 openpalm provider login anthropic
 openpalm provider test
+openpalm connect opencode
+openpalm connect claude --credential owner
+openpalm backup --to /path/to/empty-backup
 openpalm import --from /path/to/old-home --dry-run
 openpalm import --from /path/to/old-home --apply
 openpalm task create morning-news --schedule '0 8 * * 1-5' --prompt 'Summarize project news'
@@ -23,6 +26,8 @@ openpalm credential set-policy automation full
 openpalm config portal discord --credential automation
 openpalm credential map discord 123456789012345678 automation
 openpalm credential mappings discord
+openpalm portal token discord --bot-token-file -
+openpalm portal access discord --users 123456789012345678 --no-apply
 openpalm config oauth --resource https://agent.example/mcp --issuer https://id.example/ --jwks-url https://id.example/jwks.json --no-apply
 openpalm credential map oauth https://id.example/ subject-123 automation
 openpalm doctor

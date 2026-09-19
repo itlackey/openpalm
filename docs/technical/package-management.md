@@ -21,6 +21,9 @@ Dependency changes are made from the repository root so the workspace graph and 
 | `@openpalm/portal` | MCP client, Discord, Slack SDKs | private unified portal image component |
 | `@openpalm/electron` | Electron build dependencies | optional static admin artifact |
 | `@openpalm/skeleton` | none | files embedded in the CLI |
+| `@openpalm/claude-desktop` | MCP client/server | optional Claude Desktop MCPB |
+| `@openpalm/assistant-tools` | OpenCode and AKM | Assistant image tool layer |
+| `@openpalm/guardian-tools` | OpenCode | Guardian moderator tool layer |
 
 The root `workspaces` list is the authoritative active package list. Packages left outside it are legacy removal candidates, not extension release units.
 
@@ -38,7 +41,8 @@ Guardian and Portal communicate through MCP. There is no published OpenPalm port
 
 ## Image builds
 
-Images install dependencies at build time from explicit pinned manifests:
+Images install dependencies at build time from explicit pinned manifests and
+the root lockfile:
 
 - `containers/assistant/tools/package.json` — OpenCode, AKM CLI, AKM plugin;
 - `containers/guardian/tools/package.json` — classifier OpenCode runtime;
@@ -47,7 +51,10 @@ Images install dependencies at build time from explicit pinned manifests:
 
 Entrypoints never run a package manager. Runtime package overrides are not supported.
 
-Direct dependencies in image manifests use exact versions. When changing one, update `bun.lock` and verify the corresponding image.
+Direct dependencies in image manifests use exact versions. Docker builds use
+`--frozen-lockfile`; they cannot silently select a new transitive dependency.
+When changing one, update `bun.lock`, run `bun audit`, and verify the
+corresponding image.
 
 ## Release units
 
@@ -68,6 +75,7 @@ Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian and 
 
 ```bash
 bun install --frozen-lockfile
+bun audit
 bun run check
 bun run test
 bun run lint

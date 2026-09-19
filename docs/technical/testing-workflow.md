@@ -20,10 +20,15 @@ bash -n scripts/dev-setup.sh \
 bridge. `test` runs stack intent/import/security tests, Guardian protocol tests,
 portal policy/state tests, and fresh-install tests.
 
-The 0.14 release gate must also exercise the complete product path: guided
-provider authentication against a controllable test provider, a real readiness
-request, persistent knowledge across restart, a recurring task with a durable
-result, and a dry-run/apply import that leaves the source unchanged.
+`scripts/lean-acceptance.test.ts` exercises the complete deterministic product
+path: fresh install, authenticated provider readiness against a controllable
+provider boundary, persistent knowledge across runtime reconciliation, a
+recurring task with durable history and inbox output, credential-to-portal
+mapping, portable backup, dry-run/apply import, and source immutability.
+
+Guardian's socket-only body-limit test runs in CI and can be enabled locally
+with `OPENPALM_SOCKET_TESTS=1`. OAuth tests sign real JWTs and cover expiry,
+audience, scopes, signing-key rotation, and live issuer/subject mapping changes.
 
 ## Compose validation
 
@@ -59,11 +64,14 @@ docker build -f containers/portal/Dockerfile \
   -t openpalm/portal:dev .
 ```
 
-Inspect each image's configured user and run the relevant health/startup smoke
-when a Docker daemon is available.
+`scripts/smoke-lean-image.sh` verifies each image as its configured non-root
+user. Assistant and Guardian must become healthy; Guardian must reject an
+unknown key and accept an authenticated MCP initialize request. Portal must
+contain its runtime and fail closed when no adapter is selected.
 
 ## CI
 
 `.github/workflows/gates.yml` is the one reusable gate. It runs the local
-checks, materializes a fresh home, validates every profile, enforces the active
-surface, builds each image, and checks for a non-root image user.
+checks and acceptance lane, materializes a fresh home, validates every profile,
+enforces the active surface, builds each image, checks its non-root user, and
+runs its startup/security smoke.

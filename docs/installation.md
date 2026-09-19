@@ -103,6 +103,12 @@ contract.
 
 ## Connect a trusted local client
 
+The guided command prints the URL, username, and private password-file path:
+
+```bash
+openpalm connect opencode
+```
+
 Assistant publishes the authenticated native OpenCode server on:
 
 ```text
@@ -140,7 +146,7 @@ the internet.
 ```bash
 openpalm addon enable gateway
 openpalm credential add personal-client read
-openpalm credential show personal-client --show-key
+openpalm connect mcp --credential personal-client
 ```
 
 Guardian listens at `http://127.0.0.1:3830/mcp`. Give each person or client a
@@ -156,9 +162,11 @@ clients; a public connector should use OAuth identity mappings.
 Discord and Slack are optional adapters to the same Guardian identity model:
 
 ```bash
-openpalm addon enable discord
 openpalm credential add household read
 openpalm credential map discord 123456789012345678 household
+openpalm portal token discord --bot-token-file -
+openpalm portal access discord --users 123456789012345678 --no-apply
+openpalm addon enable discord
 ```
 
 Configure the platform token and default-deny allowlist as described in the

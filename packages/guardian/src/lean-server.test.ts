@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createLeanGuardianHandler, parseAllowedOrigins } from './lean-server.js';
+import {
+	createLeanGuardianHandler,
+	parseAllowedOrigins,
+	startLeanGuardian
+} from './lean-server.js';
+
+const socketIt =
+	process.env.CI === 'true' || process.env.OPENPALM_SOCKET_TESTS === '1' ? it : it.skip;
 
 function handler() {
 	return createLeanGuardianHandler({
@@ -111,10 +118,46 @@ describe('lean Guardian HTTP boundary', () => {
 		expect(metadata.status).toBe(200);
 		expect(await metadata.json()).toEqual(oauth.metadata);
 		expect(metadata.headers.get('access-control-allow-origin')).toBe('*');
-		const unauthorized = await handle(
-			new Request('https://agent.example/mcp', { method: 'POST' })
-		);
+		const unauthorized = await handle(new Request('https://agent.example/mcp', { method: 'POST' }));
 		expect(unauthorized.status).toBe(401);
 		expect(unauthorized.headers.get('www-authenticate')).toBe(oauth.challenge);
 	});
+
+	socketIt(
+		'enforces the request-body ceiling in the actual Bun server for streamed bodies',
+		async () => {
+			const server = startLeanGuardian({
+				port: 0,
+				hostname: '127.0.0.1',
+				dependencies: {
+					audit: () => {},
+					authenticate: () => ({ id: 'owner', username: 'owner', policy: 'full' }),
+					handleMcp: async () => Response.json({ ok: true }),
+					allowPreAuth: () => true,
+					allowPrincipal: () => true,
+					allowedOrigins: new Set(),
+					maxConcurrency: 2,
+					oauth: null
+				}
+			});
+			try {
+				const body = new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new Uint8Array(40 * 1024));
+						controller.enqueue(new Uint8Array(40 * 1024));
+						controller.close();
+					}
+				});
+				const response = await fetch(`http://127.0.0.1:${server.port}/mcp`, {
+					method: 'POST',
+					headers: { authorization: 'Bearer valid', 'content-type': 'application/json' },
+					body,
+					duplex: 'half'
+				} as RequestInit & { duplex: 'half' });
+				expect(response.status).toBe(413);
+			} finally {
+				await server.stop(true);
+			}
+		}
+	);
 });

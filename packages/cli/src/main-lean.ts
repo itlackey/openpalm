@@ -75,11 +75,14 @@ const subCommands = {
 	install: () => import('./commands/install-lean.js').then((module) => module.default),
 	setup: () => import('./commands/setup-lean.js').then((module) => module.default),
 	provider: () => import('./commands/provider-lean.js').then((module) => module.default),
+	backup: () => import('./commands/backup-lean.js').then((module) => module.default),
+	connect: () => import('./commands/connect-lean.js').then((module) => module.default),
 	import: () => import('./commands/import-lean.js').then((module) => module.default),
 	task: () => import('./commands/task-lean.js').then((module) => module.default),
 	update: () => import('./commands/update-lean.js').then((module) => module.default),
 	addon: () => import('./commands/addon-lean.js').then((module) => module.default),
 	credential: () => import('./commands/credential-lean.js').then((module) => module.default),
+	portal: () => import('./commands/portal-lean.js').then((module) => module.default),
 	config: () => import('./commands/config-lean.js').then((module) => module.default),
 	doctor: () => import('./commands/doctor-lean.js').then((module) => module.default),
 	start: () => import('./commands/lifecycle-lean.js').then((module) => module.startCommand),
@@ -94,14 +97,19 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 	setup: 'openpalm setup [--provider <id>] [--method <label>]',
 	provider:
 		'openpalm provider list | login [provider] [--method <label>] | key <provider> --key-file <path|-> | logout <provider> | test',
+	backup:
+		'openpalm backup --to <empty-directory> [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
+	connect:
+		'openpalm connect <opencode|mcp|claude|remote> [--credential <username>] [--show-key] [--json]',
 	import:
 		'openpalm import --from <old-home> [--dry-run|--apply] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
-	task:
-		'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
+	task: 'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
 	update: 'openpalm update [--no-start]',
 	addon: 'openpalm addon list | enable <gateway|discord|slack> | disable <name>',
 	credential:
 		'openpalm credential list | add <username> <chat|read|full> [--key-file <path>] [--show-key] | show <username> [--show-key] | set-policy <username> <chat|read|full> | rotate <username> [--key-file <path>] [--show-key] | remove <username> | map <discord|slack> <user-id> <username> | map oauth <issuer> <subject> <username> | unmap <discord|slack> <user-id> | unmap oauth <issuer> <subject> | mappings <discord|slack|oauth>',
+	portal:
+		'openpalm portal show <discord|slack> | access <portal> [allowlists] | token <portal> --bot-token-file <path|-> [--app-token-file <path|->]',
 	config:
 		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username> | oauth [--resource <https-url> --issuer <https-url> --jwks-url <https-url>] [--disable]',
 	doctor: 'openpalm doctor [--json] [--readiness]',

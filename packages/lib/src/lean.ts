@@ -64,6 +64,13 @@ export {
 	type PortalName
 } from './control-plane/portal-credential-store.js';
 export {
+	normalizePortalSecret,
+	portalSecretConfigured,
+	portalSecretNames,
+	writePortalSecret,
+	type PortalSecretName
+} from './control-plane/portal-settings.js';
+export {
 	CREDENTIAL_REGISTRY_VERSION,
 	GUARDIAN_POLICIES,
 	STACK_CONFIG_VERSION,
@@ -80,7 +87,9 @@ export {
 	stackConfigEnv,
 	writeStackConfig,
 	type CredentialConfig,
+	type DiscordPortalAccess,
 	type GuardianPolicy,
+	type SlackPortalAccess,
 	type StackConfig,
 	type StackConfigReadResult
 } from './control-plane/stack-config.js';
@@ -116,6 +125,11 @@ export {
 	type LeanImportOptions,
 	type LeanImportPlan
 } from './control-plane/lean-import.js';
+export {
+	createLeanBackup,
+	type LeanBackupManifest,
+	type LeanBackupOptions
+} from './control-plane/lean-backup.js';
 export {
 	buildLeanComposeCliArgs,
 	buildLeanComposeOptions,

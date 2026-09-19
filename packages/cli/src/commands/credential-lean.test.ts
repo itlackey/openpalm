@@ -130,13 +130,7 @@ describe('lean credential commands', () => {
 		await expect(main(['credential', 'remove', 'oauth-user'])).rejects.toThrow(
 			'oauth https://identity.example/ subject user-42'
 		);
-		await main([
-			'credential',
-			'unmap',
-			'oauth',
-			'https://identity.example/',
-			'user-42'
-		]);
+		await main(['credential', 'unmap', 'oauth', 'https://identity.example/', 'user-42']);
 		await main(['credential', 'remove', 'oauth-user']);
 	});
 });

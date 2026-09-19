@@ -5,16 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
 	CLI_BINARIES,
+	adminAssetName,
 	checksumFor,
-	desktopAssetName,
 	expectedClaudeExtensionAsset,
-	expectedDesktopAssets,
-	expectedUpdaterFeeds,
+	expectedAdminAssets,
 	readElectronProductName,
 	requiredReleaseAssets,
-	validateReleaseAssets
+	validateReleaseAssets,
+	writeReleaseAssetManifest
 } from './validate-release-assets.mjs';
-import { updaterArtifactForFeed } from './validate-updater-feed.mjs';
 
 const ROOT = join(import.meta.dir, '..');
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
@@ -114,6 +113,21 @@ describe('image tool pins', () => {
 		expect(assistant).toBeTruthy();
 		expect(pin('containers/guardian/tools/package.json')).toBe(assistant);
 	});
+
+	test('every active image installs from the audited root lock', () => {
+		const root = readJson('package.json') as Manifest & { workspaces?: string[] };
+		expect(root.workspaces).toContain('containers/assistant/tools');
+		expect(root.workspaces).toContain('containers/guardian/tools');
+		for (const dockerfile of [
+			'containers/assistant/Dockerfile.lean',
+			'containers/guardian/Dockerfile',
+			'containers/portal/Dockerfile'
+		]) {
+			const source = readFileSync(join(ROOT, dockerfile), 'utf8');
+			expect(source).toContain('COPY package.json bun.lock ./');
+			expect(source).toContain('--frozen-lockfile');
+		}
+	});
 });
 
 describe('portal image source boundary', () => {
@@ -126,18 +140,18 @@ describe('portal image source boundary', () => {
 	});
 });
 
-describe('release completeness gate: no CLI-only releases (onboarding-setup-review D1/D4)', () => {
-	// electron-builder.yml's actual productName, read once so these tests fail
-	// loudly if it is ever renamed rather than silently drifting from reality.
+describe('lean release completeness gate', () => {
 	const productName = readElectronProductName();
 
-	test('electron-builder.yml still declares the productName these tests assume', () => {
-		expect(productName).toBe('OpenPalm');
+	test('the lean builder declares the optional Admin product', () => {
+		expect(productName).toBe('OpenPalm Admin');
 	});
 
-	test('the NSIS build artifact uses the exact dash-safe filename referenced by updater feeds', () => {
-		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.yml'), 'utf8');
-		expect(builder).toContain('artifactName: ${productName}-Setup-${version}.${ext}');
+	test('Admin artifacts have explicit updater-free, dash-safe names', () => {
+		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.lean.yml'), 'utf8');
+		expect(builder).toContain('publish: null');
+		expect(builder).toContain('artifactName: OpenPalm-Admin-${version}-${arch}-${os}.${ext}');
+		expect(builder).toContain('artifactName: OpenPalm-Admin-Setup-${version}.${ext}');
 	});
 
 	test('the cli job matrix and CLI_BINARIES stay in lockstep', () => {
@@ -156,6 +170,7 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
 		expect(release).toContain('pattern: openpalm-*');
 		expect(release).toContain('sha256sum -- * > checksums-sha256.txt');
+		expect(release).toContain('node scripts/validate-release-assets.mjs --write-manifest');
 	});
 
 	test('the MCPB job is a required release dependency', () => {
@@ -195,37 +210,30 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(gates).toContain('bun run --cwd packages/claude-desktop pack');
 	});
 
-	test('every desktop target electron-builder.yml configures is required, with names derived from the version', () => {
-		expect(expectedDesktopAssets('1.4.2', productName)).toEqual([
-			'OpenPalm-1.4.2-arm64-mac.zip',
-			'OpenPalm-1.4.2-mac.zip',
-			'OpenPalm-Setup-1.4.2.exe',
-			'OpenPalm-1.4.2-win.zip',
-			'OpenPalm-1.4.2.AppImage',
-			'OpenPalm-1.4.2-arm64.AppImage'
+	test('every Admin target is required with an unambiguous architecture', () => {
+		expect(expectedAdminAssets('1.4.2', productName)).toEqual([
+			'OpenPalm-Admin-1.4.2-arm64-mac.zip',
+			'OpenPalm-Admin-1.4.2-x64-mac.zip',
+			'OpenPalm-Admin-1.4.2-x86_64-linux.AppImage',
+			'OpenPalm-Admin-1.4.2-arm64-linux.AppImage',
+			'OpenPalm-Admin-Setup-1.4.2.exe'
 		]);
 	});
 
-	test('the Intel mac zip carries no arch token, matching the live-release-verified naming (review D2)', () => {
-		expect(desktopAssetName(productName, '1.4.2', { platform: 'mac', arch: 'x64', kind: 'zip' })).toBe(
-			'OpenPalm-1.4.2-mac.zip'
-		);
-		expect(desktopAssetName(productName, '1.4.2', { platform: 'mac', arch: 'arm64', kind: 'zip' })).toBe(
-			'OpenPalm-1.4.2-arm64-mac.zip'
+	test('Admin naming follows the explicit lean builder contract', () => {
+		expect(adminAssetName(productName, '1.4.2', { platform: 'mac', arch: 'x64', extension: 'zip' })).toBe(
+			'OpenPalm-Admin-1.4.2-x64-mac.zip'
 		);
 	});
 
-	test('required assets cover CLI binaries, every desktop artifact, the updater feed, and checksums', () => {
+	test('required assets cover CLI, Admin, MCPB, and checksums without updater feeds', () => {
 		const required = requiredReleaseAssets('2.0.0-beta.1', productName);
 		for (const binary of CLI_BINARIES) expect(required).toContain(binary);
-		for (const asset of expectedDesktopAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
-		for (const feed of expectedUpdaterFeeds('2.0.0-beta.1')) expect(required).toContain(feed);
+		for (const asset of expectedAdminAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
 		expect(required).toContain(expectedClaudeExtensionAsset('2.0.0-beta.1'));
-		expect(required).toContain('beta-linux-arm64.yml');
-		expect(required).toContain('OpenPalm-Setup-2.0.0-beta.1.exe');
+		expect(required).toContain('OpenPalm-Admin-Setup-2.0.0-beta.1.exe');
 		expect(required).toContain('checksums-sha256.txt');
-		// A beta candidate publishes its own channel feed, never the stable name.
-		expect(required).not.toContain('latest.yml');
+		expect(required.some((name) => name.endsWith('.yml'))).toBe(false);
 	});
 
 	test('checksumFor treats the release filename as opaque, including spaces', () => {
@@ -248,27 +256,12 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		const withoutChecksums = required.filter((name) => name !== 'checksums-sha256.txt');
 		for (const name of withoutChecksums) writeFileSync(join(dir, name), `content-of-${name}`);
 
-		for (const feed of expectedUpdaterFeeds(version)) {
-			const artifact = updaterArtifactForFeed(feed, version, productName);
-			if (!artifact) throw new Error(`No updater artifact contract for ${feed}`);
-			const hash = createHash('sha512')
-				.update(readFileSync(join(dir, artifact.physicalArtifact)))
-				.digest('base64');
-			writeFileSync(
-				join(dir, feed),
-				`version: ${version}\nfiles:\n  - url: ${artifact.feedArtifact}\n    sha512: ${hash}\n    size: 1\n    blockMapSize: 1\npath: ${artifact.feedArtifact}\nsha512: ${hash}\n`
-			);
-		}
-
 		const lines = withoutChecksums.map((name) => {
 			const hash = createHash('sha256').update(readFileSync(join(dir, name))).digest('hex');
 			return `${hash}  ${name}`;
 		});
 		writeFileSync(join(dir, 'checksums-sha256.txt'), `${lines.join('\n')}\n`);
-		writeFileSync(
-			join(dir, 'release-assets-manifest.json'),
-			JSON.stringify({ version, assets: [...required].sort() }, null, 2)
-		);
+		writeReleaseAssetManifest(dir, version, productName);
 		return required;
 	}
 
@@ -279,44 +272,35 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		});
 	});
 
-	test('validateReleaseAssets fails closed when every desktop artifact is missing — the exact 0.12.52 gap', () => {
+	test('validateReleaseAssets fails closed when every Admin artifact is missing', () => {
 		withDir((dir) => {
 			writeCompleteDist(dir, '1.4.2');
-			const desktop = expectedDesktopAssets('1.4.2', productName);
-			for (const asset of desktop) rmSync(join(dir, asset));
+			const admin = expectedAdminAssets('1.4.2', productName);
+			for (const asset of admin) rmSync(join(dir, asset));
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
-			for (const asset of desktop) expect(problems).toContain(`Missing release asset: ${asset}`);
-			expect(problems.length).toBeGreaterThanOrEqual(desktop.length);
+			for (const asset of admin) expect(problems).toContain(`Missing release asset: ${asset}`);
+			expect(problems.length).toBeGreaterThanOrEqual(admin.length);
 		});
 	});
 
-	test('validateReleaseAssets fails closed when the updater feed is missing', () => {
+	test('validateReleaseAssets catches an Admin artifact corrupted in transit', () => {
 		withDir((dir) => {
 			writeCompleteDist(dir, '1.4.2');
-			const feeds = expectedUpdaterFeeds('1.4.2');
-			for (const feed of feeds) rmSync(join(dir, feed));
+			writeFileSync(join(dir, 'OpenPalm-Admin-1.4.2-arm64-mac.zip'), 'corrupted-in-transit');
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
-			for (const feed of feeds) expect(problems).toContain(`Missing release asset: ${feed}`);
+			expect(problems).toContain('Checksum mismatch for OpenPalm-Admin-1.4.2-arm64-mac.zip');
 		});
 	});
 
-	test('validateReleaseAssets catches a desktop artifact corrupted in transit even though it is present', () => {
+	test('validateReleaseAssets rejects undeclared release files in the manifest', () => {
 		withDir((dir) => {
 			writeCompleteDist(dir, '1.4.2');
-			writeFileSync(join(dir, 'OpenPalm-1.4.2-arm64-mac.zip'), 'corrupted-in-transit');
+			const manifestPath = join(dir, 'release-assets-manifest.json');
+			const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { assets: string[] };
+			manifest.assets.push('legacy-updater.yml');
+			writeFileSync(manifestPath, JSON.stringify(manifest));
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
-			expect(problems).toContain('Checksum mismatch for OpenPalm-1.4.2-arm64-mac.zip');
-		});
-	});
-
-	test('validateReleaseAssets includes semantic updater-feed validation', () => {
-		withDir((dir) => {
-			writeCompleteDist(dir, '1.4.2');
-			const feed = expectedUpdaterFeeds('1.4.2')[0];
-			const feedPath = join(dir, feed);
-			writeFileSync(feedPath, readFileSync(feedPath, 'utf8').replace(/sha512: .+/, 'sha512: invalid'));
-			const problems = validateReleaseAssets(dir, '1.4.2', productName);
-			expect(problems.some((problem) => problem.includes('sha512 does not match'))).toBe(true);
+			expect(problems).toContain('Unexpected release asset in manifest: legacy-updater.yml');
 		});
 	});
 });

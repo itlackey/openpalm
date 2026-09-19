@@ -3,7 +3,7 @@ set -euo pipefail
 
 guardian_package=/opt/openpalm/guardian-app
 guardian_home=${HOME:-/opt/openpalm/guardian}
-export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
+export PATH="/opt/openpalm/node_modules/.bin:$PATH"
 
 mkdir -p "$guardian_home/.local/share/opencode" /opt/openpalm/logs
 

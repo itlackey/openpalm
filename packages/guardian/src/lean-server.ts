@@ -19,10 +19,9 @@ const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 const ALLOWED_METHODS = 'GET, POST, DELETE, OPTIONS';
 const ALLOWED_HEADERS =
 	'authorization, content-type, accept, mcp-protocol-version, mcp-session-id, last-event-id, x-request-id';
-const EXPOSED_HEADERS =
-	'mcp-session-id, mcp-protocol-version, x-request-id, www-authenticate';
+const EXPOSED_HEADERS = 'mcp-session-id, mcp-protocol-version, x-request-id, www-authenticate';
 
-type LeanGuardianDependencies = {
+export type LeanGuardianDependencies = {
 	authenticate: (
 		request: Request
 	) => AuthenticatedCredential | null | Promise<AuthenticatedCredential | null>;
@@ -161,6 +160,35 @@ function preflightResponse(id: string, origin: string): Response {
 	);
 }
 
+async function boundedRequestBody(request: Request): Promise<Request | null> {
+	if (!request.body) return request;
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		total += value.byteLength;
+		if (total > MAX_REQUEST_BYTES) {
+			await reader.cancel('request_too_large');
+			return null;
+		}
+		chunks.push(value);
+	}
+	const body = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		body.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return new Request(request.url, {
+		method: request.method,
+		headers: request.headers,
+		body,
+		signal: request.signal
+	});
+}
+
 export function createLeanGuardianHandler(
 	overrides: Partial<LeanGuardianDependencies> = {}
 ): (request: Request, clientIp?: string) => Promise<Response> {
@@ -174,10 +202,7 @@ export function createLeanGuardianHandler(
 		if (request.method === 'GET' && url.pathname === '/health') {
 			return withResponseHeaders(json(200, { ok: true }), id);
 		}
-		if (
-			request.method === 'GET' &&
-			dependencies.oauth?.metadataPaths.has(url.pathname)
-		) {
+		if (request.method === 'GET' && dependencies.oauth?.metadataPaths.has(url.pathname)) {
 			const response = json(200, dependencies.oauth.metadata);
 			response.headers.set('access-control-allow-origin', '*');
 			return withResponseHeaders(response, id);
@@ -200,8 +225,13 @@ export function createLeanGuardianHandler(
 		if (Number.isFinite(length) && length > MAX_REQUEST_BYTES) {
 			return errorResponse(413, 'request_too_large', id, origin ?? undefined);
 		}
+		const boundedRequest = await boundedRequestBody(request);
+		if (!boundedRequest) {
+			dependencies.audit({ event: 'request_too_large', requestId: id, clientIp });
+			return errorResponse(413, 'request_too_large', id, origin ?? undefined);
+		}
 
-		const principal = await dependencies.authenticate(request);
+		const principal = await dependencies.authenticate(boundedRequest);
 		if (!principal) {
 			dependencies.audit({ event: 'authentication_failed', requestId: id, clientIp });
 			return errorResponse(
@@ -209,9 +239,7 @@ export function createLeanGuardianHandler(
 				'unauthorized',
 				id,
 				origin ?? undefined,
-				dependencies.oauth
-					? { 'www-authenticate': dependencies.oauth.challenge }
-					: undefined
+				dependencies.oauth ? { 'www-authenticate': dependencies.oauth.challenge } : undefined
 			);
 		}
 
@@ -241,7 +269,7 @@ export function createLeanGuardianHandler(
 		const startedAt = performance.now();
 		activeRequests += 1;
 		try {
-			const response = await dependencies.handleMcp(request, principal, id);
+			const response = await dependencies.handleMcp(boundedRequest, principal, id);
 			dependencies.audit({
 				event: 'mcp_request',
 				requestId: id,
@@ -274,11 +302,17 @@ export function createLeanGuardianHandler(
 	};
 }
 
-export function startLeanGuardian(): ReturnType<typeof Bun.serve> {
-	const port = validPort(Bun.env.PORT, 8080);
-	const hostname = Bun.env.GUARDIAN_HOST || '0.0.0.0';
-	const credentialCount = loadCredentialRegistry().length;
-	const handle = createLeanGuardianHandler();
+export function startLeanGuardian(
+	options: {
+		port?: number;
+		hostname?: string;
+		dependencies?: Partial<LeanGuardianDependencies>;
+	} = {}
+): ReturnType<typeof Bun.serve> {
+	const port = options.port ?? validPort(Bun.env.PORT, 8080);
+	const hostname = options.hostname ?? Bun.env.GUARDIAN_HOST ?? '0.0.0.0';
+	const credentialCount = options.dependencies ? undefined : loadCredentialRegistry().length;
+	const handle = createLeanGuardianHandler(options.dependencies);
 	const server = Bun.serve({
 		port,
 		hostname,
@@ -290,7 +324,7 @@ export function startLeanGuardian(): ReturnType<typeof Bun.serve> {
 	logger.info('started', {
 		hostname,
 		port,
-		credentialCount,
+		...(credentialCount === undefined ? {} : { credentialCount }),
 		routes: ['/health', '/mcp', '/.well-known/oauth-protected-resource']
 	});
 	return server;

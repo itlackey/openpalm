@@ -21,7 +21,11 @@ import { ensureStackConfig } from './stack-config.js';
 
 const PRIVATE_FILE_MODE = 0o600;
 
-export type LeanInstallState = 'not_installed' | 'incompatible_home' | 'setup_incomplete' | 'installed';
+export type LeanInstallState =
+	| 'not_installed'
+	| 'incompatible_home'
+	| 'setup_incomplete'
+	| 'installed';
 
 export { createLeanState };
 
@@ -34,7 +38,8 @@ export function classifyLeanInstall(homeDir = resolveOpenPalmHome()): LeanInstal
 	if (!lstatSync(homeDir).isDirectory()) return 'incompatible_home';
 	const env = readLeanStackEnv(homeDir);
 	const hasLeanStack = existsSync(managedComposeFile(homeDir));
-	if (!hasLeanStack) return readdirSync(homeDir).length === 0 ? 'not_installed' : 'incompatible_home';
+	if (!hasLeanStack)
+		return readdirSync(homeDir).length === 0 ? 'not_installed' : 'incompatible_home';
 	if (!existsSync(stackConfigFile(homeDir))) return 'setup_incomplete';
 	return env.OP_SETUP_COMPLETE === 'true' ? 'installed' : 'setup_incomplete';
 }

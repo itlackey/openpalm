@@ -45,7 +45,7 @@ function validCredentialKey(value: unknown): value is string {
 }
 
 function validUserId(adapter: PortalAdapter, value: string): boolean {
-	return adapter === 'discord' ? /^[0-9]{5,32}$/.test(value) : /^[A-Z][A-Z0-9]{2,31}$/.test(value);
+	return adapter === 'discord' ? /^[0-9]{5,32}$/.test(value) : /^[UW][A-Z0-9]{2,31}$/.test(value);
 }
 
 export function parseCredentialBundle(adapter: PortalAdapter, value: unknown): CredentialBundle {
