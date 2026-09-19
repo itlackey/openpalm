@@ -12,7 +12,7 @@ x-logging: &logging
 
 services:
   assistant:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.13.6}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.14.0}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -72,7 +72,7 @@ services:
 
   guardian:
     profiles: [gateway, discord, slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.13.6}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.14.0}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -93,6 +93,8 @@ services:
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       GUARDIAN_AUTH_DIR: /run/openpalm-credentials
       GUARDIAN_HANDLE_KEY_FILE: /run/secrets/guardian_handle_key
+      GUARDIAN_OAUTH_CONFIG_FILE: /opt/openpalm/guardian/.config/opencode/oauth.json
+      GUARDIAN_OAUTH_IDENTITIES_FILE: /opt/openpalm/guardian/.config/opencode/oauth-identities.json
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_ALLOWED_ORIGINS: ${GUARDIAN_ALLOWED_ORIGINS:-}
       GUARDIAN_MODERATION_URL: http://127.0.0.1:4097
@@ -133,7 +135,7 @@ services:
 
   discord:
     profiles: [discord]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.6}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -170,7 +172,7 @@ services:
 
   slack:
     profiles: [slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.13.6}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0}
     init: true
     restart: unless-stopped
     logging: *logging

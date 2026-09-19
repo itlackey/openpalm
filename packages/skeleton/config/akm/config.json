@@ -1,0 +1,16 @@
+{
+  "configVersion": "0.9.0",
+  "engines": {
+    "scheduled": {
+      "kind": "agent",
+      "platform": "opencode",
+      "bin": "opencode",
+      "args": ["run", "--attach", "http://127.0.0.1:4096", "--agent", "scheduled"],
+      "workspace": "/work",
+      "timeoutMs": 900000
+    }
+  },
+  "defaults": {
+    "engine": "scheduled"
+  }
+}

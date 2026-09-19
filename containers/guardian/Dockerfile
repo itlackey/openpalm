@@ -41,6 +41,7 @@ COPY packages/guardian/src/assistant-client.ts \
      packages/guardian/src/lean-server.ts \
      packages/guardian/src/logger.ts \
      packages/guardian/src/mcp-agent.ts \
+     packages/guardian/src/oauth.ts \
      packages/guardian/src/rate-limit.ts \
      packages/guardian/src/workspace-access.ts \
      packages/guardian/src/workspace-policy.ts \

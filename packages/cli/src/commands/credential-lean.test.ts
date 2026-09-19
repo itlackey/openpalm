@@ -103,4 +103,40 @@ describe('lean credential commands', () => {
 		await main(['credential', 'unmap', 'slack', 'U123ABC']);
 		await main(['credential', 'remove', 'mapped-user']);
 	});
+
+	it('maps OAuth subjects to the same credential registry and policy', async () => {
+		const { root, home } = await setup();
+		const key = join(root, 'oauth.key');
+		writeFileSync(key, `${'q'.repeat(40)}\n`);
+		await main(['credential', 'add', 'oauth-user', 'full', '--key-file', key]);
+		await main([
+			'credential',
+			'map',
+			'oauth',
+			'https://identity.example/',
+			'user-42',
+			'oauth-user'
+		]);
+		const mapping = JSON.parse(
+			readFileSync(join(home, 'config', 'guardian', 'oauth-identities.json'), 'utf8')
+		) as { identities: Array<{ issuer: string; subject: string; username: string }> };
+		expect(mapping.identities).toEqual([
+			{
+				issuer: 'https://identity.example/',
+				subject: 'user-42',
+				username: 'oauth-user'
+			}
+		]);
+		await expect(main(['credential', 'remove', 'oauth-user'])).rejects.toThrow(
+			'oauth https://identity.example/ subject user-42'
+		);
+		await main([
+			'credential',
+			'unmap',
+			'oauth',
+			'https://identity.example/',
+			'user-42'
+		]);
+		await main(['credential', 'remove', 'oauth-user']);
+	});
 });

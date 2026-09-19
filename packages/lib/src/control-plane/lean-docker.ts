@@ -53,7 +53,9 @@ export function composeProcessEnvironment(
 
 function friendlyError(stderr: string): string {
 	const value = stderr.trim();
-	if (/ENOENT|not found/i.test(value)) return 'Docker is not installed or is not on PATH.';
+	if (/\bENOENT\b|spawn\s+docker\s+.*not found/i.test(value)) {
+		return 'Docker is not installed or is not on PATH.';
+	}
 	if (/permission denied/i.test(value))
 		return 'Docker access was denied. Check daemon permissions.';
 	if (/cannot connect|daemon is not running|connection refused/i.test(value)) {

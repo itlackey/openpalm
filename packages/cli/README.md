@@ -4,6 +4,14 @@ The CLI is the primary host-side orchestrator for the lean stack.
 
 ```bash
 openpalm install
+openpalm setup
+openpalm provider list
+openpalm provider login anthropic
+openpalm provider test
+openpalm import --from /path/to/old-home --dry-run
+openpalm import --from /path/to/old-home --apply
+openpalm task create morning-news --schedule '0 8 * * 1-5' --prompt 'Summarize project news'
+openpalm task history morning-news
 openpalm update
 openpalm addon list
 openpalm addon enable gateway
@@ -15,6 +23,8 @@ openpalm credential set-policy automation full
 openpalm config portal discord --credential automation
 openpalm credential map discord 123456789012345678 automation
 openpalm credential mappings discord
+openpalm config oauth --resource https://agent.example/mcp --issuer https://id.example/ --jwks-url https://id.example/jwks.json --no-apply
+openpalm credential map oauth https://id.example/ subject-123 automation
 openpalm doctor
 openpalm start
 openpalm restart
@@ -28,8 +38,15 @@ It materializes a small allowlist of Skeleton files, maintains
 validates the resolved project, and invokes Docker without a shell.
 
 The compiled binary embeds only the active Skeleton archive. It has no browser
-wizard, web server, UI assets, updater, addon catalog, purge command, or
+chat, web server, UI assets, updater, addon catalog, purge command, or
 per-service lifecycle bypass.
+
+Install delegates OAuth, device interaction, and provider discovery to
+OpenCode, then verifies a real no-tool response before marking setup complete.
+The dry-run-first importer copies an explicit allowlist into a fresh 0.14 home;
+it never performs an in-place legacy-home migration. Recurring tasks use one
+restricted Assistant helper and durable AKM history rather than a second
+scheduler API.
 
 ## Development
 

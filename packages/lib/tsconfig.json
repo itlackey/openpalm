@@ -11,6 +11,6 @@
 		"types": ["bun-types"],
 		"resolveJsonModule": true
 	},
-	"include": ["src/lean.ts"],
+	"include": ["src/lean.ts", "src/control-plane/oauth-store.ts"],
 	"exclude": ["src/**/*.test.ts"]
 }

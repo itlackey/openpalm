@@ -14,6 +14,7 @@
  *   - the electron-updater feed files for the release's channel (derived from
  *     validate-updater-feed.mjs — the single place that already knows how
  *     electron-builder names them), and
+ *   - the optional Claude Desktop MCPB extension, and
  *   - checksums-sha256.txt, covering every one of the above.
  *
  * Desktop artifact names are DERIVED from `version` using electron-builder's
@@ -138,12 +139,17 @@ export function expectedUpdaterFeeds(version) {
   return updaterFeedsFor(feedChannelForVersion(version));
 }
 
-/** The complete required-asset set for `version`: CLI + desktop + updater feed + checksums. */
+export function expectedClaudeExtensionAsset(version) {
+  return `openpalm-claude-desktop-${version}.mcpb`;
+}
+
+/** The complete required-asset set for `version`. */
 export function requiredReleaseAssets(version, productName = readElectronProductName()) {
   return [
     ...CLI_BINARIES,
     ...expectedDesktopAssets(version, productName),
     ...expectedUpdaterFeeds(version),
+    expectedClaudeExtensionAsset(version),
     'checksums-sha256.txt',
   ];
 }

@@ -79,7 +79,7 @@ describe('StackConfigV2', () => {
 		if (parsed.ok) expect(parsed.config.gateway.enabled).toBe(true);
 	});
 
-	it('migrates legacy environment intent and policies into named credentials', () => {
+	it('requires an explicit 0.14 stack config instead of inferring legacy environment intent', () => {
 		const root = home();
 		mkdirSync(join(root, 'state'), { recursive: true });
 		writeFileSync(
@@ -95,17 +95,13 @@ describe('StackConfigV2', () => {
 			].join('\n')
 		);
 		const result = readStackConfig(root);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.source).toBe('legacy-env');
-		expect(result.config.gateway.enabled).toBe(true);
-		expect(result.config.portals.discord.enabled).toBe(true);
-		expect(result.config.assistant).toEqual({ bindAddress: '192.168.1.12', port: 4910 });
-		expect(result.config.credentials.owner?.policy).toBe('read');
-		expect(result.config.credentials.discord?.policy).toBe('full');
+		expect(result).toEqual({
+			ok: false,
+			error: `stack config is missing: ${stackConfigFile(root)}`
+		});
 	});
 
-	it('upgrades both released and interim V1 shapes', () => {
+	it('rejects V1 configs instead of mutating an old installation in place', () => {
 		const root = home();
 		mkdirSync(join(root, 'state'), { recursive: true });
 		writeFileSync(
@@ -121,12 +117,9 @@ describe('StackConfigV2', () => {
 			})
 		);
 		const result = readStackConfig(root);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.source).toBe('v1');
-		expect(result.config.credentials.owner?.policy).toBe('read');
-		ensureStackConfig(root);
-		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(2);
+		expect(result).toEqual({ ok: false, error: 'stack config must use version 2' });
+		expect(() => ensureStackConfig(root)).toThrow('stack config must use version 2');
+		expect(JSON.parse(readFileSync(stackConfigFile(root), 'utf8')).version).toBe(1);
 
 		writeFileSync(
 			stackConfigFile(root),
@@ -136,7 +129,7 @@ describe('StackConfigV2', () => {
 				portals: { discord: { enabled: false }, slack: { enabled: false } }
 			})
 		);
-		expect(readStackConfig(root).ok).toBe(true);
+		expect(readStackConfig(root)).toEqual({ ok: false, error: 'stack config must use version 2' });
 	});
 
 	it('atomically writes intent and derives runtime registry and portal selections', () => {

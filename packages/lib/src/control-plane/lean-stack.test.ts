@@ -56,4 +56,12 @@ describe('lean release surface', () => {
 		expect(full).not.toContain('permission:');
 		expect(full).toContain("Assistant's OpenCode permission configuration");
 	});
+
+	it('ships a restricted unattended profile for durable recurring tasks', () => {
+		const scheduled = asset('packages/skeleton/system/assistant/agents/scheduled.md');
+		expect(scheduled).toContain('  "*": deny');
+		expect(scheduled).toContain('  webfetch: allow');
+		expect(scheduled).toContain('    "/stash/secrets/*": deny');
+		expect(scheduled).toContain('    "/stash/inbox/*": allow');
+	});
 });

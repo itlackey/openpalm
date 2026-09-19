@@ -51,10 +51,14 @@ jobs:
         run: bun run lint
       - name: Build the standalone CLI
         run: bun run --cwd packages/cli build
+      - name: Build and validate the optional Claude Desktop extension
+        run: bun run --cwd packages/claude-desktop pack
       - name: Verify the embedded lean Skeleton
         run: |
-          test "$(tar -tzf packages/cli/embedded/skeleton.tar.gz | wc -l)" = 15
+          test "$(tar -tzf packages/cli/embedded/skeleton.tar.gz | wc -l)" = 25
           tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'system/stack/stack.compose.yml'
+          tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'system/assistant/agents/scheduled.md'
+          tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'config/akm/config.json'
           ! tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -E '(paperclip|voice|core\.compose|services\.compose|portals\.compose)'
       - name: Bundle the optional admin app
         run: bun run --cwd packages/electron bundle
@@ -76,7 +80,7 @@ jobs:
             config --quiet
       - name: Enforce the lean surface
         run: |
-          test "$(jq -r '.workspaces | length' package.json)" = 6
+          test "$(jq -r '.workspaces | length' package.json)" = 7
           test "$(find packages/skeleton/system/stack -maxdepth 1 -name 'stack.compose.yml' | wc -l)" = 1
           ! rg -n 'packages/ui|portal-sdk|portal-discord|portal-slack' package.json bun.lock
           ! rg -n '/v1/chat/completions|/v1/messages|/a2a|/oc/' \

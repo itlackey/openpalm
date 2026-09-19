@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
 	authenticateCredential,
 	bearerToken,
+	findCredentialByUsername,
 	guardianPolicyAgent,
 	loadCredentialRegistry,
 	readHandleKey
@@ -84,6 +85,12 @@ describe('Guardian bearer credentials', () => {
 			)
 		).toBeNull();
 		expect(bearerToken(new Request('http://guardian/mcp'))).toBe('');
+		expect(findCredentialByUsername('build-bot')).toEqual({
+			username: 'build-bot',
+			id: `cred_${'a'.repeat(32)}`,
+			policy: 'read'
+		});
+		expect(findCredentialByUsername('missing')).toBeNull();
 	});
 
 	it('rejects weak, duplicated, malformed, and missing credential records', () => {

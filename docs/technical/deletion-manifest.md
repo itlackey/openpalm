@@ -29,7 +29,7 @@ Voice runtime, point-in-time reviews, and old roadmap material.
 
 ## Exact files in mixed active trees
 
-The following 497 tracked files share a parent with active files, so
+The following 494 tracked files share a parent with active files, so
 they are enumerated individually rather than hidden behind a wildcard.
 
 ## CLI legacy files
@@ -506,7 +506,6 @@ scripts/dev-e2e-test.test.ts
 scripts/guardian-image-offline-smoke.sh
 scripts/load-test-env.sh
 scripts/multi-instance-smoke.sh
-scripts/release-aggregates-hygiene.test.ts
 scripts/release.sh
 scripts/rootless-host-swap-smoke.sh
 scripts/rootless-ownership-smoke.sh
@@ -514,7 +513,6 @@ scripts/rootless-smoke-fixture.sh
 scripts/setup-sh-latest-resolver.test.ts
 scripts/test-tier.sh
 scripts/upgrade-path-smoke.sh
-scripts/validate-release-assets.mjs
 scripts/validate-rootless-guardrails.sh
 scripts/validate-updater-feed.mjs
 scripts/validate-updater-feed.test.ts
@@ -545,7 +543,6 @@ docs/technical/artifact-delivery-pattern.md
 docs/technical/bunjs-rules.md
 docs/technical/code-quality-principles.md
 docs/technical/design-intent.md
-docs/technical/foundations.md
 docs/technical/multi-endpoint-session-ux.md
 docs/technical/network-partitioning-d5a.md
 docs/technical/opencode-behavior-notes.md

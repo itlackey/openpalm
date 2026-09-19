@@ -9,6 +9,7 @@ import {
 import { json } from './http-util.js';
 import { createLogger } from './logger.js';
 import { createMcpAgentHandler } from './mcp-agent.js';
+import { createGuardianOAuth, type GuardianOAuth } from './oauth.js';
 import { allow, allowPreAuth, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit.js';
 
 const logger = createLogger('guardian');
@@ -18,10 +19,13 @@ const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 const ALLOWED_METHODS = 'GET, POST, DELETE, OPTIONS';
 const ALLOWED_HEADERS =
 	'authorization, content-type, accept, mcp-protocol-version, mcp-session-id, last-event-id, x-request-id';
-const EXPOSED_HEADERS = 'mcp-session-id, mcp-protocol-version, x-request-id';
+const EXPOSED_HEADERS =
+	'mcp-session-id, mcp-protocol-version, x-request-id, www-authenticate';
 
 type LeanGuardianDependencies = {
-	authenticate: (request: Request) => AuthenticatedCredential | null;
+	authenticate: (
+		request: Request
+	) => AuthenticatedCredential | null | Promise<AuthenticatedCredential | null>;
 	handleMcp: (
 		request: Request,
 		principal: AuthenticatedCredential,
@@ -32,6 +36,7 @@ type LeanGuardianDependencies = {
 	allowPrincipal: (key: string, limit: number, windowMs: number) => boolean;
 	allowedOrigins: ReadonlySet<string>;
 	maxConcurrency: number;
+	oauth: GuardianOAuth | null;
 };
 
 function boundedInt(value: string | undefined, fallback: number, maximum: number): number {
@@ -69,6 +74,7 @@ export function parseAllowedOrigins(value: string): ReadonlySet<string> {
 }
 
 function defaultDependencies(): LeanGuardianDependencies {
+	const oauth = createGuardianOAuth();
 	const handlers = new Map<string, ReturnType<typeof createMcpAgentHandler>>();
 	const handlerFor = (principal: AuthenticatedCredential) => {
 		const key = `${principal.id}:${principal.policy}`;
@@ -79,7 +85,8 @@ function defaultDependencies(): LeanGuardianDependencies {
 		return created;
 	};
 	return {
-		authenticate: authenticateCredential,
+		authenticate: async (request) =>
+			authenticateCredential(request) ?? (await oauth?.authenticate(request)) ?? null,
 		handleMcp: (request, principal) => handlerFor(principal).fetch(request),
 		audit,
 		allowPreAuth,
@@ -87,7 +94,8 @@ function defaultDependencies(): LeanGuardianDependencies {
 		allowedOrigins: parseAllowedOrigins(
 			Bun.env.GUARDIAN_ALLOWED_ORIGINS ?? Bun.env.GUARDIAN_CORS_ALLOWED_ORIGINS ?? ''
 		),
-		maxConcurrency: boundedInt(Bun.env.GUARDIAN_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY, 256)
+		maxConcurrency: boundedInt(Bun.env.GUARDIAN_MAX_CONCURRENCY, DEFAULT_MAX_CONCURRENCY, 256),
+		oauth
 	};
 }
 
@@ -114,8 +122,18 @@ function withResponseHeaders(response: Response, id: string, origin?: string): R
 	});
 }
 
-function errorResponse(status: number, error: string, id: string, origin?: string): Response {
-	return withResponseHeaders(json(status, { error, requestId: id }), id, origin);
+function errorResponse(
+	status: number,
+	error: string,
+	id: string,
+	origin?: string,
+	extraHeaders?: HeadersInit
+): Response {
+	const response = json(status, { error, requestId: id });
+	if (extraHeaders) {
+		for (const [key, value] of new Headers(extraHeaders)) response.headers.set(key, value);
+	}
+	return withResponseHeaders(response, id, origin);
 }
 
 function allowedRequestOrigin(
@@ -156,6 +174,14 @@ export function createLeanGuardianHandler(
 		if (request.method === 'GET' && url.pathname === '/health') {
 			return withResponseHeaders(json(200, { ok: true }), id);
 		}
+		if (
+			request.method === 'GET' &&
+			dependencies.oauth?.metadataPaths.has(url.pathname)
+		) {
+			const response = json(200, dependencies.oauth.metadata);
+			response.headers.set('access-control-allow-origin', '*');
+			return withResponseHeaders(response, id);
+		}
 		if (url.pathname !== '/mcp') return errorResponse(404, 'not_found', id);
 
 		if (!dependencies.allowPreAuth(clientIp)) {
@@ -175,10 +201,18 @@ export function createLeanGuardianHandler(
 			return errorResponse(413, 'request_too_large', id, origin ?? undefined);
 		}
 
-		const principal = dependencies.authenticate(request);
+		const principal = await dependencies.authenticate(request);
 		if (!principal) {
 			dependencies.audit({ event: 'authentication_failed', requestId: id, clientIp });
-			return errorResponse(401, 'unauthorized', id, origin ?? undefined);
+			return errorResponse(
+				401,
+				'unauthorized',
+				id,
+				origin ?? undefined,
+				dependencies.oauth
+					? { 'www-authenticate': dependencies.oauth.challenge }
+					: undefined
+			);
 		}
 
 		const rateKey = `user:${principal.id}`;
@@ -253,7 +287,12 @@ export function startLeanGuardian(): ReturnType<typeof Bun.serve> {
 			return handle(request, bunServer.requestIP(request)?.address ?? '');
 		}
 	});
-	logger.info('started', { hostname, port, credentialCount, routes: ['/health', '/mcp'] });
+	logger.info('started', {
+		hostname,
+		port,
+		credentialCount,
+		routes: ['/health', '/mcp', '/.well-known/oauth-protected-resource']
+	});
 	return server;
 }
 

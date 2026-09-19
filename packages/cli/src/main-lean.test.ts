@@ -7,6 +7,10 @@ describe('lean CLI help', () => {
 		const help = helpText();
 		for (const command of [
 			'install',
+			'setup',
+			'provider',
+			'import',
+			'task',
 			'update',
 			'addon',
 			'credential',
@@ -25,5 +29,8 @@ describe('lean CLI help', () => {
 		expect(helpText('config')).toContain('assistant');
 		expect(helpText('config')).toContain('portal <discord|slack> --credential <username>');
 		expect(helpText('credential')).toContain('set-policy');
+		expect(helpText('provider')).toContain('login');
+		expect(helpText('import')).toContain('--dry-run');
+		expect(helpText('task')).toContain('create <id>');
 	});
 });

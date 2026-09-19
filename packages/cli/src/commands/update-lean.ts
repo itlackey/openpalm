@@ -5,7 +5,6 @@ import {
 	ensureDockerReady,
 	ensureLeanRuntime,
 	ensureStackConfig,
-	markLeanInstalled,
 	requireLeanInstall
 } from '@openpalm/lib/lean';
 
@@ -23,19 +22,15 @@ export async function updateLeanStack(options: { start: boolean }): Promise<void
 	await seedLeanSkeletonFromEmbedded(applyLeanHomeSeed, state.homeDir);
 	ensureLeanRuntime(state);
 	ensureStackConfig(state.homeDir);
-	markLeanInstalled(state.homeDir);
 
 	if (options.start) await runStartAction();
-	console.log('OpenPalm lean stack assets and configuration are current.');
-	console.log(
-		'Legacy files and data were preserved; see the migration report before removing them.'
-	);
+	console.log('OpenPalm 0.14 stack assets and configuration are current.');
 }
 
 export default defineCommand({
 	meta: {
 		name: 'update',
-		description: 'Migrate or refresh the lean stack without deleting legacy data'
+		description: 'Refresh an existing 0.14 stack without deleting user data'
 	},
 	args: {
 		start: {

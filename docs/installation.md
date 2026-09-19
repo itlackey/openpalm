@@ -1,62 +1,121 @@
 # Installation
 
+OpenPalm 0.14 is designed as a fresh install. Do not point it at a 0.13 or
+legacy `OP_HOME`; follow the [0.14 transition guide](operations/migration-to-lean-stack.md)
+instead.
+
 ## Requirements
 
-- Docker Engine with Docker Compose v2
-- a non-root operator account
-- outbound access to the chosen model provider
-- an OpenCode-compatible local client, or an MCP client when Guardian is enabled
+- Docker Engine with Docker Compose v2;
+- a non-root operator account;
+- outbound access to an AI provider supported by OpenCode; and
+- a client such as OpenCode, Claude Desktop, or another MCP client.
 
-## Install a release
+## Install
 
 ```bash
 npm install --global openpalm
 openpalm install
 ```
 
-Set `OP_HOME` before the command to use a location other than
-`~/.openpalm`. The installer writes a lean home, creates strong file secrets,
-and starts only Assistant. It does not launch a browser or install a chat UI.
+`openpalm install` creates the lean home, starts Assistant, checks for a usable
+provider, and hands an interactive terminal to OpenCode's native sign-in flow
+when authentication is needed. Setup is marked complete only after a real,
+no-tool Assistant request succeeds.
 
-To prepare files without starting Docker:
+Set `OP_HOME` before the command to use an absolute path other than
+`~/.openpalm`. Use `--no-start` when preparing a home for review:
 
 ```bash
 openpalm install --no-start
 ```
 
-For a declarative install, pass a complete
-[StackConfigV2](technical/architecture.md#control-plane):
+Assistant is the only default service. Guardian, Discord, and Slack are opt-in.
+OpenPalm does not install a browser chat application or model server.
+
+## Provider sign-in
+
+The normal user chooses a provider in OpenCode's native sign-in flow. They do
+not need to enter a base URL, select an SDK, edit JSON, or know a model ID.
+Advanced OpenCode configuration remains available after setup.
+
+Provider commands are also available directly:
 
 ```bash
-openpalm install --config ./stack.json --no-start
+openpalm provider list
+openpalm provider login [provider]
+openpalm provider key <provider> --key-file /private/path/to/key
+openpalm provider test
+openpalm provider logout <provider>
 ```
 
-## Configure the model provider
+Use `--key-file -` to read an API key from standard input without putting it in
+shell history. `provider test` sends a small real request and may incur normal
+provider usage.
 
-OpenCode provider credentials live at:
+OpenPalm does not store a second copy of provider configuration. OpenCode owns
+provider discovery, models, and the credential format. Its credential file is
+mounted from:
 
 ```text
 ~/.openpalm/knowledge/secrets/auth.json
 ```
 
-Use OpenCode's normal provider authentication flow. Do not place provider keys
-in `state/stack.env`, Compose environment variables, or the custom overlay.
+For a staged or headless install, write the home first and complete setup later:
 
-## Connect locally
+```bash
+openpalm install --no-start
+openpalm provider key <provider> --key-file /run/secrets/provider-key
+openpalm setup
+```
 
-Assistant publishes the native authenticated OpenCode API on:
+`openpalm setup` is idempotent: it starts Assistant, verifies provider
+readiness, and invokes the native interactive sign-in only when necessary.
+
+## Import an older home
+
+0.14 never upgrades an older home in place. Keep the old home stopped and
+unchanged, choose a new `OP_HOME`, and import before completing setup:
+
+```bash
+export OP_HOME=/absolute/path/to/new-openpalm
+openpalm install --no-start
+openpalm import --from /absolute/path/to/old-openpalm --dry-run
+openpalm import --from /absolute/path/to/old-openpalm --apply
+openpalm setup
+```
+
+Provider authentication, user environment values, portal maps, and OAuth maps
+require separate `--include-*` flags. Recreate named Guardian credentials
+before importing a map that references them. Imported task files are staged
+under `knowledge/imported-tasks/`. Only declarative `akm/command` prompt tasks
+can be adopted; command and workflow tasks require manual recreation. Review
+and adopt a prompt task in paused state with:
+
+```bash
+openpalm task adopt "$OP_HOME/knowledge/imported-tasks/example.yml"
+openpalm task show example
+openpalm task resume example
+```
+
+See [Moving to 0.14](operations/migration-to-lean-stack.md) for the full safety
+contract.
+
+## Connect a trusted local client
+
+Assistant publishes the authenticated native OpenCode server on:
 
 ```text
 http://127.0.0.1:3810
 ```
 
-The server password is:
+The username is `opencode`. The generated password is stored at:
 
 ```text
 ~/.openpalm/state/secrets/op_opencode_password
 ```
 
-Load the password into the environment and attach the OpenCode TUI:
+For the OpenCode TUI:
 
 ```bash
 IFS= read -r OPENCODE_SERVER_PASSWORD < ~/.openpalm/state/secrets/op_opencode_password
@@ -65,60 +124,83 @@ opencode attach http://127.0.0.1:3810
 unset OPENCODE_SERVER_PASSWORD
 ```
 
-[OpenCode's `attach` command](https://opencode.ai/docs/cli/) supports a
-Basic-authenticated remote server. The username defaults to `opencode`; the
-[server authentication contract](https://opencode.ai/docs/server/) is owned by
-OpenCode rather than reimplemented by OpenPalm.
-
-Loopback is the secure default. A trusted network client can connect directly
-after an explicit bind change:
+Native access is the trusted, full-fidelity path and bypasses Guardian. It is
+plain HTTP and loopback-only by default. An advanced operator can select an
+exact private address:
 
 ```bash
 openpalm config assistant --bind 192.168.1.10 --port 3810
 ```
 
-Direct access bypasses Guardian moderation and is plain HTTP. Keep it on a
-private network or terminate TLS in operator-managed infrastructure. Use
-Guardian for screened untrusted input.
+Use a private network or operator-managed TLS. Never publish it directly to
+the internet.
 
-## Optional MCP gateway
+## Add guarded MCP access
 
 ```bash
 openpalm addon enable gateway
+openpalm credential add personal-client read
+openpalm credential show personal-client --show-key
 ```
 
-Guardian listens on `http://127.0.0.1:3830/mcp` and accepts every configured
-named bearer credential. The initial owner key is stored at:
+Guardian listens at `http://127.0.0.1:3830/mcp`. Give each person or client a
+separate named identity so its policy can be changed or revoked independently.
 
-```text
-~/.openpalm/state/credentials/owner/key
-```
+Use the [Claude Desktop extension](claude-desktop.md) for local Claude. Use the
+[Remote MCP guide](remote-mcp.md) for a public HTTPS URL with an external OAuth
+provider. Static bearer keys are appropriate for local and controlled machine
+clients; a public connector should use OAuth identity mappings.
 
-Configure a LAN bind only with explicit intent:
+## Add a portal
+
+Discord and Slack are optional adapters to the same Guardian identity model:
 
 ```bash
-openpalm config gateway --bind 192.168.1.10 --port 3830
+openpalm addon enable discord
+openpalm credential add household read
+openpalm credential map discord 123456789012345678 household
 ```
 
-Terminate TLS in a separately managed reverse proxy before exposing Guardian
-outside a trusted network.
+Configure the platform token and default-deny allowlist as described in the
+[Discord](portals/discord-setup.md) or [Slack](portals/slack-setup.md) guide.
 
-The initial owner credential defaults to `full`; Discord and Slack default to
-`chat`. Add credentials and assign them to portals with:
+## Create recurring work
+
+Ask the trusted Assistant in ordinary language, for example: “Every weekday at
+8 AM, check the news about Northstar and save a concise report.” Assistant
+confirms the schedule and uses the managed task helper. The equivalent explicit
+commands are:
 
 ```bash
-openpalm credential add automation read
-openpalm credential set-policy automation full
-openpalm config portal discord --credential automation
+openpalm task create northstar-news \
+  --schedule '0 8 * * 1-5' \
+  --prompt 'Check the news about Northstar and save a concise report'
+openpalm task run northstar-news
+openpalm task history northstar-news
 ```
 
-## Verify
+Scheduled tasks use a restricted unattended agent: it can read non-secret
+knowledge/workspace data, fetch public web content, and write only below
+`knowledge/inbox/`. AKM retains durable run history independently of portals.
+
+## Verify readiness
 
 ```bash
 openpalm doctor
+openpalm doctor --readiness
 openpalm status
 openpalm logs
 ```
 
-`doctor` checks permissions, credentials, Docker, resolved Compose, and the
-managed security boundaries.
+Before relying on the installation, verify all of the following:
+
+1. the selected provider completes a real agent response;
+2. the agent can store and retrieve a small piece of AKM knowledge;
+3. a test recurring task runs and leaves a durable result;
+4. the chosen local client reconnects after an Assistant restart; and
+5. each enabled Guardian identity sees only its configured policy.
+
+Provider readiness is automatic during setup and available later through
+`provider test` or `doctor --readiness`. Knowledge recall and the contents of a
+task result remain user-level acceptance checks because they depend on the
+chosen provider and request.

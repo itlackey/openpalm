@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { readEnvFile, stackEnvFile } from './lean-foundation.js';
 import { readStackConfig } from './stack-config.js';
+import libPackage from '../../package.json' with { type: 'json' };
 
 const SECRET_KEY = /(?:password|secret|token|api[_-]?key|credential|private[_-]?key)/i;
 const RETIRED_SERVICE_NAMES = new Set([
@@ -148,6 +149,9 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 		OPENCODE_SERVER_PASSWORD_FILE: '/run/secrets/opencode_server_password',
 		GUARDIAN_AUTH_DIR: '/run/openpalm-credentials',
 		GUARDIAN_HANDLE_KEY_FILE: '/run/secrets/guardian_handle_key',
+		GUARDIAN_OAUTH_CONFIG_FILE: '/opt/openpalm/guardian/.config/opencode/oauth.json',
+		GUARDIAN_OAUTH_IDENTITIES_FILE:
+			'/opt/openpalm/guardian/.config/opencode/oauth-identities.json',
 		GUARDIAN_MODERATION_URL: 'http://127.0.0.1:4097',
 		GUARDIAN_MODERATION_PORT: '4097',
 		GUARDIAN_MODERATION_THRESHOLD: '3'
@@ -257,7 +261,7 @@ function expectedImage(
 ): string {
 	const definition = CORE_IMAGES[name];
 	const namespace = environment.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
-	const version = environment[definition.versionKey]?.trim() || '0.13.6';
+	const version = environment[definition.versionKey]?.trim() || libPackage.version;
 	return `${namespace}/${definition.component}:${version}`;
 }
 

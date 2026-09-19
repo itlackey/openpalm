@@ -18,13 +18,18 @@ afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+async function setup(): Promise<string> {
+	const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-config-'));
+	roots.push(root);
+	process.env.OP_HOME = join(root, 'home');
+	process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+	await bootstrapLeanInstall({ start: false });
+	return process.env.OP_HOME;
+}
+
 describe('lean config commands', () => {
 	it('persists direct Assistant exposure and portal credential selection without Docker', async () => {
-		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-config-'));
-		roots.push(root);
-		process.env.OP_HOME = join(root, 'home');
-		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
-		await bootstrapLeanInstall({ start: false });
+		await setup();
 
 		await main(['config', 'assistant', '--bind', '0.0.0.0', '--port', '4910', '--no-apply']);
 		await main(['credential', 'add', 'support-bot', 'read']);
@@ -51,5 +56,35 @@ describe('lean config commands', () => {
 		) as { default: string; credentials: Record<string, string> };
 		expect(bundle.default).toBe('support-bot');
 		expect(Object.keys(bundle.credentials)).toEqual(['support-bot']);
+	});
+
+	it('configures and disables the Guardian OAuth resource server without Docker', async () => {
+		await setup();
+		await main([
+			'config',
+			'oauth',
+			'--resource',
+			'https://agent.example/mcp',
+			'--issuer',
+			'https://identity.example/',
+			'--jwks-url',
+			'https://identity.example/jwks.json',
+			'--scopes',
+			'openpalm,profile',
+			'--no-apply'
+		]);
+		const path = join(process.env.OP_HOME ?? '', 'config', 'guardian', 'oauth.json');
+		expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+			version: 1,
+			enabled: true,
+			resource: 'https://agent.example/mcp',
+			issuer: 'https://identity.example/',
+			jwksUrl: 'https://identity.example/jwks.json',
+			audience: 'https://agent.example/mcp',
+			scopes: ['openpalm', 'profile'],
+			algorithms: ['RS256']
+		});
+		await main(['config', 'oauth', '--disable', '--no-apply']);
+		expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ version: 1, enabled: false });
 	});
 });

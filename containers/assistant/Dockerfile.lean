@@ -29,12 +29,13 @@ RUN apt-get update \
 
 COPY --from=tools /opt/openpalm/tools /opt/openpalm/tools
 COPY containers/assistant/entrypoint.lean.sh /usr/local/bin/openpalm-assistant
+COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 RUN test -n "$PLATFORM_VERSION" \
-    && chmod 0755 /usr/local/bin/openpalm-assistant \
+    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task \
     && mkdir -p /home/opencode /etc/opencode /opt/akm/cache /opt/akm/data/state /stash /work \
     && chown -R bun:bun /home/opencode /etc/opencode /opt/akm /stash /work \
     && chmod -R a+rwX /home/opencode /etc/opencode /opt/akm /stash /work

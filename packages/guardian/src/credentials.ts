@@ -21,7 +21,7 @@ const POLICY_AGENTS: Readonly<Record<GuardianPolicy, string>> = {
 	full: 'remote-full'
 };
 
-function validUsername(value: unknown): value is string {
+export function isCredentialUsername(value: unknown): value is string {
 	return (
 		typeof value === 'string' &&
 		USERNAME_RE.test(value) &&
@@ -97,7 +97,7 @@ export function loadCredentialRegistry(
 		}
 		const { username, id, policy } = item;
 		if (
-			!validUsername(username) ||
+			!isCredentialUsername(username) ||
 			!isCredentialId(id) ||
 			(policy !== 'chat' && policy !== 'read' && policy !== 'full')
 		) {
@@ -144,6 +144,22 @@ export function authenticateCredential(request: Request): AuthenticatedCredentia
 		return null;
 	}
 	return matches === 1 ? matched : null;
+}
+
+export function findCredentialByUsername(
+	username: string,
+	directory = Bun.env.GUARDIAN_AUTH_DIR ?? ''
+): AuthenticatedCredential | null {
+	try {
+		const matched = loadCredentialRegistry(directory).filter(
+			(candidate) => candidate.username === username
+		);
+		if (matched.length !== 1) return null;
+		const [{ id, policy }] = matched;
+		return { id, username, policy };
+	} catch {
+		return null;
+	}
 }
 
 export function readHandleKey(): string {

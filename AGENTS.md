@@ -5,7 +5,10 @@
 > decision record: change it with the implementation when the lean product is
 > better served by a new boundary.
 >
-> Remove or isolate complexity that cannot be justified by the lean product. Call out any remaining unjustified complexity.
+> OpenPalm 0.14 is a single-install personal agent with persistent knowledge,
+> recurring work, and simple standards-based access. Remove or isolate
+> complexity that does not serve that promise. Call out any remaining
+> unjustified complexity.
 
 ## akm CLI
 
@@ -35,26 +38,39 @@ For any other deletion:
 
 ## Product boundary
 
-OpenPalm is a self-hosted OpenCode agent with a deliberately narrow integration edge.
+OpenPalm is a single-install personal OpenCode agent for nontechnical users.
+The normal path is provider sign-in, a real readiness check, persistent
+knowledge, natural-language recurring work, and access from a familiar client.
 
 - **Assistant** is the only default container. It includes OpenCode, AKM, and supercronic.
 - **Guardian** is optional. It exposes only `/health` and MCP at `/mcp`.
 - **Portal** is one private package/image with Discord and Slack adapters. Both call Guardian through MCP.
-- **CLI** is the primary host orchestrator.
-- **Admin** is an optional static Electron utility. It has no server, chat, updater, tray, or background control plane.
+- **CLI** is the primary installer, importer, and host orchestrator.
+- **Admin** is an optional local setup and management utility over the same
+  lean library. It has no server, chat, updater, tray, or background control
+  plane.
+- **Claude Desktop MCPB** is an optional local stdio-to-Guardian bridge.
 
 There is no active SvelteKit UI, browser chat, OpenAI/Anthropic compatibility edge, A2A server, voice/model service, Paperclip service, VPN, mDNS discovery, hardware profile matrix, or public extension package graph.
+
+OpenCode owns model-provider discovery, authentication, and models. OpenPalm
+guides that native flow and verifies it; do not add a second provider registry,
+model proxy, or credential format. AKM task files are implementation detail:
+the finished user path manages schedules in ordinary language and retains a
+durable result for every run.
 
 ## Active repository surface
 
 ```text
 packages/lib/        lean filesystem + Compose control plane
-packages/cli/        install, migrate, configure, and lifecycle CLI
+packages/cli/        install, import, configure, and lifecycle CLI
 packages/guardian/   authenticated MCP security gateway
 packages/portal/     unified Discord/Slack MCP adapters
 packages/electron/   optional static local admin utility
+packages/claude-desktop/ optional local MCPB bridge
 packages/skeleton/   files selectively materialized into OP_HOME
 containers/assistant/Dockerfile.lean
+containers/assistant/openpalm-task.mjs
 containers/guardian/Dockerfile
 containers/portal/Dockerfile
 ```
@@ -68,6 +84,7 @@ trusted OpenCode client ──────────────────�
 external MCP client -> Guardian -> policy profile -> Assistant
 Discord/Slack -> Portal -> Guardian MCP ─────────┘
 CLI or optional Admin -> Docker Compose
+AKM + supercronic -> recurring agent work ────────┘
 ```
 
 The one managed Compose file is:
@@ -91,6 +108,8 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   other exact bind address must be explicit StackConfig intent.
 - Native OpenCode access intentionally bypasses Guardian. Guarded external
   requests enter through authenticated Guardian MCP.
+- Provider setup delegates to OpenCode and is complete only after a real,
+  no-tool Assistant request succeeds.
 - Guardian bearer credentials are named identities with private file-backed
   keys and independently configured `chat`, `read`, or `full` policies. The
   same identity may be used directly by MCP clients or mapped to Slack and
@@ -105,10 +124,15 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   and `.env` reads. `full` inherits Assistant permissions. A credential cannot
   select its profile.
 - Suspicious prompts and interaction answers escalate to a separate loopback moderator. Failure or an ambiguous `flag` verdict blocks the request.
+- Recurring prompt tasks run through `openpalm-task` with the restricted
+  `scheduled` profile, durable AKM history, and writes limited to
+  `knowledge/inbox/`. Removed task definitions are preserved.
 - Guardian protection cannot be disabled by a Compose flag.
 - Portal allowlists are default-deny.
 - Portal user maps are operator-owned per adapter. Each portal receives only a
   generated keyring containing its default and explicitly mapped credentials.
+- Scheduled work uses an explicit least-privilege profile, treats fetched
+  content as untrusted, and leaves durable history and results.
 - No managed service runs as root. No service receives additional Linux capabilities.
 - `state/stack.env` contains non-secret derived values only.
 - Lifecycle operations never use shell-interpolated Docker commands.
@@ -121,15 +145,25 @@ All persistent state lives under `OP_HOME` (default `~/.openpalm`):
 |---|---|---|
 | `system/` | release | selected managed files overwritten whole on update |
 | `config/` | operator | seed missing files only |
-| `knowledge/` | operator/AKM | never replaced; contains provider auth and tasks |
-| `workspace/` | operator | never replaced |
-| `state/` | control plane | stack intent, derived env, delegated file secrets |
-| `data/` | containers | durable service state and logs |
+| `knowledge/` | operator/AKM | portable; contains knowledge, provider auth, and tasks |
+| `workspace/` | operator | portable; never replaced |
+| `state/` | control plane | generated intent, derived env, delegated file secrets; not portable |
+| `data/` | containers | durable release-specific state and logs; not portable |
 
 `state/stack.json` is the core stack-intent schema. Per-user portal assignments
 are operator-owned maps under `config/portal/`. `state/stack.env` and
 `state/portal-credentials/` are derived runtime input. Updates copy an explicit
 managed-file allowlist and never wholesale-sync or delete stale paths.
+
+0.14 never upgrades an older home in place. `openpalm import` reads the old
+home as a source, refuses conflicts and path escapes, and stages imported task
+sources outside the active scheduler until reviewed.
+
+0.14 is a fresh-install boundary. Do not add an in-place 0.13 compatibility
+path. Import only an explicit allowlist of user-owned knowledge, disabled task
+definitions, workspace files, and validated configuration. Secret import is
+opt-in. Never infer new runtime intent from old `system/`, `state/`, `data/`,
+Compose, container, or retired-feature state, and never mutate the source home.
 
 ## Commands
 
@@ -160,6 +194,8 @@ Docker-dependent verification may be unavailable in restricted environments. `do
 - Transport handlers parse/authenticate/validate, then call small domain functions.
 - Fail closed on authentication, handle validation, moderation, origin, and secret-boundary errors.
 - Keep the active dependency graph narrow. Do not import the legacy `@openpalm/lib` barrel; use `@openpalm/lib/lean`.
+- Do not add a legacy migration or compatibility shim to the 0.14 runtime;
+  extend the previewable allowlisted importer when user-owned data is missing.
 - Do not add another managed Compose overlay, another public protocol, or another runtime service without changing the core principles first.
 - Use `execFile`/argument arrays for child processes, never shell strings.
 - Do not install software at container startup.

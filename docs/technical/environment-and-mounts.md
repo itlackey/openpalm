@@ -17,6 +17,8 @@ This document describes the active lean runtime. The executable source is
 | `state/stack.env` | Control plane | Non-secret values derived from intent plus operator image pins |
 | `state/credentials/` | Control plane/operator | Named Guardian key directories plus derived key-free registry |
 | `state/portal-credentials/` | Control plane | Derived, adapter-scoped runtime keyrings |
+| `config/guardian/oauth.json` | Operator | OAuth resource-server settings; disabled by default |
+| `config/guardian/oauth-identities.json` | Operator | Exact OAuth issuer/subject to credential maps |
 | `state/secrets/` | Control plane/operator | File-backed runtime credentials |
 | `data/` | Containers | Assistant home, AKM state, portal SQLite files, audit logs |
 
@@ -126,6 +128,12 @@ agent profile. Guardian reads files
 through its own read-only workspace mount so MCP workspace access can reject
 canonical paths and file descriptors that escape `/work`; it never delegates
 that authorization decision to OpenCode's native file API.
+
+The read-only `config/guardian` mount also carries `oauth.json` and
+`oauth-identities.json`. Both are mode `0600` operator files. They contain
+public identity-provider metadata and identity-to-credential names, never an
+OAuth token or client secret. Guardian reads identity mappings per request;
+resource-server configuration changes require a restart.
 
 ## Portal adapters
 

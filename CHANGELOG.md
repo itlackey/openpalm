@@ -5,6 +5,77 @@ All notable changes to OpenPalm are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.14.0] - 2026-09-18
+
+### Breaking
+
+- 0.14 is a fresh-install boundary, not an in-place upgrade of 0.13 or the
+  retired large stack. Users keep the old `OP_HOME` as a backup, install into
+  a new empty home, and import an explicit allowlist of user-owned AKM
+  knowledge, staged schedules, workspace files, and supported configuration.
+  Generated state, service databases, old Compose files, delegated access
+  keys, and retired feature settings do not migrate. Provider credentials and
+  other secrets require explicit opt-in. `openpalm import` previews every
+  candidate by default, refuses conflicts and path escapes, never mutates the
+  source, and stages imported schedules outside the active task directory.
+
+### Product direction
+
+- The 0.14 contract is now one single-install personal agent: guided native
+  OpenCode provider sign-in and readiness testing, persistent AKM knowledge,
+  natural-language recurring work with durable results, trusted native
+  OpenCode access, and optional policy-scoped Guardian MCP. Features outside
+  that promise are explicitly non-core or retired.
+
+### Added
+
+- Guided OpenCode provider onboarding with native OAuth/device/API-key flows,
+  explicit provider management commands, and a real no-tool readiness request
+  before setup is marked complete.
+- Durable recurring Assistant work through a single `openpalm-task` boundary
+  and `openpalm task` CLI. Scheduled prompts use a least-privilege OpenCode
+  profile, retain AKM history, may write only to their knowledge inbox, and
+  preserve removed definitions for recovery.
+- Seed-once personal Assistant persona and user-profile files.
+- A dry-run-first fresh-install importer for knowledge, workspace files,
+  supported Assistant preferences, staged task sources, and separately opted-in
+  provider auth, user environment, portal maps, and OAuth maps.
+- `openpalm doctor --readiness` for an explicit live provider request in
+  addition to offline setup, credential, scheduler, Compose, and security
+  checks.
+- A first-party Claude Desktop MCPB connects the complete local Guardian MCP
+  catalog over loopback. It is an optional release artifact and carries no
+  stack-control capability.
+- Guardian now exposes a full policy-filtered agent MCP surface: clients can
+  start and resume work, inspect owned sessions and jobs, answer explicit
+  interactions, and use bounded workspace capabilities instead of being
+  limited to basic chat.
+- A single named credential registry assigns each username and private key a
+  `chat`, `read`, or `full` policy. Direct MCP authentication, exact
+  Discord/Slack user mappings, and OAuth identities all resolve through that
+  registry, while each portal receives only its delegated key subset.
+- Guardian can act as an OAuth resource server for public MCP deployments. It
+  validates JWT issuer, audience, expiry, algorithm, required scopes, and JWKS
+  signature, then maps the exact issuer/subject to an existing named
+  credential and its `chat`, `read`, or `full` policy.
+- The CLI manages OAuth resource settings and identity mappings through
+  `openpalm config oauth` and `openpalm credential map|unmap|mappings oauth`.
+  Public HTTPS and local Claude Desktop deployment guides are included.
+
+### Changed
+
+- The optional Claude extension now participates in platform version stamping,
+  CI validation, release assembly, and checksum completeness checks.
+- Native OpenCode access remains the trusted full-fidelity path and is
+  loopback-bound by default. Operators can deliberately select another exact
+  bind address, while guarded clients continue to use Guardian MCP.
+- The maintained documentation and release graph now describe only the lean
+  Assistant, optional Guardian/Portal integrations, CLI, optional Admin, and
+  Claude Desktop extension. Retired services remain inert historical source
+  pending separately approved deletion.
+
 ## [0.13.5] - 2026-09-05
 
 ### Changed

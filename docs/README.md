@@ -1,48 +1,44 @@
 # OpenPalm documentation
 
-This index lists the maintained lean-stack documentation. OpenPalm is one
-default Assistant container, an optional Guardian MCP gateway, optional
-Discord/Slack adapters, a host CLI, and a separate static Admin utility.
+OpenPalm 0.14 has one product promise: install a private personal agent with
+persistent knowledge and recurring work, then access it through native
+OpenCode or optional guarded MCP.
 
-## Start here
-
-| Document | Purpose |
-|---|---|
-| [Project README](../README.md) | Product boundary, install, and common commands |
-| [Installation](installation.md) | Fresh install and provider configuration |
-| [Managing OpenPalm](managing-openpalm.md) | Lifecycle, intent, secrets, and custom Compose |
-| [Discord](portals/discord-setup.md) | Default-deny Discord adapter setup |
-| [Slack](portals/slack-setup.md) | Default-deny Slack adapter setup |
-| [Lean migration](operations/migration-to-lean-stack.md) | Safe migration from the larger legacy stack |
-
-## Architecture and contracts
+## User guides
 
 | Document | Purpose |
 |---|---|
-| [Core principles](technical/core-principles.md) | Living product, security, filesystem, and complexity contract |
-| [Architecture](technical/architecture.md) | Runtime topology and package graph |
-| [Guardian MCP API](technical/api-spec.md) | The complete remote protocol surface |
-| [Environment and mounts](technical/environment-and-mounts.md) | Variables, secrets, mounts, and networks |
-| [OpenCode configuration](technical/opencode-configuration.md) | Trusted, remote, moderator, and scheduler configuration |
-| [Package management](technical/package-management.md) | Workspaces, lockfile, image dependencies, and release units |
-| [Deletion manifest](technical/deletion-manifest.md) | Exact legacy paths awaiting approval |
+| [Project README](../README.md) | Product overview and current 0.14 status |
+| [Installation](installation.md) | Fresh install, provider readiness, and first connection |
+| [Managing OpenPalm](managing-openpalm.md) | Knowledge, schedules, access policies, backup, and lifecycle |
+| [Moving to 0.14](operations/migration-to-lean-stack.md) | Fresh-install and allowlisted-import contract |
+| [Claude Desktop](claude-desktop.md) | Local Claude MCPB connection |
+| [Remote MCP](remote-mcp.md) | Public HTTPS and OAuth resource-server deployment |
+| [Discord](portals/discord-setup.md) | Default-deny Discord adapter |
+| [Slack](portals/slack-setup.md) | Default-deny Slack adapter |
 
-## Contributor and release workflows
+## Maintained technical contracts
 
 | Document | Purpose |
 |---|---|
-| [Contributor guide](../.github/CONTRIBUTING.md) | Local setup and verification |
+| [Core principles](technical/core-principles.md) | Normative 0.14 product, security, data, and scope contract |
+| [Architecture](technical/architecture.md) | Runtime components and trust paths |
+| [Runtime foundations](technical/foundations.md) | Filesystem, service, credential, and scheduler implementation |
+| [Guardian MCP API](technical/api-spec.md) | Guarded remote protocol |
+| [Environment and mounts](technical/environment-and-mounts.md) | Runtime variables, mounts, secrets, and networks |
+| [OpenCode configuration](technical/opencode-configuration.md) | Agent profiles and provider ownership |
 | [Testing workflow](technical/testing-workflow.md) | Active local and CI checks |
-| [Release workflow](operations/release.md) | Three images, standalone CLI, Admin artifacts, and npm bootstrap |
+| [Release workflow](operations/release.md) | Images, CLI, optional artifacts, and release gate |
+| [Deletion manifest](technical/deletion-manifest.md) | Inert tracked legacy paths awaiting explicit removal approval |
 
-## Historical documents
+## Historical material
 
-Other documents in this repository describe pre-lean releases, design
-explorations, retired UI/API/addon features, or point-in-time reviews. They are
-preserved for migration context until their exact paths are approved for
-deletion. They are not normative and must not be used to infer an active
-service, package, API, environment variable, or support promise.
+Any other document describes an older release, retired feature, design
+exploration, or point-in-time review. It is evidence, not product direction.
+It must not be used to infer a supported 0.14 service, interface, migration, or
+configuration option.
 
-When a historical document conflicts with the active code or maintained docs,
-use the active behavior and update the living
-[core principles](technical/core-principles.md) in the same change.
+Historical files remain only because repository cleanup is separate from
+product design and requires exact-path approval. When historical material
+conflicts with the maintained list above, the
+[core principles](technical/core-principles.md) control.

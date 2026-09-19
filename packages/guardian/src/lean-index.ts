@@ -11,7 +11,13 @@ export {
 	readSessionHandle
 } from './conversation.js';
 export type { ConversationResult, HandleResult, InteractionKind } from './conversation.js';
-export { authenticateCredential, bearerToken, loadCredentialRegistry } from './credentials.js';
+export {
+	authenticateCredential,
+	bearerToken,
+	findCredentialByUsername,
+	isCredentialUsername,
+	loadCredentialRegistry
+} from './credentials.js';
 export type {
 	AuthenticatedCredential,
 	CredentialClass,
@@ -23,4 +29,15 @@ export {
 	startLeanGuardian
 } from './lean-server.js';
 export { createMcpAgentHandler, createMcpAgentServer } from './mcp-agent.js';
+export {
+	createGuardianOAuth,
+	loadGuardianOAuthConfig,
+	parseGuardianOAuthConfig,
+	parseGuardianOAuthIdentityMap
+} from './oauth.js';
+export type {
+	GuardianOAuth,
+	GuardianOAuthConfig,
+	GuardianOAuthIdentityMap
+} from './oauth.js';
 export { GatewayService } from './gateway-service.js';

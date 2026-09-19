@@ -6,8 +6,8 @@ OpenPalm uses OpenCode directly; it does not maintain a parallel agent/session a
 
 | Layer | Host path | Purpose |
 |---|---|---|
-| managed directory | `system/assistant` | server settings, global instructions, three Guardian agent profiles, local AKM plugin wrapper |
-| user config | `config/assistant/opencode.json` | operator model/provider preferences |
+| managed directory | `system/assistant` | server settings, global instructions, three Guardian profiles, restricted scheduled profile, local AKM plugin wrapper |
+| user config | `config/assistant/` | operator model/provider preferences, persona, and user profile |
 | provider auth | `knowledge/secrets/auth.json` | OpenCode credential store |
 | workspace | `workspace` | trusted local worktree |
 
@@ -72,13 +72,25 @@ Assistant. Its process performs no package installation at boot.
 
 ## Scheduler
 
-Supercronic runs inside Assistant. AKM task source files live in `knowledge/tasks/*.yml`. At startup and every 60 seconds:
+Supercronic runs inside Assistant. AKM task source files live in
+`knowledge/tasks/*.yml`. `config/akm/config.json` defines a `scheduled` engine
+that attaches to the already-running authenticated OpenCode server and selects
+the restricted `scheduled` profile. At startup and every 60 seconds:
 
 ```bash
 akm task sync --rebind
 ```
 
-Invalid tasks are reported without preventing OpenCode from starting. OpenPalm seeds no default tasks in a fresh lean installation; existing operator tasks are preserved during migration.
+Invalid tasks are reported without preventing OpenCode from starting. OpenPalm
+seeds no default tasks in a fresh installation. The 0.14 importer stages
+allowlisted legacy task definitions as disabled until the user reviews their
+schedule, policy, tools, secrets, and result destination.
+
+The image-baked `openpalm-task` helper is the single mutation boundary for both
+Assistant-created and host-CLI task operations. It prepends hostile-content
+guidance, validates task IDs and AKM sources, reconciles the scheduler, and
+preserves removed definitions under `knowledge/disabled-tasks/`. Editing task
+files is an advanced interface, not the primary product experience.
 
 ## Credentials
 

@@ -1,0 +1,56 @@
+{
+	"manifest_version": "0.3",
+	"name": "openpalm",
+	"display_name": "OpenPalm",
+	"version": "0.0.0-development",
+	"description": "Connect Claude Desktop to a local OpenPalm Guardian.",
+	"long_description": "A local, transparent MCP bridge to an operator-managed OpenPalm Guardian. Guardian remains responsible for authentication, policy, moderation, workspace access, and audit logging.",
+	"author": {
+		"name": "OpenPalm contributors",
+		"url": "https://github.com/itlackey/openpalm"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/itlackey/openpalm.git"
+	},
+	"homepage": "https://github.com/itlackey/openpalm",
+	"documentation": "https://github.com/itlackey/openpalm/blob/main/docs/claude-desktop.md",
+	"license": "MPL-2.0",
+	"keywords": ["agents", "mcp", "opencode", "self-hosted"],
+	"server": {
+		"type": "node",
+		"entry_point": "server/index.js",
+		"mcp_config": {
+			"command": "node",
+			"args": ["${__dirname}/server/index.js"],
+			"env": {
+				"OPENPALM_MCP_URL": "${user_config.guardian_url}",
+				"OPENPALM_MCP_TOKEN": "${user_config.credential_key}"
+			}
+		}
+	},
+	"tools_generated": true,
+	"prompts_generated": true,
+	"compatibility": {
+		"platforms": ["darwin", "win32", "linux"],
+		"runtimes": {
+			"node": ">=20.0.0"
+		}
+	},
+	"user_config": {
+		"guardian_url": {
+			"type": "string",
+			"title": "Guardian MCP URL",
+			"description": "Loopback URL for the local OpenPalm Guardian MCP endpoint.",
+			"default": "http://127.0.0.1:3830/mcp",
+			"required": true
+		},
+		"credential_key": {
+			"type": "string",
+			"title": "OpenPalm credential key",
+			"description": "Bearer key for a named OpenPalm credential. Its configured policy controls available capabilities.",
+			"sensitive": true,
+			"required": true
+		}
+	}
+}

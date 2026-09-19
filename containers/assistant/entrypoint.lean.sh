@@ -4,6 +4,7 @@ set -euo pipefail
 readonly OPENCODE_PORT="${OPENCODE_PORT:-4096}"
 readonly TASK_SPOOL_DIR=/tmp/openpalm-crontabs
 readonly TASK_BIN_DIR=/tmp/openpalm-bin
+readonly TASK_CRONTAB="$TASK_SPOOL_DIR/openpalm"
 
 prepare_identity() {
   if getent passwd "$(id -u)" >/dev/null 2>&1; then return; fi
@@ -28,7 +29,7 @@ prepare_filesystem() {
     /home/opencode/.config/opencode \
     /home/opencode/.local/share/opencode \
     /home/opencode/.local/state/opencode \
-    /opt/akm/cache /opt/akm/data/state /stash/tasks /work
+    /opt/akm/cache /opt/akm/data/state /stash/tasks /stash/inbox /stash/disabled-tasks /work
 
   for required in \
     opencode.jsonc \
@@ -36,6 +37,7 @@ prepare_filesystem() {
     agents/remote.md \
     agents/remote-read.md \
     agents/remote-full.md \
+    agents/scheduled.md \
     plugins/akm.js; do
     if [ ! -r "${OPENCODE_CONFIG_DIR:-/etc/opencode}/$required" ]; then
       echo "assistant: managed OpenCode config is missing $required" >&2
@@ -44,6 +46,10 @@ prepare_filesystem() {
   done
   if [ ! -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js ]; then
     echo 'assistant: image-baked AKM OpenCode plugin is missing' >&2
+    exit 1
+  fi
+  if [ ! -x /usr/local/bin/openpalm-task ]; then
+    echo 'assistant: OpenPalm task helper is missing' >&2
     exit 1
   fi
 }
@@ -66,7 +72,7 @@ install_crontab_shim() {
   cat >"$shim" <<'SHIM'
 #!/usr/bin/env sh
 set -eu
-file="/tmp/openpalm-crontabs/$(id -un)"
+file="/tmp/openpalm-crontabs/openpalm"
 case "${1:--}" in
   -l) cat "$file" 2>/dev/null ;;
   -r) rm -f "$file" ;;
@@ -80,7 +86,7 @@ SHIM
 }
 
 write_cron_environment() {
-  local file="$TASK_SPOOL_DIR/$(id -un)"
+  local file="$TASK_CRONTAB"
   {
     echo '# openpalm managed environment'
     echo 'SHELL=/bin/bash'
@@ -101,7 +107,7 @@ start_scheduler() {
   install_crontab_shim
   write_cron_environment
   sync_tasks
-  supercronic -inotify "$TASK_SPOOL_DIR/$(id -un)" &
+  supercronic -inotify "$TASK_CRONTAB" &
   (
     while sleep 60; do sync_tasks; done
   ) &

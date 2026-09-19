@@ -3,22 +3,29 @@ import { defineCommand } from 'citty';
 import {
 	parseStackConfig,
 	ensureCredentialKeys,
+	ensureOAuthFiles,
+	OAUTH_ALGORITHMS,
+	readOAuthConfig,
 	readStackConfig,
 	requireLeanInstall,
 	resolveOpenPalmHome,
 	stackConfigFile,
 	syncPortalCredentialBundles,
 	writeStackConfig,
+	writeOAuthConfig,
+	type OAuthAlgorithm,
+	type OAuthConfig,
 	type StackConfig
 } from '@openpalm/lib/lean';
 
-import { runStartAction } from './lifecycle-lean.js';
+import { runRestartAction, runStartAction } from './lifecycle-lean.js';
 
 function current() {
 	const homeDir = resolveOpenPalmHome();
 	requireLeanInstall(homeDir);
 	const result = readStackConfig(homeDir);
 	if (!result.ok) throw new Error(result.error);
+	ensureOAuthFiles(homeDir);
 	return { homeDir, config: result.config };
 }
 
@@ -136,7 +143,82 @@ const portal = defineCommand({
 	}
 });
 
+function commaList(value: unknown): string[] {
+	return String(value)
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+const oauth = defineCommand({
+	meta: { name: 'oauth', description: 'Configure Guardian as an OAuth MCP resource server' },
+	args: {
+		disable: { type: 'boolean', description: 'disable OAuth bearer-token authentication' },
+		resource: { type: 'string', description: 'public HTTPS MCP resource URL' },
+		issuer: { type: 'string', description: 'authorization server issuer URL' },
+		jwksUrl: { type: 'string', description: 'authorization server JWKS URL' },
+		audience: { type: 'string', description: 'required access-token audience' },
+		scopes: { type: 'string', description: 'comma-separated required scopes' },
+		algorithms: { type: 'string', description: 'comma-separated JWT algorithms' },
+		apply: {
+			type: 'boolean',
+			description: 'recreate the stack immediately (use --no-apply to defer)',
+			default: true
+		}
+	},
+	async run({ args }) {
+		const { homeDir } = current();
+		const existing = readOAuthConfig(homeDir);
+		const hasSettings = Boolean(
+			args.resource ||
+				args.issuer ||
+				args.jwksUrl ||
+				args.audience ||
+				args.scopes ||
+				args.algorithms
+		);
+		if (!args.disable && !hasSettings) {
+			console.log(JSON.stringify(existing, null, 2));
+			return;
+		}
+		if (args.disable && hasSettings) {
+			throw new Error('Use --disable by itself; OAuth settings are ignored only after removal.');
+		}
+		let next: OAuthConfig;
+		if (args.disable) {
+			next = { version: 1, enabled: false };
+		} else {
+			const previous = existing.enabled ? existing : null;
+			const resource = String(args.resource ?? previous?.resource ?? '');
+			const issuer = String(args.issuer ?? previous?.issuer ?? '');
+			const jwksUrl = String(args.jwksUrl ?? previous?.jwksUrl ?? '');
+			if (!resource || !issuer || !jwksUrl) {
+				throw new Error('Enabling OAuth requires --resource, --issuer, and --jwks-url.');
+			}
+			const algorithms = args.algorithms
+				? commaList(args.algorithms)
+				: (previous?.algorithms ?? ['RS256']);
+			if (!algorithms.every((value) => OAUTH_ALGORITHMS.includes(value as OAuthAlgorithm))) {
+				throw new Error(`Algorithms must be one of: ${OAUTH_ALGORITHMS.join(', ')}.`);
+			}
+			next = {
+				version: 1,
+				enabled: true,
+				resource,
+				issuer,
+				jwksUrl,
+				audience: String(args.audience ?? previous?.audience ?? resource),
+				scopes: args.scopes ? commaList(args.scopes) : (previous?.scopes ?? ['openpalm']),
+				algorithms: algorithms as OAuthAlgorithm[]
+			};
+		}
+		const written = writeOAuthConfig(homeDir, next);
+		console.log(JSON.stringify(written, null, 2));
+		if (args.apply !== false) await runRestartAction();
+	}
+});
+
 export default defineCommand({
 	meta: { name: 'config', description: 'Inspect or change the lean stack intent' },
-	subCommands: { show, path, assistant, gateway, portal }
+	subCommands: { show, path, assistant, gateway, portal, oauth }
 });

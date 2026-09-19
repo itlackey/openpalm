@@ -51,6 +51,16 @@ describe('lean install', () => {
 		expect(
 			readFileSync(join(process.env.OP_HOME, 'state', 'credentials', 'owner', 'key'), 'utf8').trim()
 		).toHaveLength(43);
+		expect(readFileSync(join(process.env.OP_HOME, 'state', 'stack.env'), 'utf8')).toContain(
+			'OP_SETUP_COMPLETE=false'
+		);
+		expect(existsSync(join(process.env.OP_HOME, 'config', 'assistant', 'persona.md'))).toBe(true);
+		expect(
+			JSON.parse(readFileSync(join(process.env.OP_HOME, 'config', 'akm', 'config.json'), 'utf8'))
+		).toMatchObject({ defaults: { engine: 'scheduled' } });
+		expect(
+			existsSync(join(process.env.OP_HOME, 'system', 'assistant', 'agents', 'scheduled.md'))
+		).toBe(true);
 	});
 
 	it('reconciles named keys and portal bundles to supplied install intent', async () => {

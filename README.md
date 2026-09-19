@@ -1,39 +1,63 @@
 # OpenPalm
 
-OpenPalm is a small self-hosted agent stack built around OpenCode.
+OpenPalm is a single-install personal AI agent built on OpenCode.
 
-The default installation is one container: **Assistant**. It exposes the native, authenticated OpenCode server on host loopback and includes AKM-backed knowledge plus scheduled tasks. Add the optional **Guardian** for screened MCP access. Guardian authenticates every request, screens hostile input, and applies the authenticated named credential's `chat`, `read`, or `full` policy.
+It gives one person a private agent with durable AKM knowledge and recurring
+work. OpenPalm handles the runtime, persistence, and safe access paths so the
+user does not need to assemble containers, provider endpoints, model IDs, or
+another chat application.
 
-There is no bundled chat application. Use any client that speaks MCP or the native OpenCode API. A static desktop admin utility is available as an optional stack-management aid; it is not part of the runtime.
-
-## Runtime
+The 0.14 product path is deliberately small:
 
 ```text
-trusted OpenCode client ── native OpenCode HTTP ─────────────> Assistant
-
-MCP client ── bearer auth ──> Guardian ── policy-scoped call ──> Assistant
-Discord/Slack ── unified Portal MCP client ──┘
+install -> sign in to an AI provider -> verify -> use the agent -> schedule work
 ```
+
+0.14 is a clean break from the older all-in-one stack. The maintained
+documentation describes only this lean product path; older material is
+historical reference.
+
+## What is included
 
 | Component | Default | Purpose |
 |---|---:|---|
-| Assistant | on | OpenCode, AKM knowledge, and the task scheduler |
-| Guardian | off | Authenticated MCP ingress and malicious-input screening |
-| Discord adapter | off | Default-deny Discord bridge through Guardian MCP |
-| Slack adapter | off | Default-deny Slack bridge through Guardian MCP |
-| Admin desktop app | separate | Optional local stack editor and lifecycle control |
+| Assistant | on | OpenCode agent, AKM knowledge, and recurring tasks |
+| Guardian | off | Authenticated, policy-scoped MCP and hostile-input screening |
+| Discord/Slack Portal | off | Platform adapters that use Guardian MCP |
+| CLI | host | Install, configure, diagnose, back up, and run the stack |
+| Admin | separate | Optional local setup and stack-management utility |
+| Claude Desktop extension | separate | Local Claude-to-Guardian MCP bridge |
 
-OpenPalm deliberately does not ship a chat UI, OpenAI-compatible API, Anthropic-compatible API, A2A server, model server, voice stack, VPN, service catalog, or containerized admin plane.
+Assistant is the only default container. There is no bundled chat UI, model
+server, OpenAI/Anthropic compatibility API, A2A server, voice stack, VPN, or
+containerized administration plane.
+
+## How users access the agent
+
+```text
+trusted OpenCode client -------------------------------> Assistant
+
+MCP client / Claude Desktop ----> Guardian ------------> Assistant
+Discord / Slack ----------------> Portal -> Guardian ---^
+```
+
+Trusted local clients use the complete native OpenCode interface. Guardian is
+optional and provides the guarded path for MCP, remote, and portal traffic.
+Each Guardian identity has a reusable `chat`, `read`, or `full` policy. Direct
+MCP keys, OAuth users, Discord users, and Slack users all map to that same
+credential registry.
+
+Guardian is a full agent integration rather than a chat shim: clients can run
+and resume work, inspect owned sessions and jobs, answer explicit interactions,
+and use the workspace capabilities allowed by their policy.
 
 ## Install
 
 Requirements:
 
-- Docker Engine with Docker Compose v2
-- Linux, macOS, or Windows with a supported Docker environment
-- a provider configured through OpenCode
-
-From a release:
+- Docker Engine with Docker Compose v2;
+- a non-root user; and
+- an account with a provider supported by OpenCode.
 
 ```bash
 npm install --global openpalm
@@ -47,171 +71,16 @@ bun install
 bun run packages/cli/src/main-lean.ts install
 ```
 
-The install creates `~/.openpalm` by default. Set `OP_HOME` to use another absolute location. The Assistant endpoint defaults to:
+OpenPalm installs to `~/.openpalm` unless `OP_HOME` names another absolute
+path. Assistant listens on `http://127.0.0.1:3810` by default.
 
-```text
-http://127.0.0.1:3810
-```
+The installer starts Assistant, delegates sign-in to OpenCode's native provider
+flow when needed, and completes only after a small real agent request succeeds.
+Users can rerun that flow with `openpalm setup` or manage it explicitly with
+`openpalm provider list|login|key|logout|test`. See
+[Installation](docs/installation.md).
 
-Attach an OpenCode TUI or another native client and authenticate as `opencode`
-with the password stored at:
-
-```text
-~/.openpalm/state/secrets/op_opencode_password
-```
-
-For example, load the password without placing it in the command arguments:
-
-```bash
-IFS= read -r OPENCODE_SERVER_PASSWORD < ~/.openpalm/state/secrets/op_opencode_password
-export OPENCODE_SERVER_PASSWORD
-opencode attach http://127.0.0.1:3810
-unset OPENCODE_SERVER_PASSWORD
-```
-
-To allow a client on a trusted network to connect directly:
-
-```bash
-openpalm config assistant --bind 192.168.1.10 --port 3810
-```
-
-This bypasses Guardian by design. OpenCode Basic authentication remains
-mandatory, but the native server is plain HTTP; use a private network or
-operator-managed TLS and do not publish it directly to the internet.
-
-Provider authentication remains in OpenCode's standard `auth.json`, mounted from:
-
-```text
-~/.openpalm/knowledge/secrets/auth.json
-```
-
-## Enable MCP ingress
-
-```bash
-openpalm addon enable gateway
-```
-
-Guardian defaults to loopback at `http://127.0.0.1:3830/mcp`. Install creates `owner`, `discord`, and `slack` credentials. Their keys live under:
-
-```text
-~/.openpalm/state/credentials/<username>/key
-```
-
-Guardian publishes a curated MCP agent catalog rather than a chat shim or raw
-OpenCode proxy. Every client can use tools for guarded agent runs, resumable
-jobs, owned sessions (including messages, diffs, and todos), and human-input responses. `read` and `full` policies add
-bounded workspace search/read; `full` adds session mutation and explicit
-permission decisions. Richer clients also receive session/job/workspace
-resources and workflow prompts.
-
-Session, message, job, and interaction values are encrypted, expiring,
-principal-scoped handles. Clients never receive upstream OpenCode IDs. Start
-with `openpalm.catalog.get` to inspect the authenticated catalog and
-`openpalm.agent.run` to do work. The same endpoint negotiates modern MCP and
-supports stateless 2025-era clients.
-
-Credentials are reusable across direct MCP clients and portals. Create and manage them by username:
-
-```bash
-openpalm credential list
-openpalm credential add automation read
-openpalm credential set-policy automation full
-openpalm credential rotate automation
-openpalm credential show automation --show-key
-```
-
-`add` and `rotate` generate a strong key by default. Use `--key-file <path>` or
-`--key-file -` to supply one without putting it in process arguments. Keys must
-contain 32–512 printable non-whitespace ASCII characters. Credential metadata
-and portal assignments live in `state/stack.json`; raw keys do not.
-
-- `chat` denies every Assistant tool.
-- `read` gives the managed agent read/list access to non-secret `/stash` and
-  `/work` content and exposes bounded non-secret `/work` search/read operations
-  to the MCP client. It permits no writes, shell commands, or network tools.
-  Treat every other readable file in those allowed trees as visible to that
-  credential.
-- `full` adds no Guardian-specific tool denial; the Assistant's OpenCode
-  permission configuration remains authoritative.
-
-### Use Guardian from OpenCode
-
-The bundled OpenCode version can consume Guardian as a remote MCP server. Keep
-the bearer token in the client process environment, not in project config:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "openpalm": {
-      "type": "remote",
-      "url": "http://127.0.0.1:3830/mcp",
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:OPENPALM_MCP_TOKEN}"
-      },
-      "timeout": 45000
-    }
-  }
-}
-```
-
-Then load the desired named credential before starting that client:
-
-```bash
-IFS= read -r OPENPALM_MCP_TOKEN < ~/.openpalm/state/credentials/owner/key
-export OPENPALM_MCP_TOKEN
-opencode
-unset OPENPALM_MCP_TOKEN
-```
-
-OpenCode receives the same policy-filtered tools as any other MCP client; it is
-not limited to a chat operation. See the upstream
-[remote MCP configuration](https://opencode.ai/v2/docs/mcp-servers) when using
-a newer OpenCode release whose config layout differs from the bundled version.
-
-To bind Guardian to a specific LAN address:
-
-```bash
-openpalm config gateway --bind 192.168.1.10 --port 3830
-```
-
-Do not publish Guardian directly to the public internet without a properly configured TLS reverse proxy and an explicit origin allowlist.
-
-## Optional portals
-
-```bash
-openpalm addon enable discord
-openpalm addon enable slack
-```
-
-Enabling either adapter also enables Guardian. Assign any named credential to a portal:
-
-```bash
-openpalm config portal discord --credential support-bot
-openpalm config portal slack --credential support-bot
-```
-
-That credential is the portal fallback. Map individual platform users to any
-other named credential and policy:
-
-```bash
-openpalm credential map discord 123456789012345678 support-read
-openpalm credential map slack U012ABCDEF automation-full
-openpalm credential mappings discord
-openpalm credential unmap discord 123456789012345678
-```
-
-Direct MCP clients authenticate with the key of the credential whose policy
-they should receive. For portals, the sender's exact platform user ID selects
-the mapped credential; an unmapped allowed user receives the portal fallback.
-All portal allowlists still apply first. The control plane generates a separate
-least-privilege keyring for each portal containing only its fallback and mapped
-credentials; Assistant receives none of them. Bot credentials remain in
-`state/secrets/`. OAuth identity mapping remains a future layer over the same
-named registry.
-
-## Day-two commands
+Useful lifecycle commands are:
 
 ```bash
 openpalm status
@@ -220,24 +89,86 @@ openpalm logs
 openpalm start
 openpalm restart
 openpalm stop
-openpalm config show
-openpalm addon list
-openpalm update
 ```
 
-`stop` removes containers and networks but never volumes or operator data. OpenPalm has no purge command in the lean CLI.
+## Knowledge and recurring work
 
-## Upgrade from 0.13
+The agent's durable knowledge, skills, and task definitions live under
+`~/.openpalm/knowledge`. Its working files live under
+`~/.openpalm/workspace`. Restarts and ordinary updates preserve both.
 
-Run:
+The Assistant can translate an ordinary-language request such as “Every
+weekday at 8, check the news about this project and add a summary to my inbox”
+into a managed recurring task. `openpalm task` provides the equivalent explicit
+list/create/show/pause/resume/run/history/remove interface. AKM retains every
+run's result and the restricted scheduled agent may also write reports under
+`knowledge/inbox/<task-id>/`.
+
+## Optional guarded MCP
+
+Enable Guardian and create a dedicated identity:
 
 ```bash
-openpalm update --no-start
-openpalm config show
-openpalm start
+openpalm addon enable gateway
+openpalm credential add claude-desktop read
+openpalm credential show claude-desktop --show-key
 ```
 
-The migration derives `state/stack.json` from existing intent, activates only Guardian/Discord/Slack settings that still exist, and preserves all legacy files and data. It does not automatically delete retired UI, voice, model, VPN, Paperclip, or old portal state. See [migration-to-lean-stack.md](docs/operations/migration-to-lean-stack.md) and [deletion-manifest.md](docs/technical/deletion-manifest.md).
+Guardian listens on `http://127.0.0.1:3830/mcp` by default. Credential keys are
+private files under:
+
+```text
+~/.openpalm/state/credentials/<username>/key
+```
+
+Policies are intentionally simple:
+
+| Policy | Meaning |
+|---|---|
+| `chat` | converse without Assistant tools |
+| `read` | add bounded non-secret knowledge/workspace reads |
+| `full` | use Assistant permissions without additional Guardian tool denial |
+
+For a local Claude Desktop connection, install the versioned `.mcpb` release
+artifact and follow [Claude Desktop setup](docs/claude-desktop.md). For a
+public URL, keep Guardian behind an operator-managed HTTPS reverse proxy,
+enable its OAuth resource-server mode, and follow
+[Remote MCP](docs/remote-mcp.md).
+
+Do not expose the native OpenCode or Guardian HTTP listeners directly to the
+public internet.
+
+## Optional Discord and Slack access
+
+```bash
+openpalm addon enable discord
+openpalm addon enable slack
+openpalm credential add family read
+openpalm credential map discord 123456789012345678 family
+openpalm credential map slack U012ABCDEF family
+```
+
+Portal allowlists remain default-deny. An exact platform-user mapping selects
+the same named credential and policy used by MCP; an unmapped allowed user gets
+the portal's configured fallback identity.
+
+## 0.14 is a clean break
+
+0.14 does not perform an in-place upgrade of a 0.13 or legacy home. The safe
+path is to keep the old home as a backup, install 0.14 into a new empty home,
+preview an allowlisted import, and bring across only user-owned knowledge,
+schedules, workspace files, and supported configuration.
+
+Old Compose files, generated state, service databases, caches, and retired
+feature settings do not migrate. Access credentials are recreated. Provider
+credentials and other secrets require explicit import approval. Imported
+schedules remain inactive until reviewed.
+
+`openpalm import` previews the allowlisted copy by default and applies only with
+`--apply`. It never mutates the old home, refuses conflicts and symlinks,
+requires explicit flags for secrets and identity maps, and stages old task
+sources outside the active scheduler until they are reviewed. See
+[the 0.14 transition guide](docs/operations/migration-to-lean-stack.md).
 
 ## Development
 
@@ -246,9 +177,8 @@ bun install
 bun run check
 bun run test
 bun run lint
-
-./scripts/dev-setup.sh --seed-env
-bun run dev:build
 ```
 
-The authoritative architecture and security rules are in [core-principles.md](docs/technical/core-principles.md). The active document map is [docs/README.md](docs/README.md).
+The normative product and security boundary is
+[OpenPalm 0.14 core principles](docs/technical/core-principles.md). The
+maintained document map is [docs/README.md](docs/README.md).

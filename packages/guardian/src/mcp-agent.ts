@@ -8,7 +8,11 @@ import {
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
-import type { AuthenticatedCredential, CredentialClass } from './credentials.js';
+import {
+	isCredentialUsername,
+	type AuthenticatedCredential,
+	type CredentialClass
+} from './credentials.js';
 import { GatewayError, GatewayService, type GatewayServiceOptions } from './gateway-service.js';
 import { createLogger } from './logger.js';
 
@@ -502,7 +506,7 @@ function registerTools(server: McpServer, service: GatewayService): void {
 				.object({
 					service: z.string(),
 					policy: z.enum(['chat', 'read', 'full']),
-					principal: z.enum(['owner', 'discord', 'slack']),
+					principal: z.string().refine(isCredentialUsername, 'invalid credential username'),
 					tools: z.array(z.string()),
 					resources: z.array(z.string()),
 					prompts: z.array(z.string()),

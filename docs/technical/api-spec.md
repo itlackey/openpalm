@@ -9,6 +9,8 @@ OpenCode proxy.
 | Method | Path | Authentication | Result |
 |---|---|---|---|
 | `GET` | `/health` | none | `{"ok":true}` when Guardian is available |
+| `GET` | `/.well-known/oauth-protected-resource` | none | RFC 9728 metadata when OAuth is enabled |
+| `GET` | `/.well-known/oauth-protected-resource/mcp` | none | Path-aware alias of the same metadata |
 | MCP transport methods | `/mcp` | Bearer | MCP Streamable HTTP |
 | any | any other path | n/a | 404 |
 
@@ -64,6 +66,39 @@ privileged policy.
 
 `full` does not bypass OpenCode permissions. It permits Guardian to relay an
 explicit client's decision when OpenCode returns an `ask` interaction.
+
+### OAuth bearer tokens
+
+OAuth is optional and additive. Guardian remains a resource server, not an
+authorization server. With OAuth enabled it:
+
+1. advertises the configured authorization-server issuer through protected
+   resource metadata;
+2. returns `401` with a `WWW-Authenticate` `resource_metadata` challenge;
+3. verifies JWT signature, issuer, audience, expiry, allowed algorithm, and
+   every configured required scope against the configured HTTPS JWKS; and
+4. maps the exact `(issuer, sub)` pair to a named OpenPalm credential.
+
+An unmapped subject has no access. OAuth scopes do not select `chat`, `read`,
+or `full`; the mapped named credential does. Guardian stores no access token,
+refresh token, OAuth client ID, or client secret.
+
+```bash
+openpalm config oauth \
+  --resource https://agent.example.com/mcp \
+  --issuer https://identity.example.com/ \
+  --jwks-url https://identity.example.com/.well-known/jwks.json \
+  --audience https://agent.example.com/mcp \
+  --scopes openpalm
+
+openpalm credential map oauth \
+  https://identity.example.com/ user-subject owner
+```
+
+The resource, issuer, and JWKS URLs must be HTTPS. Supported JWT algorithms
+are `RS256`, `PS256`, `ES256`, and `EdDSA`; `RS256` is the CLI default. See
+[remote MCP deployment](../remote-mcp.md) for the reverse-proxy and identity
+provider requirements.
 
 ## Tools
 
@@ -231,3 +266,5 @@ A request without an Origin header is a non-browser MCP client. An Origin that
 is absent from the allowlist returns 403. Allowed browser responses expose the
 MCP session/protocol headers and request ID required by a Streamable HTTP
 client; credentials remain bearer headers rather than cookies.
+The public OAuth metadata routes allow cross-origin reads independently of
+this `/mcp` allowlist.

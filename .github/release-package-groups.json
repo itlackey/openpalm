@@ -6,7 +6,8 @@
 			"packages/lib/package.json",
 			"packages/cli/package.json",
 			"packages/guardian/package.json",
-			"packages/portal/package.json"
+			"packages/portal/package.json",
+			"packages/claude-desktop/package.json"
 		],
 		"electron": ["packages/electron/package.json"]
 	},

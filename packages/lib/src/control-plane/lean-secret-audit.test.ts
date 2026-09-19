@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { auditLeanCompose } from './lean-secret-audit.js';
 import { defaultStackConfig, writeStackConfig } from './stack-config.js';
+import libPackage from '../../package.json' with { type: 'json' };
 
 const roots: string[] = [];
 
@@ -30,9 +31,9 @@ const assistantEnvironment = {
 	TERM: 'xterm-256color'
 };
 
-function assistantService() {
+function assistantService(homeDir = '/tmp/home') {
 	return {
-		image: 'openpalm/assistant:0.13.6',
+		image: `openpalm/assistant:${libPackage.version}`,
 		init: true,
 		user: '1000:1000',
 		cap_drop: ['ALL'],
@@ -55,34 +56,34 @@ function assistantService() {
 			}
 		],
 		volumes: [
-			{ type: 'bind', source: '/tmp/home/data/assistant', target: '/home/opencode' },
+			{ type: 'bind', source: `${homeDir}/data/assistant`, target: '/home/opencode' },
 			{
 				type: 'bind',
-				source: '/tmp/home/config/assistant',
+				source: `${homeDir}/config/assistant`,
 				target: '/home/opencode/.config/opencode',
 				read_only: true
 			},
 			{
 				type: 'bind',
-				source: '/tmp/home/knowledge/secrets/auth.json',
+				source: `${homeDir}/knowledge/secrets/auth.json`,
 				target: '/home/opencode/.local/share/opencode/auth.json'
 			},
 			{
 				type: 'bind',
-				source: '/tmp/home/system/assistant',
+				source: `${homeDir}/system/assistant`,
 				target: '/etc/opencode',
 				read_only: true
 			},
 			{
 				type: 'bind',
-				source: '/tmp/home/config/akm',
+				source: `${homeDir}/config/akm`,
 				target: '/etc/akm',
 				read_only: true
 			},
-			{ type: 'bind', source: '/tmp/home/knowledge', target: '/stash' },
-			{ type: 'bind', source: '/tmp/home/data/akm/cache', target: '/opt/akm/cache' },
-			{ type: 'bind', source: '/tmp/home/data/akm/data', target: '/opt/akm/data' },
-			{ type: 'bind', source: '/tmp/home/workspace', target: '/work' }
+			{ type: 'bind', source: `${homeDir}/knowledge`, target: '/stash' },
+			{ type: 'bind', source: `${homeDir}/data/akm/cache`, target: '/opt/akm/cache' },
+			{ type: 'bind', source: `${homeDir}/data/akm/data`, target: '/opt/akm/data' },
+			{ type: 'bind', source: `${homeDir}/workspace`, target: '/work' }
 		],
 		healthcheck: {
 			test: [
@@ -97,28 +98,36 @@ function assistantService() {
 	};
 }
 
-function baseConfig() {
+function baseConfig(homeDir = '/tmp/home') {
 	return {
 		secrets: {
 			opencode_server_password: {
-				file: '/tmp/home/state/secrets/op_opencode_password'
+				file: `${homeDir}/state/secrets/op_opencode_password`
 			}
 		},
 		networks: { agent_net: { name: 'openpalm_agent_net', ipam: {} } },
-		services: { assistant: assistantService() }
+		services: { assistant: assistantService(homeDir) }
 	};
+}
+
+function auditHome(): string {
+	const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-audit-'));
+	roots.push(root);
+	writeStackConfig(root, defaultStackConfig());
+	return root;
 }
 
 describe('lean Compose security audit', () => {
 	it('accepts the narrow Assistant grant and rejects boundary expansion', () => {
-		const base = baseConfig();
-		expect(auditLeanCompose(base, '/tmp/home')).toEqual([]);
+		const home = auditHome();
+		const base = baseConfig(home);
+		expect(auditLeanCompose(base, home)).toEqual([]);
 		base.services.assistant.networks.push('ingress_net');
 		base.services.assistant.environment = {
 			...base.services.assistant.environment,
 			API_TOKEN: 'plaintext'
 		};
-		const issues = auditLeanCompose(base, '/tmp/home');
+		const issues = auditLeanCompose(base, home);
 		expect(issues).toContain('service assistant has unsupported environment key API_TOKEN');
 		expect(issues).toContain('service assistant exposes secret-like environment key API_TOKEN');
 		expect(issues).toContain('service assistant may not bridge agent_net and ingress_net');
@@ -126,10 +135,11 @@ describe('lean Compose security audit', () => {
 	});
 
 	it('rejects privilege, runtime socket, and public Assistant overrides', () => {
+		const home = auditHome();
 		const config = {
 			secrets: {
 				opencode_server_password: {
-					file: '/tmp/home/state/secrets/op_opencode_password'
+					file: `${home}/state/secrets/op_opencode_password`
 				}
 			},
 			services: {
@@ -151,33 +161,30 @@ describe('lean Compose security audit', () => {
 				}
 			}
 		};
-		expect(auditLeanCompose(config, '/tmp/home')).toContain(
+		expect(auditLeanCompose(config, home)).toContain(
 			'service assistant may not be privileged'
 		);
-		expect(auditLeanCompose(config, '/tmp/home')).toContain(
+		expect(auditLeanCompose(config, home)).toContain(
 			'service assistant may not mount a container runtime'
 		);
-		expect(auditLeanCompose(config, '/tmp/home')).toContain(
+		expect(auditLeanCompose(config, home)).toContain(
 			'assistant must publish only 127.0.0.1:3810:4096'
 		);
-		expect(auditLeanCompose(config, '/tmp/home')).toContain(
+		expect(auditLeanCompose(config, home)).toContain(
 			'service assistant must run as a non-root user'
 		);
-		expect(auditLeanCompose(config, '/tmp/home')).toContain(
+		expect(auditLeanCompose(config, home)).toContain(
 			'service assistant may not set OPENCODE_PERMISSION'
 		);
 	});
 
 	it('accepts a non-loopback Assistant bind only when it matches StackConfig intent', () => {
-		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-audit-'));
-		roots.push(root);
+		const root = auditHome();
 		const intent = defaultStackConfig();
 		intent.assistant.bindAddress = '0.0.0.0';
 		intent.assistant.port = 4910;
 		writeStackConfig(root, intent);
-		const config = JSON.parse(
-			JSON.stringify(baseConfig()).replaceAll('/tmp/home', root)
-		) as ReturnType<typeof baseConfig>;
+		const config = baseConfig(root);
 		config.services.assistant.ports[0] = {
 			host_ip: '0.0.0.0',
 			target: 4096,
@@ -189,7 +196,8 @@ describe('lean Compose security audit', () => {
 	});
 
 	it('rejects replacement images, executable hooks, mounts, and extra ports', () => {
-		const config = baseConfig();
+		const home = auditHome();
+		const config = baseConfig(home);
 		config.services.assistant.image = 'attacker/assistant:latest';
 		Object.assign(config.services.assistant, {
 			entrypoint: ['/bin/sh', '-c', 'steal-secrets'],
@@ -208,8 +216,10 @@ describe('lean Compose security audit', () => {
 			mode: 'ingress'
 		});
 
-		const issues = auditLeanCompose(config, '/tmp/home');
-		expect(issues).toContain('service assistant must use managed image openpalm/assistant:0.13.6');
+		const issues = auditLeanCompose(config, home);
+		expect(issues).toContain(
+			`service assistant must use managed image openpalm/assistant:${libPackage.version}`
+		);
 		expect(issues).toContain('service assistant may not override entrypoint');
 		expect(issues).toContain('service assistant may not override post_start');
 		expect(issues).toContain('service assistant has unexpected mount /host');

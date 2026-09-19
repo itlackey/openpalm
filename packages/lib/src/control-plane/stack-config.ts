@@ -2,13 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 
-import {
-	mergeEnvContent,
-	readEnvFile,
-	stackConfigFile,
-	stackEnvFile,
-	writeFileAtomic
-} from './lean-foundation.js';
+import { mergeEnvContent, stackConfigFile, stackEnvFile, writeFileAtomic } from './lean-foundation.js';
 
 export { stackConfigFile } from './lean-foundation.js';
 
@@ -42,7 +36,7 @@ export type StackConfig = {
 };
 
 export type StackConfigReadResult =
-	| { ok: true; config: StackConfig; source: 'file' | 'v1' | 'legacy-env' }
+	| { ok: true; config: StackConfig; source: 'file' }
 	| { ok: false; error: string };
 
 const DEFAULT_BIND_ADDRESS = '127.0.0.1';
@@ -52,14 +46,6 @@ const MAX_CREDENTIALS = 128;
 const LEAN_ADDONS = new Set(['gateway', 'discord', 'slack']);
 const USERNAME_RE = /^[a-z][a-z0-9._-]{0,63}$/;
 const CREDENTIAL_ID_RE = /^(?:owner|discord|slack|cred_[a-f0-9]{32})$/;
-const RETIRED_POLICY_ENV = new Set([
-	'GUARDIAN_OWNER_POLICY',
-	'GUARDIAN_DISCORD_POLICY',
-	'GUARDIAN_SLACK_POLICY',
-	'OP_DISCORD_CREDENTIAL',
-	'OP_SLACK_CREDENTIAL'
-]);
-
 const DEFAULT_POLICIES = {
 	owner: 'full',
 	discord: 'chat',
@@ -248,117 +234,14 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	return { ok: true, config, source: 'file' };
 }
 
-function policy(value: unknown, fallback: GuardianPolicy): GuardianPolicy {
-	return isGuardianPolicy(value) ? value : fallback;
-}
-
-function setDefaultCredentialPolicy(
-	config: StackConfig,
-	username: keyof typeof DEFAULT_POLICIES,
-	value: GuardianPolicy
-): void {
-	const credential = config.credentials[username];
-	if (!credential) throw new Error(`default credential is missing: ${username}`);
-	credential.policy = value;
-}
-
-function migrateV1(value: unknown): StackConfig | null {
-	const root = asRecord(value);
-	const assistant = asRecord(root?.assistant);
-	const gateway = asRecord(root?.gateway);
-	const portals = asRecord(root?.portals);
-	const discord = asRecord(portals?.discord);
-	const slack = asRecord(portals?.slack);
-	if (
-		root?.version !== 1 ||
-		!gateway ||
-		!portals ||
-		!discord ||
-		!slack ||
-		!hasOnlyKeys(root, ['version', 'assistant', 'gateway', 'portals']) ||
-		!hasOnlyKeys(gateway, ['enabled', 'bindAddress', 'port', 'policy']) ||
-		!hasOnlyKeys(portals, ['discord', 'slack']) ||
-		!hasOnlyKeys(discord, ['enabled', 'policy']) ||
-		!hasOnlyKeys(slack, ['enabled', 'policy']) ||
-		(assistant !== null && !hasOnlyKeys(assistant, ['bindAddress', 'port']))
-	) {
-		return null;
-	}
-	const candidate = defaultStackConfig();
-	if (assistant) {
-		candidate.assistant.bindAddress = assistant.bindAddress as string;
-		candidate.assistant.port = assistant.port as number;
-	}
-	candidate.gateway.enabled = gateway.enabled as boolean;
-	candidate.gateway.bindAddress = gateway.bindAddress as string;
-	candidate.gateway.port = gateway.port as number;
-	setDefaultCredentialPolicy(candidate, 'owner', policy(gateway.policy, DEFAULT_POLICIES.owner));
-	candidate.portals.discord.enabled = discord.enabled as boolean;
-	setDefaultCredentialPolicy(
-		candidate,
-		'discord',
-		policy(discord.policy, DEFAULT_POLICIES.discord)
-	);
-	candidate.portals.slack.enabled = slack.enabled as boolean;
-	setDefaultCredentialPolicy(candidate, 'slack', policy(slack.policy, DEFAULT_POLICIES.slack));
-	const parsed = parseStackConfig(candidate);
-	return parsed.ok ? parsed.config : null;
-}
-
-function legacyConfig(homeDir: string): StackConfig {
-	const env = readEnvFile(stackEnvFile(homeDir));
-	const enabled = new Set(parseAddons(env.OP_ENABLED_ADDONS));
-	const discord = enabled.has('discord');
-	const slack = enabled.has('slack');
-	const oldGateway =
-		enabled.has('gateway') ||
-		enabled.has('api') ||
-		env.OP_ACCESS_GUARDIAN === 'true' ||
-		env.OP_ACCESS_OPENAI_API === 'true' ||
-		env.GUARDIAN_DIRECT_INGRESS === 'true';
-	const rawPort = Number.parseInt(env.OP_GUARDIAN_PORT ?? '', 10);
-	const rawAssistantPort = Number.parseInt(env.OP_ASSISTANT_PORT ?? '', 10);
-	const bindAddress = env.OP_GUARDIAN_BIND_ADDRESS?.trim() || DEFAULT_BIND_ADDRESS;
-	const assistantBindAddress = env.OP_ASSISTANT_BIND_ADDRESS?.trim() || DEFAULT_BIND_ADDRESS;
-	const config = defaultStackConfig();
-	config.assistant.bindAddress = validBindAddress(assistantBindAddress)
-		? assistantBindAddress
-		: DEFAULT_BIND_ADDRESS;
-	config.assistant.port = parsePort(rawAssistantPort) ?? DEFAULT_ASSISTANT_PORT;
-	config.gateway.enabled = oldGateway || discord || slack;
-	config.gateway.bindAddress = validBindAddress(bindAddress) ? bindAddress : DEFAULT_BIND_ADDRESS;
-	config.gateway.port = parsePort(rawPort) ?? DEFAULT_GATEWAY_PORT;
-	setDefaultCredentialPolicy(
-		config,
-		'owner',
-		policy(env.GUARDIAN_OWNER_POLICY, DEFAULT_POLICIES.owner)
-	);
-	setDefaultCredentialPolicy(
-		config,
-		'discord',
-		policy(env.GUARDIAN_DISCORD_POLICY, DEFAULT_POLICIES.discord)
-	);
-	setDefaultCredentialPolicy(
-		config,
-		'slack',
-		policy(env.GUARDIAN_SLACK_POLICY, DEFAULT_POLICIES.slack)
-	);
-	config.portals.discord.enabled = discord;
-	config.portals.slack.enabled = slack;
-	return config;
-}
-
 export function readStackConfig(homeDir: string): StackConfigReadResult {
 	const path = stackConfigFile(homeDir);
 	if (!existsSync(path)) {
-		return { ok: true, config: legacyConfig(homeDir), source: 'legacy-env' };
+		return { ok: false, error: `stack config is missing: ${path}` };
 	}
 	try {
 		const value = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-		const parsed = parseStackConfig(value);
-		if (parsed.ok) return parsed;
-		const migrated = migrateV1(value);
-		return migrated ? { ok: true, config: migrated, source: 'v1' } : parsed;
+		return parseStackConfig(value);
 	} catch (error) {
 		return {
 			ok: false,
@@ -402,9 +285,8 @@ function withoutRetiredPolicyEnv(content: string): string {
 	return content
 		.split(/\r?\n/)
 		.filter((line) => {
-			const candidate = line.trimStart().replace(/^export\s+/, '');
-			const separator = candidate.indexOf('=');
-			return separator <= 0 || !RETIRED_POLICY_ENV.has(candidate.slice(0, separator).trim());
+			const key = line.trimStart().replace(/^export\s+/, '').split('=', 1)[0]?.trim();
+			return !/^GUARDIAN_(?:OWNER|DISCORD|SLACK)_POLICY$/.test(key ?? '');
 		})
 		.join('\n');
 }
@@ -418,24 +300,24 @@ export function writeStackConfig(homeDir: string, value: StackConfig): StackConf
 	writeCredentialRegistry(homeDir, config);
 
 	const envPath = stackEnvFile(homeDir);
-	const current = withoutRetiredPolicyEnv(existsSync(envPath) ? readFileSync(envPath, 'utf8') : '');
+	const current = withoutRetiredPolicyEnv(
+		existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
+	);
 	writeFileAtomic(envPath, mergeEnvContent(current, stackConfigEnv(config)), 0o600);
 	return config;
 }
 
 export function ensureStackConfig(homeDir: string): StackConfig {
+	if (!existsSync(stackConfigFile(homeDir))) return writeStackConfig(homeDir, defaultStackConfig());
 	const result = readStackConfig(homeDir);
 	if (!result.ok) throw new Error(result.error);
-	if (result.source === 'file') {
-		const envPath = stackEnvFile(homeDir);
-		const raw = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
-		const current = withoutRetiredPolicyEnv(raw);
-		const next = mergeEnvContent(current, stackConfigEnv(result.config));
-		if (next !== raw) writeFileAtomic(envPath, next, 0o600);
-		writeCredentialRegistry(homeDir, result.config);
-		return result.config;
-	}
-	return writeStackConfig(homeDir, result.config);
+	const envPath = stackEnvFile(homeDir);
+	const disk = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+	const raw = withoutRetiredPolicyEnv(disk);
+	const next = mergeEnvContent(raw, stackConfigEnv(result.config));
+	if (next !== disk) writeFileAtomic(envPath, next, 0o600);
+	writeCredentialRegistry(homeDir, result.config);
+	return result.config;
 }
 
 export function leanEnabledAddons(homeDir: string): string[] {

@@ -1,163 +1,159 @@
-# Lean architecture
+# OpenPalm 0.14 architecture
 
-## System boundary
+OpenPalm owns the smallest reliable layer around one persistent OpenCode agent.
 
-OpenPalm owns the smallest deployable layer around OpenCode:
+## Runtime
 
 ```text
 Host
-├── openpalm CLI (primary lifecycle tool)
-├── OpenPalm Admin (optional static Electron process)
+├── CLI                              install and lifecycle
+├── Admin (optional)                 local setup/management wrapper
 └── Docker Compose
-    ├── assistant                 always
-    ├── guardian                  gateway/discord/slack profile
-    ├── discord                   discord profile
-    └── slack                     slack profile
+    ├── Assistant                    always
+    ├── Guardian                     optional gateway profile
+    └── Portal                       optional Discord or Slack profile
 ```
 
-The CLI and Admin import only `@openpalm/lib/lean`. They do not run a server or maintain a second lifecycle implementation.
+Assistant is the product. The other components make it easier or safer to
+operate and access Assistant; they are not independent platforms.
 
 ## Assistant
 
-Assistant is an immutable image containing:
+Assistant is one image containing:
 
-- OpenCode;
-- AKM CLI;
-- the AKM OpenCode plugin as a local image-baked plugin; and
-- supercronic.
+- OpenCode, the agent runtime and provider integration layer;
+- AKM CLI plus the image-baked AKM OpenCode plugin, for persistent knowledge
+  and task definitions; and
+- supercronic, for recurring work.
 
-The image contains no UI, browser client, optional CLI installer, model runtime, embedding bundle, notification service, Docker client, or admin credential.
+It mounts user knowledge at `/stash` and working files at `/work`. Its native
+OpenCode server uses file-backed Basic authentication and is published to host
+loopback by default.
 
-Assistant mounts operator knowledge at `/stash`, a workspace at `/work`, and its own data home. Its native OpenCode server always uses file-backed Basic authentication. It is host-published on `127.0.0.1` by default and can be bound to another exact address through StackConfig.
+Assistant contains no web UI, model runtime, Docker client, admin credential,
+Guardian credential, provider proxy, VPN, or optional service installer.
+
+## Knowledge and recurring work
+
+AKM is part of the core product rather than an add-on. Knowledge, skills, and
+task sources are user-owned and survive replacement of the Assistant
+container. supercronic executes schedules inside Assistant; there is no
+scheduler service or scheduler API.
+
+Assistant instructions translate ordinary-language requests into the managed
+`openpalm-task` interface, which provides create, pause, resume, list, run,
+history, adopt, and remove operations over AKM. Runs record durable history;
+the scheduled profile may also write a durable inbox report before an optional
+portal notification is attempted. Imported schedules are inert until reviewed.
+
+Scheduled agent runs use a dedicated least-privilege OpenCode profile. Remote
+content retrieved by a schedule is treated as untrusted input.
+
+## Provider boundary
+
+OpenCode owns provider discovery, authentication methods, models, and provider
+credentials. OpenPalm guides the native sign-in flow, persists OpenCode's
+credential file, and runs a readiness request.
+
+OpenPalm does not maintain a parallel provider registry, normalize provider
+APIs, host models, or infer endpoint configuration. Advanced users may edit
+normal OpenCode configuration after initial setup.
+
+## Access paths
 
 Two access paths coexist:
 
-- trusted native clients use the complete OpenCode API and normal Assistant
-  permissions without passing through Guardian; and
-- Guardian clients use a managed profile selected by their credential policy.
+- trusted clients connect directly to the complete native OpenCode API; and
+- less-trusted clients connect to Guardian's policy-scoped MCP API.
 
-The managed Guardian profiles are `remote` (`chat`, no tools), `remote-read`
-(`read`, bounded read/list tools with managed secret/env exclusions), and
-`remote-full` (`full`, no additional Guardian tool denial). The last profile
-still inherits the Assistant's global OpenCode permissions.
+Direct access deliberately bypasses Guardian and therefore stays
+loopback/private unless the operator explicitly changes the bind and supplies
+appropriate transport security.
 
-## Guardian
-
-Guardian is an optional Bun service with one listener.
-
-Request pipeline:
+Guardian is optional. Its request path is:
 
 ```text
-request size / pre-auth rate
+size/rate limits
   -> exact Origin policy
-  -> Bearer key to named credential identity
-  -> principal rate + concurrency
-  -> MCP schema validation
-  -> policy-filtered capability catalog
-  -> heuristic content screen for prompts and answers
-  -> loopback LLM classification when suspicious
-  -> encrypted handle + session-ownership validation
-  -> policy-to-agent mapping for the authenticated credential
-  -> async OpenCode job/session operation or contained read-only workspace access
-  -> bounded response + audit record
+  -> bearer key or verified OAuth identity
+  -> named credential and policy
+  -> MCP validation
+  -> hostile-input screening
+  -> owned session/job/interaction handles
+  -> policy-selected OpenCode profile
+  -> Assistant
 ```
 
-Guardian does not proxy arbitrary OpenCode paths. It does not implement OpenAI,
-Anthropic, or A2A compatibility. It exposes a curated agent catalog: resumable runs and jobs,
-owned sessions, bounded workspace reads, explicit human interactions, useful
-resources, and static workflow prompts. It deliberately does not mirror the
-Assistant's raw routes or internal tool catalog.
+Guardian exposes stable agent operations: catalog discovery, resumable runs,
+jobs, owned sessions, interactions, and policy-allowed workspace access. It
+does not expose arbitrary OpenCode routes, provider administration, a shell
+API, a compatibility chat API, or its own agent runtime.
 
-Guardian mounts the operator workspace at `/work` read-only. Direct MCP file
-reads are opened locally only after lexical, canonical-path, regular-file, and
-opened-descriptor containment checks. Search results from Assistant are exposed
-only when their paths independently pass that same filesystem boundary.
+## Identity and portals
 
-Guardian is stateless. Encrypted session/message/job/interaction handles carry bounded
-continuity, while HMAC-bound OpenCode session metadata provides independently
-verifiable ownership. OpenCode remains the source of truth for messages,
-status, diffs, todos, and pending questions/permissions. `full` clients may
-answer explicit `ask` decisions; ordinary prompt text never counts as approval.
+The named credential registry is the single authorization model for Guardian:
 
-The moderator is a second loopback OpenCode process in the Guardian container. Its managed configuration denies every tool. It receives only the untrusted message encoded as a JSON string plus heuristic signal names. Unavailable or malformed moderation fails closed.
+```text
+bearer key ---------------------┐
+OAuth issuer + subject --------+--> named credential --> chat/read/full
+Discord platform user ---------+
+Slack platform user -----------┘
+```
 
-## Portal
-
-`@openpalm/portal` is one private package and one image. `PORTAL_ADAPTER` selects Discord or Slack.
-
-Each adapter:
-
-- enforces a default-deny platform allowlist;
-- maps a platform thread/user scope to an opaque Guardian session handle in SQLite;
-- serializes turns per platform conversation;
-- calls Guardian with the standard MCP client; and
-- never receives an OpenCode session ID or Assistant credential.
-
-Each adapter has one fallback named Guardian credential plus an operator-owned
-map from exact platform user IDs to other named credentials. The control plane
-generates an adapter-specific keyring containing only those referenced keys.
-The adapter resolves the sender on each request, and Guardian authenticates the
-selected key and applies its policy. The same credential may also be used by a
-direct MCP client. Conversation continuity is credential-scoped so a mapping
-change cannot reuse a handle owned by the prior identity.
-
-The adapters do not have an `agent_net` path.
+Portal allowlists remain a separate default-deny boundary. A portal receives
+only the credential keys used by its fallback and explicit user mappings. It
+can reach Guardian but not Assistant directly.
 
 ## Control plane
 
-`StackConfigV2` is deliberately small:
+The CLI is the primary host orchestrator. Admin is an optional local wrapper
+over the same `@openpalm/lib/lean` functions and has no server or background
+process.
 
-```json
-{
-  "version": 2,
-  "assistant": {
-    "bindAddress": "127.0.0.1",
-    "port": 3810
-  },
-  "gateway": {
-    "enabled": false,
-    "bindAddress": "127.0.0.1",
-    "port": 3830
-  },
-  "credentials": {
-    "owner": { "id": "owner", "policy": "full" },
-    "discord": { "id": "discord", "policy": "chat" },
-    "slack": { "id": "slack", "policy": "chat" }
-  },
-  "portals": {
-    "discord": { "enabled": false, "credential": "discord" },
-    "slack": { "enabled": false, "credential": "slack" }
-  }
-}
-```
+`state/stack.json` contains only:
 
-It is stored at `state/stack.json`. Portal user maps are separate operator-owned
-files at `config/portal/<adapter>/credentials.json`, keeping the core intent
-schema small. The control plane derives Compose profiles, binds, ports, a
-key-free Guardian registry, and least-privilege portal keyrings. Raw keys live
-separately under `state/credentials/<username>/key`.
-Unsupported keys fail validation.
+- Assistant bind and port;
+- Guardian enablement, bind, and port;
+- named credential IDs and policies; and
+- Discord and Slack enablement and fallback identities.
 
-The Compose project is assembled from:
+Portal user maps and OAuth identity maps are operator-owned files. Raw keys are
+private files. `state/stack.env` is derived and contains no secrets.
 
-1. `system/stack/stack.compose.yml` — managed and replaced whole; and
-2. `config/stack/custom.compose.yml` — operator-owned and seed-only.
+The Compose project has exactly two inputs:
 
-No catalog or overlay discovery exists in the active control plane.
+1. `system/stack/stack.compose.yml`, owned by the release; and
+2. `config/stack/custom.compose.yml`, owned by the operator.
+
+There is no managed overlay graph, add-on catalog, or service discovery layer.
 
 ## Package graph
 
 ```text
-@openpalm/lib (zero runtime dependencies)
-   ↑                ↑
- CLI        optional Electron Admin
+@openpalm/lib/lean <--------- CLI
+        ^                     optional Admin
+        |
+managed home + Compose
 
-Guardian -> @modelcontextprotocol/server + @opencode-ai/sdk
-Portal   -> @modelcontextprotocol/client + Discord/Slack SDKs
+Guardian ---> MCP server + OpenCode SDK
+Portal -----> MCP client + Discord/Slack SDKs
+Claude extension ---> local stdio-to-Guardian bridge
 ```
 
-Guardian and Portal are private image components. MCP is the integration contract, not a published OpenPalm client SDK.
+Guardian, Portal, and Skeleton are implementation packages, not public product
+platforms. MCP and native OpenCode are the integration standards.
 
-## Migration boundary
+## Persistence
 
-Legacy files are inputs and preserved artifacts, not active modules. The migration reads old add-on/access values only to derive Gateway, Discord, and Slack intent. It never imports old lifecycle code and never removes retired files or data.
+| Tree | Owner | Portable across the 0.14 boundary |
+|---|---|---:|
+| `knowledge/` | user and AKM | yes, allowlisted |
+| `workspace/` | user | yes |
+| `config/` | user | selected files only |
+| `data/` | runtime | no |
+| `state/` | control plane | no |
+| `system/` | release | no; recreated |
+
+0.14 never interprets a legacy home as a live control plane. Transition is a
+fresh install followed by a previewable, allowlisted import. The old home is
+left unchanged as the rollback artifact.

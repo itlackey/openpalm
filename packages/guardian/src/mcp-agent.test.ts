@@ -13,6 +13,7 @@ import type {
 	AssistantQuestion,
 	AssistantSession
 } from './assistant-client.js';
+import type { AuthenticatedCredential, CredentialClass } from './credentials.js';
 import { createMcpAgentHandler, createMcpAgentServer, type McpAgentOptions } from './mcp-agent.js';
 import type { WorkspaceAccess } from './workspace-access.js';
 
@@ -229,7 +230,10 @@ const allow = async () => ({
 	score: 0
 });
 
-async function connect(options: McpAgentOptions, principal: 'owner' | 'discord' = 'owner') {
+async function connect(
+	options: McpAgentOptions,
+	principal: CredentialClass | AuthenticatedCredential = 'owner'
+) {
 	const workspace: WorkspaceAccess = {
 		allows: async (path) => path === 'src/index.ts',
 		readText: async (path) => ({
@@ -283,6 +287,31 @@ describe('full OpenPalm MCP gateway', () => {
 			await client.close();
 			await server.close();
 		}
+	});
+
+	it('returns an arbitrary registry username in the capability catalog', async () => {
+		const assistant = new FakeAssistant();
+		const { client, server } = await connect(
+			{
+				assistant,
+				handleKey: 'k'.repeat(64),
+				policy: 'full',
+				moderate: allow
+			},
+			{
+				id: `cred_${'a'.repeat(32)}`,
+				username: 'mcp-test',
+				policy: 'full'
+			}
+		);
+		const catalog = await client.callTool({
+			name: 'openpalm.catalog.get',
+			arguments: {}
+		});
+		expect(catalog.isError).not.toBe(true);
+		expect(body(catalog).principal).toBe('mcp-test');
+		await client.close();
+		await server.close();
 	});
 
 	it('runs and resumes an owned agent session with opaque handles', async () => {

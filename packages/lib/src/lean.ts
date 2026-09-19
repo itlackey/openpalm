@@ -23,6 +23,27 @@ export {
 	writeCredentialKey
 } from './control-plane/credential-store.js';
 export {
+	OAUTH_ALGORITHMS,
+	OAUTH_CONFIG_VERSION,
+	OAUTH_IDENTITY_MAP_VERSION,
+	defaultOAuthConfig,
+	defaultOAuthIdentityMap,
+	ensureOAuthFiles,
+	oauthConfigFile,
+	oauthCredentialUsages,
+	oauthIdentityMapFile,
+	parseOAuthConfig,
+	parseOAuthIdentityMap,
+	readOAuthConfig,
+	readOAuthIdentityMap,
+	writeOAuthConfig,
+	writeOAuthIdentityMap,
+	type OAuthAlgorithm,
+	type OAuthConfig,
+	type OAuthIdentity,
+	type OAuthIdentityMap
+} from './control-plane/oauth-store.js';
+export {
 	PORTAL_CREDENTIAL_BUNDLE_VERSION,
 	PORTAL_CREDENTIAL_MAP_VERSION,
 	PORTAL_NAMES,
@@ -77,6 +98,24 @@ export {
 	requireLeanInstall,
 	type LeanInstallState
 } from './control-plane/lean-state.js';
+export {
+	assistantEndpoint,
+	listProviders,
+	removeProviderAuth,
+	setProviderApiKey,
+	testAssistantReadiness,
+	waitForAssistant,
+	type AssistantReadiness,
+	type ProviderSummary
+} from './control-plane/lean-opencode.js';
+export {
+	applyLeanImport,
+	planLeanImport,
+	type LeanImportAction,
+	type LeanImportEntry,
+	type LeanImportOptions,
+	type LeanImportPlan
+} from './control-plane/lean-import.js';
 export {
 	buildLeanComposeCliArgs,
 	buildLeanComposeOptions,

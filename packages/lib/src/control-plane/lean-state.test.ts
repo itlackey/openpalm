@@ -33,7 +33,7 @@ afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe('lean migration bridge', () => {
+describe('0.14 clean install boundary', () => {
 	it('refuses symlinked runtime directories instead of escaping OP_HOME', () => {
 		if (process.platform === 'win32') return;
 		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-symlink-'));
@@ -46,7 +46,7 @@ describe('lean migration bridge', () => {
 		expect(() => ensureLeanDirs(home)).toThrow('Refusing non-directory or symlink in OP_HOME');
 	});
 
-	it('materializes the lean runtime without deleting legacy or user-owned files', async () => {
+	it('classifies a legacy home as incompatible without mutating its files', () => {
 		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-migration-'));
 		roots.push(root);
 		const home = join(root, 'home');
@@ -62,28 +62,35 @@ describe('lean migration bridge', () => {
 			'OP_UID=1000\nOP_GID=1000\nOP_SETUP_COMPLETE=true\nOP_ENABLED_ADDONS=api,discord,voice\n'
 		);
 
-		expect(classifyLeanInstall(home)).toBe('setup_incomplete');
-		await applyLeanHomeSeed(home);
-		const state = createLeanState();
-		ensureLeanRuntime(state);
-		markLeanInstalled(home);
-
-		expect(classifyLeanInstall(home)).toBe('installed');
+		expect(classifyLeanInstall(home)).toBe('incompatible_home');
 		expect(readFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'utf8')).toBe(
 			'legacy: true\n'
 		);
 		expect(readFileSync(join(home, 'config', 'stack', 'custom.compose.yml'), 'utf8')).toBe(
 			'user: sentinel\n'
 		);
-		expect(existsSync(join(home, 'system', 'stack', 'stack.compose.yml'))).toBe(true);
-		const config = readStackConfig(home);
-		expect(config.ok).toBe(true);
-		if (config.ok) {
-			expect(config.config).toMatchObject({
-				gateway: { enabled: true },
-				portals: { discord: { enabled: true }, slack: { enabled: false } }
-			});
-		}
-		expect(readFileSync(join(home, 'state', 'stack.env'), 'utf8')).not.toContain('voice');
+		expect(existsSync(join(home, 'system', 'stack', 'stack.compose.yml'))).toBe(false);
+		expect(readFileSync(join(home, 'state', 'stack.env'), 'utf8')).toContain('voice');
+	});
+
+	it('materializes an empty home as a fresh setup without deleting operator data', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-lean-fresh-'));
+		roots.push(root);
+		const home = join(root, 'home');
+		process.env.OP_HOME = home;
+		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+		mkdirSync(home);
+		writeFileSync(join(home, 'keep.txt'), 'operator data\n');
+		expect(classifyLeanInstall(home)).toBe('incompatible_home');
+
+		rmSync(join(home, 'keep.txt'));
+		expect(classifyLeanInstall(home)).toBe('not_installed');
+		await applyLeanHomeSeed(home);
+		const state = createLeanState();
+		ensureLeanRuntime(state);
+		expect(classifyLeanInstall(home)).toBe('setup_incomplete');
+		markLeanInstalled(home);
+		expect(classifyLeanInstall(home)).toBe('installed');
+		expect(readStackConfig(home).ok).toBe(true);
 	});
 });

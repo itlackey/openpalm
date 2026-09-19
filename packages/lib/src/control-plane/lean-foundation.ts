@@ -117,11 +117,15 @@ export function ensureLeanDirs(homeDir: string): void {
 	}
 }
 
-export function writeFileAtomic(path: string, content: string, mode = PRIVATE_FILE_MODE): void {
+export function writeFileAtomic(
+	path: string,
+	content: string | Uint8Array,
+	mode = PRIVATE_FILE_MODE
+): void {
 	mkdirSync(dirname(path), { recursive: true, mode: PRIVATE_DIR_MODE });
 	const temporary = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
 	try {
-		writeFileSync(temporary, content, { encoding: 'utf8', mode });
+		writeFileSync(temporary, content, { mode });
 		renameSync(temporary, path);
 		chmodSync(path, mode);
 	} catch (error) {

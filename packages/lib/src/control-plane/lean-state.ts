@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -15,12 +15,13 @@ import {
 	type LeanState
 } from './lean-foundation.js';
 import { ensureCredentialKeys } from './credential-store.js';
+import { ensureOAuthFiles } from './oauth-store.js';
 import { syncPortalCredentialBundles } from './portal-credential-store.js';
 import { ensureStackConfig } from './stack-config.js';
 
 const PRIVATE_FILE_MODE = 0o600;
 
-export type LeanInstallState = 'not_installed' | 'setup_incomplete' | 'installed';
+export type LeanInstallState = 'not_installed' | 'incompatible_home' | 'setup_incomplete' | 'installed';
 
 export { createLeanState };
 
@@ -29,18 +30,24 @@ export function readLeanStackEnv(homeDir: string): Record<string, string> {
 }
 
 export function classifyLeanInstall(homeDir = resolveOpenPalmHome()): LeanInstallState {
+	if (!existsSync(homeDir)) return 'not_installed';
+	if (!lstatSync(homeDir).isDirectory()) return 'incompatible_home';
 	const env = readLeanStackEnv(homeDir);
 	const hasLeanStack = existsSync(managedComposeFile(homeDir));
-	const hasLegacyStack = existsSync(join(homeDir, 'system', 'stack', 'core.compose.yml'));
-	const hasIntent = existsSync(stackConfigFile(homeDir)) || Object.keys(env).length > 0;
-	if (!hasLeanStack && !hasLegacyStack && !hasIntent) return 'not_installed';
-	if (!hasLeanStack) return 'setup_incomplete';
+	if (!hasLeanStack) return readdirSync(homeDir).length === 0 ? 'not_installed' : 'incompatible_home';
+	if (!existsSync(stackConfigFile(homeDir))) return 'setup_incomplete';
 	return env.OP_SETUP_COMPLETE === 'true' ? 'installed' : 'setup_incomplete';
 }
 
 export function requireLeanInstall(homeDir = resolveOpenPalmHome()): void {
-	if (classifyLeanInstall(homeDir) === 'not_installed') {
+	const state = classifyLeanInstall(homeDir);
+	if (state === 'not_installed') {
 		throw new Error(`OpenPalm is not installed at ${homeDir}. Run \`openpalm install\` first.`);
+	}
+	if (state === 'incompatible_home') {
+		throw new Error(
+			`Refusing incompatible or legacy OpenPalm home at ${homeDir}. Install 0.14 into an empty OP_HOME, then use \`openpalm import\`.`
+		);
 	}
 }
 
@@ -126,6 +133,7 @@ export function ensureLeanRuntime(state: LeanState): void {
 	ensureStackEnv(state);
 	const config = ensureStackConfig(state.homeDir);
 	ensureCredentialKeys(state.homeDir, config);
+	ensureOAuthFiles(state.homeDir);
 	syncPortalCredentialBundles(state.homeDir, config);
 	ensureRegularFile(join(state.homeDir, 'knowledge', 'secrets', 'auth.json'), '{}\n');
 	ensureRegularFile(join(state.homeDir, 'knowledge', 'env', 'user.env'), '');

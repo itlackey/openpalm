@@ -8,13 +8,12 @@ import {
 	ensureLeanDirs,
 	ensureLeanRuntime,
 	ensureStackConfig,
-	markLeanInstalled,
 	parseStackConfig,
 	writeStackConfig
 } from '@openpalm/lib/lean';
 
 import { seedLeanSkeletonFromEmbedded } from '../lib/embedded-lean-assets.js';
-import { runStartAction } from './lifecycle-lean.js';
+import { completeLeanSetup } from './setup-lean.js';
 
 export type LeanInstallOptions = {
 	start: boolean;
@@ -60,22 +59,17 @@ export async function bootstrapLeanInstall(options: LeanInstallOptions): Promise
 	// the final intent before declaring installation complete.
 	ensureLeanRuntime(state);
 
-	// Lean setup has no browser wizard: once its files, credentials, and JSON
-	// intent exist, configuration is complete. Runtime health is reported by
-	// `start`/`status` independently.
-	markLeanInstalled(state.homeDir);
-
-	if (options.start) await runStartAction();
+	if (options.start) await completeLeanSetup({});
 	const configPath = `${state.homeDir}/state/stack.json`;
 	console.log(`OpenPalm installed at ${state.homeDir}`);
 	console.log(`Stack intent: ${configPath}`);
-	console.log(options.start ? 'Assistant started.' : 'Run `openpalm start` when ready.');
+	console.log(options.start ? 'Assistant and provider are ready.' : 'Run `openpalm setup` to start and verify your provider.');
 }
 
 export default defineCommand({
 	meta: {
 		name: 'install',
-		description: 'Install the lean Assistant stack without a browser wizard'
+		description: 'Install OpenPalm 0.14 and guide provider readiness'
 	},
 	args: {
 		start: {

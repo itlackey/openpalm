@@ -16,9 +16,14 @@ bash -n scripts/dev-setup.sh \
   containers/guardian/entrypoint.lean.sh
 ```
 
-`check` type-checks Lib, Guardian, Portal, CLI, and Admin. `test` runs stack
-intent/migration/security tests, Guardian protocol tests, portal policy/state
-tests, and CLI installation tests.
+`check` type-checks Lib, Guardian, Portal, CLI, Admin, and the Claude Desktop
+bridge. `test` runs stack intent/import/security tests, Guardian protocol tests,
+portal policy/state tests, and fresh-install tests.
+
+The 0.14 release gate must also exercise the complete product path: guided
+provider authentication against a controllable test provider, a real readiness
+request, persistent knowledge across restart, a recurring task with a durable
+result, and a dry-run/apply import that leaves the source unchanged.
 
 ## Compose validation
 

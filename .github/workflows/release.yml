@@ -178,8 +178,25 @@ jobs:
             packages/electron/dist/packages/*.zip
             packages/electron/dist/packages/*.exe
 
+  claude-extension:
+    name: Build optional Claude Desktop extension
+    needs: [validate, gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/claude-desktop pack
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openpalm-claude-desktop
+          if-no-files-found: error
+          path: packages/claude-desktop/artifacts/openpalm-claude-desktop-${{ needs.validate.outputs.version }}.mcpb
+
   release:
-    needs: [validate, images, cli, admin]
+    needs: [validate, images, cli, admin, claude-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -190,6 +207,10 @@ jobs:
           pattern: openpalm-*
           path: dist
           merge-multiple: true
+      - name: Verify the Claude Desktop extension is present
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: test -f "dist/openpalm-claude-desktop-${VERSION}.mcpb"
       - name: Create checksums
         run: |
           cd dist

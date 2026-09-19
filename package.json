@@ -1,37 +1,38 @@
 {
-	"name": "openpalm",
-	"version": "0.13.6",
-	"private": true,
-	"license": "MPL-2.0",
-	"workspaces": [
-		"packages/lib",
-		"packages/skeleton",
-		"packages/guardian",
-		"packages/cli",
-		"packages/portal",
-		"packages/electron"
-	],
-	"scripts": {
-		"admin:dev": "bun run --cwd packages/electron bundle && OP_HOME=/tmp/openpalm-admin-dev OPENPALM_REPO_ROOT=\"$PWD\" bun run --cwd packages/electron start",
-		"guardian:dev": "bun run packages/guardian/src/lean-server.ts",
-		"guardian:test": "bun run --cwd packages/guardian test",
-		"portal:discord:dev": "PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts",
-		"portal:slack:dev": "PORTAL_ADAPTER=slack bun run packages/portal/src/index.ts",
-		"cli:test": "bun run --cwd packages/cli test",
-		"install:dev": "OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main-lean.ts install --no-start",
-		"lib:test": "bun run --cwd packages/lib test",
-		"dev:setup": "./scripts/dev-setup.sh --seed-env",
-		"dev:stack": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
-		"dev:build": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
-		"_dev:stack:note": "The dev shortcut mirrors the two-file runtime: one managed stack plus the user overlay.",
-		"admin:check": "bun run --cwd packages/electron typecheck",
-		"test": "bun run lib:test && bun run guardian:test && bun test --isolate packages/portal/src packages/cli/src/main-lean.test.ts packages/cli/src/commands/*-lean.test.ts packages/cli/src/bin-bootstrap.test.ts packages/cli/src/lib/action.test.ts scripts/bump-unit.test.ts scripts/set-version.test.ts",
-		"check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck",
-		"lint": "biome lint package.json .github/release-package-groups.json scripts/bump-unit*.{mjs,ts} scripts/set-version*.{mjs,ts} scripts/test-isolate-op-home.ts packages/lib/{package.json,src/lean.ts} packages/lib/src/control-plane/{credential-store*,portal-credential-store*,lean-*,stack-config*}.ts packages/cli/package.json packages/cli/bin/openpalm.js packages/cli/scripts/pack-embedded-assets.ts packages/cli/src/main-lean.ts packages/cli/src/commands/*-lean*.ts packages/cli/src/lib/{action*,embedded-lean-assets}.ts packages/guardian/package.json packages/guardian/src/{assistant-client*,conversation*,credentials*,crypto*,gateway-service,http-util*,lean-*,logger,mcp-agent*,rate-limit*,workspace-*}.ts packages/portal packages/electron/package.json packages/electron/src/admin-*.ts packages/electron/admin/admin.js packages/skeleton/system/assistant/plugins/akm.js",
-		"lint:fix": "bun run lint --write",
-		"format": "biome format --write package.json packages/lib/src/lean.ts packages/lib/src/control-plane/{credential-store*,portal-credential-store*,lean-*,stack-config*}.ts packages/cli/src/{main-lean.ts,commands/*-lean*.ts,lib/{action*,embedded-lean-assets}.ts} packages/guardian/src/{assistant-client*,conversation*,credentials*,crypto*,gateway-service,http-util*,lean-*,logger,mcp-agent*,rate-limit*,workspace-*}.ts packages/portal packages/electron/src/admin-*.ts packages/electron/admin/*.{js,css,html}"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.5.6"
-	}
+  "name": "openpalm",
+  "version": "0.14.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "workspaces": [
+    "packages/lib",
+    "packages/skeleton",
+    "packages/guardian",
+    "packages/cli",
+    "packages/portal",
+    "packages/electron",
+    "packages/claude-desktop"
+  ],
+  "scripts": {
+    "admin:dev": "bun run --cwd packages/electron bundle && OP_HOME=/tmp/openpalm-admin-dev OPENPALM_REPO_ROOT=\"$PWD\" bun run --cwd packages/electron start",
+    "guardian:dev": "bun run packages/guardian/src/lean-server.ts",
+    "guardian:test": "bun run --cwd packages/guardian test",
+    "portal:discord:dev": "PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts",
+    "portal:slack:dev": "PORTAL_ADAPTER=slack bun run packages/portal/src/index.ts",
+    "cli:test": "bun run --cwd packages/cli test",
+    "install:dev": "OP_HOME=/tmp/openpalm/.dev OP_IMAGE_TAG=dev bun run packages/cli/src/main-lean.ts install --no-start",
+    "lib:test": "bun run --cwd packages/lib test",
+    "dev:setup": "./scripts/dev-setup.sh --seed-env",
+    "dev:stack": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
+    "dev:build": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
+    "_dev:stack:note": "The dev shortcut mirrors the two-file runtime: one managed stack plus the user overlay.",
+    "admin:check": "bun run --cwd packages/electron typecheck",
+    "test": "bun run lib:test && bun run guardian:test && bun run --cwd packages/claude-desktop test && bun test --isolate packages/portal/src packages/cli/src/main-lean.test.ts packages/cli/src/commands/*-lean.test.ts packages/cli/src/bin-bootstrap.test.ts packages/cli/src/lib/action.test.ts scripts/bump-unit.test.ts scripts/set-version.test.ts scripts/release-aggregates-hygiene.test.ts",
+    "check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck && bun run --cwd packages/claude-desktop typecheck",
+    "lint": "biome lint package.json .github/release-package-groups.json scripts/bump-unit*.{mjs,ts} scripts/set-version*.{mjs,ts} scripts/test-isolate-op-home.ts packages/lib/{package.json,src/lean.ts} packages/lib/src/control-plane/{credential-store*,portal-credential-store*,oauth-*,lean-*,stack-config*}.ts packages/cli/package.json packages/cli/bin/openpalm.js packages/cli/scripts/pack-embedded-assets.ts packages/cli/src/main-lean.ts packages/cli/src/commands/*-lean*.ts packages/cli/src/lib/{action*,embedded-lean-assets}.ts packages/guardian/package.json packages/guardian/src/{assistant-client*,conversation*,credentials*,crypto*,gateway-service,http-util*,lean-*,logger,mcp-agent*,oauth*,rate-limit*,workspace-*}.ts packages/portal packages/electron/package.json packages/electron/src/admin-*.ts packages/electron/admin/admin.js packages/claude-desktop packages/skeleton/system/assistant/plugins/akm.js",
+    "lint:fix": "bun run lint --write",
+    "format": "biome format --write package.json packages/lib/src/lean.ts packages/lib/src/control-plane/{credential-store*,portal-credential-store*,oauth-*,lean-*,stack-config*}.ts packages/cli/src/{main-lean.ts,commands/*-lean*.ts,lib/{action*,embedded-lean-assets}.ts} packages/guardian/src/{assistant-client*,conversation*,credentials*,crypto*,gateway-service,http-util*,lean-*,logger,mcp-agent*,oauth*,rate-limit*,workspace-*}.ts packages/portal packages/electron/src/admin-*.ts packages/electron/admin/*.{js,css,html} packages/claude-desktop"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6"
+  }
 }

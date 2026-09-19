@@ -7,6 +7,7 @@ import {
 	CLI_BINARIES,
 	checksumFor,
 	desktopAssetName,
+	expectedClaudeExtensionAsset,
 	expectedDesktopAssets,
 	expectedUpdaterFeeds,
 	readElectronProductName,
@@ -27,15 +28,28 @@ function readJson(relPath: string): Manifest {
 	return JSON.parse(readFileSync(join(ROOT, relPath), 'utf8')) as Manifest;
 }
 
-describe('0.13 product package boundary', () => {
-	test('the root check covers the UI and its in-tree shared components', () => {
-		expect(readJson('package.json').scripts?.check).toContain('ui:check');
+describe('lean product package boundary', () => {
+	test('the root check covers every active package', () => {
+		const check = readJson('package.json').scripts?.check ?? '';
+		for (const packageName of [
+			'lib',
+			'guardian',
+			'portal',
+			'cli',
+			'electron',
+			'claude-desktop'
+		]) {
+			expect(check).toContain(`packages/${packageName}`);
+		}
 	});
 
 	for (const packagePath of [
 		'packages/lib/package.json',
 		'packages/skeleton/package.json',
-		'packages/ui/package.json'
+		'packages/guardian/package.json',
+		'packages/portal/package.json',
+		'packages/electron/package.json',
+		'packages/claude-desktop/package.json'
 	]) {
 		test(`${packagePath} is source-only`, () => {
 			expect(readJson(packagePath).private).toBe(true);
@@ -53,10 +67,16 @@ describe('release package ownership', () => {
 		expect(new Set(manifests).size).toBe(manifests.length);
 	});
 
-	test('guardian and electron have independent owner groups', () => {
-		expect(groups.units.guardian).toEqual(['packages/guardian/package.json']);
+	test('the lean platform and optional admin have explicit owner groups', () => {
 		expect(groups.units.electron).toEqual(['packages/electron/package.json']);
-		expect(groups.units.platform).toContain('packages/skeleton/package.json');
+		for (const manifest of [
+			'packages/skeleton/package.json',
+			'packages/guardian/package.json',
+			'packages/portal/package.json',
+			'packages/claude-desktop/package.json'
+		]) {
+			expect(groups.units.platform).toContain(manifest);
+		}
 	});
 
 	test('every listed manifest exists on disk', () => {
@@ -76,30 +96,11 @@ describe('release workflows', () => {
 		}
 	});
 
-	test('extension stamping script executes for each release unit', () => {
-		const extensionWorkflow = Bun.YAML.parse(
-			readFileSync(join(WORKFLOWS, 'publish-extensions.yml'), 'utf8')
-		) as {
-			jobs: { publish: { steps: Array<{ name?: string; run?: string }> } };
-		};
-		const run = extensionWorkflow.jobs.publish.steps.find(
-			(step) => step.name === 'Stamp extension version'
-		)?.run;
-		if (!run) throw new Error('Missing extension workflow step: Stamp extension version');
-		for (const [unit, manifest] of [
-			['guardian', 'packages/guardian/package.json'],
-			['portals', 'packages/portal-sdk/package.json']
-		]) {
-			const version = JSON.parse(readFileSync(join(ROOT, manifest), 'utf8')).version;
-			// Override STAMP to preview mode so this test never writes to package.json
-			// or the lockfile, regardless of what the workflow step itself sets.
-			const result = Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', run], {
-				cwd: ROOT,
-				env: { ...process.env, UNIT: unit, VERSION: version, STAMP: 'false' },
-				stderr: 'pipe'
-			});
-			expect(result.exitCode, result.stderr.toString()).toBe(0);
-		}
+	test('the Claude MCPB is built by both gates and releases', () => {
+		const gates = readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8');
+		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
+		expect(gates).toContain('bun run --cwd packages/claude-desktop pack');
+		expect(release).toContain('openpalm-claude-desktop-${{ needs.validate.outputs.version }}.mcpb');
 	});
 });
 
@@ -116,12 +117,11 @@ describe('image tool pins', () => {
 });
 
 describe('portal image source boundary', () => {
-	test('packs the candidate-local SDK and adapters without a baked npm manifest', () => {
+	test('copies only the unified private portal package', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers/portal/Dockerfile'), 'utf8');
-		for (const source of ['packages/portal-sdk', 'packages/portal-discord', 'packages/portal-slack']) {
-			expect(dockerfile).toContain(`COPY ${source}`);
-		}
-		expect(dockerfile).toContain('bun pm pack');
+		expect(dockerfile).toContain('COPY packages/portal/package.json');
+		expect(dockerfile).toContain('COPY packages/portal/src');
+		expect(dockerfile).not.toContain('packages/portal-sdk');
 		expect(dockerfile).not.toContain('containers/portal/tools/package.json');
 	});
 });
@@ -152,139 +152,47 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(matrixAssets.sort()).toEqual([...CLI_BINARIES].sort());
 	});
 
-	test('publish-bootstrap derives its asset list from validate-release-assets.mjs instead of a fourth hand-written copy', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: { 'publish-bootstrap': { steps: Array<{ name?: string; run?: string }> } };
-		};
-		const run = workflow.jobs['publish-bootstrap'].steps.find(
-			(step) => step.name === 'Verify matching public assets before npm'
-		)?.run;
-		if (!run) throw new Error('Missing publish-bootstrap step: Verify matching public assets before npm');
-		expect(run).toContain("from '../scripts/validate-release-assets.mjs'");
-		expect(run).not.toContain('openpalm-cli-linux-x64 openpalm-cli-linux-arm64');
+	test('release assembly downloads every OpenPalm artifact and creates checksums', () => {
+		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
+		expect(release).toContain('pattern: openpalm-*');
+		expect(release).toContain('sha256sum -- * > checksums-sha256.txt');
 	});
 
-	test('dry-run asset assembly runs the release validator that composes updater-feed semantics', () => {
+	test('the MCPB job is a required release dependency', () => {
 		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
 			jobs: {
-				'assemble-assets': { steps: Array<{ name?: string; run?: string }> };
-				docker: { needs: string[] };
+				'claude-extension': { steps: Array<{ run?: string }> };
+				release: { needs: string[] };
 			};
 		};
-		const run = workflow.jobs['assemble-assets'].steps.find(
-			(step) => step.name === 'Assemble and validate complete asset manifest'
-		)?.run;
-		if (!run) throw new Error('Missing assemble-assets validation step');
-		expect(run).toContain('node scripts/validate-release-assets.mjs');
-		expect(readFileSync(join(ROOT, 'scripts/validate-release-assets.mjs'), 'utf8')).toContain(
-			'validateUpdaterFeeds(dir, version, presentFiles, productName)'
-		);
-		expect(workflow.jobs.docker.needs).toContain('assemble-assets');
-		expect(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')).not.toContain(
-			'node scripts/validate-updater-feed.mjs'
+		expect(workflow.jobs.release.needs).toContain('claude-extension');
+		expect(
+			workflow.jobs['claude-extension'].steps.some(
+				(step) => step.run === 'bun run --cwd packages/claude-desktop pack'
+			)
+		).toBe(true);
+	});
+
+	test('the versioned MCPB filename is required by the release validator', () => {
+		expect(expectedClaudeExtensionAsset('1.4.2')).toBe(
+			'openpalm-claude-desktop-1.4.2.mcpb'
 		);
 	});
 
-	test('prerelease assembly renames electron-builder feeds to the release channel', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: { 'assemble-assets': { steps: Array<{ name?: string; run?: string }> } };
-		};
-		const run = workflow.jobs['assemble-assets'].steps.find(
-			(step) => step.name === 'Assemble and validate complete asset manifest'
-		)?.run;
-		if (!run) throw new Error('Missing assemble-assets validation step');
-		expect(run).toContain("const sources = updaterFeedsFor('latest');");
-		expect(run).toContain('renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`)');
-	});
-
-	// #659: CI and release preflight cannot drift because they call the exact
-	// same reusable workflow (.github/workflows/gates.yml) instead of each
-	// hand-copying its own subset — so these two checks now assert that
-	// unification directly: both callers `uses:` gates.yml, and gates.yml
-	// itself carries the content that used to be hand-duplicated.
-	test('CI and release preflight both call the shared gates workflow', () => {
-		const ci = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')) as {
-			jobs: Record<string, { uses?: string }>;
-		};
+	test('release calls the shared lean gates workflow', () => {
 		const release = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: { preflight: { uses?: string } };
+			jobs: { gates: { uses?: string } };
 		};
-		const ciCaller = Object.values(ci.jobs).find((job) => job.uses === './.github/workflows/gates.yml');
-		expect(ciCaller).toBeTruthy();
-		expect(release.jobs.preflight.uses).toBe('./.github/workflows/gates.yml');
+		expect(release.jobs.gates.uses).toBe('./.github/workflows/gates.yml');
 	});
 
-	test('the shared gates workflow typechecks Electron', () => {
+	test('the shared gate validates all active packages and optional artifacts', () => {
 		const gates = readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8');
-		expect(gates).toContain('bun run --cwd packages/electron typecheck');
-	});
-
-	test('the shared gates workflow requires the real PowerShell installer contract on a Windows runner', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
-			jobs: Record<string, { 'runs-on': string; steps: Array<{ env?: Record<string, string>; run?: string }> }>;
-		};
-		const job = workflow.jobs['powershell-installer-tests'];
-		expect(job['runs-on']).toBe('windows-latest');
-		const step = job.steps.find((candidate) => candidate.run?.includes('setup-sh-latest-resolver.test.ts'));
-		expect(step?.env?.OPENPALM_REQUIRE_PWSH_TESTS).toBe('1');
-		expect(step?.env?.OPENPALM_REQUIRE_WINDOWS_POWERSHELL_TESTS).toBe('1');
-	});
-
-	test('immutable image collision checks also run read-only during dry runs', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: { docker: { steps: Array<{ name?: string; if?: string; run?: string }> } };
-		};
-		const steps = workflow.jobs.docker.steps;
-		const collision = steps.find((step) => step.name === 'Validate an existing immutable image tag');
-		expect(collision?.if).toBeUndefined();
-		expect(collision?.run).toContain('docker buildx imagetools inspect');
-		// Login must run on dry runs too: the guard above inspects the registry
-		// every run, and anonymous inspects from shared runner IPs get 429s that
-		// match none of the tag-absent cases and spuriously fail the dry run.
-		const login = steps.find((step) => step.name === 'Login to Docker Hub');
-		expect(login?.if).toBeUndefined();
-	});
-
-	test('the assistant image is smoke-verified on amd64 before the multi-arch build can push', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
-			jobs: {
-				docker: { steps: Array<{ name?: string; if?: string; run?: string; with?: Record<string, unknown> }> };
-			};
-		};
-		const steps = workflow.jobs.docker.steps;
-		const smokeBuildIndex = steps.findIndex(
-			(step) => step.name === 'Build assistant smoke image (amd64, pre-push)'
-		);
-		const smokeRunIndex = steps.findIndex(
-			(step) => step.name === 'Assistant image smoke — baked UI and tools present'
-		);
-		const pushBuildIndex = steps.findIndex(
-			(step) => step.name === 'Build immutable image from candidate-local source'
-		);
-		expect(smokeBuildIndex).toBeGreaterThan(-1);
-		expect(smokeRunIndex).toBeGreaterThan(smokeBuildIndex);
-		expect(pushBuildIndex).toBeGreaterThan(smokeRunIndex);
-		expect(steps[smokeBuildIndex].with?.push).toBe(false);
-		expect(steps[smokeRunIndex].run).toContain('@openpalm/ui/build/index.js');
-		expect(steps[smokeRunIndex].run).toContain('opencode --version');
-	});
-
-	test('the release gate runs the UI vitest suites against the stamped candidate', () => {
-		// release.yml's preflight IS the shared gates workflow (see the
-		// "both call the shared gates workflow" test above), so this now reads
-		// gates.yml's ui-unit-tests job rather than a preflight-local step.
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
-			jobs: { 'ui-unit-tests': { steps: Array<{ name?: string; run?: string }> } };
-		};
-		const steps = workflow.jobs['ui-unit-tests'].steps;
-		expect(steps.some((step) => step.run === 'bun run --cwd packages/ui test:browsers')).toBe(true);
-		expect(steps.some((step) => step.run === 'bun run ui:test:unit')).toBe(true);
-	});
-
-	test('the electron artifact upload carries the blockmaps the updater feed advertises', () => {
-		expect(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')).toContain(
-			'packages/electron/dist/packages/*.blockmap'
-		);
+		expect(gates).toContain('run: bun run check');
+		expect(gates).toContain('run: bun run test');
+		expect(gates).toContain('run: bun run lint');
+		expect(gates).toContain('bun run --cwd packages/electron bundle');
+		expect(gates).toContain('bun run --cwd packages/claude-desktop pack');
 	});
 
 	test('every desktop target electron-builder.yml configures is required, with names derived from the version', () => {
@@ -312,6 +220,7 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		for (const binary of CLI_BINARIES) expect(required).toContain(binary);
 		for (const asset of expectedDesktopAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
 		for (const feed of expectedUpdaterFeeds('2.0.0-beta.1')) expect(required).toContain(feed);
+		expect(required).toContain(expectedClaudeExtensionAsset('2.0.0-beta.1'));
 		expect(required).toContain('beta-linux-arm64.yml');
 		expect(required).toContain('OpenPalm-Setup-2.0.0-beta.1.exe');
 		expect(required).toContain('checksums-sha256.txt');

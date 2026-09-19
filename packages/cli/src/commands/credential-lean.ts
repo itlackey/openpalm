@@ -4,14 +4,17 @@ import { readFileSync } from 'node:fs';
 import {
 	createCredentialId,
 	ensureCredentialKeys,
+	ensureOAuthFiles,
 	generateCredentialKey,
 	isCredentialUsername,
 	isGuardianPolicy,
 	isPortalName,
 	isPortalUserId,
 	normalizeCredentialKey,
+	oauthCredentialUsages,
 	portalCredentialUsages,
 	readCredentialKey,
+	readOAuthIdentityMap,
 	readPortalCredentialMap,
 	readStackConfig,
 	removeCredentialKey,
@@ -19,6 +22,7 @@ import {
 	resolveOpenPalmHome,
 	syncPortalCredentialBundles,
 	writeCredentialKey,
+	writeOAuthIdentityMap,
 	writePortalCredentialMap,
 	writeStackConfig,
 	type GuardianPolicy,
@@ -32,6 +36,7 @@ function current(): { homeDir: string; config: StackConfig } {
 	const result = readStackConfig(homeDir);
 	if (!result.ok) throw new Error(result.error);
 	ensureCredentialKeys(homeDir, result.config);
+	ensureOAuthFiles(homeDir);
 	return { homeDir, config: result.config };
 }
 
@@ -96,7 +101,10 @@ const list = defineCommand({
 		for (const [username, credential] of Object.entries(config.credentials).sort(([a], [b]) =>
 			a.localeCompare(b)
 		)) {
-			const usages = portalCredentialUsages(homeDir, config, username);
+			const usages = [
+				...portalCredentialUsages(homeDir, config, username),
+				...oauthCredentialUsages(homeDir, username)
+			];
 			console.log(
 				`${username}\t${credential.policy}${usages.length ? `\tassigned=${usages.join(',')}` : ''}`
 			);
@@ -227,7 +235,10 @@ const remove = defineCommand({
 		if (!Object.hasOwn(config.credentials, username)) {
 			throw new Error(`Unknown credential: ${username}`);
 		}
-		const usages = portalCredentialUsages(homeDir, config, username);
+		const usages = [
+			...portalCredentialUsages(homeDir, config, username),
+			...oauthCredentialUsages(homeDir, username)
+		];
 		if (usages.length > 0) {
 			throw new Error(
 				`Credential ${username} is assigned to ${usages.join(', ')}. Reassign or unmap it before removing it.`
@@ -244,20 +255,39 @@ const remove = defineCommand({
 });
 
 const map = defineCommand({
-	meta: { name: 'map', description: 'Map a Slack or Discord user to a named credential' },
+	meta: { name: 'map', description: 'Map a portal or OAuth identity to a named credential' },
 	args: {
-		portal: { type: 'positional', required: true, description: 'discord or slack' },
-		userId: { type: 'positional', required: true, description: 'platform user ID' },
-		username: { type: 'positional', required: true, description: 'credential username' }
+		target: { type: 'positional', required: true, description: 'discord, slack, or oauth' },
+		identity: { type: 'positional', required: true, description: 'platform user ID or issuer' },
+		value: { type: 'positional', required: true, description: 'credential username or subject' },
+		username: {
+			type: 'positional',
+			required: false,
+			description: 'credential username for OAuth'
+		}
 	},
 	run({ args }) {
-		const portal = requirePortal(positional(args, 0));
-		const userId = requirePortalUserId(portal, positional(args, 1));
-		const username = requireUsername(positional(args, 2));
+		const target = positional(args, 0);
+		const username = requireUsername(positional(args, target === 'oauth' ? 3 : 2));
 		const { homeDir, config } = current();
 		if (!Object.hasOwn(config.credentials, username)) {
 			throw new Error(`Unknown credential: ${username}. Create it first.`);
 		}
+		if (target === 'oauth') {
+			const issuer = positional(args, 1);
+			const subject = positional(args, 2);
+			const mapping = readOAuthIdentityMap(homeDir);
+			const existing = mapping.identities.find(
+				(identity) => identity.issuer === issuer && identity.subject === subject
+			);
+			if (existing) existing.username = username;
+			else mapping.identities.push({ issuer, subject, username });
+			writeOAuthIdentityMap(homeDir, mapping);
+			console.log(`oauth ${issuer} subject ${subject}: ${username} (${config.credentials[username]?.policy})`);
+			return;
+		}
+		const portal = requirePortal(target);
+		const userId = requirePortalUserId(portal, positional(args, 1));
 		const mapping = readPortalCredentialMap(homeDir, portal);
 		mapping.users[userId] = username;
 		writePortalCredentialMap(homeDir, portal, mapping);
@@ -267,13 +297,29 @@ const map = defineCommand({
 });
 
 const unmap = defineCommand({
-	meta: { name: 'unmap', description: 'Remove a Slack or Discord user credential override' },
+	meta: { name: 'unmap', description: 'Remove a portal or OAuth credential mapping' },
 	args: {
-		portal: { type: 'positional', required: true, description: 'discord or slack' },
-		userId: { type: 'positional', required: true, description: 'platform user ID' }
+		target: { type: 'positional', required: true, description: 'discord, slack, or oauth' },
+		identity: { type: 'positional', required: true, description: 'platform user ID or issuer' },
+		subject: { type: 'positional', required: false, description: 'OAuth subject' }
 	},
 	run({ args }) {
-		const portal = requirePortal(positional(args, 0));
+		const target = positional(args, 0);
+		if (target === 'oauth') {
+			const issuer = positional(args, 1);
+			const subject = positional(args, 2);
+			const { homeDir } = current();
+			const mapping = readOAuthIdentityMap(homeDir);
+			const index = mapping.identities.findIndex(
+				(identity) => identity.issuer === issuer && identity.subject === subject
+			);
+			if (index < 0) throw new Error(`OAuth identity ${issuer} subject ${subject} has no mapping.`);
+			mapping.identities.splice(index, 1);
+			writeOAuthIdentityMap(homeDir, mapping);
+			console.log(`Removed OAuth mapping for ${issuer} subject ${subject}.`);
+			return;
+		}
+		const portal = requirePortal(target);
 		const userId = requirePortalUserId(portal, positional(args, 1));
 		const { homeDir, config } = current();
 		const mapping = readPortalCredentialMap(homeDir, portal);
@@ -288,10 +334,22 @@ const unmap = defineCommand({
 });
 
 const mappings = defineCommand({
-	meta: { name: 'mappings', description: 'List a portal default and per-user credential mappings' },
-	args: { portal: { type: 'positional', required: true, description: 'discord or slack' } },
+	meta: { name: 'mappings', description: 'List portal or OAuth credential mappings' },
+	args: {
+		target: { type: 'positional', required: true, description: 'discord, slack, or oauth' }
+	},
 	run({ args }) {
-		const portal = requirePortal(positional(args, 0));
+		const target = positional(args, 0);
+		if (target === 'oauth') {
+			const { homeDir, config } = current();
+			for (const identity of readOAuthIdentityMap(homeDir).identities) {
+				console.log(
+					`${identity.issuer}\t${identity.subject}\t${identity.username}\t${config.credentials[identity.username]?.policy}`
+				);
+			}
+			return;
+		}
+		const portal = requirePortal(target);
 		const { homeDir, config } = current();
 		const mapping = readPortalCredentialMap(homeDir, portal);
 		const defaultUsername = config.portals[portal].credential;

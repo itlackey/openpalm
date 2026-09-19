@@ -5,13 +5,14 @@ The release surface is deliberately small:
 - `openpalm/assistant`, `openpalm/guardian`, and `openpalm/portal`
   multi-architecture images;
 - five standalone CLI binaries;
-- optional macOS, Linux, and Windows Admin artifacts; and
+- optional macOS, Linux, and Windows Admin artifacts;
+- an optional versioned Claude Desktop `.mcpb` extension; and
 - the zero-dependency `openpalm` npm bootstrap.
 
 ## Versioning
 
-The platform release unit contains the root, Skeleton, Lib, CLI, Guardian, and
-Portal manifests. Admin is a separate version unit. Image defaults are stamped
+The platform release unit contains the root, Skeleton, Lib, CLI, Guardian,
+Portal, and Claude Desktop extension manifests. Admin is a separate version unit. Image defaults are stamped
 only in `packages/skeleton/system/stack/stack.compose.yml`.
 
 Preview or stamp a unit:
@@ -25,6 +26,12 @@ bun install
 
 Review all changed manifests, Compose defaults, and `bun.lock` before a release.
 
+0.14 is a fresh-install boundary. Guided provider sign-in/readiness, the
+previewable allowlisted importer, and restricted durable recurring tasks are
+implemented and covered by unit/security gates. No release artifact may
+interpret a 0.13 home as the new control plane or silently activate an imported
+schedule.
+
 ## Gate
 
 Run locally:
@@ -35,6 +42,7 @@ bun run check
 bun run test
 bun run lint
 bun run --cwd packages/cli build
+bun run --cwd packages/claude-desktop pack
 bun run --cwd packages/electron bundle
 ```
 

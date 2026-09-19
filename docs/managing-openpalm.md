@@ -1,5 +1,8 @@
 # Managing OpenPalm
 
+Most users should need only the setup flow, their chosen client, and a few
+lifecycle commands. File-level configuration is an advanced interface.
+
 ## Lifecycle
 
 ```bash
@@ -12,151 +15,169 @@ openpalm doctor
 openpalm update
 ```
 
-Start and restart validate the fully resolved Compose project before changing
-containers. Stop uses `docker compose down` without `--volumes`. The lean CLI
-has no uninstall or purge command.
+`stop` removes containers and networks without deleting volumes or user data.
+The CLI has no purge command.
 
-## Stack intent
+## Provider and readiness
 
-The core stack intent is `state/stack.json`:
+OpenPalm uses OpenCode's provider support and credential store. The 0.14 setup
+flow guides native provider sign-in and verifies a real agent request without
+asking an ordinary user to configure a provider endpoint or model ID.
 
-```json
-{
-  "version": 2,
-  "assistant": {
-    "bindAddress": "127.0.0.1",
-    "port": 3810
-  },
-  "gateway": {
-    "enabled": false,
-    "bindAddress": "127.0.0.1",
-    "port": 3830
-  },
-  "credentials": {
-    "owner": { "id": "owner", "policy": "full" },
-    "discord": { "id": "discord", "policy": "chat" },
-    "slack": { "id": "slack", "policy": "chat" }
-  },
-  "portals": {
-    "discord": { "enabled": false, "credential": "discord" },
-    "slack": { "enabled": false, "credential": "slack" }
-  }
-}
+Provider auth persists at `knowledge/secrets/auth.json`. Advanced OpenCode
+model preferences live in `config/assistant/opencode.json`.
+
+Use these explicit controls when needed:
+
+```bash
+openpalm provider list
+openpalm provider login [provider]
+openpalm provider key <provider> --key-file <path|->
+openpalm provider logout <provider>
+openpalm provider test
 ```
 
-Inspect or update it through the CLI:
+Run `openpalm doctor` whenever the agent cannot answer. It distinguishes setup,
+provider authentication, private files, task configuration, Docker, Compose,
+and security-boundary failures. `openpalm doctor --readiness` also sends a
+small real model request.
+
+## Knowledge and recurring work
+
+The user-facing contract is conversational. Examples:
+
+- “Remember that my project is called Northstar.”
+- “Every weekday at 8 AM, check the news about Northstar.”
+- “Save each result to my inbox and send the short version to Slack.”
+- “Pause that news check until next month.”
+
+The trusted Assistant translates those requests into AKM knowledge and
+schedules, confirms material side effects, and uses the managed task helper.
+Every run retains durable AKM history independently of optional delivery; the
+restricted scheduled agent can additionally save reports below
+`knowledge/inbox/<task-id>/`.
+
+The matching explicit CLI is:
+
+```bash
+openpalm task list
+openpalm task create project-news --schedule '0 8 * * 1-5' \
+  --prompt 'Check project news and save a concise report'
+openpalm task show project-news
+openpalm task run project-news
+openpalm task history project-news
+openpalm task pause project-news
+openpalm task resume project-news
+openpalm task remove project-news
+```
+
+`remove` unschedules the task but preserves its source under
+`knowledge/disabled-tasks/`. Imported task sources begin outside the active
+task directory and `openpalm task adopt <file>` installs one in paused state.
+
+Advanced users may inspect AKM task sources under `knowledge/tasks/`, but they
+do not need to edit YAML for the core experience. The CLI currently accepts a
+cron expression; conversational scheduling translates ordinary time phrases
+before invoking the same helper.
+
+## Access choices
+
+Use native OpenCode for a trusted local or private-network client. It is the
+complete interface and bypasses Guardian screening.
+
+Use Guardian for MCP, public connectors, Claude Desktop, Discord, Slack, or any
+client that should receive an explicit policy. Guardian identities are managed
+with:
+
+```bash
+openpalm credential list
+openpalm credential add research read
+openpalm credential set-policy research full
+openpalm credential rotate research
+openpalm credential show research --show-key
+```
+
+Policies are:
+
+| Policy | Capability |
+|---|---|
+| `chat` | agent conversation with tools denied |
+| `read` | chat plus bounded non-secret knowledge/workspace reads |
+| `full` | Assistant policy without additional Guardian tool denial |
+
+A policy is an authorization choice, not merely a write toggle: a `read`
+identity can see allowed knowledge and workspace content. Give people and
+clients separate identities so access can be changed or revoked independently.
+
+## Map identities to portals and OAuth
+
+The same named credential can be used directly with MCP or selected by an exact
+platform identity:
+
+```bash
+openpalm credential map discord 123456789012345678 research
+openpalm credential map slack U012ABCDEF research
+openpalm credential mappings discord
+openpalm credential mappings slack
+```
+
+For OAuth, configure Guardian as a resource server and map the external
+issuer/subject pair to an existing named credential:
+
+```bash
+openpalm config oauth \
+  --resource https://agent.example/mcp \
+  --issuer https://id.example/ \
+  --jwks-url https://id.example/jwks.json \
+  --audience https://agent.example/mcp \
+  --scopes openpalm
+
+openpalm credential map oauth https://id.example/ subject-123 research
+```
+
+Discord and Slack allowlists apply before credential mapping and remain
+default-deny. Guardian never infers a policy from OAuth scopes or platform
+roles.
+
+## Advanced stack intent
+
+`state/stack.json` is the only stack-intent document. Use the CLI rather than
+editing it directly:
 
 ```bash
 openpalm config show
-openpalm config path
 openpalm config assistant --bind 127.0.0.1 --port 3810
 openpalm config gateway --bind 127.0.0.1 --port 3830
-openpalm credential add automation read
-openpalm credential set-policy automation full
-openpalm credential rotate automation
-openpalm config portal discord --credential automation
-openpalm credential map discord 123456789012345678 automation
-openpalm credential mappings discord
 openpalm addon list
 openpalm addon enable gateway
 openpalm addon disable gateway
 ```
 
-Discord or Slack implies Gateway. Disable both portals before disabling their
-Gateway. Unknown JSON keys are rejected. Exact platform-user mappings live in
-`config/portal/<adapter>/credentials.json`; use the CLI to keep those maps and
-the private derived portal keyrings synchronized.
+The only user Compose extension is
+`config/stack/custom.compose.yml`. It is an advanced escape hatch for a
+separate integration service, not a way to replace core images or weaken
+managed security boundaries.
 
-## Interfaces
+## Backup and recovery
 
-Trusted tools can use the native OpenCode API. It defaults to loopback, but the
-Assistant bind can be set to an exact IPv4 or IPv6 address. Native access uses
-OpenCode Basic authentication and bypasses Guardian screening.
+Stop the stack before taking a consistent whole-home backup. The most important
+portable data is:
 
-Guarded tools use MCP Streamable HTTP at Guardian's `/mcp` route with an
-Authorization bearer header. Guardian exposes a policy-filtered agent catalog;
-start with `openpalm.catalog.get` and `openpalm.agent.run`. See
-[the MCP contract](technical/api-spec.md).
+- `knowledge/`;
+- `workspace/`; and
+- selected operator files under `config/`.
 
-Each named Guardian credential has one policy:
+Back up the full `OP_HOME` when rollback matters, but do not treat `system/`,
+`state/`, or `data/` as a portable configuration API. They may include secrets,
+generated values, version-specific databases, and caches.
 
-| Policy | Assistant profile | Capability |
-|---|---|---|
-| `chat` | `remote` | No tools |
-| `read` | `remote-read` | Read/list `/stash` and `/work`, excluding managed secret/env paths |
-| `full` | `remote-full` | Inherit Assistant OpenCode permissions |
-
-Moderation, authentication, rate limits, encrypted handles, and session
-ownership checks apply to all three policies. Pending OpenCode questions and
-permissions are returned as opaque interactions. `full` clients may answer
-`ask` decisions explicitly; `chat` and `read` clients can only reject a
-permission.
-
-`read` is a confidentiality grant as well as a no-write policy. Managed
-knowledge secrets, knowledge environment files, and `.env` reads are denied,
-but other readable workspace and knowledge content is visible to that
-credential. Keep additional credentials outside those trees or use `chat`.
-
-OpenPalm does not operate a chat UI. Any standards-compliant MCP client can be
-the user interface.
-
-## Secrets
-
-Named Guardian keys are individual files at
-`state/credentials/<username>/key`. Credential and key files are mode 0600 and
-their directories are mode 0700. Other runtime credentials remain under
-`state/secrets/`. Fill platform bot token files directly on the host before
-enabling their portal.
-
-Provider credentials remain in `knowledge/secrets/auth.json`. That file is
-Assistant-readable by design; delegated Guardian and platform credentials are
-not.
-
-Never put credentials in:
-
-- `state/stack.env`;
-- `state/stack.json`;
-- Compose `environment`;
-- command arguments; or
-- logs.
-
-## Custom Compose
-
-The only operator overlay is:
-
-```text
-~/.openpalm/config/stack/custom.compose.yml
-```
-
-It is seeded once and never overwritten. It can add a separate integration
-service or apply a deliberate local override. OpenPalm rejects overlays that
-weaken core grants, networks, non-root hardening, the configured Assistant
-publication, secret boundaries, or container-runtime isolation. Change the
-native bind through StackConfig rather than a Compose override.
-
-Use one network per trust side. A custom external adapter belongs on
-`ingress_net` and should call Guardian MCP. It must not join `agent_net`.
-
-## Scheduled tasks and knowledge
-
-AKM state is under `knowledge/`; scheduled task sources live in
-`knowledge/tasks/*.yml`. Assistant runs `akm task sync --rebind` at startup
-and every 60 seconds. Invalid task sources are reported without preventing
-Assistant from starting.
-
-`knowledge/env/user.env` is scoped AKM environment state. Assistant does not
-source it at boot.
+0.14 recovery and migration use a fresh installation followed by an
+allowlisted import. Provider credentials require an explicit secret import;
+Guardian and portal access credentials are recreated. Imported schedules stay
+inactive until reviewed. See [the 0.14 transition guide](operations/migration-to-lean-stack.md).
 
 ## Optional Admin
 
-OpenPalm Admin is a static Electron utility that calls the same lean library as
-the CLI. It can show status, edit StackConfigV2, apply lifecycle operations, and
-read recent logs. It contains no web server, chat client, updater, tray process,
-or second control plane.
-
-## Backup
-
-Back up `config/`, `knowledge/`, `workspace/`, `state/`, and any needed
-`data/` directories while the stack is stopped. Never restore a
-`state/secrets/` tree into a less trusted machine. The `system/` tree can be
-recreated by `openpalm update --no-start`.
+Admin may wrap the same setup, status, credential, backup/import, and lifecycle
+operations in a local GUI. It must not become the chat client, a web server, a
+background control plane, or a requirement for headless installs.

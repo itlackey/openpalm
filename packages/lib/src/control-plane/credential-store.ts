@@ -10,17 +10,11 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { stateSecretFile, writeFileAtomic } from './lean-foundation.js';
+import { writeFileAtomic } from './lean-foundation.js';
 import { isCredentialUsername, type StackConfig } from './stack-config.js';
 
 const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
-const LEGACY_KEYS: Readonly<Record<string, string>> = {
-	owner: 'op_guardian_mcp_token',
-	discord: 'portal_discord_secret',
-	slack: 'portal_slack_secret'
-};
-
 export function credentialStoreDir(homeDir: string): string {
 	return join(homeDir, 'state', 'credentials');
 }
@@ -79,18 +73,6 @@ export function readCredentialKey(homeDir: string, username: string): string {
 	return normalizeCredentialKey(readFileSync(path, 'utf8'));
 }
 
-function legacyKey(homeDir: string, username: string): string | null {
-	const legacyName = LEGACY_KEYS[username];
-	if (!legacyName) return null;
-	const path = stateSecretFile(homeDir, legacyName);
-	if (!existsSync(path) || !lstatSync(path).isFile()) return null;
-	try {
-		return normalizeCredentialKey(readFileSync(path, 'utf8'));
-	} catch {
-		return null;
-	}
-}
-
 export function ensureCredentialKeys(homeDir: string, config: StackConfig): void {
 	ensurePrivateDirectory(credentialStoreDir(homeDir));
 	for (const username of Object.keys(config.credentials)) {
@@ -101,7 +83,7 @@ export function ensureCredentialKeys(homeDir: string, config: StackConfig): void
 			chmodSync(path, PRIVATE_FILE_MODE);
 			continue;
 		}
-		writeCredentialKey(homeDir, username, legacyKey(homeDir, username) ?? generateCredentialKey());
+		writeCredentialKey(homeDir, username, generateCredentialKey());
 	}
 
 	const seen = new Map<string, string>();
