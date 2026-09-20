@@ -52,6 +52,28 @@ describe('OpenCode setup client', () => {
 		]);
 	});
 
+	it('accepts the current large provider catalog without relaxing other response limits', async () => {
+		const root = home();
+		const largeValue = 'x'.repeat(3 * 1024 * 1024);
+		const providerFetch = (async (input: RequestInfo | URL) => {
+			const path = new URL(String(input)).pathname;
+			if (path === '/provider') {
+				return Response.json({
+					all: [{ id: 'large', name: 'Large', source: 'api', models: { model: { largeValue } } }],
+					connected: []
+				});
+			}
+			if (path === '/provider/auth') return Response.json({});
+			throw new Error(`unexpected ${path}`);
+		}) as typeof fetch;
+		expect((await listProviders(root, { fetch: providerFetch }))[0]?.id).toBe('large');
+
+		const oversizedAuthFetch = (async () => Response.json({ largeValue })) as typeof fetch;
+		await expect(
+			setProviderApiKey(root, 'anthropic', 'secret-value', { fetch: oversizedAuthFetch })
+		).rejects.toThrow('size limit');
+	});
+
 	it('sets an API key through authenticated OpenCode without logging it', async () => {
 		const root = home();
 		let request: Request | undefined;

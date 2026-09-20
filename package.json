@@ -16,6 +16,7 @@
 	],
 	"scripts": {
 		"admin:dev": "bun run --cwd packages/electron bundle && OP_HOME=/tmp/openpalm-admin-dev OPENPALM_REPO_ROOT=\"$PWD\" bun run --cwd packages/electron start",
+		"admin:e2e": "bun run --cwd packages/electron test:e2e",
 		"guardian:dev": "bun run packages/guardian/src/server.ts",
 		"guardian:test": "bun run --cwd packages/guardian test",
 		"portal:discord:dev": "PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts",

@@ -425,14 +425,18 @@ function isConfigured(value: unknown): boolean {
 	return object ? Object.keys(object).length > 0 : true;
 }
 
-export function auditCompose(config: unknown, homeDir: string): string[] {
+export function auditCompose(
+	config: unknown,
+	homeDir: string,
+	resolvedProjectName?: string
+): string[] {
 	const root = record(config);
 	const services = record(root?.services) ?? {};
 	const secrets = record(root?.secrets) ?? {};
 	const networks = record(root?.networks) ?? {};
 	const stackEnvironment = readEnvFile(stackEnvFile(homeDir));
 	const expectedUser = `${stackEnvironment.OP_UID?.trim() || '1000'}:${stackEnvironment.OP_GID?.trim() || '1000'}`;
-	const projectName = stackEnvironment.OP_PROJECT_NAME?.trim() || 'openpalm';
+	const projectName = resolvedProjectName || stackEnvironment.OP_PROJECT_NAME?.trim() || 'openpalm';
 	const stackConfig = readStackConfig(homeDir);
 	const issues: string[] = [];
 

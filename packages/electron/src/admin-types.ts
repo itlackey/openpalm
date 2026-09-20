@@ -25,7 +25,7 @@ export type StackAction = 'start' | 'restart' | 'stop';
 
 export type AdminApi = {
 	snapshot(): Promise<AdminSnapshot>;
-	install(): Promise<AdminSnapshot>;
+	install(config: StackConfig): Promise<AdminSnapshot>;
 	saveConfig(config: StackConfig): Promise<AdminSnapshot>;
 	action(action: StackAction): Promise<AdminSnapshot>;
 	logs(): Promise<string>;

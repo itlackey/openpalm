@@ -107,15 +107,21 @@ export async function ensureDockerReady(): Promise<{ ok: true } | { ok: false; m
 }
 
 export function buildComposeArgs(options: ComposeOptions): string[] {
-	const env = stackEnvOverrides(options.envFiles);
-	const projectName = env.OP_PROJECT_NAME || process.env.OP_PROJECT_NAME || 'openpalm';
-	const args = ['--project-name', projectName];
+	const args = ['--project-name', composeProjectName(options)];
 	for (const file of options.files) args.push('-f', file);
 	for (const file of options.envFiles) {
 		if (existsSync(file)) args.push('--env-file', file);
 	}
 	for (const profile of options.profiles) args.push('--profile', profile);
 	return args;
+}
+
+export function composeProjectName(
+	options: ComposeOptions,
+	parent: NodeJS.ProcessEnv = process.env
+): string {
+	const env = stackEnvOverrides(options.envFiles);
+	return env.OP_PROJECT_NAME || parent.OP_PROJECT_NAME || 'openpalm';
 }
 
 export async function composePreflight(options: ComposeOptions): Promise<DockerResult> {

@@ -5,6 +5,7 @@ import { readStackConfig } from './stack-config.js';
 import { stateSecretFile } from './foundation.js';
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024;
 const READY_TOKEN = 'OPENPALM_READY';
 
 export type ProviderSummary = {
@@ -50,13 +51,13 @@ function assistantAuthorization(homeDir: string): string {
 	return `Basic ${Buffer.from(`opencode:${password}`, 'utf8').toString('base64')}`;
 }
 
-async function responseJson(response: Response): Promise<unknown> {
+async function responseJson(response: Response, maxBytes = MAX_RESPONSE_BYTES): Promise<unknown> {
 	const declared = Number(response.headers.get('content-length') ?? '0');
-	if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+	if (Number.isFinite(declared) && declared > maxBytes) {
 		throw new Error('OpenCode response exceeded the size limit');
 	}
 	const text = await response.text();
-	if (Buffer.byteLength(text, 'utf8') > MAX_RESPONSE_BYTES) {
+	if (Buffer.byteLength(text, 'utf8') > maxBytes) {
 		throw new Error('OpenCode response exceeded the size limit');
 	}
 	if (!text) return null;
@@ -82,7 +83,7 @@ async function request(
 	homeDir: string,
 	path: string,
 	init: RequestInit = {},
-	options: { fetch?: FetchLike; timeoutMs?: number } = {}
+	options: { fetch?: FetchLike; timeoutMs?: number; maxResponseBytes?: number } = {}
 ): Promise<unknown> {
 	const headers = new Headers(init.headers);
 	headers.set('authorization', assistantAuthorization(homeDir));
@@ -92,7 +93,7 @@ async function request(
 		headers,
 		signal: AbortSignal.timeout(options.timeoutMs ?? 30_000)
 	});
-	const body = await responseJson(response);
+	const body = await responseJson(response, options.maxResponseBytes);
 	if (!response.ok) throw new Error(errorMessage(body, response.status));
 	return body;
 }
@@ -113,7 +114,12 @@ export async function listProviders(
 	options: { fetch?: FetchLike } = {}
 ): Promise<ProviderSummary[]> {
 	const [providerValue, authValue] = await Promise.all([
-		request(homeDir, '/provider', {}, options),
+		request(
+			homeDir,
+			'/provider',
+			{},
+			{ ...options, maxResponseBytes: MAX_PROVIDER_RESPONSE_BYTES }
+		),
 		request(homeDir, '/provider/auth', {}, options)
 	]);
 	const providerRoot = asRecord(providerValue);

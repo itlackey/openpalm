@@ -209,4 +209,5 @@ Admin is not the chat client, a web server, a background control plane, or a
 requirement for headless installs. It uses the same filesystem and control-plane
 library as the CLI. Sensitive inputs are password fields; bearer-key reveal is
 an explicit confirmed action and remains masked until the operator chooses to
-show it.
+show it. Release and local acceptance steps are documented in the
+[Admin setup verification runbook](operations/admin-setup-verification.md).

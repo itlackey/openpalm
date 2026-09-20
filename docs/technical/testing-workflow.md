@@ -34,6 +34,13 @@ Guardian's socket-only body-limit test runs in CI and can be enabled locally
 with `OPENPALM_SOCKET_TESTS=1`. OAuth tests sign real JWTs and cover expiry,
 audience, scopes, signing-key rotation, and live issuer/subject mapping changes.
 
+The opt-in `bun run admin:e2e` check drives the real Electron Admin against a
+disposable Docker stack. It verifies first-install ports, Assistant and Guardian
+health, provider discovery, credential policy, portal mapping, restart/reload
+persistence, and authenticated MCP policy filtering. It needs a desktop session
+and locally built `0.14.0` images, so it is not part of the portable unit-test
+gate. See the [Admin setup verification runbook](../operations/admin-setup-verification.md).
+
 ## Compose validation
 
 Compose validation does not require a running daemon:

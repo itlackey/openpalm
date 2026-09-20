@@ -26,7 +26,12 @@
       <section id="install-section" hidden>
         <h2>Install your personal agent</h2>
         <p class="muted">OpenPalm will create a private local home, verify Docker, and start the Assistant. Existing non-empty locations are never replaced.</p>
-        <button id="install" type="button">Install OpenPalm</button>
+        <form id="install-form" class="grid wide">
+          <label>Assistant port <input id="install-assistant-port" type="number" min="1" max="65535" required /></label>
+          <label>Guardian port <input id="install-gateway-port" type="number" min="1" max="65535" required /></label>
+          <button id="install" type="submit">Install OpenPalm</button>
+        </form>
+        <p class="muted">Both services stay on this computer by default. Choose unused ports if another local service already uses the defaults.</p>
       </section>
 
       <section class="installed-only">

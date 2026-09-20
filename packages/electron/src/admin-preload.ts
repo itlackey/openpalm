@@ -5,7 +5,7 @@ import type { StackConfig } from '@openpalm/lib';
 
 const api: AdminApi = {
 	snapshot: () => ipcRenderer.invoke(ADMIN_CHANNELS.snapshot),
-	install: () => ipcRenderer.invoke(ADMIN_CHANNELS.install),
+	install: (config: StackConfig) => ipcRenderer.invoke(ADMIN_CHANNELS.install, config),
 	saveConfig: (config: StackConfig) => ipcRenderer.invoke(ADMIN_CHANNELS.saveConfig, config),
 	action: (action: StackAction) => ipcRenderer.invoke(ADMIN_CHANNELS.action, action),
 	logs: () => ipcRenderer.invoke(ADMIN_CHANNELS.logs),

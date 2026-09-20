@@ -32,6 +32,8 @@ function render(snapshot) {
 	document.querySelectorAll('.installed-only').forEach((element) => {
 		element.hidden = !snapshot.installed;
 	});
+	byId('install-assistant-port').value = String(snapshot.config.assistant.port);
+	byId('install-gateway-port').value = String(snapshot.config.gateway.port);
 	if (!snapshot.installed) return;
 
 	byId('gateway').checked = snapshot.config.gateway.enabled;
@@ -114,9 +116,20 @@ async function operation(message, action) {
 }
 
 byId('refresh').addEventListener('click', refresh);
-byId('install').addEventListener('click', () =>
-	operation('Installing OpenPalm', () => api.install())
-);
+byId('install-form').addEventListener('submit', (event) => {
+	event.preventDefault();
+	if (!currentConfig) return;
+	const assistantPort = Number(byId('install-assistant-port').value);
+	const gatewayPort = Number(byId('install-gateway-port').value);
+	if (assistantPort === gatewayPort) {
+		notice('Assistant and Guardian ports must be different.', true);
+		return;
+	}
+	const config = structuredClone(currentConfig);
+	config.assistant.port = assistantPort;
+	config.gateway.port = gatewayPort;
+	void operation('Installing OpenPalm', () => api.install(config));
+});
 document.querySelectorAll('[data-action]').forEach((button) => {
 	button.addEventListener('click', () =>
 		operation(`Stack ${button.dataset.action}`, () => api.action(button.dataset.action))

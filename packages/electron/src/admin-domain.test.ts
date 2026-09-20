@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { defaultStackConfig } from '@openpalm/lib';
 
 import {
 	adminPortalMappings,
@@ -27,17 +28,31 @@ afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function install(): Promise<{ root: string; home: string }> {
+async function install(
+	config: unknown = defaultStackConfig()
+): Promise<{ root: string; home: string }> {
 	const root = mkdtempSync(join(tmpdir(), 'openpalm-admin-domain-'));
 	roots.push(root);
 	const home = join(root, 'home');
 	process.env.OP_HOME = home;
 	process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../..');
-	await installFromAdmin();
+	await installFromAdmin(config);
 	return { root, home };
 }
 
 describe('Admin domain', () => {
+	it('validates and preserves first-install port choices', async () => {
+		const config = defaultStackConfig();
+		config.assistant.port = 43_810;
+		config.gateway.port = 43_830;
+		const { home } = await install(config);
+		const saved = JSON.parse(readFileSync(join(home, 'state', 'stack.json'), 'utf8'));
+		expect(saved.assistant.port).toBe(43_810);
+		expect(saved.gateway.port).toBe(43_830);
+
+		await expect(install({ version: 1 })).rejects.toThrow('assistant');
+	});
+
 	it('installs the active skeleton and manages credentials and portal mappings', async () => {
 		const { home } = await install();
 		expect(JSON.parse(readFileSync(join(home, 'state', 'stack.json'), 'utf8')).version).toBe(1);

@@ -1,5 +1,5 @@
 import { buildComposeCliArgs, buildComposeOptions } from './compose.js';
-import { composeConfigJson, runComposeStreaming } from './docker.js';
+import { composeConfigJson, composeProjectName, runComposeStreaming } from './docker.js';
 import type { OpenPalmState } from './foundation.js';
 import { acquireStackLock, releaseStackLock, type StackLock } from './lock.js';
 import { auditCompose } from './secret-audit.js';
@@ -18,7 +18,7 @@ export async function activateComposeCommand(
 		if (!resolved.ok) {
 			throw new Error(`Compose configuration failed: ${resolved.stderr || 'unknown error'}`);
 		}
-		const issues = auditCompose(resolved.config, state.homeDir);
+		const issues = auditCompose(resolved.config, state.homeDir, composeProjectName(composeOptions));
 		if (issues.length > 0) {
 			throw new Error(`Refusing Compose activation:\n${issues.join('\n')}`);
 		}

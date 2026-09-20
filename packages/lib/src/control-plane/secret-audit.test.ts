@@ -118,6 +118,16 @@ function auditHome(): string {
 }
 
 describe('Compose security audit', () => {
+	it('accepts managed networks for an explicitly resolved Compose project', () => {
+		const home = auditHome();
+		const config = baseConfig(home);
+		config.networks.agent_net.name = 'openpalm-admin-e2e_agent_net';
+		expect(auditCompose(config, home, 'openpalm-admin-e2e')).toEqual([]);
+		expect(auditCompose(config, home, 'another-project')).toContain(
+			'managed network agent_net must remain project-scoped'
+		);
+	});
+
 	it('accepts the narrow Assistant grant and rejects boundary expansion', () => {
 		const home = auditHome();
 		const base = baseConfig(home);
@@ -165,12 +175,8 @@ describe('Compose security audit', () => {
 		expect(auditCompose(config, home)).toContain(
 			'service assistant may not mount a container runtime'
 		);
-		expect(auditCompose(config, home)).toContain(
-			'assistant must publish only 127.0.0.1:3810:4096'
-		);
-		expect(auditCompose(config, home)).toContain(
-			'service assistant must run as a non-root user'
-		);
+		expect(auditCompose(config, home)).toContain('assistant must publish only 127.0.0.1:3810:4096');
+		expect(auditCompose(config, home)).toContain('service assistant must run as a non-root user');
 		expect(auditCompose(config, home)).toContain(
 			'service assistant may not set OPENCODE_PERMISSION'
 		);

@@ -19,6 +19,7 @@ import {
 	oauthCredentialUsages,
 	planImport,
 	portalCredentialUsages,
+	parseStackConfig,
 	readPortalCredentialMap,
 	readStackConfig,
 	removeCredentialKey,
@@ -32,14 +33,16 @@ import {
 	type StackConfig
 } from '@openpalm/lib';
 
-export async function installFromAdmin(): Promise<string> {
+export async function installFromAdmin(config: unknown = defaultStackConfig()): Promise<string> {
 	const state = createOpenPalmState();
 	if (classifyInstall(state.homeDir) !== 'not_installed') {
 		throw new Error('OpenPalm is already installed or the selected home is not empty.');
 	}
+	const parsed = parseStackConfig(config);
+	if (!parsed.ok) throw new Error(parsed.error);
 	ensureHomeDirs(state.homeDir);
 	await applyHomeSeed(state.homeDir);
-	writeStackConfig(state.homeDir, defaultStackConfig());
+	writeStackConfig(state.homeDir, parsed.config);
 	ensureRuntime(state);
 	return state.homeDir;
 }
