@@ -1,12 +1,14 @@
 # OpenPalm for Claude Desktop
 
 This optional MCP Bundle connects Claude Desktop to an already-running local
-OpenPalm Guardian. It does not install, start, or control the OpenPalm stack.
+OpenPalm agent through its protected access layer. It does not install, start,
+or control the OpenPalm stack.
 
-1. Enable the Guardian add-on.
-2. Create a dedicated credential, preferably with `read` policy.
-3. Install the generated `.mcpb` file in Claude Desktop.
-4. Enter the loopback Guardian URL and credential key when prompted.
+1. In OpenPalm Admin, open **Connections → Claude Desktop**.
+2. Enable protected access and create a dedicated identity, preferably with
+   **Read files** access.
+3. Download and install the `.mcpb` offered by the guided connection panel.
+4. Enter the displayed **Local OpenPalm address** and access key.
 
 The bridge accepts only an HTTP loopback `/mcp` URL. Public deployments should
 connect through Claude's remote-connector flow and OAuth instead. Full setup is

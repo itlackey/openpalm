@@ -36,7 +36,7 @@ export function readBridgeConfiguration(
 	}
 	const token = environment.OPENPALM_MCP_TOKEN ?? '';
 	if (!TOKEN_RE.test(token)) {
-		throw new Error('OPENPALM_MCP_TOKEN must contain a valid OpenPalm credential key.');
+		throw new Error('OPENPALM_MCP_TOKEN must contain a valid OpenPalm access key.');
 	}
 	return { url, token };
 }
@@ -47,9 +47,9 @@ function isRequest(message: JSONRPCMessage): message is JSONRPCMessage & { id: s
 
 function publicError(error: unknown): string {
 	if (error instanceof Error && error.name === 'UnauthorizedError') {
-		return 'OpenPalm rejected the configured credential.';
+		return 'OpenPalm rejected the configured access key.';
 	}
-	return 'OpenPalm Guardian is unavailable or rejected the request.';
+	return 'OpenPalm protected access is unavailable or rejected the request.';
 }
 
 export async function runBridge(configuration = readBridgeConfiguration()): Promise<void> {
@@ -84,7 +84,7 @@ export async function runBridge(configuration = readBridgeConfiguration()): Prom
 		void local.send(message).catch(() => close());
 	};
 	local.onerror = (error) => console.error(`OpenPalm MCP input error: ${error.message}`);
-	remote.onerror = (error) => console.error(`OpenPalm Guardian connection error: ${error.message}`);
+	remote.onerror = (error) => console.error(`OpenPalm protected access error: ${error.message}`);
 	local.onclose = () => void close();
 	remote.onclose = () => void close();
 	process.stdin.once('end', () => void close());

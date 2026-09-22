@@ -1,7 +1,8 @@
 # Claude Desktop
 
-Use the OpenPalm desktop extension for a Guardian running on the same computer.
-It is the correct local integration: Claude's remote-connector form requires
+Use the OpenPalm desktop extension to connect Claude Desktop to an OpenPalm
+agent running on the same computer. It is the correct local integration:
+Claude's remote-connector form requires
 `https://`, while a desktop extension runs locally and can reach a loopback
 service. Anthropic documents the same distinction in
 [When to use desktop and web connectors](https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors).
@@ -27,9 +28,11 @@ release. In Claude Desktop:
 1. Open **Settings → Extensions → Advanced settings**.
 2. In **Extension Developer**, choose **Install Extension…**.
 3. Select the `.mcpb` file.
-4. Keep the default Guardian URL, `http://127.0.0.1:3830/mcp`, unless the local
-   port was changed.
-5. Paste the `claude-desktop` credential key when prompted.
+4. In OpenPalm Admin, open **Connections → Claude Desktop**. Enable protected
+   access and save Connections if prompted.
+5. Copy the displayed **Local OpenPalm address** and the key for the selected
+   access identity into the extension. Create a dedicated identity under
+   **People & access** first when you do not want to reuse an existing one.
 6. Restart Claude Desktop if the tools do not appear.
 
 These are Anthropic's documented steps for

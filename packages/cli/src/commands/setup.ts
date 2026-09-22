@@ -32,7 +32,10 @@ export async function completeSetup(options: {
 		}
 		console.log(`Provider readiness needs attention: ${readiness.error}`);
 		await runNativeProviderLogin(options);
-		readiness = await testAssistantReadiness(state.homeDir);
+		readiness = await testAssistantReadiness(
+			state.homeDir,
+			options.provider ? { provider: options.provider } : {}
+		);
 	}
 
 	if (!readiness.ok) throw new Error(`Provider readiness failed: ${readiness.error}`);

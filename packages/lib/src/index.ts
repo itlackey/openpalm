@@ -109,6 +109,8 @@ export {
 } from './control-plane/state.js';
 export {
 	assistantEndpoint,
+	beginProviderOAuth,
+	completeProviderOAuth,
 	configureGuardianModeratorModel,
 	listProviders,
 	removeProviderAuth,
@@ -116,8 +118,16 @@ export {
 	testAssistantReadiness,
 	waitForAssistant,
 	type AssistantReadiness,
+	type ProviderAuthMethod,
+	type ProviderAuthPrompt,
+	type ProviderOAuthAuthorization,
 	type ProviderSummary
 } from './control-plane/opencode.js';
+export {
+	connectionDetails,
+	type ConnectionDetailOptions,
+	type ConnectionDetails
+} from './control-plane/connection.js';
 export {
 	applyImport,
 	planImport,

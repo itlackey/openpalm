@@ -23,6 +23,10 @@ openpalm portal token discord --bot-token-file -
 Avoid putting the token in shell history; an interactive secret editor or
 password-manager command is preferable.
 
+In OpenPalm Admin, **Connections → Discord** presents the same checklist and
+opens the Discord Developer Portal. **Add Discord token** moves directly to the
+private token form; the value remains masked and is never shown again.
+
 ## 2. Configure a default-deny scope
 
 Configure at least one allowlist through validated stack intent:
@@ -41,6 +45,10 @@ guild and a permitted role. A blocked user always loses access.
 For direct messages, configure `DISCORD_ALLOWED_USERS` and leave guild/role
 lists empty; a DM cannot satisfy a guild or role constraint. The adapter refuses
 all use when every allowlist is empty.
+
+In Admin, expand **Who can use it**, enter the same IDs, choose the default
+access identity, and select **Save connections**. If a required scope or token
+is missing, Admin opens and focuses the exact field that needs attention.
 
 ## 3. Enable and verify
 

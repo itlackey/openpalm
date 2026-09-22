@@ -2,6 +2,8 @@ import { app, type BrowserWindow } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { markInstalled } from '@openpalm/lib';
+
 import { adminSnapshot, createAdminWindow, registerAdminIpc, runAdminAction } from './admin-app.js';
 
 type RendererWaitState = { ready: boolean; error: string };
@@ -63,7 +65,8 @@ async function waitForRenderer(
 	window: BrowserWindow,
 	expression: string,
 	description: string,
-	timeoutMs = 180_000
+	timeoutMs = 180_000,
+	allowError = false
 ): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -74,7 +77,7 @@ async function waitForRenderer(
 				error: notice?.classList.contains('error') ? notice.textContent || 'Unknown Admin error' : ''
 			};
 		})()`)) as RendererWaitState;
-		if (state.error) throw new Error(`Admin renderer reported: ${state.error}`);
+		if (state.error && !allowError) throw new Error(`Admin renderer reported: ${state.error}`);
 		if (state.ready) return;
 		await new Promise((resolve) => setTimeout(resolve, 250));
 	}
@@ -94,6 +97,45 @@ async function capture(window: BrowserWindow, directory: string, name: string): 
 	});
 	writeFileSync(path, image.toPNG());
 	return path;
+}
+
+async function assertRenderedFloor(window: BrowserWindow, label: string): Promise<void> {
+	const result = (await window.webContents.executeJavaScript(`(() => {
+		const visible = (element) => {
+			if (element.tagName !== 'SUMMARY' && element.closest('details:not([open])')) return false;
+			const style = getComputedStyle(element);
+			const rect = element.getBoundingClientRect();
+			return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+		};
+		const controls = [...document.querySelectorAll('button,input,select,summary')].filter(visible);
+		const undersized = controls
+			.map((element) => {
+				const rect = element.getBoundingClientRect();
+				return { tag: element.tagName, id: element.id, width: rect.width, height: rect.height };
+			})
+			.filter((item) => item.width < 24 || item.height < 24);
+		const focusTarget = controls[0];
+		focusTarget?.focus();
+		const focusStyle = focusTarget ? getComputedStyle(focusTarget) : null;
+		return {
+			overflow: document.documentElement.scrollWidth - window.innerWidth,
+			undersized,
+			focus: focusStyle ? { style: focusStyle.outlineStyle, width: focusStyle.outlineWidth } : null
+		};
+	})()`)) as {
+		overflow: number;
+		undersized: Array<{ tag: string; id: string; width: number; height: number }>;
+		focus: { style: string; width: string } | null;
+	};
+	assert(result.overflow <= 1, `${label} has ${result.overflow}px of horizontal overflow.`);
+	assert(
+		result.undersized.length === 0,
+		`${label} has undersized controls: ${JSON.stringify(result.undersized)}`
+	);
+	assert(
+		result.focus !== null && result.focus.style !== 'none' && result.focus.width !== '0px',
+		`${label} does not expose a visible focus outline.`
+	);
 }
 
 function rpcPayload(text: string): Record<string, unknown> | null {
@@ -185,82 +227,251 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		progress('fresh-install screen loaded');
 		const initialScreenshot = await capture(window, outputDir, '01-fresh-install.png');
+		const advancedHidden = (await window.webContents.executeJavaScript(
+			"document.querySelector('#install-assistant-port').closest('details').open === false"
+		)) as boolean;
+		assert(advancedHidden, 'Fresh setup exposed advanced ports by default.');
+		await assertRenderedFloor(window, 'fresh setup');
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#install-assistant-port').value = ${JSON.stringify(String(assistantPort))};
 			document.querySelector('#install-gateway-port').value = ${JSON.stringify(String(guardianPort))};
-			document.querySelector('#install-form').requestSubmit();
-		})()`);
+				document.querySelector('#install-form').requestSubmit();
+			})()`);
+		const installLocked = (await window.webContents.executeJavaScript(
+			"document.body.dataset.busy === 'true' && document.querySelector('#install').disabled"
+		)) as boolean;
+		assert(installLocked, 'Install did not lock duplicate operations while pending.');
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Installing OpenPalm completed.' &&
-				[...document.querySelectorAll('#services .service')].some((row) =>
-					row.textContent.includes('assistant') && row.textContent.includes('healthy'))`,
+			`document.querySelector('#notice-message')?.textContent === 'OpenPalm is installed. Next, connect your AI provider.' &&
+					document.querySelector('#view-provider')?.hidden === false &&
+					getComputedStyle(document.querySelector('#primary-nav')).display === 'none' &&
+					[...document.querySelectorAll('#services .service')].some((row) =>
+						row.textContent.includes('assistant') && row.textContent.includes('Running normally'))`,
 			'the Assistant to become healthy'
 		);
-		progress('Assistant is healthy');
-		await window.webContents.executeJavaScript(
-			"document.querySelector('#services').closest('section').scrollIntoView()"
+		progress('Assistant is healthy and provider setup is active');
+		const assistantScreenshot = await capture(window, outputDir, '02-provider-required.png');
+		await assertRenderedFloor(window, 'provider setup');
+
+		await runAdminAction('stop');
+		await window.webContents.executeJavaScript("document.querySelector('#refresh').click()");
+		await waitForRenderer(
+			window,
+			`document.querySelector('#setup-recovery')?.hidden === false &&
+					document.querySelector('#recovery-assistant-port')?.value === ${JSON.stringify(String(assistantPort))}`,
+			'the visible startup recovery controls'
 		);
-		const assistantScreenshot = await capture(window, outputDir, '02-assistant-ready.png');
+		const recoveryScreenshot = await capture(window, outputDir, '02b-startup-recovery.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#recovery-form').requestSubmit()"
+		);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice-message')?.textContent === 'OpenPalm started. Now connect your AI provider.' &&
+					document.querySelector('#setup-recovery')?.hidden === true &&
+					[...document.querySelectorAll('#services .service')].some((row) => row.textContent.includes('Running normally'))`,
+			'the Assistant to recover through setup'
+		);
+		progress('visible startup recovery passed');
+		window.setSize(640, 720);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await assertRenderedFloor(window, 'provider setup at minimum width');
+		window.webContents.setZoomFactor(2);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await assertRenderedFloor(window, 'provider setup at 200% zoom');
+		const reflowScreenshot = await capture(window, outputDir, '03-provider-reflow.png');
+		window.webContents.setZoomFactor(1);
+		window.setSize(1120, 780);
+		await new Promise((resolve) => setTimeout(resolve, 300));
 
 		await window.webContents.executeJavaScript("document.querySelector('#load-providers').click()");
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Loading providers completed.' &&
-				document.querySelectorAll('#provider option').length > 0`,
+			"document.querySelector('#provider-result')?.value.trim().startsWith('[')",
 			'OpenCode provider discovery',
 			60_000
 		);
-		const providers = (await window.webContents.executeJavaScript(
-			"[...document.querySelectorAll('#provider option')].map((option) => option.value)"
-		)) as string[];
-		progress(`OpenCode discovered ${providers.length} providers`);
+		const providerCatalog = (await window.webContents.executeJavaScript(
+			"JSON.parse(document.querySelector('#provider-result').value)"
+		)) as Array<Record<string, unknown>>;
+		progress(`OpenCode discovered ${providerCatalog.length} providers`);
 
 		let readiness: Record<string, unknown> = { attempted: false };
+		let readyScreenshot: string | undefined;
 		if (provider && providerKey) {
-			assert(providers.includes(provider), `Provider ${provider} was not discovered by OpenCode.`);
+			await window.webContents.executeJavaScript(`(() => {
+				document.querySelector('#provider-search').value = ${JSON.stringify(provider)};
+				document.querySelector('#provider-search').dispatchEvent(new Event('input', { bubbles: true }));
+			})()`);
+			const filteredProviders = (await window.webContents.executeJavaScript(
+				"[...document.querySelectorAll('#provider option')].map((option) => option.value)"
+			)) as string[];
+			assert(
+				filteredProviders.includes(provider),
+				`Provider ${provider} was not discovered by OpenCode.`
+			);
 			await window.webContents.executeJavaScript(`(() => {
 				document.querySelector('#provider').value = ${JSON.stringify(provider)};
+				document.querySelector('#provider').dispatchEvent(new Event('change', { bubbles: true }));
+				const apiMethod = [...document.querySelectorAll('#provider-method option')].find((option) => /api/i.test(option.textContent));
+				if (apiMethod) {
+					document.querySelector('#provider-method').value = apiMethod.value;
+					document.querySelector('#provider-method').dispatchEvent(new Event('change', { bubbles: true }));
+				}
 				document.querySelector('#provider-key').value = ${JSON.stringify(providerKey)};
 				document.querySelector('#provider-form').requestSubmit();
 			})()`);
 			await waitForRenderer(
 				window,
-				"document.querySelector('#notice')?.textContent === 'Saving provider key completed.'",
+				`document.querySelector('#notice-message')?.textContent === 'Provider verified. Your personal agent is ready.' &&
+						document.querySelector('#view-overview')?.hidden === false`,
 				'provider readiness',
 				180_000
 			);
 			readiness = (await window.webContents.executeJavaScript(
-				"JSON.parse(document.querySelector('#provider-result').textContent)"
+				"JSON.parse(document.querySelector('#provider-result').value)"
 			)) as Record<string, unknown>;
 			assert(readiness.ok === true, `Provider readiness failed: ${JSON.stringify(readiness)}`);
 			progress('provider readiness passed');
+			readyScreenshot = await capture(window, outputDir, '04-agent-ready.png');
+		} else {
+			await window.webContents.executeJavaScript(
+				"if (!document.querySelector('#test-provider').disabled) document.querySelector('#test-provider').click()"
+			);
+			await waitForRenderer(
+				window,
+				`document.querySelector('#notice')?.classList.contains('error') &&
+						document.querySelector('#provider-status')?.classList.contains('error') &&
+						document.querySelector('#view-provider')?.hidden === false`,
+				'a truthful provider-required error',
+				60_000,
+				true
+			);
+			readiness = (await window.webContents.executeJavaScript(
+				"JSON.parse(document.querySelector('#provider-result').value)"
+			)) as Record<string, unknown>;
+			assert(
+				readiness.ok === false,
+				`Expected provider readiness to fail: ${JSON.stringify(readiness)}`
+			);
+			progress('provider failure remained an incomplete setup error');
+			markInstalled(homeDir);
+			await window.webContents.executeJavaScript("document.querySelector('#refresh').click()");
+			await waitForRenderer(
+				window,
+				`document.querySelector('#view-overview')?.hidden === false &&
+						document.querySelector('#primary-nav')?.hidden === false &&
+						document.querySelector('#notice-message')?.textContent === 'Status refreshed.'`,
+				'the isolated management UI fixture',
+				60_000,
+				true
+			);
+			progress('entered ready management UI through an explicit test-only fixture');
 		}
 
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-client-target=opencode]').click()"
+		);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#view-connections')?.hidden === false &&
+					document.querySelector('#client-opencode')?.hidden === false &&
+					document.querySelector('#direct-url')?.textContent.startsWith('http://') &&
+					document.querySelector('#direct-username')?.textContent === 'opencode'`,
+			'the complete OpenCode connection recipe'
+		);
 		await window.webContents.executeJavaScript(`(() => {
-			document.querySelector('#gateway').checked = true;
-			document.querySelector('#gateway-port').value = ${JSON.stringify(String(guardianPort))};
-			document.querySelector('#config-form').requestSubmit();
+			window.confirm = () => true;
+			document.querySelector('#load-direct-password').click();
 		})()`);
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Saving configuration completed.' &&
-				[...document.querySelectorAll('#services .service')].some((row) =>
-					row.textContent.includes('guardian') && row.textContent.includes('healthy'))`,
+			"document.querySelector('#direct-password')?.value.length >= 32",
+			'the explicit OpenCode password reveal'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-client-setup=claude]').click()"
+		);
+		const claudeRecipe = (await window.webContents.executeJavaScript(`(() => ({
+			url: document.querySelector('#claude-url')?.textContent,
+			credential: document.querySelector('#claude-credential')?.value,
+			extension: document.querySelector('#install-claude-extension')?.dataset.url
+		}))()`)) as { url?: string; credential?: string; extension?: string };
+		assert(claudeRecipe.url?.endsWith('/mcp'), 'Claude recipe omitted the MCP endpoint.');
+		assert(claudeRecipe.credential === 'owner', 'Claude recipe omitted its access identity.');
+		assert(claudeRecipe.extension?.endsWith('.mcpb'), 'Claude recipe omitted its extension.');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-client-setup=mcp]').click()"
+		);
+		assert(
+			(await window.webContents.executeJavaScript(
+				"document.querySelector('#mcp-url')?.textContent.endsWith('/mcp') && document.querySelector('#mcp-credential')?.value === 'owner'"
+			)) as boolean,
+			'The generic MCP recipe was incomplete.'
+		);
+		progress('all three complete client connection recipes rendered');
+
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#discord').checked = true;
+			document.querySelector('#discord').dispatchEvent(new Event('change', { bubbles: true }));
+			document.querySelector('#connections-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice')?.classList.contains('error') &&
+					document.querySelector('#discord-access-disclosure')?.open === true &&
+					document.activeElement?.id === 'discord-users'`,
+			'the Discord access-scope guidance',
+			10_000,
+			true
+		);
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#discord-users').value = '123456789012345678';
+			document.querySelector('#discord-users').dispatchEvent(new Event('input', { bubbles: true }));
+			document.querySelector('#connections-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice-message')?.textContent === 'Store a Discord bot token before enabling Discord.' &&
+					document.querySelector('#token-portal')?.value === 'discord' &&
+					document.activeElement?.id === 'bot-token'`,
+			'the Discord private-token guidance',
+			10_000,
+			true
+		);
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#discord').checked = false;
+			document.querySelector('#discord-users').value = '';
+			document.querySelector('#discord').dispatchEvent(new Event('change', { bubbles: true }));
+		})()`);
+		progress('portal setup errors opened and focused the required controls');
+
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#gateway').checked = true;
+			document.querySelector('#gateway').dispatchEvent(new Event('change', { bubbles: true }));
+			document.querySelector('#connections-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice-message')?.textContent === 'Connections saved and OpenPalm is running.' &&
+					[...document.querySelectorAll('#services .service')].some((row) =>
+						row.textContent.includes('guardian') && row.textContent.includes('Running normally'))`,
 			'the Guardian to become healthy'
 		);
 		progress('Guardian is healthy');
 
 		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('[data-view=access]').click();
 			document.querySelector('#credential-username').value = 'e2e-reader';
 			document.querySelector('#credential-policy').value = 'read';
 			document.querySelector('#credential-form').requestSubmit();
 		})()`);
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Creating credential completed.' &&
-				[...document.querySelectorAll('#credential-action-name option')].some((option) => option.value === 'e2e-reader')`,
+			`document.querySelector('#notice-message')?.textContent.includes('Access for e2e-reader created.') &&
+					[...document.querySelectorAll('#credential-action-name option')].some((option) => option.value === 'e2e-reader')`,
 			'the read credential to be created'
 		);
 		progress('read credential created');
@@ -273,24 +484,22 @@ async function run(): Promise<Record<string, unknown>> {
 		})()`);
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Saving portal user mapping completed.' &&
-				document.querySelector('#mappings').textContent.includes('e2e-reader')`,
+			`document.querySelector('#notice-message')?.textContent === 'Individual user access saved.' &&
+					document.querySelector('#mappings').textContent.includes('e2e-reader')`,
 			'the Discord identity mapping to persist'
 		);
 		progress('Discord identity mapping persisted');
-		await window.webContents.executeJavaScript(
-			"document.querySelector('#config-form').closest('section').scrollIntoView()"
-		);
-		const guardianScreenshot = await capture(window, outputDir, '03-guardian-access.png');
+		const guardianScreenshot = await capture(window, outputDir, '05-people-access.png');
 
-		await window.webContents.executeJavaScript(
-			"document.querySelector('[data-action=restart]').click()"
-		);
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('[data-view=overview]').click();
+			document.querySelector('[data-action=restart]').click();
+		})()`);
 		await waitForRenderer(
 			window,
-			`document.querySelector('#notice')?.textContent === 'Stack restart completed.' &&
-				document.querySelectorAll('#services .service').length === 2 &&
-				[...document.querySelectorAll('#services .service')].every((row) => row.textContent.includes('healthy'))`,
+			`document.querySelector('#notice-message')?.textContent === 'OpenPalm restarted.' &&
+					document.querySelectorAll('#services .service').length === 2 &&
+					[...document.querySelectorAll('#services .service')].every((row) => row.textContent.includes('Running normally'))`,
 			'a healthy stack restart'
 		);
 		progress('stack restart passed');
@@ -306,7 +515,8 @@ async function run(): Promise<Record<string, unknown>> {
 		await waitForRenderer(
 			window,
 			`document.querySelector('#install-section')?.hidden === true &&
-				document.querySelector('#assistant-port')?.value === ${JSON.stringify(String(assistantPort))} &&
+					document.querySelector('#app-shell')?.hidden === false &&
+					document.querySelector('#assistant-port')?.value === ${JSON.stringify(String(assistantPort))} &&
 				document.querySelector('#gateway-port')?.value === ${JSON.stringify(String(guardianPort))} &&
 				document.querySelector('#mappings')?.textContent.includes('e2e-reader')`,
 			'persistent configuration after renderer reload'
@@ -368,8 +578,12 @@ async function run(): Promise<Record<string, unknown>> {
 			assistantPort,
 			guardianPort,
 			services: finalSnapshot.services,
-			providersDiscovered: providers.length,
+			providersDiscovered: providerCatalog.length,
 			providerReadiness: readiness,
+			visibleSetupJourneyComplete: Boolean(provider && providerKey),
+			managementUiFixtureUsed: !provider,
+			startupRecoveryVerified: true,
+			connectionRecipesVerified: ['opencode', 'claude', 'mcp'],
 			credential: { username: 'e2e-reader', policy: 'read' },
 			portalMapping: { portal: 'discord', user: '123456789012345678' },
 			guardian: {
@@ -379,7 +593,14 @@ async function run(): Promise<Record<string, unknown>> {
 				toolsListStatus: listed.status,
 				toolCount: tools.length
 			},
-			screenshots: [initialScreenshot, assistantScreenshot, guardianScreenshot],
+			screenshots: [
+				initialScreenshot,
+				assistantScreenshot,
+				recoveryScreenshot,
+				reflowScreenshot,
+				...(readyScreenshot ? [readyScreenshot] : []),
+				guardianScreenshot
+			],
 			keptRunning: keepRunning
 		};
 	} finally {

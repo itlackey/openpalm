@@ -55,6 +55,8 @@ describe('0.14 fresh-install importer', () => {
 
 		const plan = planImport({ sourceHome: source, destinationHome: destination });
 		expect(plan.conflicts).toBe(0);
+		expect(plan.digest).toMatch(/^[a-f0-9]{64}$/);
+		expect(plan.entries.every((entry) => /^[a-f0-9]{64}$/.test(entry.sha256))).toBe(true);
 		expect(plan.entries.map((entry) => [entry.relativeDestination, entry.action])).toContainEqual([
 			'knowledge/imported-tasks/news.yml',
 			'stage-task'
@@ -73,6 +75,20 @@ describe('0.14 fresh-install importer', () => {
 		expect(lstatSync(join(destination, 'workspace', 'tool.sh')).mode & 0o777).toBe(0o700);
 		expect(existsSync(join(destination, 'knowledge', 'tasks', 'news.yml'))).toBe(false);
 		expect(existsSync(join(destination, 'knowledge', 'imported-tasks', 'news.yml'))).toBe(true);
+	});
+
+	it('binds apply to the exact source content reviewed in a preview', () => {
+		const { source, destination } = fixture();
+		mkdirSync(join(source, 'knowledge'), { recursive: true });
+		const path = join(source, 'knowledge', 'memory.md');
+		writeFileSync(path, 'reviewed value\n');
+		const preview = planImport({ sourceHome: source, destinationHome: destination });
+		writeFileSync(path, 'changed! value\n');
+
+		expect(() =>
+			applyImport({ sourceHome: source, destinationHome: destination }, preview.digest)
+		).toThrow('changed after preview');
+		expect(existsSync(join(destination, 'knowledge', 'memory.md'))).toBe(false);
 	});
 
 	it('refuses conflicts and never follows source symlinks', () => {

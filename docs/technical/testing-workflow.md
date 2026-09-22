@@ -35,11 +35,17 @@ with `OPENPALM_SOCKET_TESTS=1`. OAuth tests sign real JWTs and cover expiry,
 audience, scopes, signing-key rotation, and live issuer/subject mapping changes.
 
 The opt-in `bun run admin:e2e` check drives the real Electron Admin against a
-disposable Docker stack. It verifies first-install ports, Assistant and Guardian
-health, provider discovery, credential policy, portal mapping, restart/reload
-persistence, and authenticated MCP policy filtering. It needs a desktop session
-and locally built `0.14.0` images, so it is not part of the portable unit-test
-gate. See the [Admin setup verification runbook](../operations/admin-setup-verification.md).
+disposable Docker stack. It verifies the default setup path with advanced
+network choices closed, operation locking, Assistant and Guardian health,
+provider discovery, truthful readiness failure, credential policy, portal
+mapping, restart/reload persistence, authenticated MCP policy filtering,
+complete client connection recipes, visible recovery from an interrupted first
+start, minimum control sizes, visible focus, and document reflow. Without a
+provider secret, it stops the visible setup journey at the truthful provider
+gate and uses a clearly reported test-only completion marker for subsequent
+management-UI coverage. It needs a desktop session and locally built `0.14.0`
+images, so it is not part of the portable unit-test gate. See the
+[Admin setup verification runbook](../operations/admin-setup-verification.md).
 
 ## Compose validation
 

@@ -167,6 +167,7 @@ export function importFromAdmin(
 	value: {
 		sourceHome: string;
 		apply?: boolean;
+		previewDigest?: string;
 		includeProviderAuth?: boolean;
 		includeUserEnv?: boolean;
 		includePortalMaps?: boolean;
@@ -176,14 +177,18 @@ export function importFromAdmin(
 	if (classifyInstall(homeDir) !== 'setup_incomplete') {
 		throw new Error('Import is available only before setup is completed on a fresh installation.');
 	}
-	const options = { destinationHome: homeDir, ...value };
-	if (!value.apply) return planImport(options);
+	const { apply, previewDigest, ...importOptions } = value;
+	const options = { destinationHome: homeDir, ...importOptions };
+	if (!apply) return planImport(options);
+	if (!previewDigest || !/^[a-f0-9]{64}$/.test(previewDigest)) {
+		throw new Error('Preview this restore before applying it.');
+	}
 	const state = createOpenPalmState();
 	if (state.homeDir !== homeDir) throw new Error('Admin import destination changed unexpectedly.');
 	const lock = acquireStackLock(state.dataDir);
 	if (!lock) throw new Error('Another OpenPalm lifecycle operation is in progress.');
 	try {
-		const plan = applyImport(options);
+		const plan = applyImport(options, previewDigest);
 		ensureRuntime(state);
 		return plan;
 	} finally {

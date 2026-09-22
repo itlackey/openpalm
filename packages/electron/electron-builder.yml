@@ -10,6 +10,7 @@ files:
   - dist/admin-main.js
   - dist/admin-preload.cjs
   - admin/**/*
+  - assets/icon.png
   - package.json
 
 extraResources:

@@ -50,6 +50,25 @@ workspace, and lifecycle. Never reuse a Compose project name between homes.
 Assistant is the only default service. Guardian, Discord, and Slack are opt-in.
 OpenPalm does not install a browser chat application or model server.
 
+### Optional graphical setup
+
+The separate OpenPalm Admin application presents the same fresh-install path
+as three guided stages: install locally, connect an AI provider, and choose a
+client. The ordinary path uses safe loopback defaults. Ports and bind addresses
+remain in an advanced disclosure.
+
+Admin can store and verify API keys and automatically detects an existing
+OpenCode sign-in. When a provider requires interactive browser/OAuth sign-in,
+Admin opens OpenCode's native provider sign-in in the system browser and
+returns to the same real readiness check. The check uses OpenCode's own default
+model for the provider the user selected; OpenPalm does not ask the user to
+configure model routing. This targets the exact `OP_HOME` selected by Admin; no
+terminal command or second provider credential store is involved.
+
+If Docker or a port conflict interrupts the first start, Admin keeps the fresh
+installation in **Setup in progress**, shows the actual error, and offers port
+correction plus a safe startup retry. Do not reinstall over that home.
+
 ## Provider sign-in
 
 The normal user chooses a provider in OpenCode's native sign-in flow. They do

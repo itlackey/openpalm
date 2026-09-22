@@ -48,6 +48,7 @@ export type ImportEntry = {
 	category: 'knowledge' | 'task' | 'workspace' | 'config' | 'secret';
 	action: ImportAction;
 	bytes: number;
+	sha256: string;
 };
 
 export type ImportPlan = {
@@ -59,6 +60,7 @@ export type ImportPlan = {
 	totalBytes: number;
 	conflicts: number;
 	copyCount: number;
+	digest: string;
 };
 
 function realDirectory(path: string, label: string): string {
@@ -190,9 +192,9 @@ function filesBelow(root: string, warnings: string[]): string[] {
 	return output.sort();
 }
 
-function sameBytes(left: string, right: string): boolean {
-	if (lstatSync(left).size !== lstatSync(right).size) return false;
-	return readFileSync(left).equals(readFileSync(right));
+function sameBytes(path: string, bytes: Buffer): boolean {
+	if (lstatSync(path).size !== bytes.byteLength) return false;
+	return readRegularSource(path).bytes.equals(bytes);
 }
 
 function pristineDestination(relativePath: string, path: string): boolean {
@@ -284,7 +286,9 @@ function validateMappedConfiguration(
 	}
 }
 
-type Candidate = Omit<ImportEntry, 'action' | 'bytes'> & { preferred: ImportAction };
+type Candidate = Omit<ImportEntry, 'action' | 'bytes' | 'sha256'> & {
+	preferred: ImportAction;
+};
 
 function candidate(
 	sourceHome: string,
@@ -504,20 +508,27 @@ export function planImport(options: ImportOptions): ImportPlan {
 		const stat = lstatSync(item.source);
 		if (!stat.isFile() || stat.isSymbolicLink()) continue;
 		if (stat.size > MAX_FILE_BYTES) throw new Error(`Import file is too large: ${item.source}`);
-		totalBytes += stat.size;
+		const sourceFile = readRegularSource(item.source);
+		totalBytes += sourceFile.bytes.byteLength;
 		if (totalBytes > MAX_TOTAL_BYTES) throw new Error('Import exceeds the 20 GiB safety limit');
 		let action = item.preferred;
 		if (existsSync(item.destination)) {
 			if (!lstatSync(item.destination).isFile()) action = 'conflict';
-			else if (sameBytes(item.source, item.destination)) action = 'skip-identical';
+			else if (sameBytes(item.destination, sourceFile.bytes)) action = 'skip-identical';
 			else if (pristineDestination(item.relativeDestination, item.destination)) {
 				action = 'replace-pristine';
 			} else action = 'conflict';
 		}
-		entries.push({ ...item, action, bytes: stat.size });
+		const { preferred: _preferred, ...entry } = item;
+		entries.push({
+			...entry,
+			action,
+			bytes: sourceFile.bytes.byteLength,
+			sha256: createHash('sha256').update(sourceFile.bytes).digest('hex')
+		});
 	}
 
-	return {
+	const result: Omit<ImportPlan, 'digest'> = {
 		version: 1,
 		sourceHome,
 		destinationHome,
@@ -528,10 +539,17 @@ export function planImport(options: ImportOptions): ImportPlan {
 		copyCount: entries.filter((entry) => !['conflict', 'skip-identical'].includes(entry.action))
 			.length
 	};
+	return {
+		...result,
+		digest: createHash('sha256').update(JSON.stringify(result)).digest('hex')
+	};
 }
 
-export function applyImport(options: ImportOptions): ImportPlan {
+export function applyImport(options: ImportOptions, expectedDigest?: string): ImportPlan {
 	const plan = planImport(options);
+	if (expectedDigest !== undefined && plan.digest !== expectedDigest) {
+		throw new Error('The restore source or destination changed after preview. Preview it again.');
+	}
 	if (plan.conflicts > 0) {
 		throw new Error(
 			`Import has ${plan.conflicts} destination conflict(s). Resolve them and run --dry-run again.`
@@ -544,6 +562,10 @@ export function applyImport(options: ImportOptions): ImportPlan {
 			throw new Error(`Import source changed or escaped its home: ${entry.source}`);
 		}
 		const sourceFile = readRegularSource(sourceReal);
+		const digest = createHash('sha256').update(sourceFile.bytes).digest('hex');
+		if (digest !== entry.sha256) {
+			throw new Error(`Import source changed after preview: ${entry.relativeSource}`);
+		}
 		const mode = (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600;
 		ensureSafeDestinationParent(plan.destinationHome, entry.destination);
 		writeFileAtomic(entry.destination, sourceFile.bytes, mode);

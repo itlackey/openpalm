@@ -103,7 +103,13 @@ describe('Admin domain', () => {
 			join(source, 'config', 'portal', 'discord', 'credentials.json'),
 			JSON.stringify({ version: 1, users: { '123456789012345678': 'owner' } })
 		);
-		importFromAdmin(home, { sourceHome: source, apply: true, includePortalMaps: true });
+		const preview = importFromAdmin(home, { sourceHome: source, includePortalMaps: true });
+		importFromAdmin(home, {
+			sourceHome: source,
+			apply: true,
+			previewDigest: preview.digest,
+			includePortalMaps: true
+		});
 		const bundle = JSON.parse(
 			readFileSync(join(home, 'state', 'portal-credentials', 'discord', 'credentials.json'), 'utf8')
 		);

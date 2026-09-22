@@ -62,9 +62,35 @@ settings, access credentials, portal scope, and portable recovery. Ordinary
 portal setup must not require editing Compose YAML or writing secrets with shell
 redirection.
 
+Admin presents explicit `not installed`, `setup incomplete`, and `ready`
+phases. It starts fail-closed in a loading state, hides infrastructure choices
+behind advanced disclosures, prevents duplicate operations, and never presents
+a failed provider-readiness result as success. Its post-setup navigation is
+organized around user tasks rather than runtime components. A failed first
+start remains recoverable in the setup flow; the operator can correct ports and
+retry without reinstalling or editing files.
+
+Each client connection guide is task-complete. Direct OpenCode guidance shows
+its URL, username, and explicitly requested password. Claude Desktop guidance
+shows the extension, Guardian endpoint, named identity, and key. Generic MCP
+guidance shows the Streamable HTTP endpoint and bearer-key contract together.
+Secret values are hidden by default and enter the clipboard only after an
+explicit local action.
+
+Admin configuration saves are scoped to the visible task. Unsaved connection,
+policy, or network edits survive unrelated lifecycle, credential, mapping, and
+token operations. A restore can be applied only when the source-content digest
+and destination plan still match the plan the user previewed.
+
 OpenPalm delegates provider discovery, authentication, and model support to
 OpenCode. It may guide and test OpenCode's native sign-in flow, but it must not
 build a competing provider registry, model proxy, or credential format.
+Browser sign-in in Admin calls OpenCode's authenticated provider OAuth
+authorize/callback endpoints for the selected installation and then runs the
+same real readiness check used by CLI setup. Readiness explicitly targets the
+selected provider and OpenCode's reported default model for it; OpenPalm does
+not maintain a separate model registry or force a nontechnical user to choose a
+model.
 
 An installation is not ready merely because containers are running. The setup
 flow must verify that the selected provider can complete a small agent request

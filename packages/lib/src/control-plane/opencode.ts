@@ -10,14 +10,44 @@ const MAX_GUARDIAN_CONFIG_BYTES = 64 * 1024;
 const READY_TOKEN = 'OPENPALM_READY';
 const FRESH_GUARDIAN_MODEL = '"model": "opencode/big-pickle"';
 
+export type ProviderAuthPrompt =
+	| {
+			type: 'text';
+			key: string;
+			message: string;
+			placeholder?: string;
+			when?: { key: string; op: 'eq' | 'neq'; value: string };
+	  }
+	| {
+			type: 'select';
+			key: string;
+			message: string;
+			options: Array<{ label: string; value: string; hint?: string }>;
+			when?: { key: string; op: 'eq' | 'neq'; value: string };
+	  };
+
+export type ProviderAuthMethod = {
+	index: number;
+	type: 'oauth' | 'api';
+	label: string;
+	prompts?: ProviderAuthPrompt[];
+};
+
+export type ProviderOAuthAuthorization = {
+	url: string;
+	method: 'auto' | 'code';
+	instructions: string;
+};
+
 export type ProviderSummary = {
 	id: string;
 	name: string;
 	source: string;
 	modelCount: number;
+	defaultModel?: string;
 	connected: boolean;
 	authenticated: boolean;
-	authMethods: Array<{ type: 'oauth' | 'api'; label: string }>;
+	authMethods: ProviderAuthMethod[];
 };
 
 export type AssistantReadiness =
@@ -30,6 +60,90 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: null;
+}
+
+function boundedString(value: unknown, maximum: number): string | undefined {
+	return typeof value === 'string' && value.length <= maximum ? value : undefined;
+}
+
+function parseWhen(value: unknown): ProviderAuthPrompt['when'] | undefined {
+	const when = asRecord(value);
+	const key = boundedString(when?.key, 128);
+	const condition = when?.op === 'eq' || when?.op === 'neq' ? when.op : undefined;
+	const expected = boundedString(when?.value, 4_096);
+	return key && condition && expected !== undefined
+		? { key, op: condition, value: expected }
+		: undefined;
+}
+
+function parsePrompt(value: unknown): ProviderAuthPrompt | undefined {
+	const prompt = asRecord(value);
+	const key = boundedString(prompt?.key, 128);
+	const message = boundedString(prompt?.message, 500);
+	if (!key || !message) return undefined;
+	const when = parseWhen(prompt?.when);
+	if (prompt?.type === 'text') {
+		const placeholder = boundedString(prompt.placeholder, 500);
+		return {
+			type: 'text',
+			key,
+			message,
+			...(placeholder !== undefined ? { placeholder } : {}),
+			...(when ? { when } : {})
+		};
+	}
+	if (prompt?.type !== 'select' || !Array.isArray(prompt.options)) return undefined;
+	const options = prompt.options
+		.slice(0, 100)
+		.map((item) => {
+			const option = asRecord(item);
+			const label = boundedString(option?.label, 500);
+			const optionValue = boundedString(option?.value, 4_096);
+			const hint = boundedString(option?.hint, 500);
+			return label && optionValue !== undefined
+				? {
+						label,
+						value: optionValue,
+						...(hint !== undefined ? { hint } : {})
+					}
+				: undefined;
+		})
+		.filter((item): item is NonNullable<typeof item> => item !== undefined);
+	if (options.length === 0) return undefined;
+	return { type: 'select', key, message, options, ...(when ? { when } : {}) };
+}
+
+function providerIdValue(value: string): string {
+	if (!/^[A-Za-z0-9._-]{1,128}$/.test(value)) throw new Error('Invalid provider id');
+	return value;
+}
+
+function oauthMethodIndex(value: number): number {
+	if (!Number.isSafeInteger(value) || value < 0 || value > 1_024) {
+		throw new Error('Invalid provider authentication method.');
+	}
+	return value;
+}
+
+function oauthInputs(
+	value: Record<string, string> | undefined
+): Record<string, string> | undefined {
+	if (!value) return undefined;
+	const entries = Object.entries(value);
+	if (entries.length > 32) throw new Error('Too many provider sign-in fields.');
+	const output: Record<string, string> = {};
+	for (const [key, input] of entries) {
+		if (!/^[A-Za-z0-9._-]{1,128}$/.test(key) || typeof input !== 'string' || input.length > 4_096) {
+			throw new Error('Invalid provider sign-in field.');
+		}
+		output[key] = input;
+	}
+	return output;
+}
+
+function modelIdValue(value: unknown): string | undefined {
+	if (typeof value !== 'string' || !value || value.length > 512) return undefined;
+	return Array.from(value).some((character) => character.charCodeAt(0) < 32) ? undefined : value;
 }
 
 function dialAddress(address: string): string {
@@ -125,6 +239,7 @@ export async function listProviders(
 		request(homeDir, '/provider/auth', {}, options)
 	]);
 	const providerRoot = asRecord(providerValue);
+	const defaultModels = asRecord(providerRoot?.default) ?? {};
 	const methodsRoot = asRecord(authValue) ?? {};
 	const connected = new Set(
 		Array.isArray(providerRoot?.connected)
@@ -140,20 +255,32 @@ export async function listProviders(
 		const rawMethodsValue = methodsRoot[provider.id];
 		const rawMethods: unknown[] = Array.isArray(rawMethodsValue) ? rawMethodsValue : [];
 		const authMethods: ProviderSummary['authMethods'] = [];
-		for (const rawMethod of rawMethods) {
+		for (const [index, rawMethod] of rawMethods.entries()) {
 			const method = asRecord(rawMethod);
 			if (
 				(method?.type === 'oauth' || method?.type === 'api') &&
 				typeof method.label === 'string'
 			) {
-				authMethods.push({ type: method.type, label: method.label });
+				const rawPrompts = Array.isArray(method.prompts) ? method.prompts : [];
+				const prompts = rawPrompts
+					.slice(0, 32)
+					.map(parsePrompt)
+					.filter((prompt): prompt is ProviderAuthPrompt => prompt !== undefined);
+				authMethods.push({
+					index,
+					type: method.type,
+					label: method.label.slice(0, 500),
+					...(prompts.length > 0 ? { prompts } : {})
+				});
 			}
 		}
+		const defaultModel = modelIdValue(defaultModels[provider.id]);
 		summaries.push({
 			id: provider.id,
 			name: typeof provider.name === 'string' ? provider.name : provider.id,
 			source: typeof provider.source === 'string' ? provider.source : 'unknown',
 			modelCount: Object.keys(asRecord(provider.models) ?? {}).length,
+			...(defaultModel ? { defaultModel } : {}),
 			connected: connected.has(provider.id),
 			authenticated: authenticated.has(provider.id),
 			authMethods
@@ -168,7 +295,7 @@ export async function setProviderApiKey(
 	key: string,
 	options: { fetch?: FetchLike } = {}
 ): Promise<void> {
-	if (!/^[A-Za-z0-9._-]{1,128}$/.test(providerId)) throw new Error('Invalid provider id');
+	providerId = providerIdValue(providerId);
 	if (!key || /[\r\n]/.test(key)) throw new Error('Provider key must be one non-empty line');
 	await request(
 		homeDir,
@@ -178,13 +305,72 @@ export async function setProviderApiKey(
 	);
 }
 
+export async function beginProviderOAuth(
+	homeDir: string,
+	providerId: string,
+	method: number,
+	inputs?: Record<string, string>,
+	options: { fetch?: FetchLike } = {}
+): Promise<ProviderOAuthAuthorization> {
+	const id = providerIdValue(providerId);
+	const value = await request(
+		homeDir,
+		`/provider/${encodeURIComponent(id)}/oauth/authorize`,
+		{
+			method: 'POST',
+			body: JSON.stringify({
+				method: oauthMethodIndex(method),
+				...(inputs ? { inputs: oauthInputs(inputs) } : {})
+			})
+		},
+		options
+	);
+	const authorization = asRecord(value);
+	const url = boundedString(authorization?.url, 4_096);
+	const signInMethod =
+		authorization?.method === 'auto' || authorization?.method === 'code'
+			? authorization.method
+			: undefined;
+	const instructions = boundedString(authorization?.instructions, 10_000);
+	if (!url || !signInMethod || instructions === undefined) {
+		throw new Error('OpenCode returned an invalid provider sign-in response.');
+	}
+	return { url, method: signInMethod, instructions };
+}
+
+export async function completeProviderOAuth(
+	homeDir: string,
+	providerId: string,
+	method: number,
+	code?: string,
+	options: { fetch?: FetchLike } = {}
+): Promise<void> {
+	const id = providerIdValue(providerId);
+	if (code !== undefined && (!code.trim() || code.length > 10_000)) {
+		throw new Error('Provider authorization code is invalid.');
+	}
+	const result = await request(
+		homeDir,
+		`/provider/${encodeURIComponent(id)}/oauth/callback`,
+		{
+			method: 'POST',
+			body: JSON.stringify({
+				method: oauthMethodIndex(method),
+				...(code !== undefined ? { code: code.trim() } : {})
+			})
+		},
+		options
+	);
+	if (result !== true) throw new Error('OpenCode did not complete provider sign-in.');
+}
+
 export async function removeProviderAuth(
 	homeDir: string,
 	providerId: string,
 	options: { fetch?: FetchLike } = {}
 ): Promise<void> {
-	if (!/^[A-Za-z0-9._-]{1,128}$/.test(providerId)) throw new Error('Invalid provider id');
-	await request(homeDir, `/auth/${encodeURIComponent(providerId)}`, { method: 'DELETE' }, options);
+	const id = providerIdValue(providerId);
+	await request(homeDir, `/auth/${encodeURIComponent(id)}`, { method: 'DELETE' }, options);
 }
 
 export async function waitForAssistant(
@@ -254,11 +440,37 @@ function readinessError(value: unknown): string | undefined {
 
 export async function testAssistantReadiness(
 	homeDir: string,
-	options: { fetch?: FetchLike; timeoutMs?: number } = {}
+	options: { fetch?: FetchLike; timeoutMs?: number; provider?: string; model?: string } = {}
 ): Promise<AssistantReadiness> {
 	let sessionId: string | undefined;
 	try {
 		await waitForAssistant(homeDir, { fetch: options.fetch, timeoutMs: 10_000, intervalMs: 100 });
+		let selectedModel: { providerID: string; modelID: string } | undefined;
+		if (options.provider) {
+			const providerID = providerIdValue(options.provider);
+			let modelID = modelIdValue(options.model);
+			if (!modelID) {
+				const providers = asRecord(
+					await request(
+						homeDir,
+						'/provider',
+						{},
+						{
+							fetch: options.fetch,
+							timeoutMs: 10_000,
+							maxResponseBytes: MAX_PROVIDER_RESPONSE_BYTES
+						}
+					)
+				);
+				modelID = modelIdValue(asRecord(providers?.default)?.[providerID]);
+			}
+			if (!modelID) {
+				throw new Error(`OpenCode did not report a default model for ${providerID}`);
+			}
+			selectedModel = { providerID, modelID };
+		} else if (options.model !== undefined) {
+			throw new Error('A readiness model requires a provider.');
+		}
 		const created = asRecord(
 			await request(
 				homeDir,
@@ -284,6 +496,7 @@ export async function testAssistantReadiness(
 				method: 'POST',
 				body: JSON.stringify({
 					agent: 'remote',
+					...(selectedModel ? { model: selectedModel } : {}),
 					system: `This is a readiness check. Do not use tools. Reply with exactly ${READY_TOKEN}.`,
 					parts: [{ type: 'text', text: `Reply with exactly ${READY_TOKEN}.` }]
 				})
@@ -296,11 +509,13 @@ export async function testAssistantReadiness(
 		if (!ready.text.includes(READY_TOKEN)) {
 			return { ok: false, error: 'The provider responded, but the readiness token was missing' };
 		}
+		const provider = ready.provider ?? selectedModel?.providerID;
+		const model = ready.model ?? selectedModel?.modelID;
 		return {
 			ok: true,
 			response: ready.text,
-			...(ready.provider ? { provider: ready.provider } : {}),
-			...(ready.model ? { model: ready.model } : {})
+			...(provider ? { provider } : {}),
+			...(model ? { model } : {})
 		};
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -347,7 +562,8 @@ export function configureGuardianModeratorModel(
 	const current = readFileSync(path, 'utf8');
 	const occurrences = current.split(FRESH_GUARDIAN_MODEL).length - 1;
 	if (occurrences === 0) return false;
-	if (occurrences !== 1) throw new Error('Guardian configuration contains duplicate model settings.');
+	if (occurrences !== 1)
+		throw new Error('Guardian configuration contains duplicate model settings.');
 	const selected = `"model": ${JSON.stringify(`${provider}/${model}`)}`;
 	writeFileAtomic(path, current.replace(FRESH_GUARDIAN_MODEL, selected), stat.mode & 0o777);
 	return true;

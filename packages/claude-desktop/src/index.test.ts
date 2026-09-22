@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { readBridgeConfiguration } from './index.js';
 
 describe('Claude Desktop bridge configuration', () => {
-	it('accepts a loopback Guardian and strong credential', () => {
+	it('accepts loopback protected access and a strong access key', () => {
 		const config = readBridgeConfiguration({
 			OPENPALM_MCP_URL: 'http://127.0.0.1:3830/mcp',
 			OPENPALM_MCP_TOKEN: 'k'.repeat(32)
@@ -28,8 +28,8 @@ describe('Claude Desktop bridge configuration', () => {
 		}
 	});
 
-	it('rejects missing and weak credentials', () => {
-		expect(() => readBridgeConfiguration({})).toThrow('credential key');
-		expect(() => readBridgeConfiguration({ OPENPALM_MCP_TOKEN: 'weak' })).toThrow('credential key');
+	it('rejects missing and weak access keys', () => {
+		expect(() => readBridgeConfiguration({})).toThrow('access key');
+		expect(() => readBridgeConfiguration({ OPENPALM_MCP_TOKEN: 'weak' })).toThrow('access key');
 	});
 });

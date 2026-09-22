@@ -36,21 +36,14 @@ export async function runNativeProviderLogin(options: {
 	if (!docker.ok) throw new Error(docker.message);
 	await runStartAction();
 	await waitForAssistant(state.homeDir);
-	const args = [
-		...buildComposeCliArgs(state),
-		'exec',
-		'assistant',
-		'opencode',
-		'auth',
-		'login'
-	];
+	const args = [...buildComposeCliArgs(state), 'exec', 'assistant', 'opencode', 'auth', 'login'];
 	if (options.provider) args.push('--provider', options.provider);
 	if (options.method) args.push('--method', options.method);
 	await runComposeStreaming(args, { envFiles: [`${state.homeDir}/state/stack.env`] });
 }
 
-async function verifyAndComplete(homeDir: string): Promise<void> {
-	const readiness = await testAssistantReadiness(homeDir);
+async function verifyAndComplete(homeDir: string, provider?: string): Promise<void> {
+	const readiness = await testAssistantReadiness(homeDir, provider ? { provider } : {});
 	if (!readiness.ok) throw new Error(`Provider readiness failed: ${readiness.error}`);
 	const moderatorUpdated = configureGuardianModeratorModel(
 		homeDir,
@@ -104,7 +97,10 @@ const loginCommand = defineCommand({
 			provider: args.provider ? String(args.provider) : undefined,
 			method: args.method ? String(args.method) : undefined
 		});
-		await verifyAndComplete(createOpenPalmState().homeDir);
+		await verifyAndComplete(
+			createOpenPalmState().homeDir,
+			args.provider ? String(args.provider) : undefined
+		);
 	})
 });
 
@@ -128,7 +124,7 @@ const keyCommand = defineCommand({
 			String(args.provider),
 			readKey(String(args['key-file']))
 		);
-		await verifyAndComplete(state.homeDir);
+		await verifyAndComplete(state.homeDir, String(args.provider));
 	})
 });
 

@@ -199,11 +199,30 @@ inactive until reviewed. See [the 0.14 transition guide](operations/migration-to
 
 ## Optional Admin
 
-Admin wraps fresh installation and Assistant startup, stack configuration and lifecycle, provider
-API-key readiness, credential creation/rotation/removal, Discord and Slack user
-mapping, portal tokens and allowlists, backup/import, and bounded log viewing
-in a local GUI. Interactive provider OAuth remains delegated to the CLI's
-native OpenCode sign-in flow.
+Admin is the optional guided local interface for setup and maintenance. A new
+user sees three stages: install locally, connect an AI provider, and choose a
+client. Default installation does not ask for ports or bind addresses; those
+choices remain under **Advanced network settings**. Admin does not report the
+agent as ready until a real provider request succeeds.
+
+After setup, task-based views separate **Overview**, **AI provider**,
+**Connections**, **People & access**, **Backup**, and **Troubleshooting**.
+Admin supports API-key provider setup, detects existing OpenCode sign-ins,
+creates and rotates named access keys, maps Discord and Slack identities,
+configures portal allowlists and tokens, previews restores, creates portable
+backups, and shows bounded diagnostics. Provider browser/OAuth sign-in remains
+OpenCode's native flow: Admin calls the selected installation's authenticated
+OpenCode authorize/callback endpoints, opens the returned HTTPS sign-in page,
+and verifies a real response through OpenCode's default model for that selected
+provider after completion.
+
+The **Connections** view contains complete guided recipes for trusted OpenCode,
+Claude Desktop, and generic Streamable HTTP MCP clients. Passwords and bearer
+keys remain masked until an explicit reveal or copy action. Connection,
+access-policy, and network forms save independently, and unrelated operations
+preserve pending edits. Backup and restore paths can be chosen with the native
+directory picker. Restore apply is bound to the exact content and conflict plan
+shown during preview.
 
 Admin is not the chat client, a web server, a background control plane, or a
 requirement for headless installs. It uses the same filesystem and control-plane

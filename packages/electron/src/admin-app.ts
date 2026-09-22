@@ -1,15 +1,18 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
+import type { IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
 	activateComposeCommand,
+	beginProviderOAuth,
 	buildComposeOptions,
 	classifyInstall,
 	composeLogs,
 	composePs,
+	completeProviderOAuth,
 	configureGuardianModeratorModel,
+	connectionDetails,
 	createOpenPalmState,
 	defaultStackConfig,
 	deactivateComposeCommand,
@@ -32,6 +35,8 @@ import {
 } from '@openpalm/lib';
 import type { AssistantReadiness } from '@openpalm/lib';
 
+import electronPackage from '../package.json' with { type: 'json' };
+
 import { ADMIN_CHANNELS, type AdminSnapshot, type StackAction } from './admin-types.js';
 import {
 	adminPortalMappings,
@@ -48,6 +53,7 @@ import {
 const adminDirectory = fileURLToPath(new URL('../admin', import.meta.url));
 const adminIndexPath = join(adminDirectory, 'index.html');
 const adminIndexUrl = pathToFileURL(adminIndexPath).href;
+const claudeExtensionUrl = `https://code.lab.fwdslsh.dev/founder3/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
 
 if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
 	process.env.OPENPALM_SKELETON_DIR = app.isPackaged
@@ -66,12 +72,60 @@ function state() {
 	return value;
 }
 
+function connectionSnapshot(homeDir: string): NonNullable<AdminSnapshot['connectionDetails']> {
+	return {
+		opencode: connectionDetails(homeDir, 'opencode'),
+		mcp: connectionDetails(homeDir, 'mcp'),
+		claude: connectionDetails(homeDir, 'claude', { claudeExtension: claudeExtensionUrl })
+	};
+}
+
+function externalUrl(value: unknown): string {
+	if (typeof value !== 'string' || value.length > 4_096) throw new Error('Invalid external URL.');
+	const url = new URL(value);
+	if (url.protocol !== 'https:' || url.username || url.password) {
+		throw new Error('Only secure HTTPS links without embedded credentials can be opened.');
+	}
+	return url.href;
+}
+
+function oauthInput(value: unknown): {
+	provider: string;
+	method: number;
+	inputs?: Record<string, string>;
+} {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error('Invalid provider sign-in request.');
+	}
+	const input = value as { provider?: unknown; method?: unknown; inputs?: unknown };
+	if (typeof input.provider !== 'string' || typeof input.method !== 'number') {
+		throw new Error('Provider and sign-in method are required.');
+	}
+	if (
+		input.inputs !== undefined &&
+		(!input.inputs || typeof input.inputs !== 'object' || Array.isArray(input.inputs))
+	) {
+		throw new Error('Invalid provider sign-in fields.');
+	}
+	if (
+		input.inputs &&
+		Object.values(input.inputs as Record<string, unknown>).some((item) => typeof item !== 'string')
+	) {
+		throw new Error('Invalid provider sign-in fields.');
+	}
+	return {
+		provider: input.provider,
+		method: input.method,
+		...(input.inputs ? { inputs: input.inputs as Record<string, string> } : {})
+	};
+}
+
 export async function adminSnapshot(): Promise<AdminSnapshot> {
 	const candidate = createOpenPalmState();
 	const installState = classifyInstall(candidate.homeDir);
 	if (installState === 'not_installed') {
 		return {
-			installed: false,
+			phase: 'not_installed',
 			homeDir: candidate.homeDir,
 			configPath: stackConfigFile(candidate.homeDir),
 			config: defaultStackConfig(),
@@ -95,7 +149,7 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
 			}))
 		: [];
 	return {
-		installed: true,
+		phase: installState === 'installed' ? 'ready' : 'setup_incomplete',
 		homeDir: current.homeDir,
 		configPath: stackConfigFile(current.homeDir),
 		config: config.config,
@@ -105,7 +159,8 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
 		portalSecrets: {
 			discord: portalSecretConfigured(current.homeDir, 'discord'),
 			slack: portalSecretConfigured(current.homeDir, 'slack')
-		}
+		},
+		connectionDetails: connectionSnapshot(current.homeDir)
 	};
 }
 
@@ -147,6 +202,10 @@ export function registerAdminIpc(): void {
 	ipcMain.handle(ADMIN_CHANNELS.snapshot, (event) => {
 		requireAdminSender(event);
 		return adminSnapshot();
+	});
+	ipcMain.handle(ADMIN_CHANNELS.selectedHome, (event) => {
+		requireAdminSender(event);
+		return createOpenPalmState().homeDir;
 	});
 	ipcMain.handle(ADMIN_CHANNELS.install, async (event, value: unknown) => {
 		requireAdminSender(event);
@@ -193,17 +252,97 @@ export function registerAdminIpc(): void {
 		}
 		const current = state();
 		await setProviderApiKey(current.homeDir, input.provider, input.key);
-		const readiness = await testAssistantReadiness(current.homeDir);
+		const readiness = await testAssistantReadiness(current.homeDir, {
+			provider: input.provider
+		});
 		await completeAdminReadiness(current.homeDir, readiness);
 		return readiness;
 	});
-	ipcMain.handle(ADMIN_CHANNELS.readiness, (event) => {
+	ipcMain.handle(ADMIN_CHANNELS.providerOAuthStart, async (event, value: unknown) => {
 		requireAdminSender(event);
+		const input = oauthInput(value);
 		const current = state();
-		return testAssistantReadiness(current.homeDir).then(async (readiness) => {
+		const authorization = await beginProviderOAuth(
+			current.homeDir,
+			input.provider,
+			input.method,
+			input.inputs
+		);
+		await shell.openExternal(externalUrl(authorization.url));
+		return authorization;
+	});
+	ipcMain.handle(ADMIN_CHANNELS.providerOAuthFinish, async (event, value: unknown) => {
+		requireAdminSender(event);
+		const input = oauthInput(value);
+		const rawCode = (value as { code?: unknown }).code;
+		if (rawCode !== undefined && typeof rawCode !== 'string') {
+			throw new Error('Invalid provider authorization code.');
+		}
+		const current = state();
+		await completeProviderOAuth(current.homeDir, input.provider, input.method, rawCode);
+		const readiness = await testAssistantReadiness(current.homeDir, {
+			provider: input.provider
+		});
+		await completeAdminReadiness(current.homeDir, readiness);
+		return readiness;
+	});
+	ipcMain.handle(ADMIN_CHANNELS.readiness, (event, value: unknown) => {
+		requireAdminSender(event);
+		if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value))) {
+			throw new Error('Invalid provider readiness request.');
+		}
+		const rawProvider = (value as { provider?: unknown } | undefined)?.provider;
+		if (rawProvider !== undefined && typeof rawProvider !== 'string') {
+			throw new Error('Invalid readiness provider.');
+		}
+		const current = state();
+		return testAssistantReadiness(current.homeDir, {
+			...(rawProvider ? { provider: rawProvider } : {})
+		}).then(async (readiness) => {
 			await completeAdminReadiness(current.homeDir, readiness);
 			return readiness;
 		});
+	});
+	ipcMain.handle(ADMIN_CHANNELS.assistantPassword, (event) => {
+		requireAdminSender(event);
+		const current = state();
+		const details = connectionDetails(current.homeDir, 'opencode', {
+			showAssistantPassword: true
+		});
+		if (!details.password) throw new Error('OpenCode password is unavailable.');
+		return { password: details.password };
+	});
+	ipcMain.handle(ADMIN_CHANNELS.copyText, (event, value: unknown) => {
+		requireAdminSender(event);
+		if (typeof value !== 'string' || value.length < 1 || value.length > 10_000) {
+			throw new Error('Invalid clipboard value.');
+		}
+		clipboard.writeText(value);
+	});
+	ipcMain.handle(ADMIN_CHANNELS.openExternal, async (event, value: unknown) => {
+		requireAdminSender(event);
+		await shell.openExternal(externalUrl(value));
+	});
+	ipcMain.handle(ADMIN_CHANNELS.chooseDirectory, async (event, value: unknown) => {
+		requireAdminSender(event);
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			throw new Error('Invalid directory selection request.');
+		}
+		const purpose = (value as { purpose?: unknown }).purpose;
+		if (purpose !== 'backup' && purpose !== 'restore') {
+			throw new Error('Directory purpose must be backup or restore.');
+		}
+		const options: OpenDialogOptions = {
+			title:
+				purpose === 'backup' ? 'Choose an empty backup directory' : 'Choose an OpenPalm backup',
+			buttonLabel: purpose === 'backup' ? 'Use for backup' : 'Use this backup',
+			properties: purpose === 'backup' ? ['openDirectory', 'createDirectory'] : ['openDirectory']
+		};
+		const owner = BrowserWindow.fromWebContents(event.sender);
+		const result = owner
+			? await dialog.showOpenDialog(owner, options)
+			: await dialog.showOpenDialog(options);
+		return result.canceled ? undefined : result.filePaths[0];
 	});
 	ipcMain.handle(ADMIN_CHANNELS.credential, async (event, value: unknown) => {
 		requireAdminSender(event);
@@ -243,25 +382,37 @@ export function registerAdminIpc(): void {
 		if (!value || typeof value !== 'object') throw new Error('Invalid portal token operation');
 		const input = value as { portal?: unknown; botToken?: unknown; appToken?: unknown };
 		if (!isPortalName(input.portal)) throw new Error('Portal must be discord or slack.');
-		if (
-			!(typeof input.botToken === 'string' && input.botToken) &&
-			!(typeof input.appToken === 'string' && input.appToken)
-		) {
-			throw new Error('Enter at least one portal token.');
-		}
 		const current = state();
 		const config = readStackConfig(current.homeDir);
 		if (!config.ok) throw new Error(config.error);
-		if (typeof input.botToken === 'string' && input.botToken) {
+		const configured = portalSecretConfigured(current.homeDir, input.portal);
+		const botToken = typeof input.botToken === 'string' ? input.botToken : undefined;
+		const appToken = typeof input.appToken === 'string' ? input.appToken : undefined;
+		const hasBotToken = Boolean(botToken);
+		const hasAppToken = Boolean(appToken);
+		if (input.portal === 'discord' && !hasBotToken) {
+			throw new Error('Discord bot token is required.');
+		}
+		if (
+			input.portal === 'slack' &&
+			((!configured.slack_bot_token && !hasBotToken) ||
+				(!configured.slack_app_token && !hasAppToken))
+		) {
+			throw new Error('Both Slack tokens are required the first time.');
+		}
+		if (input.portal === 'slack' && !hasBotToken && !hasAppToken) {
+			throw new Error('Enter at least one Slack token to replace.');
+		}
+		if (hasBotToken) {
 			writePortalSecret(
 				current.homeDir,
 				input.portal,
 				input.portal === 'discord' ? 'discord_bot_token' : 'slack_bot_token',
-				input.botToken
+				botToken as string
 			);
 		}
-		if (input.portal === 'slack' && typeof input.appToken === 'string' && input.appToken) {
-			writePortalSecret(current.homeDir, 'slack', 'slack_app_token', input.appToken);
+		if (input.portal === 'slack' && hasAppToken) {
+			writePortalSecret(current.homeDir, 'slack', 'slack_app_token', appToken as string);
 		}
 		return config.config.portals[input.portal].enabled
 			? runAdminAction('restart')
@@ -283,11 +434,11 @@ export function registerAdminIpc(): void {
 
 export function createAdminWindow(options: { show?: boolean } = {}): BrowserWindow {
 	const window = new BrowserWindow({
-		width: 960,
-		height: 720,
-		minWidth: 720,
-		minHeight: 560,
-		title: 'OpenPalm Admin',
+		width: 1120,
+		height: 780,
+		minWidth: 640,
+		minHeight: 540,
+		title: 'OpenPalm — Setup & settings',
 		show: options.show ?? true,
 		webPreferences: {
 			preload: join(import.meta.dirname, 'admin-preload.cjs'),
@@ -297,7 +448,11 @@ export function createAdminWindow(options: { show?: boolean } = {}): BrowserWind
 		}
 	});
 	window.webContents.setWindowOpenHandler(({ url }) => {
-		if (url.startsWith('https://')) void shell.openExternal(url);
+		try {
+			void shell.openExternal(externalUrl(url)).catch(() => undefined);
+		} catch {
+			// Keep untrusted or malformed renderer navigation inside the deny-only boundary.
+		}
 		return { action: 'deny' };
 	});
 	window.webContents.on('will-navigate', (event, url) => {

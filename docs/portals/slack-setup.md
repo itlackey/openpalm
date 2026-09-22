@@ -25,6 +25,11 @@ openpalm portal token slack \
 Both files must be mode 0600. Do not store the values in Compose environment
 variables.
 
+In OpenPalm Admin, **Connections → Slack** presents the same scopes and event
+checklist and opens Slack's app console. **Add Slack tokens** moves directly to
+the private token form. Both tokens are required initially; afterward either
+one can be rotated without re-entering the other.
+
 ## 2. Configure a default-deny scope
 
 Configure access through validated stack intent:
@@ -37,6 +42,10 @@ Values are comma-separated Slack IDs. Every non-empty allowlist must match. A
 blocked user always loses access. Configure users alone to allow direct
 messages; a DM cannot satisfy a channel constraint. The adapter refuses all use
 when both allowlists are empty.
+
+In Admin, expand **Who can use it**, enter the same IDs, choose the default
+access identity, and select **Save connections**. If a required scope or token
+is missing, Admin opens and focuses the exact field that needs attention.
 
 ## 3. Enable and verify
 

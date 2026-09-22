@@ -7,166 +7,536 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenPalm Admin</title>
+    <title>OpenPalm — Setup & settings</title>
     <link rel="stylesheet" href="admin.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div>
-          <p class="eyebrow">OPTIONAL STACK TOOL</p>
-          <h1>OpenPalm Admin</h1>
-          <p id="home" class="muted">Loading stack…</p>
+	    <a id="skip-link" class="skip-link" href="#main-content">Skip to content</a>
+
+	    <div id="loading-state" class="centered-state" aria-live="polite">
+      <div class="loading-mark" aria-hidden="true"></div>
+      <p>Opening OpenPalm…</p>
+	    </div>
+
+	    <main id="error-state" class="centered-state error-state" tabindex="-1" hidden>
+	      <section class="error-card" aria-labelledby="error-title">
+	        <p class="eyebrow">OPENPALM NEEDS ATTENTION</p>
+	        <h1 id="error-title">Setup could not be opened.</h1>
+	        <p id="error-message">OpenPalm could not read the selected installation.</p>
+	        <dl class="detail-list compact"><div><dt>Selected home</dt><dd id="error-home">Checking…</dd></div></dl>
+	        <button id="retry-snapshot" class="primary" type="button">Try again</button>
+	      </section>
+	    </main>
+
+	    <main id="install-section" class="welcome-shell" tabindex="-1" hidden>
+      <section class="welcome-card" aria-labelledby="welcome-title">
+        <div class="brand-lockup">
+          <img class="brand-image" src="../assets/icon.png" alt="" />
+          <span>OpenPalm</span>
         </div>
-        <button id="refresh" class="quiet" type="button">Refresh</button>
-      </header>
+        <p class="eyebrow">YOUR PERSONAL AI</p>
+        <h1 id="welcome-title">An assistant that remembers and keeps working.</h1>
+        <p class="welcome-copy">
+          OpenPalm creates a private personal agent on this computer. Connect your AI provider,
+          then use it from OpenCode, Claude Desktop, or another MCP app.
+        </p>
+        <ul class="benefit-list" aria-label="What OpenPalm includes">
+          <li><span aria-hidden="true">✓</span> Persistent knowledge you control</li>
+          <li><span aria-hidden="true">✓</span> Recurring tasks and durable results</li>
+          <li><span aria-hidden="true">✓</span> Protected access for external apps</li>
+        </ul>
 
-      <p id="notice" role="status" aria-live="polite"></p>
-
-      <section id="install-section" hidden>
-        <h2>Install your personal agent</h2>
-        <p class="muted">OpenPalm will create a private local home, verify Docker, and start the Assistant. Existing non-empty locations are never replaced.</p>
-        <form id="install-form" class="grid wide">
-          <label>Assistant port <input id="install-assistant-port" type="number" min="1" max="65535" required /></label>
-          <label>Guardian port <input id="install-gateway-port" type="number" min="1" max="65535" required /></label>
-          <button id="install" type="submit">Install OpenPalm</button>
+        <form id="install-form">
+          <button id="install" class="primary large" type="submit">Set up OpenPalm</button>
+          <p class="form-note">Docker must be installed and running. Your files stay on this computer.</p>
+          <details class="disclosure">
+            <summary>Advanced network settings</summary>
+            <div class="field-grid two-column disclosure-body">
+              <label class="field" for="install-assistant-port">
+                <span>Assistant port</span>
+                <input id="install-assistant-port" type="number" min="1" max="65535" required />
+              </label>
+              <label class="field" for="install-gateway-port">
+                <span>Protected-access port</span>
+                <input id="install-gateway-port" type="number" min="1" max="65535" required />
+              </label>
+            </div>
+            <p class="help-text">
+              Keep these defaults unless another OpenPalm installation already uses them.
+            </p>
+          </details>
         </form>
-        <p class="muted">Both services stay on this computer by default. Choose unused ports if another local service already uses the defaults.</p>
       </section>
-
-      <section class="installed-only">
-        <h2>Runtime</h2>
-        <div class="actions">
-          <button data-action="start" type="button">Start</button>
-          <button data-action="restart" class="quiet" type="button">Restart</button>
-          <button data-action="stop" class="danger" type="button">Stop</button>
-        </div>
-        <div id="services" class="services"></div>
-      </section>
-
-      <section class="installed-only">
-        <h2>Provider readiness</h2>
-        <p class="muted">OpenCode owns provider discovery and authentication. API keys are sent directly to the local Assistant and are never displayed again.</p>
-        <div class="actions wrap">
-          <button id="load-providers" class="quiet" type="button">Load providers</button>
-          <button id="test-provider" class="quiet" type="button">Run readiness test</button>
-        </div>
-        <form id="provider-form" class="grid wide">
-          <label>Provider <select id="provider"></select></label>
-          <label>API key <input id="provider-key" type="password" autocomplete="off" /></label>
-          <button type="submit">Save key and test</button>
-        </form>
-        <pre id="provider-result">Provider status has not been checked.</pre>
-      </section>
-
-      <section class="installed-only">
-        <h2>Access</h2>
-        <form id="config-form">
-          <h3>Native OpenCode</h3>
-          <p class="muted">Direct clients use OpenCode Basic authentication and bypass Guardian.</p>
-          <div class="grid">
-            <label>Assistant bind address <input id="assistant-bind" autocomplete="off" /></label>
-            <label>Assistant port <input id="assistant-port" type="number" min="1" max="65535" /></label>
-          </div>
-
-          <h3>Guardian MCP</h3>
-          <label class="toggle"><input id="gateway" type="checkbox" /> Guardian MCP gateway</label>
-          <label class="toggle"><input id="discord" type="checkbox" /> Discord adapter</label>
-          <label class="toggle"><input id="slack" type="checkbox" /> Slack adapter</label>
-          <div class="grid">
-            <label>Gateway bind address <input id="gateway-bind" autocomplete="off" /></label>
-            <label>Gateway port <input id="gateway-port" type="number" min="1" max="65535" /></label>
-          </div>
-          <h3>Named credentials</h3>
-          <div id="credential-policies" class="policy-grid"></div>
-          <div class="policy-grid">
-            <label>Discord credential <select id="discord-credential"></select></label>
-            <label>Slack credential <select id="slack-credential"></select></label>
-          </div>
-          <h3>Discord access</h3>
-          <div class="grid wide">
-            <label>Allowed guild IDs <input id="discord-guilds" autocomplete="off" /></label>
-            <label>Allowed role IDs <input id="discord-roles" autocomplete="off" /></label>
-            <label>Allowed user IDs <input id="discord-users" autocomplete="off" /></label>
-            <label>Blocked user IDs <input id="discord-blocked-users" autocomplete="off" /></label>
-          </div>
-          <h3>Slack access</h3>
-          <div class="grid wide">
-            <label>Allowed channel IDs <input id="slack-channels" autocomplete="off" /></label>
-            <label>Allowed user IDs <input id="slack-users" autocomplete="off" /></label>
-            <label>Blocked user IDs <input id="slack-blocked-users" autocomplete="off" /></label>
-          </div>
-          <p class="muted policy-note">Portal access is default-deny. Configure an allowed user, channel, guild, or role before enabling an adapter.</p>
-          <p class="muted policy-note">chat: no tools · read: non-secret file access · full: inherit Assistant permissions</p>
-          <button type="submit">Save and apply</button>
-        </form>
-
-        <h3>Credential registry</h3>
-        <form id="credential-form" class="grid wide">
-          <label>Username <input id="credential-username" autocomplete="off" /></label>
-          <label>Policy
-            <select id="credential-policy"><option>chat</option><option>read</option><option>full</option></select>
-          </label>
-          <button type="submit">Create credential</button>
-        </form>
-        <div class="actions wrap">
-          <label>Selected credential <select id="credential-action-name"></select></label>
-          <button id="rotate-credential" class="quiet" type="button">Rotate key</button>
-          <button id="remove-credential" class="danger" type="button">Remove</button>
-        </div>
-        <div class="grid wide">
-          <label>Credential key <input id="credential-key" type="password" readonly autocomplete="off" /></label>
-          <label class="toggle"><input id="show-credential-key" type="checkbox" /> Show revealed key</label>
-          <button id="reveal-credential" class="quiet" type="button">Reveal selected key</button>
-        </div>
-
-        <h3>Portal user mapping</h3>
-        <form id="mapping-form" class="grid wide">
-          <label>Portal <select id="mapping-portal"><option>discord</option><option>slack</option></select></label>
-          <label>Platform user ID <input id="mapping-user" autocomplete="off" /></label>
-          <label>Credential <select id="mapping-credential"></select></label>
-          <button type="submit">Save mapping</button>
-        </form>
-        <pre id="mappings">No mappings.</pre>
-
-        <h3>Portal tokens</h3>
-        <form id="portal-token-form" class="grid wide">
-          <label>Portal <select id="token-portal"><option>discord</option><option>slack</option></select></label>
-          <label>Bot token <input id="bot-token" type="password" autocomplete="off" /></label>
-          <label>Slack app token <input id="app-token" type="password" autocomplete="off" /></label>
-          <button type="submit">Store tokens</button>
-        </form>
-        <p id="token-status" class="muted"></p>
-      </section>
-
-      <section class="installed-only">
-        <h2>Backup and import</h2>
-        <form id="backup-form" class="grid wide">
-          <label>New or empty backup directory <input id="backup-destination" autocomplete="off" /></label>
-          <label class="toggle"><input id="backup-auth" type="checkbox" /> Include provider authentication</label>
-          <label class="toggle"><input id="backup-env" type="checkbox" /> Include the private user environment file</label>
-          <label class="toggle"><input id="backup-maps" type="checkbox" /> Include portal/OAuth mappings</label>
-          <button type="submit">Create backup</button>
-        </form>
-        <form id="import-form" class="grid wide">
-          <label>Existing backup or old OpenPalm home <input id="import-source" autocomplete="off" /></label>
-          <label class="toggle"><input id="import-auth" type="checkbox" /> Include provider authentication</label>
-          <label class="toggle"><input id="import-env" type="checkbox" /> Include the private user environment file</label>
-          <label class="toggle"><input id="import-maps" type="checkbox" /> Include portal/OAuth mappings after recreating their credentials</label>
-          <button id="preview-import" class="quiet" type="button">Preview import</button>
-          <button id="apply-import" type="button">Apply import</button>
-        </form>
-        <pre id="data-result">No backup or import operation has run.</pre>
-      </section>
-
-      <section class="installed-only">
-        <div class="section-title">
-          <h2>Recent logs</h2>
-          <button id="load-logs" class="quiet" type="button">Load logs</button>
-        </div>
-        <pre id="logs">Logs are loaded only on request.</pre>
-      </section>
+      <aside class="welcome-aside" aria-label="Setup overview">
+        <p class="eyebrow">THREE SIMPLE STEPS</p>
+        <ol class="setup-preview">
+          <li><span>1</span><div><strong>Install locally</strong><p>Create your private agent.</p></div></li>
+          <li><span>2</span><div><strong>Connect your AI</strong><p>Use an existing provider account or API key.</p></div></li>
+          <li><span>3</span><div><strong>Choose an app</strong><p>OpenCode, Claude Desktop, or any MCP client.</p></div></li>
+        </ol>
+      </aside>
     </main>
+
+    <div id="app-shell" class="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand-lockup compact">
+          <img class="brand-image" src="../assets/icon.png" alt="" />
+          <div class="brand-copy"><strong>OpenPalm</strong><span class="brand-subtitle">Setup & settings</span></div>
+        </div>
+
+        <div class="setup-only setup-progress" hidden>
+          <p class="eyebrow">SETUP PROGRESS</p>
+          <ol>
+            <li class="complete"><span aria-hidden="true">✓</span><div><strong>Installed</strong><small>Your agent is running locally.</small></div></li>
+            <li class="current" aria-current="step"><span>2</span><div><strong>Connect your AI</strong><small>Sign in and verify a real response.</small></div></li>
+            <li><span>3</span><div><strong>Ready to use</strong><small>Choose how you want to connect.</small></div></li>
+          </ol>
+        </div>
+
+        <nav id="primary-nav" class="ready-only" aria-label="OpenPalm settings" hidden>
+          <button class="nav-item" type="button" data-view="overview" aria-controls="view-overview">
+            <span class="nav-icon" aria-hidden="true">⌂</span><span>Overview</span>
+          </button>
+          <button class="nav-item" type="button" data-view="provider" aria-controls="view-provider">
+            <span class="nav-icon" aria-hidden="true">◇</span><span>AI provider</span>
+          </button>
+          <button class="nav-item" type="button" data-view="connections" aria-controls="view-connections">
+            <span class="nav-icon" aria-hidden="true">↗</span><span>Connections</span>
+          </button>
+          <button class="nav-item" type="button" data-view="access" aria-controls="view-access">
+            <span class="nav-icon" aria-hidden="true">♙</span><span>People & access</span>
+          </button>
+          <button class="nav-item" type="button" data-view="backup" aria-controls="view-backup">
+            <span class="nav-icon" aria-hidden="true">↓</span><span>Backup</span>
+          </button>
+          <button class="nav-item" type="button" data-view="diagnostics" aria-controls="view-diagnostics">
+            <span class="nav-icon" aria-hidden="true">···</span><span>Troubleshooting</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span id="stack-status" class="status-badge neutral"><span class="status-dot" aria-hidden="true"></span>Checking status</span>
+          <button id="refresh" class="text-button" type="button">Refresh status</button>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="page-header">
+	              <div>
+            <p id="view-kicker" class="eyebrow">PERSONAL AGENT</p>
+            <h1 id="view-title" tabindex="-1">Connect your AI</h1>
+            <p id="view-description" class="page-description">Choose a provider and verify that your agent can respond.</p>
+          </div>
+        </header>
+
+        <main id="main-content" tabindex="-1">
+          <section id="view-overview" class="view-panel ready-only" data-view-panel="overview" hidden aria-labelledby="overview-heading">
+            <div class="hero-card ready-hero">
+              <div class="hero-symbol" aria-hidden="true">✓</div>
+              <div>
+                <p class="eyebrow">READY ON THIS COMPUTER</p>
+                <h2 id="overview-heading">Your personal agent is ready.</h2>
+                <p>OpenPalm can remember useful context, run recurring work, and connect securely to the apps you already use.</p>
+              </div>
+            </div>
+
+            <fieldset class="summary-grid status-fieldset">
+              <legend class="visually-hidden">OpenPalm status</legend>
+              <article class="summary-card">
+                <span class="card-label">Assistant</span>
+                <strong id="assistant-summary">Checking…</strong>
+                <p>Trusted, full access on this computer.</p>
+              </article>
+              <article class="summary-card">
+                <span class="card-label">Protected access</span>
+                <strong id="guardian-summary">Not enabled</strong>
+                <p>For Claude Desktop and other MCP apps.</p>
+              </article>
+              <article class="summary-card">
+                <span class="card-label">Chat apps</span>
+                <strong id="portal-summary">None enabled</strong>
+                <p>Optional Discord and Slack connections.</p>
+              </article>
+            </fieldset>
+
+            <section class="panel" aria-labelledby="runtime-heading">
+              <div class="section-heading">
+                <div><p class="eyebrow">SYSTEM STATUS</p><h2 id="runtime-heading">OpenPalm services</h2></div>
+                <div class="button-row compact">
+                  <button id="start-stack" data-action="start" class="secondary" type="button">Start</button>
+                  <button id="restart-stack" data-action="restart" class="secondary" type="button">Restart</button>
+                  <button id="stop-stack" data-action="stop" class="danger subtle" type="button">Stop</button>
+                </div>
+              </div>
+              <div id="services" class="services" aria-live="polite"></div>
+            </section>
+
+            <section class="panel" aria-labelledby="next-heading">
+              <div class="section-heading"><div><p class="eyebrow">NEXT STEP</p><h2 id="next-heading">Choose how you want to use your agent</h2></div></div>
+              <div class="choice-grid">
+                <article class="choice-card">
+                  <span class="choice-tag">Full local access</span>
+                  <h3>OpenCode</h3>
+                  <p>Best for trusted work directly on this computer.</p>
+                  <code id="assistant-url">Loading…</code>
+	                  <button class="secondary inline-nav" type="button" data-client-target="opencode">View connection details</button>
+                </article>
+                <article class="choice-card">
+                  <span class="choice-tag protected">Policy protected</span>
+                  <h3>Claude Desktop</h3>
+                  <p>Use the OpenPalm desktop extension through protected MCP access.</p>
+	                  <button class="primary inline-nav" type="button" data-client-target="claude">Set up Claude Desktop</button>
+                </article>
+                <article class="choice-card">
+                  <span class="choice-tag protected">Policy protected</span>
+                  <h3>Another MCP app</h3>
+                  <p>Connect any compatible client with its own access key.</p>
+	                  <button class="secondary inline-nav" type="button" data-client-target="mcp">Set up an MCP client</button>
+                </article>
+              </div>
+            </section>
+
+            <section class="prompt-card" aria-labelledby="starter-heading">
+              <div><p class="eyebrow">TRY IT IN YOUR CLIENT</p><h2 id="starter-heading">Start with something useful</h2></div>
+              <div class="prompt-list">
+                <p>“Remember that my current project is called Northstar.”</p>
+                <p>“Every weekday at 8 AM, check the news about Northstar and save a short summary.”</p>
+              </div>
+            </section>
+          </section>
+
+          <section id="view-provider" class="view-panel" data-view-panel="provider" hidden aria-labelledby="provider-heading">
+	            <div class="setup-only hero-card" hidden>
+              <div class="hero-symbol provider-symbol" aria-hidden="true">2</div>
+              <div>
+                <p class="eyebrow">STEP 2 OF 3</p>
+                <h2>Connect an AI provider.</h2>
+	                <p>OpenPalm uses OpenCode’s provider sign-in and will send one small request to make sure everything works.</p>
+	            </div>
+	          </div>
+
+	            <section id="setup-recovery" class="setup-only panel recovery-panel" hidden aria-labelledby="recovery-heading">
+	              <div class="section-heading">
+	                <div><p class="eyebrow">STARTUP RECOVERY</p><h2 id="recovery-heading">Your files are installed, but the Assistant is not running.</h2></div>
+	                <span class="status-badge error">Needs attention</span>
+	              </div>
+	              <p id="recovery-message" class="section-intro">A port conflict or Docker problem may have interrupted the first start. Adjust the ports if needed, then retry safely.</p>
+	              <form id="recovery-form" class="form-stack">
+	                <div class="field-grid two-column">
+	                  <label class="field" for="recovery-assistant-port"><span>Assistant port</span><input id="recovery-assistant-port" type="number" min="1" max="65535" required /></label>
+	                  <label class="field" for="recovery-gateway-port"><span>Protected-access port</span><input id="recovery-gateway-port" type="number" min="1" max="65535" required /></label>
+	                </div>
+	                <button class="primary" type="submit">Save ports and retry startup</button>
+	              </form>
+	            </section>
+
+            <section class="panel" aria-labelledby="provider-heading">
+              <div class="section-heading">
+                <div><p class="eyebrow">AI CONNECTION</p><h2 id="provider-heading">Provider</h2></div>
+                <span id="provider-badge" class="status-badge neutral">Not checked</span>
+              </div>
+              <p class="section-intro">Choose a provider OpenCode discovered. Existing sign-ins appear first and never need to be re-entered here.</p>
+              <div id="provider-status" class="inline-status neutral" role="status" aria-live="polite">
+                <strong>Checking available providers…</strong>
+                <span>This can take a few seconds after the Assistant starts.</span>
+              </div>
+              <div class="button-row">
+                <button id="load-providers" class="secondary" type="button">Find providers</button>
+                <button id="test-provider" class="secondary" type="button">Check existing sign-in</button>
+              </div>
+	              <form id="provider-form" class="form-stack">
+	                <label class="field" for="provider-search">
+	                  <span>Find a provider</span>
+	                  <input id="provider-search" type="search" autocomplete="off" placeholder="Search by provider name" />
+	                </label>
+	                <label class="field" for="provider">
+	                  <span>AI provider</span>
+	                  <select id="provider" aria-describedby="provider-help"><option value="">Find providers first</option></select>
+	                </label>
+	                <div class="button-row compact"><button id="show-all-providers" class="text-button" type="button">Show all providers</button></div>
+	                <p id="provider-help" class="help-text">Connected and common providers appear first. Search or show the full OpenCode catalog for another provider.</p>
+	                <label id="provider-method-field" class="field" for="provider-method" hidden>
+	                  <span>Sign-in method</span>
+	                  <select id="provider-method"></select>
+	                </label>
+	                <div id="api-key-fields" class="form-stack" hidden>
+                  <label class="field" for="provider-key">
+                    <span>API key</span>
+                    <input id="provider-key" type="password" autocomplete="off" aria-describedby="provider-key-help" />
+                  </label>
+                  <p id="provider-key-help" class="help-text">The key is sent directly to your local Assistant and is never displayed again.</p>
+                  <button class="primary" type="submit">Save key and verify</button>
+                </div>
+	                <div id="oauth-provider-note" class="callout form-stack" hidden>
+	                  <strong>Sign in securely in your browser.</strong>
+	                  <p>OpenPalm uses OpenCode’s native sign-in for this exact installation. Your provider password never passes through OpenPalm.</p>
+	                  <div id="oauth-prompt-fields" class="form-stack"></div>
+	                  <button id="start-provider-oauth" class="primary" type="button">Open provider sign-in</button>
+	                  <div id="oauth-progress" class="inline-status neutral" hidden><strong>Finish sign-in in your browser.</strong><span id="oauth-instructions">Return here when the provider says you are connected.</span></div>
+	                  <label id="oauth-code-field" class="field" for="oauth-code" hidden><span>Authorization code</span><input id="oauth-code" autocomplete="off" /></label>
+	                  <button id="finish-provider-oauth" class="secondary" type="button" hidden>Finish sign-in and verify</button>
+	                </div>
+              </form>
+              <details class="disclosure technical-disclosure">
+                <summary>Technical details</summary>
+                <textarea id="provider-result" class="technical-output" readonly spellcheck="false" aria-label="Provider technical details">Provider status has not been checked.</textarea>
+              </details>
+            </section>
+
+            <details class="setup-only panel restore-panel" hidden>
+              <summary><strong>Restore from an OpenPalm backup</strong><span>Optional · do this before setup is complete</span></summary>
+              <div class="disclosure-body">
+                <form id="import-form" class="form-stack">
+	                  <label class="field" for="import-source"><span>Backup or previous OpenPalm home</span><span class="input-action"><input id="import-source" autocomplete="off" placeholder="/path/to/backup" /><button id="choose-import-source" class="secondary" type="button">Choose folder</button></span></label>
+                  <fieldset class="option-group">
+                    <legend>Include sensitive data</legend>
+                    <label class="check-row"><input id="import-auth" type="checkbox" /> Provider authentication</label>
+                    <label class="check-row"><input id="import-env" type="checkbox" /> Private user environment</label>
+                    <label class="check-row"><input id="import-maps" type="checkbox" /> Portal and OAuth mappings</label>
+                  </fieldset>
+                  <div class="button-row">
+                    <button id="preview-import" class="secondary" type="button">Preview restore</button>
+                    <button id="apply-import" class="primary" type="button" disabled>Apply reviewed restore</button>
+                  </div>
+                </form>
+                <div id="import-summary" class="inline-status neutral"><strong>No restore preview yet.</strong><span>Preview shows exactly what will be imported before anything changes.</span></div>
+                <details class="disclosure technical-disclosure"><summary>Restore details</summary><textarea id="data-result" class="technical-output" readonly spellcheck="false" aria-label="Restore technical details">No restore operation has run.</textarea></details>
+              </div>
+            </details>
+          </section>
+
+	          <section id="view-connections" class="view-panel ready-only" data-view-panel="connections" hidden aria-labelledby="connections-heading">
+	            <section id="client-setup" class="panel" aria-labelledby="client-setup-heading">
+	              <div class="section-heading"><div><p class="eyebrow">GUIDED CONNECTION</p><h2 id="client-setup-heading">Connect an app</h2></div></div>
+	              <p class="section-intro">Choose a client to see every value and action it needs. Secrets appear only when you ask to reveal or copy them.</p>
+	              <fieldset class="segmented-control">
+	                <legend class="visually-hidden">Client setup</legend>
+	                <button class="secondary" type="button" data-client-setup="opencode">OpenCode</button>
+	                <button class="secondary" type="button" data-client-setup="claude">Claude Desktop</button>
+	                <button class="secondary" type="button" data-client-setup="mcp">Another MCP app</button>
+	              </fieldset>
+
+	              <article id="client-opencode" class="client-panel" data-client-panel="opencode">
+	                <div class="connection-heading"><div><h3>Trusted local OpenCode</h3><p>Direct native access with the Assistant’s full permissions. Keep it on this computer or a trusted private network.</p></div><span class="choice-tag">Full local access</span></div>
+	                <dl class="connection-values">
+	                  <div><dt>Server address</dt><dd><code id="direct-url">Loading…</code><button class="text-button" type="button" data-copy-field="direct-url">Copy</button></dd></div>
+	                  <div><dt>Username</dt><dd><code id="direct-username">opencode</code><button class="text-button" type="button" data-copy-field="direct-username">Copy</button></dd></div>
+	                </dl>
+	                <label class="field" for="direct-password"><span>Password</span><input id="direct-password" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
+	                <div class="button-row compact">
+	                  <button id="load-direct-password" class="secondary" type="button">Reveal password</button>
+	                  <button id="copy-direct-password" class="secondary" type="button">Copy password</button>
+	                  <label class="check-row compact"><input id="show-direct-password" type="checkbox" /> Show password</label>
+	                </div>
+	              </article>
+
+	              <article id="client-claude" class="client-panel" data-client-panel="claude" hidden>
+	                <div class="connection-heading"><div><h3>Claude Desktop</h3><p>The OpenPalm desktop extension bridges Claude to Guardian’s policy-protected MCP endpoint.</p></div><span class="choice-tag protected">Policy protected</span></div>
+	                <ol class="numbered-steps">
+	                  <li><div><strong>Enable Guardian</strong><p id="claude-guardian-help">Protected access is currently disabled.</p><button class="secondary" type="button" data-enable-gateway>Enable protected access</button></div></li>
+	                  <li><div><strong>Install the desktop extension</strong><p>Download the matching OpenPalm extension, then open it with Claude Desktop.</p><button id="install-claude-extension" class="secondary" type="button">Download extension</button></div></li>
+	                  <li><div><strong>Enter these settings</strong>
+	                    <label class="field" for="claude-credential"><span>Access identity</span><select id="claude-credential"></select></label>
+	                    <p id="claude-policy-help" class="help-text">Choose the least access this client needs.</p>
+	                    <dl class="connection-values"><div><dt>Local OpenPalm address</dt><dd><code id="claude-url">Loading…</code><button class="text-button" type="button" data-copy-field="claude-url">Copy</button></dd></div></dl>
+	                    <label class="field" for="claude-key"><span>Access key</span><input id="claude-key" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
+	                    <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="claude">Reveal key</button><button class="secondary" type="button" data-copy-client-key="claude">Copy key</button><label class="check-row compact"><input id="show-claude-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create a dedicated identity</button></div>
+	                  </div></li>
+	                </ol>
+	              </article>
+
+	              <article id="client-mcp" class="client-panel" data-client-panel="mcp" hidden>
+	                <div class="connection-heading"><div><h3>Streamable HTTP MCP</h3><p>Use this with any MCP client that accepts a URL and bearer access key.</p></div><span class="choice-tag protected">Policy protected</span></div>
+	                <div id="mcp-guardian-help" class="inline-status neutral"><strong>Guardian must be enabled.</strong><span>It applies the policy associated with the selected identity.</span></div>
+	                <button class="secondary" type="button" data-enable-gateway>Enable protected access</button>
+	                <label class="field" for="mcp-credential"><span>Access identity</span><select id="mcp-credential"></select></label>
+	                <p id="mcp-policy-help" class="help-text">Choose the least access this client needs.</p>
+	                <dl class="connection-values"><div><dt>Streamable HTTP address</dt><dd><code id="mcp-url">Loading…</code><button class="text-button" type="button" data-copy-field="mcp-url">Copy</button></dd></div><div><dt>Authentication</dt><dd><code>Authorization: Bearer &lt;access key&gt;</code></dd></div></dl>
+	                <label class="field" for="mcp-key"><span>Access key</span><input id="mcp-key" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
+	                <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="mcp">Reveal key</button><button class="secondary" type="button" data-copy-client-key="mcp">Copy key</button><label class="check-row compact"><input id="show-mcp-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create another identity</button></div>
+	              </article>
+	            </section>
+
+	            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">PROTECTED CLIENTS</p><h2 id="connections-heading">Connections</h2></div></div>
+              <p class="section-intro">Keep trusted local clients direct. Use protected access when an app or person should receive a specific policy.</p>
+	              <form id="connections-form" class="form-stack" data-managed-form>
+                <article class="connection-card">
+                  <div class="connection-heading">
+                    <div><h3>Guardian MCP</h3><p>Protected access for Claude Desktop and other MCP clients.</p></div>
+                    <label class="switch"><input id="gateway" type="checkbox" /><span>Enable</span></label>
+                  </div>
+                  <div id="guardian-settings" class="connection-body" hidden>
+                    <div class="endpoint-row"><div><span>OpenPalm address</span><code id="guardian-url">Loading…</code></div><span class="status-badge protected">Policy protected</span></div>
+                    <p class="help-text">Create a separate access key for each person or app so you can change or revoke it independently.</p>
+                  </div>
+                </article>
+
+                <article class="connection-card">
+                  <div class="connection-heading">
+                    <div><h3>Discord</h3><p>Let approved Discord members talk to your agent.</p></div>
+                    <label class="switch"><input id="discord" type="checkbox" /><span>Enable</span></label>
+                  </div>
+	                  <div id="discord-settings" class="connection-body" hidden>
+	                    <div class="setup-help"><strong>Before enabling Discord</strong><ol><li>Create an application and add a bot in the Discord Developer Portal.</li><li>Enable the bot’s <strong>Message Content Intent</strong>.</li><li>Invite it with permission to view channels, read message history, and send messages.</li><li>Copy its bot token into OpenPalm’s private token storage.</li><li>Add at least one allowed server, role, or user ID.</li></ol><div class="button-row compact"><button class="text-button" type="button" data-external-url="https://discord.com/developers/applications">Open Discord Developer Portal</button><button class="text-button" type="button" data-token-target="discord">Add Discord token</button></div></div>
+                    <label class="field" for="discord-credential"><span>Default access</span><select id="discord-credential"></select></label>
+                    <details id="discord-access-disclosure" class="disclosure">
+                      <summary>Who can use it</summary>
+                      <div class="field-grid two-column disclosure-body">
+                        <label class="field" for="discord-guilds"><span>Allowed server IDs</span><input id="discord-guilds" autocomplete="off" placeholder="123456789012345678" /></label>
+                        <label class="field" for="discord-roles"><span>Allowed role IDs</span><input id="discord-roles" autocomplete="off" /></label>
+                        <label class="field" for="discord-users"><span>Allowed user IDs</span><input id="discord-users" autocomplete="off" /></label>
+                        <label class="field" for="discord-blocked-users"><span>Blocked user IDs</span><input id="discord-blocked-users" autocomplete="off" /></label>
+                      </div>
+	                      <p class="help-text">Leave a list empty to ignore it. If you fill more than one allowed list, every filled list must match. Blocked users are always denied. Separate IDs with commas.</p>
+                    </details>
+                  </div>
+                </article>
+
+                <article class="connection-card">
+                  <div class="connection-heading">
+                    <div><h3>Slack</h3><p>Let approved Slack members talk to your agent.</p></div>
+                    <label class="switch"><input id="slack" type="checkbox" /><span>Enable</span></label>
+                  </div>
+	                  <div id="slack-settings" class="connection-body" hidden>
+	                    <div class="setup-help"><strong>Before enabling Slack</strong><ol><li>Create a Slack app and enable Socket Mode.</li><li>Create an app-level token with <code>connections:write</code>.</li><li>Grant the bot <code>app_mentions:read</code>, <code>chat:write</code>, and the history scopes your channels need.</li><li>Subscribe to <code>app_mention</code> and the message events those channels need, then install the app.</li><li>Copy the bot and app-level tokens into OpenPalm’s private token storage.</li><li>Add at least one allowed channel or user ID.</li></ol><div class="button-row compact"><button class="text-button" type="button" data-external-url="https://api.slack.com/apps">Open Slack app setup</button><button class="text-button" type="button" data-token-target="slack">Add Slack tokens</button></div></div>
+                    <label class="field" for="slack-credential"><span>Default access</span><select id="slack-credential"></select></label>
+                    <details id="slack-access-disclosure" class="disclosure">
+                      <summary>Who can use it</summary>
+                      <div class="field-grid two-column disclosure-body">
+                        <label class="field" for="slack-channels"><span>Allowed channel IDs</span><input id="slack-channels" autocomplete="off" placeholder="C012ABCDEF" /></label>
+                        <label class="field" for="slack-users"><span>Allowed user IDs</span><input id="slack-users" autocomplete="off" placeholder="U012ABCDEF" /></label>
+                        <label class="field" for="slack-blocked-users"><span>Blocked user IDs</span><input id="slack-blocked-users" autocomplete="off" /></label>
+                      </div>
+	                      <p class="help-text">Leave a list empty to ignore it. If you fill both allowed lists, both the user and channel must match. Blocked users are always denied. Separate IDs with commas.</p>
+                    </details>
+                  </div>
+                </article>
+                <button class="primary" type="submit">Save connections</button>
+              </form>
+            </section>
+
+            <section class="panel" aria-labelledby="tokens-heading">
+              <div class="section-heading"><div><p class="eyebrow">CHAT APP SECRETS</p><h2 id="tokens-heading">Bot tokens</h2></div><span id="token-status" class="status-badge neutral">Not configured</span></div>
+              <form id="portal-token-form" class="form-stack">
+	                <label class="field" for="token-portal"><span>Chat app</span><select id="token-portal"><option value="discord">Discord</option><option value="slack">Slack</option></select></label>
+	                <label class="field" for="bot-token"><span id="bot-token-label">Discord bot token</span><input id="bot-token" type="password" autocomplete="off" /></label>
+	                <label id="app-token-field" class="field" for="app-token" hidden><span>Slack app token</span><input id="app-token" type="password" autocomplete="off" /></label>
+	                <p id="token-help" class="help-text">Tokens are stored in private files and are never shown again.</p>
+                <button class="secondary" type="submit">Store tokens privately</button>
+              </form>
+            </section>
+          </section>
+
+          <section id="view-access" class="view-panel ready-only" data-view-panel="access" hidden aria-labelledby="access-heading">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">PEOPLE & APPS</p><h2 id="access-heading">Access keys</h2></div></div>
+              <p class="section-intro">Give each person or app its own key. The access level decides which OpenPalm capabilities it receives.</p>
+	              <form id="access-form" class="form-stack" data-managed-form>
+	                <fieldset class="policy-explainer">
+	                  <legend class="visually-hidden">Access level descriptions</legend>
+	                  <div><strong>Conversation only</strong><span>Can chat, but cannot use tools.</span></div>
+	                  <div><strong>Read files</strong><span>Can also read non-sensitive knowledge and workspace files.</span></div>
+	                  <div><strong>Full control</strong><span>Inherits the Assistant’s permissions. Use only for trusted clients.</span></div>
+	                </fieldset>
+	                <div id="credential-policies" class="credential-list"></div>
+	                <button class="secondary" type="submit">Save access levels</button>
+	              </form>
+            </section>
+
+            <section class="panel" aria-labelledby="create-access-heading">
+              <h2 id="create-access-heading">Create access</h2>
+              <form id="credential-form" class="field-grid two-column">
+                <label class="field" for="credential-username"><span>Who or what is this for?</span><input id="credential-username" autocomplete="off" placeholder="claude-desktop" /></label>
+                <label class="field" for="credential-policy"><span>Access level</span><select id="credential-policy"><option value="chat">Conversation only</option><option value="read" selected>Read files</option><option value="full">Full control</option></select></label>
+                <button class="primary span-two" type="submit">Create access key</button>
+              </form>
+              <div class="key-manager">
+                <label class="field" for="credential-action-name"><span>Existing access</span><select id="credential-action-name"></select></label>
+                <div class="button-row">
+                  <button id="rotate-credential" class="secondary" type="button">Rotate key</button>
+                  <button id="remove-credential" class="danger subtle" type="button">Remove access</button>
+                </div>
+                <label class="field" for="credential-key"><span>Access key</span><input id="credential-key" type="password" readonly autocomplete="off" /></label>
+                <div class="button-row">
+                  <button id="reveal-credential" class="secondary" type="button">Reveal key</button>
+                  <label class="check-row compact"><input id="show-credential-key" type="checkbox" /> Show key</label>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel" aria-labelledby="mapping-heading">
+              <div class="section-heading"><div><p class="eyebrow">INDIVIDUAL OVERRIDES</p><h2 id="mapping-heading">Chat app users</h2></div></div>
+	              <p class="section-intro">Map a specific Discord or Slack user to a different access key than the app default. A mapping selects policy; it never grants portal access. The user must still pass every configured allowlist.</p>
+              <form id="mapping-form" class="field-grid three-column">
+                <label class="field" for="mapping-portal"><span>Chat app</span><select id="mapping-portal"><option value="discord">Discord</option><option value="slack">Slack</option></select></label>
+                <label class="field" for="mapping-user"><span>Platform user ID</span><input id="mapping-user" autocomplete="off" /></label>
+                <label class="field" for="mapping-credential"><span>Access key</span><select id="mapping-credential"></select></label>
+                <button class="secondary span-three" type="submit">Save user access</button>
+              </form>
+              <div id="mappings" class="mapping-list" aria-live="polite"></div>
+            </section>
+          </section>
+
+          <section id="view-backup" class="view-panel ready-only" data-view-panel="backup" hidden aria-labelledby="backup-heading">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">PORTABLE RECOVERY</p><h2 id="backup-heading">Create a backup</h2></div></div>
+              <p class="section-intro">Save your knowledge, workspace, settings, and task definitions to a new or empty directory. Runtime data is intentionally left out.</p>
+              <form id="backup-form" class="form-stack">
+	                <label class="field" for="backup-destination"><span>Backup directory</span><span class="input-action"><input id="backup-destination" autocomplete="off" placeholder="/path/to/openpalm-backup" /><button id="choose-backup-destination" class="secondary" type="button">Choose folder</button></span></label>
+                <fieldset class="option-group">
+                  <legend>Include sensitive data</legend>
+                  <label class="check-row"><input id="backup-auth" type="checkbox" /> Provider authentication</label>
+                  <label class="check-row"><input id="backup-env" type="checkbox" /> Private user environment</label>
+                  <label class="check-row"><input id="backup-maps" type="checkbox" /> Portal and OAuth mappings</label>
+                </fieldset>
+                <button class="primary" type="submit">Create backup</button>
+              </form>
+              <div id="backup-summary" class="inline-status neutral"><strong>No backup created yet.</strong><span>Choose a new or empty directory to begin.</span></div>
+              <details class="disclosure technical-disclosure"><summary>Backup details</summary><textarea id="backup-result" class="technical-output" readonly spellcheck="false" aria-label="Backup technical details">No backup operation has run.</textarea></details>
+            </section>
+          </section>
+
+          <section id="view-diagnostics" class="view-panel ready-only" data-view-panel="diagnostics" hidden aria-labelledby="diagnostics-heading">
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">ADVANCED</p><h2 id="diagnostics-heading">Network settings</h2></div></div>
+              <div class="warning-callout"><strong>Direct OpenCode access bypasses Guardian.</strong><p>Keep it on this computer unless you understand the network and TLS requirements.</p></div>
+	              <form id="network-form" class="form-stack" data-managed-form>
+	                <div class="field-grid two-column">
+	                  <label class="field" for="assistant-bind"><span>Assistant bind address</span><input id="assistant-bind" autocomplete="off" /></label>
+	                  <label class="field" for="assistant-port"><span>Assistant port</span><input id="assistant-port" type="number" min="1" max="65535" /></label>
+	                  <label class="field" for="gateway-bind"><span>Protected-access bind address</span><input id="gateway-bind" autocomplete="off" /></label>
+	                  <label class="field" for="gateway-port"><span>Protected-access port</span><input id="gateway-port" type="number" min="1" max="65535" /></label>
+	                </div>
+	                <button class="secondary" type="submit">Save network settings</button>
+	              </form>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">LOCAL FILES</p><h2>Installation details</h2></div></div>
+              <dl class="detail-list">
+                <div><dt>OpenPalm home</dt><dd id="home">Loading…</dd></div>
+                <div><dt>Stack configuration</dt><dd id="config-path">Loading…</dd></div>
+                <div><dt>Trusted OpenCode address</dt><dd><code id="assistant-url-detail">Loading…</code></dd></div>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading"><div><p class="eyebrow">DIAGNOSTICS</p><h2>Recent logs</h2></div><button id="load-logs" class="secondary" type="button">Load logs</button></div>
+              <p class="help-text">Logs are loaded only when you request them and may contain technical details.</p>
+              <textarea id="logs" class="technical-output log-output" readonly spellcheck="false" aria-label="Recent OpenPalm logs">Logs have not been loaded.</textarea>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden>
+      <span id="notice-icon" class="notice-icon" aria-hidden="true">●</span>
+      <span id="notice-message"></span>
+      <button id="dismiss-notice" type="button" aria-label="Dismiss message">×</button>
+    </div>
+
     <script src="admin.js"></script>
   </body>
 </html>

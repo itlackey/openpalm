@@ -12,16 +12,22 @@ specific operating system needs human inspection.
 The walkthrough must prove that:
 
 1. Admin opens on a genuinely empty `OP_HOME`;
-2. the operator can choose non-conflicting Assistant and Guardian ports before
-   installation;
-3. Assistant starts healthy and OpenCode returns its provider catalog;
-4. Guardian can be enabled and starts healthy;
-5. a named credential and its policy survive an Admin reload and stack restart;
-6. a Discord user mapping survives that same restart;
-7. Guardian returns `401` without a credential and accepts MCP with the mapped
+2. the default setup path hides ports and prevents duplicate installation;
+3. Assistant starts healthy and OpenCode returns a filtered provider catalog;
+4. an interrupted first start exposes working port correction and retry controls;
+5. a failed provider request stays in **Connect your AI** and is announced as
+   an error rather than setup success;
+6. OpenCode, Claude Desktop, and generic MCP each expose a complete connection
+   recipe without consulting another document;
+7. Guardian can be enabled and starts healthy;
+8. a named access key and its policy survive an Admin reload and stack restart;
+9. a Discord user mapping survives that same restart;
+10. Guardian returns `401` without a credential and accepts MCP with the mapped
    credential;
-8. a `read` credential sees read tools but not full-only tools; and
-9. the isolated stack is stopped and removed after the test.
+11. a `read` credential sees read tools but not full-only tools;
+12. visible controls meet the minimum rendered-size and focus checks without
+    document-level horizontal overflow; and
+13. the isolated stack is stopped and removed after the test.
 
 Provider discovery does not prove model readiness. A complete end-user setup
 also requires one real provider response. Supply the optional provider inputs
@@ -55,14 +61,23 @@ bun run admin:e2e
 
 The test creates a unique Compose project, selects two free loopback ports, and
 uses a generated temporary home. It drives the actual Admin renderer and IPC
-handlers, not a mock page. On success it removes its containers, networks,
-browser profile, and temporary OpenPalm home. It retains a report and three PNG
-screenshots in a printed `/tmp/openpalm-admin-e2e-artifacts-*` directory.
+handlers, not a mock page. It deliberately stops the fresh Assistant once and
+recovers it through the visible setup form. On success it removes its
+containers, networks, browser profile, and temporary OpenPalm home. It retains
+a report and five PNG screenshots, including startup recovery and 200%-zoom
+reflow, in a printed `/tmp/openpalm-admin-e2e-artifacts-*` directory. A
+provider-backed run also captures the ready overview.
 
 The default run intentionally uses no provider secret. It verifies provider
-discovery and reports `providerReadiness.attempted: false`. To include a real
-API-key readiness request, set both variables for a provider ID shown by
-OpenCode:
+discovery, lets Admin automatically test any detected sign-in, and proves that
+an unsuccessful real request remains an incomplete setup error. It then marks
+only the disposable test home complete with an explicit test fixture so the
+visible management UI, all three connection recipes, Guardian, access, and
+mapping flows can be exercised without pretending provider setup succeeded.
+The report records `visibleSetupJourneyComplete: false` and
+`managementUiFixtureUsed: true` in this mode. To test the successful **Your
+personal agent is ready** journey without that fixture, set both variables for
+a provider ID shown by OpenCode:
 
 ```bash
 export OPENPALM_ADMIN_E2E_PROVIDER=anthropic
@@ -102,33 +117,59 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    bun run --cwd packages/electron start
    ```
 
-3. On the fresh-install screen, choose two unused ports. Confirm that the home
-   shown at the top is exactly `$test_root/home`, then click **Install
-   OpenPalm**.
+3. Confirm that the welcome screen describes the personal agent without
+   showing ports, paths, Guardian, credentials, or Compose terminology. Open
+   **Advanced network settings** only when this isolated test needs different
+   ports, then click **Set up OpenPalm**. Confirm that the action immediately
+   shows progress and cannot be submitted twice.
 
-4. Confirm Runtime shows `assistant · running · healthy`. Click **Load
-   providers** and confirm the provider selector is populated.
+4. Confirm Admin advances to **Connect your AI**, Assistant shows **Running
+   normally**, and provider discovery begins automatically. **Find providers**
+   refreshes the list. Connected providers must be listed first by display
+   name, not an arbitrary raw provider ID.
 
 5. Complete provider authentication:
 
    - for an API-key provider, select it, enter the key, and click **Save key and
-     test**;
-   - for OAuth or another interactive method, close Admin, run `openpalm setup`
-     with the same `OP_HOME` and `OP_PROJECT_NAME`, then reopen Admin.
+     verify**;
+   - for browser/OAuth sign-in, choose the method, complete any provider-specific
+     fields, and select **Open provider sign-in**. Finish in the system browser,
+     paste an authorization code only when requested, then choose **Finish
+     sign-in and verify**.
 
-   The readiness result must contain `"ok": true` and a real provider/model.
+   Confirm the browser flow requires no terminal and applies to the exact
+   isolated home launched in step 2.
 
-6. Enable **Guardian MCP gateway**, choose its loopback port, and click **Save
-   and apply**. Confirm both `assistant` and `guardian` are healthy.
+   A rejected sign-in must show **OpenPalm could not verify this provider** and
+   remain in setup. A successful real request must open **Overview**, show
+   **Your personal agent is ready**, and offer OpenCode, Claude Desktop, and
+   another MCP app as connection choices. Technical details may contain the
+   real provider/model but must not be the primary status.
 
-7. Create `manual-reader` with the `read` policy. Add a Discord mapping from a
-   valid test platform user ID to `manual-reader`. The portal itself does not
-   need to be enabled for this registry test.
+6. Follow each choice from Overview and confirm its guided panel is complete:
 
-8. Click **Restart**, then **Refresh**. Confirm the ports, Guardian setting,
-   credential policy, mapping, and two healthy services remain visible.
+   - OpenCode shows server address, username `opencode`, and explicit password
+     reveal/copy actions;
+   - Claude Desktop shows protected-access state, extension download, endpoint,
+     named identity, and explicit key reveal/copy actions; and
+   - another MCP app shows its Streamable HTTP endpoint, bearer convention,
+     named identity, and key actions.
 
-9. Check Guardian without printing the bearer key:
+7. In **Connections**, enable **Guardian MCP**, leave its loopback default
+   unless the test needs another port under **Troubleshooting → Network
+   settings**, and choose **Save connections**. Confirm Assistant and Guardian
+   both show **Running normally**.
+
+8. Open **People & access**. Create `manual-reader` with **Read files** access.
+   Add a Discord identity override from a valid test platform user ID to
+   `manual-reader`. The portal itself does not need to be enabled for this
+   registry test.
+
+9. Return to **Overview**, choose **Restart**, then **Refresh status**.
+   Confirm the ports, protected-access setting, access policy, mapping, and two
+   healthy services remain visible.
+
+10. Check Guardian without printing the bearer key:
 
    ```bash
    curl -fsS "http://127.0.0.1:GATEWAY_PORT/health"
@@ -153,7 +194,12 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    `openpalm.workspace.read` and exclude the full-only
    `openpalm.session.delete` tool.
 
-10. Stop the stack from Admin. Confirm no containers remain for the
+11. Open **Backup**, use **Choose folder**, and create a backup in a new empty
+    directory. On a separate disposable fresh home, select that directory in
+    the restore picker, preview it, then modify a source file. Confirm apply is
+    refused until a new preview binds the changed content.
+
+12. Stop the stack from Admin. Confirm no containers remain for the
     `openpalm-admin-manual` project. Remove only the exact temporary directory
     printed in step 1 after reviewing it.
 

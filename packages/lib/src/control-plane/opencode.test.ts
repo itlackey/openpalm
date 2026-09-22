@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+	beginProviderOAuth,
+	completeProviderOAuth,
 	configureGuardianModeratorModel,
 	listProviders,
 	setProviderApiKey,
@@ -41,11 +43,28 @@ describe('OpenCode setup client', () => {
 			if (path === '/provider') {
 				return Response.json({
 					all: [{ id: 'anthropic', name: 'Anthropic', source: 'api', models: { sonnet: {} } }],
+					default: { anthropic: 'sonnet' },
 					connected: ['anthropic']
 				});
 			}
 			if (path === '/provider/auth') {
-				return Response.json({ anthropic: [{ type: 'api', label: 'API key' }] });
+				return Response.json({
+					anthropic: [
+						{ type: 'api', label: 'API key' },
+						{
+							type: 'oauth',
+							label: 'Browser',
+							prompts: [
+								{
+									type: 'select',
+									key: 'account',
+									message: 'Choose account',
+									options: [{ label: 'Personal', value: 'personal' }]
+								}
+							]
+						}
+					]
+				});
 			}
 			throw new Error(`unexpected ${path}`);
 		}) as typeof fetch;
@@ -55,9 +74,63 @@ describe('OpenCode setup client', () => {
 				name: 'Anthropic',
 				source: 'api',
 				modelCount: 1,
+				defaultModel: 'sonnet',
 				connected: true,
 				authenticated: true,
-				authMethods: [{ type: 'api', label: 'API key' }]
+				authMethods: [
+					{ index: 0, type: 'api', label: 'API key' },
+					{
+						index: 1,
+						type: 'oauth',
+						label: 'Browser',
+						prompts: [
+							{
+								type: 'select',
+								key: 'account',
+								message: 'Choose account',
+								options: [{ label: 'Personal', value: 'personal' }]
+							}
+						]
+					}
+				]
+			}
+		]);
+	});
+
+	it('starts and completes the native OpenCode OAuth flow', async () => {
+		const root = home();
+		const calls: Array<{ path: string; body: unknown }> = [];
+		const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			const request = new Request(input, init);
+			const path = new URL(request.url).pathname;
+			calls.push({ path, body: init?.body ? await request.json() : undefined });
+			if (path.endsWith('/oauth/authorize')) {
+				return Response.json({
+					url: 'https://provider.example/sign-in',
+					method: 'code',
+					instructions: 'Paste the code after signing in.'
+				});
+			}
+			if (path.endsWith('/oauth/callback')) return Response.json(true);
+			throw new Error(`unexpected ${path}`);
+		}) as typeof fetch;
+
+		expect(
+			await beginProviderOAuth(root, 'anthropic', 1, { account: 'personal' }, { fetch: fakeFetch })
+		).toEqual({
+			url: 'https://provider.example/sign-in',
+			method: 'code',
+			instructions: 'Paste the code after signing in.'
+		});
+		await completeProviderOAuth(root, 'anthropic', 1, 'oauth-code', { fetch: fakeFetch });
+		expect(calls).toEqual([
+			{
+				path: '/provider/anthropic/oauth/authorize',
+				body: { method: 1, inputs: { account: 'personal' } }
+			},
+			{
+				path: '/provider/anthropic/oauth/callback',
+				body: { method: 1, code: 'oauth-code' }
 			}
 		]);
 	});
@@ -97,7 +170,7 @@ describe('OpenCode setup client', () => {
 		expect(await request?.json()).toEqual({ type: 'api', key: 'secret-value' });
 	});
 
-	it('performs a real no-tool request and removes the readiness session', async () => {
+	it('performs a targeted no-tool request and retains the tested model when response metadata is absent', async () => {
 		const root = home();
 		const calls: string[] = [];
 		const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -105,23 +178,28 @@ describe('OpenCode setup client', () => {
 			const path = new URL(request.url).pathname;
 			calls.push(`${request.method} ${path}`);
 			if (path === '/config') return Response.json({});
+			if (path === '/provider') {
+				return Response.json({ default: { anthropic: 'sonnet' } });
+			}
 			if (path === '/session' && request.method === 'POST') return Response.json({ id: 'ready-1' });
 			if (path === '/session/ready-1/message') {
-				return Response.json({
-					info: { providerID: 'anthropic', modelID: 'sonnet' },
-					parts: [{ type: 'text', text: 'OPENPALM_READY' }]
+				expect(await request.json()).toMatchObject({
+					model: { providerID: 'anthropic', modelID: 'sonnet' }
 				});
+				return Response.json({ parts: [{ type: 'text', text: 'OPENPALM_READY' }] });
 			}
 			if (path === '/session/ready-1' && request.method === 'DELETE') return Response.json(true);
 			throw new Error(`unexpected ${request.method} ${path}`);
 		}) as typeof fetch;
 
-		expect(await testAssistantReadiness(root, { fetch: fakeFetch })).toEqual({
-			ok: true,
-			response: 'OPENPALM_READY',
-			provider: 'anthropic',
-			model: 'sonnet'
-		});
+		expect(await testAssistantReadiness(root, { fetch: fakeFetch, provider: 'anthropic' })).toEqual(
+			{
+				ok: true,
+				response: 'OPENPALM_READY',
+				provider: 'anthropic',
+				model: 'sonnet'
+			}
+		);
 		expect(calls).toContain('DELETE /session/ready-1');
 	});
 
@@ -133,7 +211,8 @@ describe('OpenCode setup client', () => {
 			const path = new URL(request.url).pathname;
 			calls.push(`${request.method} ${path}`);
 			if (path === '/config') return Response.json({});
-			if (path === '/session' && request.method === 'POST') return Response.json({ id: 'failed-1' });
+			if (path === '/session' && request.method === 'POST')
+				return Response.json({ id: 'failed-1' });
 			if (path === '/session/failed-1/message') {
 				return Response.json({
 					info: {
