@@ -24,12 +24,15 @@ import { readStackConfig } from './stack-config.js';
 const roots: string[] = [];
 const originalHome = process.env.OP_HOME;
 const originalRepo = process.env.OPENPALM_REPO_ROOT;
+const originalProjectName = process.env.OP_PROJECT_NAME;
 
 afterEach(() => {
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
 	if (originalRepo === undefined) delete process.env.OPENPALM_REPO_ROOT;
 	else process.env.OPENPALM_REPO_ROOT = originalRepo;
+	if (originalProjectName === undefined) delete process.env.OP_PROJECT_NAME;
+	else process.env.OP_PROJECT_NAME = originalProjectName;
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -106,5 +109,39 @@ describe('0.14 clean install boundary', () => {
 		markInstalled(home);
 		expect(classifyInstall(home)).toBe('installed');
 		expect(readStackConfig(home).ok).toBe(true);
+	});
+
+	it('persists an explicit Compose project name for later multi-instance operations', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-project-name-'));
+		roots.push(root);
+		const home = join(root, 'home');
+		process.env.OP_HOME = home;
+		process.env.OP_PROJECT_NAME = 'openpalm-second';
+		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+
+		await applyHomeSeed(home);
+		const state = createOpenPalmState();
+		ensureRuntime(state);
+		expect(readFileSync(join(home, 'state', 'stack.env'), 'utf8')).toContain(
+			'OP_PROJECT_NAME=openpalm-second'
+		);
+
+		process.env.OP_PROJECT_NAME = 'different-project';
+		ensureRuntime(state);
+		expect(readFileSync(join(home, 'state', 'stack.env'), 'utf8')).toContain(
+			'OP_PROJECT_NAME=openpalm-second'
+		);
+	});
+
+	it('rejects an invalid Compose project name before starting Docker', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-invalid-project-'));
+		roots.push(root);
+		const home = join(root, 'home');
+		process.env.OP_HOME = home;
+		process.env.OP_PROJECT_NAME = 'Invalid Project';
+		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '../../../..');
+
+		await applyHomeSeed(home);
+		expect(() => ensureRuntime(createOpenPalmState())).toThrow('OP_PROJECT_NAME must start');
 	});
 });

@@ -114,4 +114,37 @@ describe('OpenCode setup client', () => {
 		});
 		expect(calls).toContain('DELETE /session/ready-1');
 	});
+
+	it('reports a structured provider failure instead of a missing readiness token', async () => {
+		const root = home();
+		const calls: string[] = [];
+		const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			const request = new Request(input, init);
+			const path = new URL(request.url).pathname;
+			calls.push(`${request.method} ${path}`);
+			if (path === '/config') return Response.json({});
+			if (path === '/session' && request.method === 'POST') return Response.json({ id: 'failed-1' });
+			if (path === '/session/failed-1/message') {
+				return Response.json({
+					info: {
+						providerID: 'example',
+						modelID: 'example-model',
+						error: {
+							name: 'APIError',
+							data: { message: 'Provider authentication is required', statusCode: 401 }
+						}
+					},
+					parts: []
+				});
+			}
+			if (path === '/session/failed-1' && request.method === 'DELETE') return Response.json(true);
+			throw new Error(`unexpected ${request.method} ${path}`);
+		}) as typeof fetch;
+
+		expect(await testAssistantReadiness(root, { fetch: fakeFetch })).toEqual({
+			ok: false,
+			error: 'Provider authentication is required'
+		});
+		expect(calls).toContain('DELETE /session/failed-1');
+	});
 });

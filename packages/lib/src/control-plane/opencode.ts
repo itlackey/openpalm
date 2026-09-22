@@ -233,6 +233,23 @@ function readinessText(value: unknown): { text: string; provider?: string; model
 	};
 }
 
+function readinessError(value: unknown): string | undefined {
+	const root = asRecord(value);
+	const info = asRecord(root?.info);
+	const failure = asRecord(info?.error) ?? asRecord(root?.error);
+	if (!failure) return undefined;
+	const data = asRecord(failure.data);
+	const message =
+		typeof failure.message === 'string' && failure.message
+			? failure.message
+			: typeof data?.message === 'string' && data.message
+				? data.message
+				: typeof failure.name === 'string' && failure.name
+					? failure.name
+					: undefined;
+	return message?.slice(0, 500);
+}
+
 export async function testAssistantReadiness(
 	homeDir: string,
 	options: { fetch?: FetchLike; timeoutMs?: number } = {}
@@ -271,6 +288,8 @@ export async function testAssistantReadiness(
 			},
 			{ fetch: options.fetch, timeoutMs: options.timeoutMs ?? 120_000 }
 		);
+		const failure = readinessError(response);
+		if (failure) return { ok: false, error: failure };
 		const ready = readinessText(response);
 		if (!ready.text.includes(READY_TOKEN)) {
 			return { ok: false, error: 'The provider responded, but the readiness token was missing' };

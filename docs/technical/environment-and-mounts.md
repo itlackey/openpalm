@@ -33,9 +33,9 @@ The control plane writes or preserves these non-secret values in
 | Variable | Meaning |
 |---|---|
 | `OP_HOME` | Absolute stack home |
+| `OP_PROJECT_NAME` | Unique Docker Compose project name, persisted on first setup; default `openpalm` |
 | `OP_UID`, `OP_GID` | Non-root container identity |
 | `OP_IMAGE_NAMESPACE` | Image namespace; default `openpalm` |
-| `OP_PROJECT_NAME` | Optional Compose project name; default `openpalm` |
 | `OP_STACK_CONFIG_VERSION` | Derived intent schema version |
 | `OP_ENABLED_ADDONS` | Derived profiles: `gateway,discord,slack` |
 | `OP_ASSISTANT_BIND_ADDRESS` | Derived native OpenCode host bind |

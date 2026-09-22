@@ -94,8 +94,16 @@ function ensureStackEnv(state: OpenPalmState): void {
 	const path = stackEnvFile(state.homeDir);
 	const current = readEnvFile(path);
 	const ids = operatorIds(state.homeDir, current);
+	const projectName =
+		current.OP_PROJECT_NAME?.trim() || process.env.OP_PROJECT_NAME?.trim() || 'openpalm';
+	if (!/^[a-z0-9][a-z0-9_-]*$/.test(projectName)) {
+		throw new Error(
+			'OP_PROJECT_NAME must start with a lowercase letter or number and contain only lowercase letters, numbers, hyphens, or underscores.'
+		);
+	}
 	const updates: Record<string, string> = {
 		OP_HOME: state.homeDir,
+		OP_PROJECT_NAME: projectName,
 		OP_IMAGE_NAMESPACE: process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm',
 		OP_HOST_ENABLED: 'true',
 		OP_SETUP_COMPLETE: current.OP_SETUP_COMPLETE === 'true' ? 'true' : 'false'

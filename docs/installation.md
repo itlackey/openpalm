@@ -30,6 +30,23 @@ Set `OP_HOME` before the command to use an absolute path other than
 openpalm install --no-start
 ```
 
+For another independent instance on the same host, also give it a unique
+Compose project name and select unused ports in Admin (or with `openpalm
+config`). The project name is saved in that instance's derived state, so it
+does not need to be supplied again:
+
+```bash
+export OP_HOME=/home/alex/openpalm-second
+export OP_PROJECT_NAME=openpalm-second
+openpalm install --no-start
+openpalm config assistant --port 4810 --no-apply
+openpalm config gateway --port 4830 --no-apply
+openpalm setup
+```
+
+Each instance then has its own containers, networks, credentials, knowledge,
+workspace, and lifecycle. Never reuse a Compose project name between homes.
+
 Assistant is the only default service. Guardian, Discord, and Slack are opt-in.
 OpenPalm does not install a browser chat application or model server.
 
