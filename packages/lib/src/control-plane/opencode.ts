@@ -1,12 +1,14 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readStackConfig } from './stack-config.js';
-import { stateSecretFile } from './foundation.js';
+import { stateSecretFile, writeFileAtomic } from './foundation.js';
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MAX_GUARDIAN_CONFIG_BYTES = 64 * 1024;
 const READY_TOKEN = 'OPENPALM_READY';
+const FRESH_GUARDIAN_MODEL = '"model": "opencode/big-pickle"';
 
 export type ProviderSummary = {
 	id: string;
@@ -316,4 +318,37 @@ export async function testAssistantReadiness(
 			}
 		}
 	}
+}
+
+export function configureGuardianModeratorModel(
+	homeDir: string,
+	provider: string | undefined,
+	model: string | undefined
+): boolean {
+	if (!provider || !model) return false;
+	if (
+		provider.length > 128 ||
+		model.length > 256 ||
+		[provider, model].some((value) =>
+			Array.from(value).some((character) => character.charCodeAt(0) < 32)
+		)
+	) {
+		throw new Error('Provider readiness returned an invalid model identifier.');
+	}
+	const path = join(homeDir, 'config', 'guardian', 'opencode.json');
+	if (!existsSync(path)) return false;
+	const stat = lstatSync(path);
+	if (!stat.isFile() || stat.isSymbolicLink()) {
+		throw new Error(`Refusing unsafe Guardian configuration: ${path}`);
+	}
+	if (stat.size > MAX_GUARDIAN_CONFIG_BYTES) {
+		throw new Error('Guardian configuration exceeded the size limit.');
+	}
+	const current = readFileSync(path, 'utf8');
+	const occurrences = current.split(FRESH_GUARDIAN_MODEL).length - 1;
+	if (occurrences === 0) return false;
+	if (occurrences !== 1) throw new Error('Guardian configuration contains duplicate model settings.');
+	const selected = `"model": ${JSON.stringify(`${provider}/${model}`)}`;
+	writeFileAtomic(path, current.replace(FRESH_GUARDIAN_MODEL, selected), stat.mode & 0o777);
+	return true;
 }

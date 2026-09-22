@@ -70,6 +70,9 @@ An installation is not ready merely because containers are running. The setup
 flow must verify that the selected provider can complete a small agent request
 and explain any failure in user terms.
 
+That verified provider/model also becomes the fresh Guardian moderator default.
+An explicit operator-selected moderator model is never replaced.
+
 Recurring work is a user feature, not a YAML feature. A user should be able to
 ask the agent to create, inspect, pause, resume, and remove a schedule in
 ordinary language. AKM task files and cron expressions are implementation

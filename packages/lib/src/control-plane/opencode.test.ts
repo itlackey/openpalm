@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { listProviders, setProviderApiKey, testAssistantReadiness } from './opencode.js';
+import {
+	configureGuardianModeratorModel,
+	listProviders,
+	setProviderApiKey,
+	testAssistantReadiness
+} from './opencode.js';
 import { defaultStackConfig, writeStackConfig } from './stack-config.js';
 
 const homes: string[] = [];
@@ -13,9 +18,14 @@ function home(): string {
 	homes.push(root);
 	mkdirSync(join(root, 'state', 'secrets'), { recursive: true });
 	mkdirSync(join(root, 'knowledge', 'secrets'), { recursive: true });
+	mkdirSync(join(root, 'config', 'guardian'), { recursive: true });
 	writeStackConfig(root, defaultStackConfig());
 	writeFileSync(join(root, 'state', 'secrets', 'op_opencode_password'), 'password\n');
 	writeFileSync(join(root, 'knowledge', 'secrets', 'auth.json'), '{"anthropic":{"type":"api"}}\n');
+	writeFileSync(
+		join(root, 'config', 'guardian', 'opencode.json'),
+		'{\n  "$schema": "https://opencode.ai/config.json",\n  "model": "opencode/big-pickle"\n}\n'
+	);
 	return root;
 }
 
@@ -146,5 +156,15 @@ describe('OpenCode setup client', () => {
 			error: 'Provider authentication is required'
 		});
 		expect(calls).toContain('DELETE /session/failed-1');
+	});
+
+	it('pins only the untouched Guardian moderator default to the verified model', () => {
+		const root = home();
+		const path = join(root, 'config', 'guardian', 'opencode.json');
+
+		expect(configureGuardianModeratorModel(root, 'anthropic', 'claude-sonnet')).toBe(true);
+		expect(readFileSync(path, 'utf8')).toContain('"model": "anthropic/claude-sonnet"');
+		expect(configureGuardianModeratorModel(root, 'anthropic', 'claude-opus')).toBe(false);
+		expect(readFileSync(path, 'utf8')).toContain('"model": "anthropic/claude-sonnet"');
 	});
 });

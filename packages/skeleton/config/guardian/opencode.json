@@ -1,8 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  // Pin a SMALL, fast model from your provider for moderation — it runs on
-  // suspicious messages and should be cheap. Credentials are shared via
-  // knowledge/secrets/auth.json (same provider as the assistant). Edit freely.
+  // Setup replaces this placeholder with the exact provider/model that passes
+  // Assistant readiness. After setup, an operator may select a smaller model
+  // from that provider; suspicious requests are the only traffic sent here.
   "model": "opencode/big-pickle"
 }

@@ -1,14 +1,16 @@
 import { defineCommand } from 'citty';
 import {
+	configureGuardianModeratorModel,
 	createOpenPalmState,
 	markInstalled,
+	readStackConfig,
 	requireInstall,
 	testAssistantReadiness,
 	waitForAssistant
 } from '@openpalm/lib';
 
 import { defineAction } from '../lib/action.js';
-import { runStartAction } from './lifecycle.js';
+import { runRestartAction, runStartAction } from './lifecycle.js';
 import { runNativeProviderLogin } from './provider.js';
 
 export async function completeSetup(options: {
@@ -34,7 +36,15 @@ export async function completeSetup(options: {
 	}
 
 	if (!readiness.ok) throw new Error(`Provider readiness failed: ${readiness.error}`);
+	const moderatorUpdated = configureGuardianModeratorModel(
+		state.homeDir,
+		readiness.provider,
+		readiness.model
+	);
 	markInstalled(state.homeDir);
+	const config = readStackConfig(state.homeDir);
+	if (!config.ok) throw new Error(config.error);
+	if (moderatorUpdated && config.config.gateway.enabled) await runRestartAction();
 	console.log('OpenPalm 0.14 setup is complete.');
 	console.log(
 		`Verified a real Assistant response${readiness.provider ? ` from ${readiness.provider}` : ''}${readiness.model ? `/${readiness.model}` : ''}.`

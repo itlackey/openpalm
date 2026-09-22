@@ -112,6 +112,8 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   requests enter through authenticated Guardian MCP.
 - Provider setup delegates to OpenCode and is complete only after a real,
   no-tool Assistant request succeeds.
+- Successful provider setup replaces only the untouched Guardian moderator
+  placeholder with the exact provider/model that passed readiness.
 - Guardian bearer credentials are named identities with private file-backed
   keys and independently configured `chat`, `read`, or `full` policies. The
   same identity may be used directly by MCP clients or mapped to Slack and

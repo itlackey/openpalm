@@ -9,6 +9,7 @@ import {
 	classifyInstall,
 	composeLogs,
 	composePs,
+	configureGuardianModeratorModel,
 	createOpenPalmState,
 	defaultStackConfig,
 	deactivateComposeCommand,
@@ -29,6 +30,7 @@ import {
 	testAssistantReadiness,
 	writePortalSecret
 } from '@openpalm/lib';
+import type { AssistantReadiness } from '@openpalm/lib';
 
 import { ADMIN_CHANNELS, type AdminSnapshot, type StackAction } from './admin-types.js';
 import {
@@ -125,6 +127,22 @@ export async function runAdminAction(action: StackAction): Promise<AdminSnapshot
 	return adminSnapshot();
 }
 
+async function completeAdminReadiness(
+	homeDir: string,
+	readiness: AssistantReadiness
+): Promise<void> {
+	if (!readiness.ok) return;
+	const moderatorUpdated = configureGuardianModeratorModel(
+		homeDir,
+		readiness.provider,
+		readiness.model
+	);
+	markInstalled(homeDir);
+	const config = readStackConfig(homeDir);
+	if (!config.ok) throw new Error(config.error);
+	if (moderatorUpdated && config.config.gateway.enabled) await runAdminAction('restart');
+}
+
 export function registerAdminIpc(): void {
 	ipcMain.handle(ADMIN_CHANNELS.snapshot, (event) => {
 		requireAdminSender(event);
@@ -176,14 +194,14 @@ export function registerAdminIpc(): void {
 		const current = state();
 		await setProviderApiKey(current.homeDir, input.provider, input.key);
 		const readiness = await testAssistantReadiness(current.homeDir);
-		if (readiness.ok) markInstalled(current.homeDir);
+		await completeAdminReadiness(current.homeDir, readiness);
 		return readiness;
 	});
 	ipcMain.handle(ADMIN_CHANNELS.readiness, (event) => {
 		requireAdminSender(event);
 		const current = state();
-		return testAssistantReadiness(current.homeDir).then((readiness) => {
-			if (readiness.ok) markInstalled(current.homeDir);
+		return testAssistantReadiness(current.homeDir).then(async (readiness) => {
+			await completeAdminReadiness(current.homeDir, readiness);
 			return readiness;
 		});
 	});

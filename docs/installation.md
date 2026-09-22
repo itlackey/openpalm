@@ -87,7 +87,11 @@ openpalm setup
 ```
 
 `openpalm setup` is idempotent: it starts Assistant, verifies provider
-readiness, and invokes the native interactive sign-in only when necessary.
+readiness, and invokes the native interactive sign-in only when necessary. If
+the Guardian moderator still has its fresh-install placeholder, setup pins it
+to the same provider/model that passed the real readiness request. An advanced
+operator can later choose a smaller model in
+`config/guardian/opencode.json`; OpenPalm preserves that explicit choice.
 
 ## Import an older home
 

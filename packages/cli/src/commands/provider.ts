@@ -2,10 +2,12 @@ import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
 import {
 	buildComposeCliArgs,
+	configureGuardianModeratorModel,
 	createOpenPalmState,
 	ensureDockerReady,
 	listProviders,
 	markInstalled,
+	readStackConfig,
 	removeProviderAuth,
 	requireInstall,
 	runComposeStreaming,
@@ -15,7 +17,7 @@ import {
 } from '@openpalm/lib';
 
 import { defineAction } from '../lib/action.js';
-import { runStartAction } from './lifecycle.js';
+import { runRestartAction, runStartAction } from './lifecycle.js';
 
 function readKey(path: string): string {
 	const value = readFileSync(path === '-' ? 0 : path, 'utf8').replace(/[\r\n]+$/, '');
@@ -50,7 +52,15 @@ export async function runNativeProviderLogin(options: {
 async function verifyAndComplete(homeDir: string): Promise<void> {
 	const readiness = await testAssistantReadiness(homeDir);
 	if (!readiness.ok) throw new Error(`Provider readiness failed: ${readiness.error}`);
+	const moderatorUpdated = configureGuardianModeratorModel(
+		homeDir,
+		readiness.provider,
+		readiness.model
+	);
 	markInstalled(homeDir);
+	const config = readStackConfig(homeDir);
+	if (!config.ok) throw new Error(config.error);
+	if (moderatorUpdated && config.config.gateway.enabled) await runRestartAction();
 	console.log(
 		`Provider ready${readiness.provider ? `: ${readiness.provider}` : ''}${readiness.model ? `/${readiness.model}` : ''}.`
 	);

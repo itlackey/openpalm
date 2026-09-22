@@ -109,6 +109,7 @@ export {
 } from './control-plane/state.js';
 export {
 	assistantEndpoint,
+	configureGuardianModeratorModel,
 	listProviders,
 	removeProviderAuth,
 	setProviderApiKey,
