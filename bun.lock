@@ -26,7 +26,7 @@
     },
     "packages/claude-desktop": {
       "name": "@openpalm/claude-desktop",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "dependencies": {
         "@modelcontextprotocol/client": "2.0.0",
         "@modelcontextprotocol/server": "2.0.0",
@@ -39,7 +39,7 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -54,7 +54,7 @@
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^26.1.2",
@@ -65,7 +65,7 @@
     },
     "packages/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "dependencies": {
         "@modelcontextprotocol/server": "2.0.0",
         "@opencode-ai/sdk": "1.18.21",
@@ -80,7 +80,7 @@
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "devDependencies": {
         "bun-types": "^1.3.14",
         "typescript": "^6.0.3",
@@ -88,7 +88,7 @@
     },
     "packages/portal": {
       "name": "@openpalm/portal",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
       "dependencies": {
         "@modelcontextprotocol/client": "2.0.0",
         "@slack/bolt": "5.1.0",
@@ -101,7 +101,7 @@
     },
     "packages/skeleton": {
       "name": "@openpalm/skeleton",
-      "version": "0.14.0-alpha.2",
+      "version": "0.14.0-alpha.3",
     },
   },
   "overrides": {

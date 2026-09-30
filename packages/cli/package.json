@@ -1,6 +1,6 @@
 {
 	"name": "openpalm",
-	"version": "0.14.0-alpha.2",
+	"version": "0.14.0-alpha.3",
 	"type": "module",
 	"license": "MPL-2.0",
 	"description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",

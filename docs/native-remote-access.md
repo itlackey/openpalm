@@ -1,8 +1,7 @@
 # Optional Codex and Claude Code remote sessions
 
-This feature is on `refactor/lean-stack` for the next release; the published
-0.14.0-alpha.2 images and CLI do not include it. Updating source alone does not
-update a running installation's image.
+Available in `0.14.0-alpha.3` and later. Updating source alone does not update
+a running installation's CLI or image; install the release CLI and run `update`.
 
 These options start **separate native coding agents** in the Assistant's
 workspace. They do not turn Codex or Claude Code into clients of OpenCode, expose

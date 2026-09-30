@@ -4,7 +4,7 @@ OpenPalm follows [Semantic Versioning](https://semver.org/). This changelog
 starts at the 0.14 product boundary; older releases describe a different stack
 and remain available in Git history.
 
-## [Unreleased]
+## [0.14.0-alpha.3] - 2026-09-30
 
 ### Added
 
