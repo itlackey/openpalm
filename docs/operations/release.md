@@ -100,7 +100,7 @@ Retrying that job compares packed npm integrity against an existing version
 and rejects different contents.
 
 Public repository metadata, installer binaries, Admin downloads, and the
-Claude Desktop extension all point to GitHub. `0.14.0-alpha.1` is a GitHub
+Claude Desktop extension all point to GitHub. `*-alpha.*` is a GitHub
 prerelease and publishes to npm's `next` tag; `*-beta.*` uses `beta`,
 `*-rc.*` uses `rc`, and stable uses `latest`. Beta testing precedes
 the release candidate and final stable dispatch. A dry run never publishes
@@ -109,6 +109,23 @@ requests, `main`, and `release/*`.
 
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
+
+## Alpha.2 migration hardening
+
+`0.14.0-alpha.2` includes the migration and portable-backup fixes discovered
+during the alpha.1 walkthrough. Historical AKM configuration and prior unsafe
+staging are excluded rather than exposed to the agent. Generated dependency
+trees are pruned before traversal. Provider credentials, including safe native
+file references, require explicit opt-in and remain private. Automatic native
+configuration portability is limited to model/provider preferences; MCP,
+plugin, and other custom runtime settings require deliberate manual review.
+Human import previews are bounded; full plans remain available through JSON.
+
+The fresh-install boundary, paused imported tasks, new client credentials,
+explicit network intent, and default-deny portal allowlists remain intentional.
+These are not compatibility bugs to reverse. Use the
+[migration runbook](migration-to-0.14.md) and verify against the downloaded
+release artifacts, not a locally rebuilt binary carrying the same version.
 
 ## Alpha.1 candidate verification record
 

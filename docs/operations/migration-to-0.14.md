@@ -7,13 +7,13 @@ The implemented transition is a dry-run-first, allowlisted copy into a fresh
 home. The old home is only a read-only source: OpenPalm neither upgrades it nor
 deletes it.
 
-**Published alpha.1 caveat:** The hardening described below is on the current
-branch for the next build; it is not retroactively included in
+**Alpha.2 migration boundary:** The hardening described below is included in
+`0.14.0-alpha.2` and later; it is not retroactively included in
 `0.14.0-alpha.1`. That release stages old `config/akm/` under searchable
 knowledge and misses provider `{file:...}` secrets. Do not run an unchecked
-alpha.1 migration: use a fixed build/next release, or carefully review manual
+alpha.1 migration: use alpha.2 or later, or carefully review manual
 staging and keep historical configuration outside every agent mount. Concise
-import summaries and generated-dependency pruning also require the fixed build.
+import summaries and generated-dependency pruning also require alpha.2 or later.
 
 ## Why the break exists
 
