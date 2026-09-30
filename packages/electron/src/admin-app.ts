@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
 	activateComposeCommand,
@@ -46,6 +46,7 @@ import {
 	externalAdminUrl,
 	importFromAdmin,
 	installFromAdmin,
+	isAdminPageUrl,
 	mapAdminPortalUser,
 	removeAdminCredential,
 	rotateAdminCredential,
@@ -54,7 +55,6 @@ import {
 
 const adminDirectory = fileURLToPath(new URL('../admin', import.meta.url));
 const adminIndexPath = join(adminDirectory, 'index.html');
-const adminIndexUrl = pathToFileURL(adminIndexPath).href;
 const claudeExtensionUrl = `https://github.com/itlackey/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
 
 if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
@@ -64,7 +64,11 @@ if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
 }
 
 function requireAdminSender(event: IpcMainInvokeEvent): void {
-	if (event.senderFrame?.url !== adminIndexUrl) throw new Error('Unauthorized admin IPC sender');
+	if (
+		event.senderFrame !== event.sender.mainFrame ||
+		!isAdminPageUrl(event.senderFrame?.url, adminIndexPath)
+	)
+		throw new Error('Unauthorized admin IPC sender');
 }
 
 function state() {
@@ -433,7 +437,7 @@ export function createAdminWindow(options: { show?: boolean } = {}): BrowserWind
 		return { action: 'deny' };
 	});
 	window.webContents.on('will-navigate', (event, url) => {
-		if (url !== adminIndexUrl) event.preventDefault();
+		if (!isAdminPageUrl(url, adminIndexPath)) event.preventDefault();
 	});
 	void window.loadFile(adminIndexPath);
 	return window;

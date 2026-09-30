@@ -1,3 +1,6 @@
+import { win32 } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
 	applyHomeSeed,
 	applyImport,
@@ -32,6 +35,25 @@ import {
 	type PortalName,
 	type StackConfig
 } from '@openpalm/lib';
+
+export function isAdminPageUrl(
+	value: unknown,
+	indexPath: string,
+	windows = process.platform === 'win32'
+): boolean {
+	if (typeof value !== 'string' || value.length > 4_096) return false;
+	try {
+		const url = new URL(value);
+		if (url.protocol !== 'file:' || url.search || url.hash || url.username || url.password)
+			return false;
+		const path = fileURLToPath(url, { windows });
+		return windows
+			? win32.normalize(path).toLowerCase() === win32.normalize(indexPath).toLowerCase()
+			: path === indexPath;
+	} catch {
+		return false;
+	}
+}
 
 export function externalAdminUrl(value: unknown): string {
 	if (typeof value !== 'string' || value.length > 4_096) throw new Error('Invalid external URL.');

@@ -13,6 +13,7 @@ import {
 	externalAdminUrl,
 	importFromAdmin,
 	installFromAdmin,
+	isAdminPageUrl,
 	mapAdminPortalUser,
 	removeAdminCredential,
 	rotateAdminCredential,
@@ -47,6 +48,48 @@ async function install(
 }
 
 describe('Admin domain', () => {
+	it('authenticates the exact local Admin page with platform-aware file paths', () => {
+		const windows = 'C:\\Users\\Runner\\OpenPalm Admin\\resources\\app.asar\\admin\\index.html';
+		expect(
+			isAdminPageUrl(
+				'file:///c:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/index.html',
+				windows,
+				true
+			)
+		).toBe(true);
+		expect(
+			isAdminPageUrl(
+				'file:///C:/users/runner/OpenPalm%20Admin/resources/app.asar/admin/index.html',
+				windows,
+				true
+			)
+		).toBe(true);
+		const posix = '/opt/OpenPalm Admin/admin/index.html';
+		expect(isAdminPageUrl('file:///opt/OpenPalm%20Admin/admin/index.html', posix, false)).toBe(
+			true
+		);
+		for (const value of [
+			undefined,
+			'invalid',
+			'https://example.com/index.html',
+			'file:///opt/openpalm%20admin/admin/index.html',
+			'file:///opt/OpenPalm%20Admin/admin/evil.html',
+			'file:///opt/OpenPalm%20Admin/admin/index.html?query=1',
+			'file:///opt/OpenPalm%20Admin/admin/index.html#frame',
+			'file://remote/opt/OpenPalm%20Admin/admin/index.html',
+			'file:///opt/OpenPalm%20Admin/admin%2Findex.html'
+		]) {
+			expect(isAdminPageUrl(value, posix, false)).toBe(false);
+		}
+		for (const value of [
+			'file:///d:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/index.html',
+			'file:///c:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/other.html',
+			'file://remote/share/index.html'
+		]) {
+			expect(isAdminPageUrl(value, windows, true)).toBe(false);
+		}
+	});
+
 	it('packages exactly the shared managed and seeded Skeleton allowlists', () => {
 		const builder = Bun.YAML.parse(
 			readFileSync(join(import.meta.dir, '..', 'electron-builder.yml'), 'utf8')
