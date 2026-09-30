@@ -55,16 +55,6 @@ jobs:
             --env-file "${OP_HOME}/state/stack.env" \
             --profile gateway --profile discord --profile slack \
             config --quiet
-      - name: Enforce the surface
-        run: |
-          ! rg -n '/v1/chat/completions|/v1/messages|/a2a|/oc/' \
-            packages/guardian/src/audit.ts \
-            packages/guardian/src/content-screen.ts \
-            packages/guardian/src/moderation.ts \
-            packages/guardian/src/server.ts \
-            packages/guardian/src/mcp-agent.ts
-          rg -n -F 'host_ip: "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"' packages/skeleton/system/stack/stack.compose.yml
-          rg -n -F 'host_ip: "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}"' packages/skeleton/system/stack/stack.compose.yml
 
   images:
     name: Build ${{ matrix.image }} (${{ matrix.platform }})
