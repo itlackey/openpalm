@@ -78,6 +78,8 @@ export {
 	credentialRegistryFile,
 	defaultStackConfig,
 	ensureStackConfig,
+	hostTimezone,
+	validTimezone,
 	isCredentialId,
 	isCredentialUsername,
 	isGuardianPolicy,

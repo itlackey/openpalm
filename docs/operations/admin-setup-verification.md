@@ -29,6 +29,13 @@ The walkthrough must prove that:
     document-level horizontal overflow; and
 13. the isolated stack is stopped and removed after the test.
 
+The walkthrough also changes the recurring-work timezone and automatic-memory
+preference through the visible UI, applies them with a restart, and verifies
+that both survive a renderer reload. It temporarily disables automatic memory
+in this disposable home to keep the installer test's model-request budget
+bounded, then restores it for runtime acceptance. Memory extraction and actual
+timer execution have separate runtime acceptance checks.
+
 A provider-backed run also verifies the installed default provider with a real
 native request after restart and completes a real `openpalm.agent.run` request
 through Guardian MCP. Setup success alone is insufficient for this check.
@@ -47,12 +54,13 @@ below or perform the provider step manually.
 Build the images from the checkout being tested:
 
 ```bash
+release_version="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
 docker build -f containers/assistant/Dockerfile \
-  --build-arg PLATFORM_VERSION=0.14.0 -t openpalm/assistant:0.14.0 .
+  --build-arg PLATFORM_VERSION="$release_version" -t "openpalm/assistant:$release_version" .
 docker build -f containers/guardian/Dockerfile \
-  --build-arg GUARDIAN_VERSION=0.14.0 -t openpalm/guardian:0.14.0 .
+  --build-arg GUARDIAN_VERSION="$release_version" -t "openpalm/guardian:$release_version" .
 docker build -f containers/portal/Dockerfile \
-  -t openpalm/portal:0.14.0 .
+  -t "openpalm/portal:$release_version" .
 ```
 
 ## Automated Electron and Docker walkthrough
@@ -66,9 +74,13 @@ bun run admin:e2e
 The test creates a unique Compose project, selects two free loopback ports, and
 uses a generated temporary home. It drives the actual Admin renderer and IPC
 handlers, not a mock page. It deliberately stops the fresh Assistant once and
-recovers it through the visible setup form. On success it removes its
-containers, networks, browser profile, and temporary OpenPalm home. It retains
-a report and five PNG screenshots, including startup recovery and 200%-zoom
+recovers it through the visible setup form. Normally it stops and removes its
+containers and networks and removes the generated browser profile. A generated
+home without provider authentication is removed unless retention is requested.
+Provider-backed homes and explicitly supplied homes are always retained, even
+on failure, so copied operator authentication is never silently deleted.
+Populated or unreadable provider-auth files also force retention. It retains a
+report and five PNG screenshots, including startup recovery and 200%-zoom
 reflow, in a printed `/tmp/openpalm-admin-e2e-artifacts-*` directory. A
 provider-backed run also captures the ready overview.
 
@@ -103,14 +115,20 @@ bun run admin:e2e
 The test reads that file without modifying it. `providerRuntime` in the report
 records the real native provider/model and whether the MCP response completed.
 
-The key is entered through the real Admin form and lives only in the generated
-test home, which is removed after the run. Do not place a key in a command-line
-argument or commit it to a test fixture.
+The key is entered through the real Admin form and copied only into the private
+test home. A provider-backed run retains that home by default and prints its
+exact path; reports record `homeRetained: true`. The source key file is never
+modified. Do not place a key in a command-line argument or commit it to a test
+fixture. Review retained credentials and obtain path-specific approval before
+deleting that home.
 
-Set `OPENPALM_ADMIN_E2E_KEEP_HOME=true` to retain a failed test home for
-inspection. Set `OPENPALM_ADMIN_E2E_KEEP_RUNNING=true` only for interactive
-diagnosis; it also retains the home and prints its location. Stop that exact
-project and inspect the printed path before removing it.
+Set `OPENPALM_ADMIN_E2E_KEEP_HOME=true` to retain a generated provider-free home
+for inspection too. `KEEP_HOME=false` never overrides provider or explicit-home
+retention. Retaining a home does not leave containers running. Set
+`OPENPALM_ADMIN_E2E_KEEP_RUNNING=true` only for interactive diagnosis or the
+follow-on live acceptance suite; it also retains the home and prints its
+location. Stop that exact project and inspect the printed path before removing
+it.
 
 ## Manual walkthrough
 
@@ -162,7 +180,12 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    another MCP app as connection choices. Technical details may contain the
    real provider/model but must not be the primary status.
 
-6. Follow each choice from Overview and confirm its guided panel is complete:
+6. In Overview, change **Memory & recurring work** to a different IANA timezone
+   and turn automatic memory off. Save, wait for the restart, and refresh.
+   Confirm both settings remain saved. Turning memory off must not remove
+   existing knowledge. Re-enable it when testing the memory acceptance path.
+
+   Follow each connection choice and confirm its guided panel is complete:
 
    - OpenCode shows server address, username `opencode`, and explicit password
      reveal/copy actions;

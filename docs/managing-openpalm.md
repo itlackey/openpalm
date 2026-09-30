@@ -57,6 +57,38 @@ Every run retains durable AKM history independently of optional delivery; the
 restricted scheduled agent can additionally save reports below
 `knowledge/inbox/<task-id>/`.
 
+Automatic personal memory is enabled by default for trusted native OpenCode
+`build`/`plan` conversations. An image-baked wrapper around the AKM OpenCode
+plugin extracts a few explicitly stated long-term facts using the same
+OpenCode provider you signed into, then saves them with `akm remember`.
+Credential-bearing lines and secret-shaped values are filtered before model
+extraction; source-supported facts are validated again before saving. These
+filters reduce risk, but do not guarantee detection of every secret: never
+paste credentials into a conversation. Guardian, scheduled, and internal
+sessions do not automatically write personal memory.
+
+Turn **Automatic personal memory** off in Admin Agent preferences, or set
+`assistant.automaticMemory` to `false` in `state/stack.json` and restart with
+`openpalm start`. This stops new automatic capture, not explicit `remember`
+requests, and does not erase existing memories. OpenCode's own conversation
+history remains separate from knowledge; automatic capture stores facts, not
+full transcripts. Capture failure does not interrupt conversation and can
+retry on a later turn. Explicitly ask the agent to remember important facts
+when immediate confirmation matters.
+
+AKM 0.9.18's native `proposal extract` currently requires its own direct LLM
+engine and cannot attach to the running OpenCode agent. OpenPalm disables that
+plugin path rather than asking you to configure another provider credential or
+endpoint. The wrapper keeps AKM's normal discovery, recall, and remember tools.
+
+Schedules use the host timezone detected at installation. Set an IANA zone
+such as `America/Chicago` in Admin Agent preferences or
+`assistant.timezone` in `state/stack.json`; `openpalm start` applies it. Daylight
+saving follows that zone. After downtime, future schedule slots resume without
+replaying missed runs. If the scheduler dies, the Assistant service restarts
+with it; failed reconciliation marks service health degraded instead of
+silently presenting schedules as ready.
+
 The matching explicit CLI is:
 
 ```bash

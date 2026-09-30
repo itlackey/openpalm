@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { defaultStackConfig } from '@openpalm/lib';
+import { dirname, join } from 'node:path';
+import { defaultStackConfig, MANAGED_FILES, SEEDED_FILES } from '@openpalm/lib';
+import { retainAdminE2eHome } from '../scripts/admin-e2e-retention.mjs';
 
 import {
 	adminPortalMappings,
+	adminPortalTokens,
 	backupFromAdmin,
 	createAdminCredential,
+	externalAdminUrl,
 	importFromAdmin,
 	installFromAdmin,
 	mapAdminPortalUser,
@@ -19,12 +22,15 @@ import {
 const roots: string[] = [];
 const originalHome = process.env.OP_HOME;
 const originalRepo = process.env.OPENPALM_REPO_ROOT;
+const originalSkeleton = process.env.OPENPALM_SKELETON_DIR;
 
 afterEach(() => {
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
 	if (originalRepo === undefined) delete process.env.OPENPALM_REPO_ROOT;
 	else process.env.OPENPALM_REPO_ROOT = originalRepo;
+	if (originalSkeleton === undefined) delete process.env.OPENPALM_SKELETON_DIR;
+	else process.env.OPENPALM_SKELETON_DIR = originalSkeleton;
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -41,6 +47,106 @@ async function install(
 }
 
 describe('Admin domain', () => {
+	it('packages exactly the shared managed and seeded Skeleton allowlists', () => {
+		const builder = Bun.YAML.parse(
+			readFileSync(join(import.meta.dir, '..', 'electron-builder.yml'), 'utf8')
+		) as { extraResources: Array<{ to: string; filter: string[] }> };
+		const resource = builder.extraResources.find((entry) => entry.to === 'skeleton');
+		if (!resource) throw new Error('Missing packaged Skeleton resources.');
+		expect([...resource.filter].sort()).toEqual([...MANAGED_FILES, ...SEEDED_FILES].sort());
+	});
+
+	it('materializes a complete fresh home using only packaged Skeleton resources', async () => {
+		const builder = Bun.YAML.parse(
+			readFileSync(join(import.meta.dir, '..', 'electron-builder.yml'), 'utf8')
+		) as { extraResources: Array<{ to: string; filter: string[] }> };
+		const resource = builder.extraResources.find((entry) => entry.to === 'skeleton');
+		if (!resource) throw new Error('Missing packaged Skeleton resources.');
+		const filter = resource.filter;
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-admin-packaged-seed-'));
+		roots.push(root);
+		const packagedSkeleton = join(root, 'resources', 'skeleton');
+		const source = join(import.meta.dir, '..', '..', 'skeleton');
+		for (const path of filter) {
+			const destination = join(packagedSkeleton, path);
+			mkdirSync(dirname(destination), { recursive: true });
+			copyFileSync(join(source, path), destination);
+		}
+		process.env.OPENPALM_SKELETON_DIR = packagedSkeleton;
+		const { home } = await install();
+		for (const path of [...MANAGED_FILES, ...SEEDED_FILES]) {
+			expect(readFileSync(join(home, path))).toEqual(readFileSync(join(source, path)));
+		}
+	});
+
+	it('retains explicit and provider-backed E2E homes without requiring KEEP flags', () => {
+		for (const name of [
+			'OPENPALM_ADMIN_E2E_HOME',
+			'OPENPALM_ADMIN_E2E_PROVIDER',
+			'OPENPALM_ADMIN_E2E_PROVIDER_KEY',
+			'OPENPALM_ADMIN_E2E_PROVIDER_KEY_FILE'
+		]) {
+			expect(
+				retainAdminE2eHome({ [name]: 'supplied-test-value', OPENPALM_ADMIN_E2E_KEEP_HOME: 'false' })
+			).toBe(true);
+		}
+		expect(retainAdminE2eHome({ OPENPALM_ADMIN_E2E_KEEP_HOME: 'true' })).toBe(true);
+		expect(retainAdminE2eHome({ OPENPALM_ADMIN_E2E_KEEP_RUNNING: 'true' })).toBe(true);
+		expect(retainAdminE2eHome({})).toBe(false);
+	});
+
+	it('retains unexpectedly populated or malformed E2E provider auth', () => {
+		const root = mkdtempSync(join(tmpdir(), 'openpalm-admin-retention-'));
+		roots.push(root);
+		mkdirSync(join(root, 'knowledge', 'secrets'), { recursive: true });
+		const auth = join(root, 'knowledge', 'secrets', 'auth.json');
+		writeFileSync(auth, '{}');
+		expect(retainAdminE2eHome({}, root)).toBe(false);
+		writeFileSync(auth, JSON.stringify({ test: { type: 'api', key: 'synthetic-test-key' } }));
+		expect(retainAdminE2eHome({}, root)).toBe(true);
+		writeFileSync(auth, '{malformed');
+		expect(retainAdminE2eHome({}, root)).toBe(true);
+		expect(readFileSync(auth, 'utf8')).toBe('{malformed');
+	});
+
+	it('opens only HTTPS URLs without embedded credentials', () => {
+		expect(externalAdminUrl('https://example.com/sign-in?state=abc')).toBe(
+			'https://example.com/sign-in?state=abc'
+		);
+		for (const value of [
+			null,
+			42,
+			'http://example.com',
+			'file:///tmp/private',
+			'javascript:alert(1)',
+			'https://user:password@example.com',
+			`https://example.com/${'a'.repeat(4096)}`
+		]) {
+			expect(() => externalAdminUrl(value)).toThrow();
+		}
+	});
+
+	it('requires portal-specific initial tokens and keeps blank Slack values unchanged', () => {
+		expect(() => adminPortalTokens({ portal: 'discord' }, {})).toThrow('Discord bot token');
+		expect(() => adminPortalTokens({ portal: 'slack', botToken: 'bot' }, {})).toThrow('Both Slack');
+		expect(adminPortalTokens({ portal: 'slack', botToken: 'bot', appToken: 'app' }, {})).toEqual({
+			portal: 'slack',
+			botToken: 'bot',
+			appToken: 'app'
+		});
+		const configured = { slack_bot_token: true, slack_app_token: true };
+		expect(
+			adminPortalTokens({ portal: 'slack', botToken: '', appToken: 'new-app' }, configured)
+		).toEqual({ portal: 'slack', appToken: 'new-app' });
+		expect(() =>
+			adminPortalTokens({ portal: 'slack', botToken: '', appToken: '' }, configured)
+		).toThrow('at least one');
+		expect(() =>
+			adminPortalTokens({ portal: 'slack', botToken: 123, appToken: 'app' }, configured)
+		).toThrow('Invalid portal token');
+		expect(() => adminPortalTokens([], {})).toThrow();
+	});
+
 	it('validates and preserves first-install port choices', async () => {
 		const config = defaultStackConfig();
 		config.assistant.port = 43_810;

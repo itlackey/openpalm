@@ -55,8 +55,9 @@ bun run --cwd packages/electron bundle
 bash -n scripts/dev-setup.sh \
   scripts/setup.sh \
   scripts/smoke-image.sh \
-  scripts/restore-release-candidate.sh \
   containers/assistant/entrypoint.sh \
+  containers/assistant/healthcheck.sh \
+  containers/assistant/opencode-run.sh \
   containers/guardian/entrypoint.sh
 ```
 

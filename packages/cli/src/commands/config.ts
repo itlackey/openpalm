@@ -18,7 +18,7 @@ import {
 	type StackConfig
 } from '@openpalm/lib';
 
-import { runRestartAction, runStartAction } from './lifecycle.js';
+import { runRestartAction } from './lifecycle.js';
 
 function current() {
 	const homeDir = resolveOpenPalmHome();
@@ -46,7 +46,7 @@ async function save(homeDir: string, config: StackConfig, apply: boolean): Promi
 	writeStackConfig(homeDir, parsed.config);
 	ensureCredentialKeys(homeDir, parsed.config);
 	syncPortalCredentialBundles(homeDir, parsed.config);
-	if (apply) await runStartAction();
+	if (apply) await runRestartAction();
 	return parsed.config;
 }
 
@@ -87,10 +87,18 @@ const gateway = defineCommand({
 });
 
 const assistant = defineCommand({
-	meta: { name: 'assistant', description: 'Set the native OpenCode bind address or port' },
+	meta: {
+		name: 'assistant',
+		description: 'Set Assistant access, schedule timezone, or automatic memory'
+	},
 	args: {
 		bind: { type: 'string', description: 'exact IPv4 or IPv6 address' },
 		port: { type: 'string', description: 'TCP port (1-65535)' },
+		timezone: {
+			type: 'string',
+			description: 'IANA schedule timezone, for example America/Chicago'
+		},
+		memory: { type: 'string', description: 'automatic personal memory capture: on or off' },
 		apply: {
 			type: 'boolean',
 			description: 'Apply the stack immediately (use --no-apply to defer)',
@@ -98,10 +106,17 @@ const assistant = defineCommand({
 		}
 	},
 	async run({ args }) {
-		if (!args.bind && !args.port) throw new Error('Pass --bind, --port, or both.');
+		if (!args.bind && !args.port && !args.timezone && !args.memory)
+			throw new Error('Pass --bind, --port, --timezone, or --memory.');
 		const { homeDir, config } = current();
 		if (args.bind) config.assistant.bindAddress = String(args.bind);
 		if (args.port) config.assistant.port = Number(args.port);
+		if (args.timezone) config.assistant.timezone = String(args.timezone);
+		if (args.memory) {
+			if (args.memory !== 'on' && args.memory !== 'off')
+				throw new Error('--memory must be on or off.');
+			config.assistant.automaticMemory = args.memory === 'on';
+		}
 		warnExposure('the native OpenCode API', config.assistant.bindAddress);
 		const written = await save(homeDir, config, args.apply !== false);
 		console.log(JSON.stringify(written.assistant, null, 2));

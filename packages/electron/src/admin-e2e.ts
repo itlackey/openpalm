@@ -384,6 +384,21 @@ async function run(): Promise<Record<string, unknown>> {
 			progress('entered ready management UI through an explicit test-only fixture');
 		}
 
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#agent-timezone').value = 'Europe/London';
+			document.querySelector('#automatic-memory').checked = false;
+			document.querySelector('#agent-timezone').dispatchEvent(new Event('input', { bubbles: true }));
+			document.querySelector('#preferences-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice-message')?.textContent === 'Agent preferences saved and OpenPalm restarted.' &&
+				document.querySelector('#agent-timezone')?.value === 'Europe/London' &&
+				document.querySelector('#automatic-memory')?.checked === false`,
+			'agent timezone and memory preferences to be applied'
+		);
+		progress('timezone and automatic-memory preferences saved through the real UI');
+
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-client-target=opencode]').click()"
 		);
@@ -531,6 +546,8 @@ async function run(): Promise<Record<string, unknown>> {
 					document.querySelector('#app-shell')?.hidden === false &&
 					document.querySelector('#assistant-port')?.value === ${JSON.stringify(String(assistantPort))} &&
 				document.querySelector('#gateway-port')?.value === ${JSON.stringify(String(guardianPort))} &&
+				document.querySelector('#agent-timezone')?.value === 'Europe/London' &&
+				document.querySelector('#automatic-memory')?.checked === false &&
 				document.querySelector('#mappings')?.textContent.includes('e2e-reader')`,
 			'persistent configuration after renderer reload'
 		);
@@ -635,8 +652,29 @@ async function run(): Promise<Record<string, unknown>> {
 			progress('installed default provider and live MCP agent response passed after restart');
 		}
 
+		const savedPreferences = await adminSnapshot();
+		assert(
+			savedPreferences.config.assistant.timezone === 'Europe/London' &&
+				savedPreferences.config.assistant.automaticMemory === false,
+			'Agent preferences were not persisted after restart and renderer reload.'
+		);
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('[data-view=overview]').click();
+			document.querySelector('#automatic-memory').checked = true;
+			document.querySelector('#automatic-memory').dispatchEvent(new Event('change', { bubbles: true }));
+			document.querySelector('#preferences-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#notice-message')?.textContent === 'Agent preferences saved and OpenPalm restarted.' &&
+				document.querySelector('#automatic-memory')?.checked === true &&
+				[...document.querySelectorAll('#services .service')].every((row) => row.textContent.includes('Running normally'))`,
+			'automatic memory to be restored for runtime acceptance'
+		);
+		progress('automatic memory re-enabled after verifying the persisted opt-out');
 		const finalSnapshot = await adminSnapshot();
 		assert(finalSnapshot.config.gateway.enabled, 'Guardian configuration was not persisted.');
+		assert(finalSnapshot.config.assistant.automaticMemory, 'Automatic memory was not restored.');
 		assert(
 			finalSnapshot.portalMappings.discord?.users['123456789012345678'] === 'e2e-reader',
 			'Discord credential mapping was not persisted.'
@@ -655,6 +693,11 @@ async function run(): Promise<Record<string, unknown>> {
 			visibleSetupJourneyComplete: Boolean(provider && providerKey),
 			managementUiFixtureUsed: !provider,
 			startupRecoveryVerified: true,
+			agentPreferencesVerified: {
+				timezone: 'Europe/London',
+				memoryOptOutPersisted: true,
+				automaticMemoryRestored: true
+			},
 			connectionRecipesVerified: ['opencode', 'claude', 'mcp'],
 			credential: { username: 'e2e-reader', policy: 'read' },
 			portalMapping: { portal: 'discord', user: '123456789012345678' },
@@ -673,7 +716,8 @@ async function run(): Promise<Record<string, unknown>> {
 				...(readyScreenshot ? [readyScreenshot] : []),
 				guardianScreenshot
 			],
-			keptRunning: keepRunning
+			keptRunning: keepRunning,
+			homeRetained: process.env.OPENPALM_ADMIN_E2E_KEEP_HOME === 'true'
 		};
 	} finally {
 		if (!keepRunning || !succeeded) {
@@ -696,7 +740,12 @@ async function main(): Promise<void> {
 		process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 		app.exit(0);
 	} catch (error) {
-		const failure = { ok: false, error: message(error) };
+		const failure = {
+			ok: false,
+			error: message(error),
+			homeDir: process.env.OP_HOME,
+			homeRetained: process.env.OPENPALM_ADMIN_E2E_KEEP_HOME === 'true'
+		};
 		if (outputDir) {
 			mkdirSync(outputDir, { recursive: true });
 			writeFileSync(join(outputDir, 'failure.json'), `${JSON.stringify(failure, null, 2)}\n`);

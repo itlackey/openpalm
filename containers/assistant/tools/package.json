@@ -2,9 +2,9 @@
   "name": "@openpalm/assistant-tools",
   "private": true,
   "dependencies": {
-    "akm-opencode": "0.9.15202609102133",
+    "akm-opencode": "0.9.18202609300340",
     "opencode-ai": "1.18.21",
-    "akm-cli": "0.9.15"
+    "akm-cli": "0.9.18"
   },
   "overrides": {
     "@huggingface/transformers": "4.3.0"

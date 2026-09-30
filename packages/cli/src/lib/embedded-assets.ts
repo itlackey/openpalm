@@ -47,6 +47,12 @@ export async function seedSkeletonFromEmbedded(
 	applyToHome: (homeDir: string) => Promise<unknown>,
 	homeDir: string
 ): Promise<void> {
+	// An explicitly selected source wins over any stale development archive.
+	// Standalone release binaries use their embedded assets by default.
+	if (process.env.OPENPALM_SKELETON_DIR || process.env.OPENPALM_REPO_ROOT) {
+		await applyToHome(homeDir);
+		return;
+	}
 	const embedded = await embeddedSkeletonPath();
 	if (!embedded) {
 		await applyToHome(homeDir);

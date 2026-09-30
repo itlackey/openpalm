@@ -29,14 +29,7 @@ function readJson(relPath: string): Manifest {
 describe('product package boundary', () => {
 	test('the root check covers every active package', () => {
 		const check = readJson('package.json').scripts?.check ?? '';
-		for (const packageName of [
-			'lib',
-			'guardian',
-			'portal',
-			'cli',
-			'electron',
-			'claude-desktop'
-		]) {
+		for (const packageName of ['lib', 'guardian', 'portal', 'cli', 'electron', 'claude-desktop']) {
 			expect(check).toContain(`packages/${packageName}`);
 		}
 	});
@@ -56,9 +49,10 @@ describe('product package boundary', () => {
 });
 
 describe('release manifest', () => {
-	const release = JSON.parse(
-		readFileSync(join(ROOT, '.github/release-manifest.json'), 'utf8')
-	) as { manifests: string[]; compose: string[] };
+	const release = JSON.parse(readFileSync(join(ROOT, '.github/release-manifest.json'), 'utf8')) as {
+		manifests: string[];
+		compose: string[];
+	};
 
 	test('lists every versioned manifest once', () => {
 		expect(new Set(release.manifests).size).toBe(release.manifests.length);
@@ -80,6 +74,56 @@ describe('release workflows', () => {
 		}
 	});
 
+	test('every runtime image is built, scanned, and smoked on both supported architectures', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
+			jobs: {
+				images: {
+					strategy: {
+						matrix: {
+							platform: string[];
+							image: string[];
+							include: Array<{ image: string; file: string }>;
+						};
+					};
+					steps: Array<{ uses?: string; with?: Record<string, unknown>; run?: string }>;
+				};
+			};
+		};
+		const images = workflow.jobs.images;
+		expect(images.strategy.matrix.platform).toEqual(['linux/amd64', 'linux/arm64']);
+		expect(images.strategy.matrix.image).toEqual(['assistant', 'guardian', 'portal']);
+		expect(images.strategy.matrix.include.map((entry) => entry.image).sort()).toEqual([
+			'assistant',
+			'guardian',
+			'portal'
+		]);
+		expect(images.steps.some((step) => step.uses === 'docker/setup-qemu-action@v3')).toBe(true);
+		const build = images.steps.find((step) => step.uses === 'docker/build-push-action@v6');
+		expect(build?.with?.platforms).toBe('${{ matrix.platform }}');
+		expect(
+			images.steps.filter((step) => step.uses?.startsWith('aquasecurity/trivy-action@')).length
+		).toBe(3);
+		const scans = images.steps.filter((step) =>
+			step.uses?.startsWith('aquasecurity/trivy-action@')
+		);
+		expect(
+			scans.some(
+				(step) =>
+					step.with?.severity === 'CRITICAL' &&
+					step.with?.['exit-code'] === '1' &&
+					step.with?.['ignore-unfixed'] !== true
+			)
+		).toBe(true);
+		expect(
+			scans.some(
+				(step) =>
+					step.with?.severity === 'HIGH' &&
+					step.with?.['exit-code'] === '1' &&
+					step.with?.['ignore-unfixed'] === true
+			)
+		).toBe(true);
+		expect(images.steps.some((step) => step.run?.includes('scripts/smoke-image.sh'))).toBe(true);
+	});
 });
 
 describe('image tool pins', () => {
@@ -174,10 +218,14 @@ describe('release completeness gate', () => {
 	});
 
 	test('publishes releases through the canonical Gitea API', () => {
-		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
-		expect(release).toContain('secrets.GITEA_TOKEN');
-		expect(release).toContain('/api/v1/repos/${GITEA_REPOSITORY}/releases');
-		expect(release).not.toContain('gh release');
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { release: { steps: Array<{ run?: string; env?: Record<string, string> }> } };
+		};
+		const publish = workflow.jobs.release.steps.find(
+			(step) => step.run === 'node scripts/publish-gitea-release.mjs'
+		);
+		expect(publish?.env?.GITEA_SERVER_URL).toBe('https://code.lab.fwdslsh.dev');
+		expect(publish?.env?.GITEA_REPOSITORY).toBe('founder3/openpalm');
 	});
 
 	test('the shared gate validates all active packages and optional artifacts', () => {
@@ -202,7 +250,8 @@ describe('release completeness gate', () => {
 	test('required assets cover CLI, Admin, MCPB, and checksums without updater feeds', () => {
 		const required = requiredReleaseAssets('2.0.0-beta.1', productName);
 		for (const binary of CLI_BINARIES) expect(required).toContain(binary);
-		for (const asset of expectedAdminAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
+		for (const asset of expectedAdminAssets('2.0.0-beta.1', productName))
+			expect(required).toContain(asset);
 		expect(required).toContain(expectedClaudeExtensionAsset('2.0.0-beta.1'));
 		expect(required).toContain('OpenPalm-Admin-Setup-2.0.0-beta.1.exe');
 		expect(required).toContain('checksums-sha256.txt');
@@ -230,7 +279,9 @@ describe('release completeness gate', () => {
 		for (const name of withoutChecksums) writeFileSync(join(dir, name), `content-of-${name}`);
 
 		const lines = withoutChecksums.map((name) => {
-			const hash = createHash('sha256').update(readFileSync(join(dir, name))).digest('hex');
+			const hash = createHash('sha256')
+				.update(readFileSync(join(dir, name)))
+				.digest('hex');
 			return `${hash}  ${name}`;
 		});
 		writeFileSync(join(dir, 'checksums-sha256.txt'), `${lines.join('\n')}\n`);

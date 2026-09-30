@@ -102,7 +102,7 @@ bypasses Guardian.
 | `config/assistant` | `/home/opencode/.config/opencode` | read-only |
 | `knowledge/secrets/auth.json` | OpenCode auth path | read/write |
 | `system/assistant` | `/etc/opencode` | read-only |
-| `config/akm` | `/etc/akm` | read-only |
+| `config/akm` | `/etc/akm` | read-write; AKM's native scheduler activation only, no delegated ingress credentials |
 | `knowledge` | `/stash` | read/write |
 | `data/akm/cache` | `/opt/akm/cache` | read/write |
 | `data/akm/data` | `/opt/akm/data` | read/write |

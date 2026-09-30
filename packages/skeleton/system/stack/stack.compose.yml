@@ -12,7 +12,7 @@ x-logging: &logging
 
 services:
   assistant:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.14.0}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.14.0-beta.1}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -34,6 +34,12 @@ services:
       AKM_CACHE_DIR: /opt/akm/cache
       AKM_DATA_DIR: /opt/akm/data
       AKM_STATE_DIR: /opt/akm/data/state
+      TZ: ${OP_TIMEZONE:-UTC}
+      OPENPALM_AUTOMATIC_MEMORY: ${OP_AUTOMATIC_MEMORY:-1}
+      AKM_AUTO_MEMORY: "0"
+      AKM_AUTO_LEARNING: "0"
+      AKM_REDACT_HIGH_ENTROPY: "1"
+      AKM_REDACT_PII: "1"
       OPENCODE_API_URL: http://127.0.0.1:4096
       TERM: xterm-256color
     ports:
@@ -51,7 +57,9 @@ services:
       # exposing the delegated Guardian/portal secret directory to the agent.
       - ${OP_HOME:?}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
       - ${OP_HOME:?}/system/assistant:/etc/opencode:ro
-      - ${OP_HOME:?}/config/akm:/etc/akm:ro
+      # AKM owns scheduler.enabled and writes it atomically when tasks pause/resume.
+      # This operator-only config contains no delegated Guardian/portal credentials.
+      - ${OP_HOME:?}/config/akm:/etc/akm
       - ${OP_HOME:?}/knowledge:/stash
       - ${OP_HOME:?}/data/akm/cache:/opt/akm/cache
       - ${OP_HOME:?}/data/akm/data:/opt/akm/data
@@ -60,11 +68,7 @@ services:
       - opencode_server_password
     networks: [agent_net]
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          curl -sf -u "opencode:$$(cat /run/secrets/opencode_server_password)"
-          http://127.0.0.1:4096/config >/dev/null
+      test: ["CMD", "openpalm-healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -72,7 +76,7 @@ services:
 
   guardian:
     profiles: [gateway, discord, slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.14.0}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.14.0-beta.1}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -135,7 +139,7 @@ services:
 
   discord:
     profiles: [discord]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.1}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -172,7 +176,7 @@ services:
 
   slack:
     profiles: [slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.1}
     init: true
     restart: unless-stopped
     logging: *logging

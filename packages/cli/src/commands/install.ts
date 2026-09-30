@@ -37,6 +37,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	if (classifyInstall(state.homeDir) !== 'not_installed') {
 		throw new Error('OpenPalm is already installed. Use `openpalm update` to refresh it.');
 	}
+	// Validate operator input before writing any installation state, so a typo
+	// remains a retryable fresh install rather than a half-materialized home.
+	const supplied = options.configFile
+		? parseStackConfig(await readConfigFile(options.configFile))
+		: null;
+	if (supplied && !supplied.ok) throw new Error(supplied.error);
 
 	if (options.start) {
 		const docker = await ensureDockerReady();
@@ -47,10 +53,8 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	await seedSkeletonFromEmbedded(applyHomeSeed, state.homeDir);
 	ensureRuntime(state);
 
-	if (options.configFile) {
-		const parsed = parseStackConfig(await readConfigFile(options.configFile));
-		if (!parsed.ok) throw new Error(parsed.error);
-		writeStackConfig(state.homeDir, parsed.config);
+	if (supplied?.ok) {
+		writeStackConfig(state.homeDir, supplied.config);
 	} else {
 		ensureStackConfig(state.homeDir);
 	}

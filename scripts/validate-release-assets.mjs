@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Validate the complete, updater-free OpenPalm 0.14 release asset set. */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -91,6 +91,7 @@ export function validateReleaseAssets(dir, version, productName = readElectronPr
 	const problems = [];
 	const manifestPath = join(dir, 'release-assets-manifest.json');
 	if (!existsSync(manifestPath)) return [`Missing ${manifestPath}`];
+	if (!lstatSync(manifestPath).isFile()) return ['Release manifest must be a regular file'];
 
 	let manifest;
 	try {
@@ -110,6 +111,18 @@ export function validateReleaseAssets(dir, version, productName = readElectronPr
 	}
 
 	const required = requiredReleaseAssets(version, productName);
+	let unsafeFiles = false;
+	for (const name of readdirSync(dir)) {
+		if (![...required, 'release-assets-manifest.json'].includes(name)) {
+			problems.push(`Unexpected release file: ${name}`);
+		}
+		const stat = lstatSync(join(dir, name));
+		if (!stat.isFile() || stat.size === 0) {
+			problems.push(`Not a nonempty regular release file: ${name}`);
+			unsafeFiles = true;
+		}
+	}
+	if (unsafeFiles) return problems;
 	const assets = new Set(Array.isArray(manifest.assets) ? manifest.assets : []);
 	if (assets.size !== (Array.isArray(manifest.assets) ? manifest.assets.length : 0)) {
 		problems.push('Release asset manifest contains duplicate filenames');
@@ -126,6 +139,15 @@ export function validateReleaseAssets(dir, version, productName = readElectronPr
 	const checksumsPath = join(dir, 'checksums-sha256.txt');
 	if (!existsSync(checksumsPath)) return [...problems, 'Missing checksums-sha256.txt'];
 	const checksums = readFileSync(checksumsPath, 'utf8');
+	const checksumNames = [];
+	for (const line of checksums.trimEnd().split('\n')) {
+		const match = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line);
+		if (!match || !required.includes(match[2]) || match[2] === 'checksums-sha256.txt') {
+			problems.push('Invalid or unexpected checksum entry');
+		} else checksumNames.push(match[2]);
+	}
+	if (new Set(checksumNames).size !== checksumNames.length)
+		problems.push('Duplicate checksum entries');
 	for (const name of required) {
 		if (name === 'checksums-sha256.txt' || !existsSync(join(dir, name))) continue;
 		const expected = checksumFor(checksums, name);

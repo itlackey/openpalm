@@ -5,6 +5,7 @@ readonly OPENCODE_PORT="${OPENCODE_PORT:-4096}"
 readonly TASK_SPOOL_DIR=/tmp/openpalm-crontabs
 readonly TASK_BIN_DIR=/tmp/openpalm-bin
 readonly TASK_CRONTAB="$TASK_SPOOL_DIR/openpalm"
+readonly RUNTIME_DIR=/tmp/openpalm-runtime
 
 prepare_identity() {
   if getent passwd "$(id -u)" >/dev/null 2>&1; then return; fi
@@ -38,6 +39,8 @@ prepare_filesystem() {
     agents/remote-read.md \
     agents/remote-full.md \
     agents/scheduled.md \
+    agents/memory.md \
+    lib/memory.js \
     plugins/akm.js; do
     if [ ! -r "${OPENCODE_CONFIG_DIR:-/etc/opencode}/$required" ]; then
       echo "assistant: managed OpenCode config is missing $required" >&2
@@ -91,26 +94,34 @@ write_cron_environment() {
     echo '# openpalm managed environment'
     echo 'SHELL=/bin/bash'
     echo "PATH=$PATH"
-    for name in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR AKM_STATE_DIR OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
+  for name in TZ HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR AKM_STATE_DIR OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
       if [ -n "${!name:-}" ]; then printf '%s=%s\n' "$name" "${!name}"; fi
     done
   } >"$file"
 }
 
 sync_tasks() {
-  if ! akm task sync --rebind >&2; then
-    echo 'assistant: task sync failed; the agent will continue without the invalid schedules' >&2
+  if akm task sync --rebind >&2; then
+    date +%s >"$RUNTIME_DIR/tasks-synced"
+  else
+    rm -f "$RUNTIME_DIR/tasks-synced"
+    echo 'assistant: task sync failed; health is degraded until schedules reconcile' >&2
+    return 1
   fi
 }
 
 start_scheduler() {
   install_crontab_shim
   write_cron_environment
-  sync_tasks
+  sync_tasks || true
   supercronic -inotify "$TASK_CRONTAB" &
+  scheduler_pid=$!
+  printf '%s\n' "$scheduler_pid" >"$RUNTIME_DIR/scheduler.pid"
   (
-    while sleep 60; do sync_tasks; done
+    while sleep 60; do sync_tasks || true; done
   ) &
+  reconciliation_pid=$!
+  printf '%s\n' "$reconciliation_pid" >"$RUNTIME_DIR/reconciliation.pid"
 }
 
 for binary in opencode akm supercronic; do
@@ -123,11 +134,28 @@ done
 prepare_identity
 prepare_filesystem
 load_opencode_password
+mkdir -p "$RUNTIME_DIR"
 start_scheduler
 
 cd /work
-exec opencode serve \
+opencode serve \
   --hostname 0.0.0.0 \
   --port "$OPENCODE_PORT" \
   --print-logs \
-  --log-level "${OPENCODE_LOG_LEVEL:-INFO}"
+  --log-level "${OPENCODE_LOG_LEVEL:-INFO}" &
+assistant_pid=$!
+printf '%s\n' "$assistant_pid" >"$RUNTIME_DIR/assistant.pid"
+
+stop_children() {
+  trap - TERM INT
+  kill "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" 2>/dev/null || true
+  wait "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" 2>/dev/null || true
+}
+trap 'stop_children; exit 0' TERM INT
+# Any essential child exiting stops the container. Compose restart policy
+# recovers all three together; cron resumes at future slots, never replays.
+status=0
+wait -n "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" || status=$?
+echo 'assistant: an essential process stopped; restarting the stack service' >&2
+stop_children
+exit "${status:-1}"

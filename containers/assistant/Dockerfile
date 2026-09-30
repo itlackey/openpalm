@@ -39,15 +39,16 @@ RUN bun install --frozen-lockfile --production --linker hoisted --filter @openpa
 FROM oven/bun:1.3.14-slim
 
 ARG TARGETARCH
-ARG SUPERCRONIC_VERSION=v0.2.48
+ARG SUPERCRONIC_VERSION=v0.2.49
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-      bash ca-certificates curl git libnss-wrapper \
+      bash ca-certificates curl git libnss-wrapper tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && case "${TARGETARCH}" in \
-      amd64) supercronic_sha=88c1b66b94c486f972fdd1a4d1f901e3e75ff04f749cddd60c5db573e3a33c6c ;; \
-      arm64) supercronic_sha=50ae8755e04fa72812d0a1bc47a112a856811cc91cce7b6c875c378a850788bc ;; \
+      amd64) supercronic_sha=a53ae236602c7338aba3fbaff40bda6300eae3b9fedb8261eb06cfe3724430c1 ;; \
+      arm64) supercronic_sha=02aa0cb229ba09050cba6638059dadb9eedc2276632ea43d6a57a2f8c1629dd5 ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl -fsSL --retry 5 --retry-all-errors \
@@ -59,13 +60,15 @@ RUN apt-get update \
 COPY --from=tools /repo/node_modules /opt/openpalm/tools/node_modules
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
 COPY containers/assistant/entrypoint.sh /usr/local/bin/openpalm-assistant
+COPY containers/assistant/healthcheck.sh /usr/local/bin/openpalm-healthcheck
+COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 RUN test -n "$PLATFORM_VERSION" \
-    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task \
+    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
     && mkdir -p /home/opencode /etc/opencode /opt/akm/cache /opt/akm/data/state /stash /work \
     && chown -R bun:bun /home/opencode /etc/opencode /opt/akm /stash /work \
     && chmod -R a+rwX /home/opencode /etc/opencode /opt/akm /stash /work
@@ -82,12 +85,18 @@ ENV HOME=/home/opencode \
     AKM_CACHE_DIR=/opt/akm/cache \
     AKM_DATA_DIR=/opt/akm/data \
     AKM_STATE_DIR=/opt/akm/data/state \
+    AKM_AUTO_MEMORY=0 \
+    AKM_AUTO_LEARNING=0 \
+    AKM_REDACT_HIGH_ENTROPY=1 \
+    AKM_REDACT_PII=1 \
+    OPENPALM_AUTOMATIC_MEMORY=1 \
+    TZ=UTC \
     PATH="/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/usr/local/bun-node-fallback-bin:/usr/local/bin:/usr/bin:/bin"
 
 WORKDIR /work
 EXPOSE 4096
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-  CMD bash -c 'test -s "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}" && curl -sf -u "opencode:$(tr -d "\r\n" <"${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")" http://127.0.0.1:${OPENCODE_PORT:-4096}/config >/dev/null' || exit 1
+  CMD openpalm-healthcheck
 
 ENTRYPOINT ["/usr/local/bin/openpalm-assistant"]
 USER bun

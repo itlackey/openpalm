@@ -81,6 +81,12 @@ The default import may copy:
 Old AKM configuration is copied to `knowledge/imported-config/akm/` for manual
 reference. It is not activated because 0.14 owns the scheduled engine boundary.
 
+The bundled AKM 0.9.18 uses host-local scheduler activation rather than
+`schedule[].enabled`. An old v4 task containing that retired field needs
+reviewed AKM migration before adoption; do not copy old scheduler activation
+into the fresh configuration. Adoption removes any stale local activation
+before publishing the validated prompt source and leaves it paused.
+
 The importer must distinguish authored knowledge from credentials, environment
 files, generated indexes, caches, databases, and run state. Being below
 `knowledge/` is not sufficient by itself to make a file safe to activate.

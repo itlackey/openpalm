@@ -33,6 +33,46 @@ import {
 	type StackConfig
 } from '@openpalm/lib';
 
+export function externalAdminUrl(value: unknown): string {
+	if (typeof value !== 'string' || value.length > 4_096) throw new Error('Invalid external URL.');
+	const url = new URL(value);
+	if (url.protocol !== 'https:' || url.username || url.password) {
+		throw new Error('Only secure HTTPS links without embedded credentials can be opened.');
+	}
+	return url.href;
+}
+
+export function adminPortalTokens(
+	value: unknown,
+	configured: Record<string, boolean>
+): { portal: PortalName; botToken?: string; appToken?: string } {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error('Invalid portal token operation');
+	}
+	const input = value as { portal?: unknown; botToken?: unknown; appToken?: unknown };
+	if (!isPortalName(input.portal)) throw new Error('Portal must be discord or slack.');
+	for (const token of [input.botToken, input.appToken]) {
+		if (token !== undefined && typeof token !== 'string') throw new Error('Invalid portal token.');
+	}
+	const botToken = input.botToken as string | undefined;
+	const appToken = input.appToken as string | undefined;
+	if (input.portal === 'discord' && !botToken) throw new Error('Discord bot token is required.');
+	if (
+		input.portal === 'slack' &&
+		((!configured.slack_bot_token && !botToken) || (!configured.slack_app_token && !appToken))
+	) {
+		throw new Error('Both Slack tokens are required the first time.');
+	}
+	if (input.portal === 'slack' && !botToken && !appToken) {
+		throw new Error('Enter at least one Slack token to replace.');
+	}
+	return {
+		portal: input.portal,
+		...(botToken ? { botToken } : {}),
+		...(input.portal === 'slack' && appToken ? { appToken } : {})
+	};
+}
+
 export async function installFromAdmin(config: unknown = defaultStackConfig()): Promise<string> {
 	const state = createOpenPalmState();
 	if (classifyInstall(state.homeDir) !== 'not_installed') {

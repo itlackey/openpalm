@@ -1,9 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import process from 'node:process';
+import { retainAdminE2eHome } from './admin-e2e-retention.mjs';
 
 const packageDirectory = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(packageDirectory, '../..');
@@ -16,7 +25,7 @@ const outputDirectory =
 	mkdtempSync(join(tmpdir(), 'openpalm-admin-e2e-artifacts-'));
 const projectName = `openpalm-admin-e2e-${process.pid}`;
 const keepRunning = process.env.OPENPALM_ADMIN_E2E_KEEP_RUNNING === 'true';
-const keepHome = process.env.OPENPALM_ADMIN_E2E_KEEP_HOME === 'true' || keepRunning;
+let keepHome = retainAdminE2eHome(process.env);
 
 if (!isAbsolute(homeDirectory) || !isAbsolute(outputDirectory)) {
 	throw new Error('Admin E2E home and output paths must be absolute.');
@@ -99,6 +108,7 @@ try {
 		OP_PROJECT_NAME: projectName,
 		OPENPALM_REPO_ROOT: repositoryRoot,
 		OPENPALM_ADMIN_E2E_OUTPUT: outputDirectory,
+		OPENPALM_ADMIN_E2E_KEEP_HOME: String(keepHome),
 		OPENPALM_ADMIN_E2E_ASSISTANT_PORT: String(assistantPort),
 		OPENPALM_ADMIN_E2E_GUARDIAN_PORT: String(guardianPort),
 		ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
@@ -118,9 +128,22 @@ try {
 	const report = JSON.parse(readFileSync(reportPath, 'utf8'));
 	if (report.ok !== true) throw new Error('Admin E2E report did not indicate success.');
 	process.stdout.write(`Admin E2E artifacts: ${outputDirectory}\n`);
-	if (keepHome) process.stdout.write(`Admin E2E home retained: ${homeDirectory}\n`);
 	exitCode = 0;
 } finally {
+	keepHome ||= retainAdminE2eHome(process.env, homeDirectory);
+	for (const name of ['report.json', 'failure.json']) {
+		const path = join(outputDirectory, name);
+		if (!existsSync(path)) continue;
+		try {
+			const report = JSON.parse(readFileSync(path, 'utf8'));
+			report.homeRetained = keepHome;
+			writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+		} catch {
+			keepHome = true;
+			exitCode = 1;
+			process.stderr.write('Could not record E2E retention metadata; private home retained.\n');
+		}
+	}
 	if (!keepRunning) {
 		try {
 			cleanupStack();
@@ -131,6 +154,7 @@ try {
 	}
 	rmSync(join(outputDirectory, 'electron-profile'), { recursive: true, force: true });
 	if (generatedRoot && !keepHome) rmSync(generatedRoot, { recursive: true, force: true });
+	if (keepHome) process.stdout.write(`Admin E2E private home retained: ${homeDirectory}\n`);
 }
 
 process.exitCode = exitCode;

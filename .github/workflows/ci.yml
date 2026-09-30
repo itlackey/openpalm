@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - 'release/**'
+      - refactor/lean-stack
 
 permissions:
   contents: read

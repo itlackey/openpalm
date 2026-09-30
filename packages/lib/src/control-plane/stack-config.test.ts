@@ -7,6 +7,8 @@ import {
 	credentialRegistryFile,
 	defaultStackConfig,
 	ensureStackConfig,
+	hostTimezone,
+	stackConfigEnv,
 	parseStackConfig,
 	readStackConfig,
 	stackConfigFile,
@@ -29,7 +31,12 @@ describe('StackConfig', () => {
 	it('defaults to one assistant, three reusable credentials, and no ingress intent', () => {
 		expect(defaultStackConfig()).toEqual({
 			version: 1,
-			assistant: { bindAddress: '127.0.0.1', port: 3810 },
+			assistant: {
+				bindAddress: '127.0.0.1',
+				port: 3810,
+				timezone: hostTimezone(),
+				automaticMemory: true
+			},
 			gateway: { enabled: false, bindAddress: '127.0.0.1', port: 3830 },
 			credentials: {
 				owner: { id: 'owner', policy: 'full' },
@@ -48,6 +55,36 @@ describe('StackConfig', () => {
 					access: { channels: [], users: [], blockedUsers: [] }
 				}
 			}
+		});
+	});
+
+	it('validates timezone and memory preferences and derives nonsecret runtime values', () => {
+		const config = defaultStackConfig();
+		config.assistant.timezone = 'America/Chicago';
+		config.assistant.automaticMemory = false;
+		expect(parseStackConfig(config).ok).toBe(true);
+		expect(stackConfigEnv(config)).toMatchObject({
+			OP_TIMEZONE: 'America/Chicago',
+			OP_AUTOMATIC_MEMORY: '0'
+		});
+		expect(
+			parseStackConfig({ ...config, assistant: { ...config.assistant, timezone: 'No/Such_Zone' } })
+				.ok
+		).toBe(false);
+		expect(
+			parseStackConfig({ ...config, assistant: { ...config.assistant, timezone: 'UTC\nBAD=1' } }).ok
+		).toBe(false);
+		expect(
+			parseStackConfig({ ...config, assistant: { ...config.assistant, automaticMemory: 'false' } })
+				.ok
+		).toBe(false);
+		const existing = parseStackConfig({
+			...config,
+			assistant: { bindAddress: '127.0.0.1', port: 3810 }
+		});
+		expect(existing.ok && existing.config.assistant).toMatchObject({
+			timezone: hostTimezone(),
+			automaticMemory: true
 		});
 	});
 

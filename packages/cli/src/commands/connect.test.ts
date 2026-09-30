@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import cliPackage from '../../package.json' with { type: 'json' };
+
 import { bootstrapInstall } from './install.js';
 import { connectionDetails } from './connect.js';
 
@@ -47,6 +49,6 @@ describe('connection guidance', () => {
 			showKey: true
 		});
 		expect(revealed.credentialKey?.length).toBeGreaterThanOrEqual(32);
-		expect(revealed.extension).toContain('openpalm-claude-desktop-0.14.0.mcpb');
+		expect(revealed.extension).toContain(`openpalm-claude-desktop-${cliPackage.version}.mcpb`);
 	});
 });

@@ -1,46 +1,46 @@
 {
-	"name": "openpalm",
-	"version": "0.14.0",
-	"private": true,
-	"license": "MPL-2.0",
-	"workspaces": [
-		"packages/lib",
-		"packages/skeleton",
-		"packages/guardian",
-		"packages/cli",
-		"packages/portal",
-		"packages/electron",
-		"packages/claude-desktop",
-		"containers/assistant/tools",
-		"containers/guardian/tools"
-	],
-	"scripts": {
-		"admin:dev": "bun run --cwd packages/electron bundle && OP_HOME=/tmp/openpalm-admin-dev OPENPALM_REPO_ROOT=\"$PWD\" bun run --cwd packages/electron start",
-		"admin:e2e": "bun run --cwd packages/electron test:e2e",
-		"guardian:dev": "bun run packages/guardian/src/server.ts",
-		"guardian:test": "bun run --cwd packages/guardian test",
-		"portal:discord:dev": "PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts",
-		"portal:slack:dev": "PORTAL_ADAPTER=slack bun run packages/portal/src/index.ts",
-		"cli:test": "bun run --cwd packages/cli test",
-		"install:dev": "OP_HOME=/tmp/openpalm-dev bun run packages/cli/src/main.ts install --no-start",
-		"lib:test": "bun run --cwd packages/lib test",
-		"dev:setup": "./scripts/dev-setup.sh",
-		"dev:stack": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
-		"dev:build": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
-		"_dev:stack:note": "The dev shortcut mirrors the two-file runtime: one managed stack plus the user overlay.",
-		"admin:check": "bun run --cwd packages/electron typecheck",
-		"test": "bun run lib:test && bun run guardian:test && bun run cli:test && bun run --cwd packages/claude-desktop test && bun run --cwd packages/electron test && bun test --isolate packages/portal/src/*.test.ts scripts/*.test.ts",
-		"check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck && bun run --cwd packages/claude-desktop typecheck",
-		"lint": "biome lint package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs",
-		"lint:fix": "bun run lint --write",
-		"format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.5.6"
-	},
-	"overrides": {
-		"@discordjs/rest": "2.6.3",
-		"@huggingface/transformers": "4.3.0",
-		"tmp": "0.2.7"
-	}
+  "name": "openpalm",
+  "version": "0.14.0-beta.1",
+  "private": true,
+  "license": "MPL-2.0",
+  "workspaces": [
+    "packages/lib",
+    "packages/skeleton",
+    "packages/guardian",
+    "packages/cli",
+    "packages/portal",
+    "packages/electron",
+    "packages/claude-desktop",
+    "containers/assistant/tools",
+    "containers/guardian/tools"
+  ],
+  "scripts": {
+    "admin:dev": "bun run --cwd packages/electron bundle && OP_HOME=/tmp/openpalm-admin-dev OPENPALM_REPO_ROOT=\"$PWD\" bun run --cwd packages/electron start",
+    "admin:e2e": "bun run --cwd packages/electron test:e2e",
+    "guardian:dev": "bun run packages/guardian/src/server.ts",
+    "guardian:test": "bun run --cwd packages/guardian test",
+    "portal:discord:dev": "PORTAL_ADAPTER=discord bun run packages/portal/src/index.ts",
+    "portal:slack:dev": "PORTAL_ADAPTER=slack bun run packages/portal/src/index.ts",
+    "cli:test": "bun run --cwd packages/cli test",
+    "install:dev": "OP_HOME=/tmp/openpalm-dev bun run packages/cli/src/main.ts install --no-start",
+    "lib:test": "bun run --cwd packages/lib test",
+    "dev:setup": "./scripts/dev-setup.sh",
+    "dev:stack": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml --env-file .dev/state/stack.env up -d",
+    "dev:build": "./scripts/dev-setup.sh && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/stack.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
+    "_dev:stack:note": "The dev shortcut mirrors the two-file runtime: one managed stack plus the user overlay.",
+    "admin:check": "bun run --cwd packages/electron typecheck",
+    "test": "bun run lib:test && bun run guardian:test && bun run cli:test && bun run --cwd packages/claude-desktop test && bun run --cwd packages/electron test && bun test --isolate packages/portal/src/*.test.ts scripts/*.test.ts",
+    "check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck && bun run --cwd packages/claude-desktop typecheck",
+    "lint": "biome lint package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs",
+    "lint:fix": "bun run lint --write",
+    "format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14"
+  },
+  "overrides": {
+    "@discordjs/rest": "2.6.3",
+    "@huggingface/transformers": "4.3.0",
+    "tmp": "0.2.7"
+  }
 }

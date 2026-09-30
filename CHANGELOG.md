@@ -6,7 +6,10 @@ and remain available in Git history.
 
 ## [Unreleased]
 
-## [0.14.0] - 2026-09-18
+## [0.14.0-beta.1] - 2026-09-30
+
+This is a testing prerelease, not the stable 0.14.0 release. Live verification
+and platform-specific limitations are recorded in the release documentation.
 
 ### Breaking
 
@@ -23,6 +26,11 @@ and remain available in Git history.
 
 - Native OpenCode provider onboarding with a real no-tool readiness request.
 - Persistent AKM knowledge and guarded recurring work with durable results.
+- AKM CLI 0.9.18 and OpenCode plugin 0.9.18202609300340. Automatic personal
+  memory uses the existing native provider, bounded no-tool extraction, and
+  AKM storage; it can be disabled without changing provider authentication.
+- Host-detected, configurable schedule timezone; supervised scheduling with
+  health checks and future-only recovery after downtime.
 - A dry-run-first importer for knowledge, workspace files, supported Assistant
   preferences, staged tasks, and explicitly selected secrets or portal maps.
 - Policy-scoped Guardian MCP with agent sessions, jobs, interaction responses,
@@ -53,3 +61,9 @@ and remain available in Git history.
   portal manager, task manager, and lifecycle interface.
 - Release gates build and verify the CLI, Assistant, Guardian, Portal, Admin,
   and Claude Desktop extension from one frozen workspace lock.
+- Explicit updates pull versioned images and recreate enabled containers;
+  locally built images can be applied with `--no-pull`.
+- Canonical Gitea releases are staged, attachment-hash verified, and published
+  only when complete. GitHub remains the cross-platform build mirror.
+- The local Admin renderer uses small task-focused modules and executable
+  behavior tests, with packaged startup checks for release artifacts.

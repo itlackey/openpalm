@@ -40,8 +40,10 @@ import electronPackage from '../package.json' with { type: 'json' };
 import { ADMIN_CHANNELS, type AdminSnapshot, type StackAction } from './admin-types.js';
 import {
 	adminPortalMappings,
+	adminPortalTokens,
 	backupFromAdmin,
 	createAdminCredential,
+	externalAdminUrl,
 	importFromAdmin,
 	installFromAdmin,
 	mapAdminPortalUser,
@@ -78,15 +80,6 @@ function connectionSnapshot(homeDir: string): NonNullable<AdminSnapshot['connect
 		mcp: connectionDetails(homeDir, 'mcp'),
 		claude: connectionDetails(homeDir, 'claude', { claudeExtension: claudeExtensionUrl })
 	};
-}
-
-function externalUrl(value: unknown): string {
-	if (typeof value !== 'string' || value.length > 4_096) throw new Error('Invalid external URL.');
-	const url = new URL(value);
-	if (url.protocol !== 'https:' || url.username || url.password) {
-		throw new Error('Only secure HTTPS links without embedded credentials can be opened.');
-	}
-	return url.href;
 }
 
 function oauthInput(value: unknown): {
@@ -268,7 +261,7 @@ export function registerAdminIpc(): void {
 			input.method,
 			input.inputs
 		);
-		await shell.openExternal(externalUrl(authorization.url));
+		await shell.openExternal(externalAdminUrl(authorization.url));
 		return authorization;
 	});
 	ipcMain.handle(ADMIN_CHANNELS.providerOAuthFinish, async (event, value: unknown) => {
@@ -321,7 +314,7 @@ export function registerAdminIpc(): void {
 	});
 	ipcMain.handle(ADMIN_CHANNELS.openExternal, async (event, value: unknown) => {
 		requireAdminSender(event);
-		await shell.openExternal(externalUrl(value));
+		await shell.openExternal(externalAdminUrl(value));
 	});
 	ipcMain.handle(ADMIN_CHANNELS.chooseDirectory, async (event, value: unknown) => {
 		requireAdminSender(event);
@@ -386,33 +379,17 @@ export function registerAdminIpc(): void {
 		const config = readStackConfig(current.homeDir);
 		if (!config.ok) throw new Error(config.error);
 		const configured = portalSecretConfigured(current.homeDir, input.portal);
-		const botToken = typeof input.botToken === 'string' ? input.botToken : undefined;
-		const appToken = typeof input.appToken === 'string' ? input.appToken : undefined;
-		const hasBotToken = Boolean(botToken);
-		const hasAppToken = Boolean(appToken);
-		if (input.portal === 'discord' && !hasBotToken) {
-			throw new Error('Discord bot token is required.');
-		}
-		if (
-			input.portal === 'slack' &&
-			((!configured.slack_bot_token && !hasBotToken) ||
-				(!configured.slack_app_token && !hasAppToken))
-		) {
-			throw new Error('Both Slack tokens are required the first time.');
-		}
-		if (input.portal === 'slack' && !hasBotToken && !hasAppToken) {
-			throw new Error('Enter at least one Slack token to replace.');
-		}
-		if (hasBotToken) {
+		const { botToken, appToken } = adminPortalTokens(value, configured);
+		if (botToken) {
 			writePortalSecret(
 				current.homeDir,
 				input.portal,
 				input.portal === 'discord' ? 'discord_bot_token' : 'slack_bot_token',
-				botToken as string
+				botToken
 			);
 		}
-		if (input.portal === 'slack' && hasAppToken) {
-			writePortalSecret(current.homeDir, 'slack', 'slack_app_token', appToken as string);
+		if (input.portal === 'slack' && appToken) {
+			writePortalSecret(current.homeDir, 'slack', 'slack_app_token', appToken);
 		}
 		return config.config.portals[input.portal].enabled
 			? runAdminAction('restart')
@@ -449,7 +426,7 @@ export function createAdminWindow(options: { show?: boolean } = {}): BrowserWind
 	});
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		try {
-			void shell.openExternal(externalUrl(url)).catch(() => undefined);
+			void shell.openExternal(externalAdminUrl(url)).catch(() => undefined);
 		} catch {
 			// Keep untrusted or malformed renderer navigation inside the deny-only boundary.
 		}

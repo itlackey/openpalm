@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { readEnvFile, stackEnvFile } from './foundation.js';
-import { readStackConfig } from './stack-config.js';
+import { readStackConfig, validTimezone } from './stack-config.js';
 import libPackage from '../../package.json' with { type: 'json' };
 
 const SECRET_KEY = /(?:password|secret|token|api[_-]?key|credential|private[_-]?key)/i;
@@ -40,7 +40,7 @@ const CORE_MOUNTS: Readonly<Record<string, readonly MountGrant[]>> = {
 			readOnly: false
 		},
 		{ source: 'system/assistant', target: '/etc/opencode', readOnly: true },
-		{ source: 'config/akm', target: '/etc/akm', readOnly: true },
+		{ source: 'config/akm', target: '/etc/akm', readOnly: false },
 		{ source: 'knowledge', target: '/stash', readOnly: false },
 		{ source: 'data/akm/cache', target: '/opt/akm/cache', readOnly: false },
 		{ source: 'data/akm/data', target: '/opt/akm/data', readOnly: false },
@@ -113,6 +113,10 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 		AKM_CONFIG_DIR: '/etc/akm',
 		AKM_DATA_DIR: '/opt/akm/data',
 		AKM_STATE_DIR: '/opt/akm/data/state',
+		AKM_AUTO_MEMORY: '0',
+		AKM_AUTO_LEARNING: '0',
+		AKM_REDACT_HIGH_ENTROPY: '1',
+		AKM_REDACT_PII: '1',
 		HOME: '/home/opencode',
 		OPENCODE_CONFIG_DIR: '/etc/opencode',
 		OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
@@ -164,7 +168,7 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 };
 
 const DYNAMIC_ENVIRONMENT: Readonly<Record<string, ReadonlySet<string>>> = {
-	assistant: new Set(),
+	assistant: new Set(['TZ', 'OPENPALM_AUTOMATIC_MEMORY']),
 	guardian: new Set([
 		'GUARDIAN_ALLOWED_ORIGINS',
 		'GUARDIAN_ASSISTANT_TIMEOUT_MS',
@@ -261,10 +265,7 @@ function exactStringArray(value: unknown, expected: readonly string[]): boolean 
 function expectedHealthcheck(name: string): readonly string[] {
 	switch (name) {
 		case 'assistant':
-			return [
-				'CMD-SHELL',
-				'curl -sf -u "opencode:$$(cat /run/secrets/opencode_server_password)" http://127.0.0.1:4096/config >/dev/null'
-			];
+			return ['CMD', 'openpalm-healthcheck'];
 		case 'guardian':
 			return ['CMD', 'curl', '-sf', 'http://127.0.0.1:8080/health'];
 		case 'discord':
@@ -362,6 +363,13 @@ function auditCoreEnvironment(
 	for (const key of Object.keys(environment)) {
 		if (!Object.hasOwn(fixed, key) && !dynamic.has(key)) {
 			issues.push(`service ${name} has unsupported environment key ${key}`);
+		}
+	}
+	if (name === 'assistant') {
+		if (!validTimezone(environment.TZ))
+			issues.push('service assistant must set a valid IANA timezone');
+		if (!['0', '1'].includes(String(environment.OPENPALM_AUTOMATIC_MEMORY))) {
+			issues.push('service assistant automatic memory must be 0 or 1');
 		}
 	}
 	if (name === 'guardian') {
@@ -588,6 +596,17 @@ export function auditCompose(
 			}
 		}
 		if (name === 'assistant') {
+			if (stackConfig.ok) {
+				if (environment.TZ !== stackConfig.config.assistant.timezone) {
+					issues.push('assistant timezone must match StackConfig intent');
+				}
+				if (
+					environment.OPENPALM_AUTOMATIC_MEMORY !==
+					(stackConfig.config.assistant.automaticMemory ? '1' : '0')
+				) {
+					issues.push('assistant automatic memory must match StackConfig intent');
+				}
+			}
 			const ports = Array.isArray(service.ports) ? service.ports : [];
 			if (!stackConfig.ok) {
 				issues.push(`assistant port cannot be audited: ${stackConfig.error}`);

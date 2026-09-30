@@ -42,7 +42,7 @@ describe('config commands', () => {
 			credentials: Record<string, { policy: string }>;
 			portals: { discord: { credential: string } };
 		};
-		expect(config.assistant).toEqual({ bindAddress: '0.0.0.0', port: 4910 });
+		expect(config.assistant).toMatchObject({ bindAddress: '0.0.0.0', port: 4910 });
 		expect(config.credentials['support-bot']?.policy).toBe('read');
 		expect(config.portals.discord.credential).toBe('support-bot');
 		const env = readFileSync(join(process.env.OP_HOME, 'state', 'stack.env'), 'utf8');
@@ -56,6 +56,35 @@ describe('config commands', () => {
 		) as { default: string; credentials: Record<string, string> };
 		expect(bundle.default).toBe('support-bot');
 		expect(Object.keys(bundle.credentials)).toEqual(['support-bot']);
+	});
+
+	it('changes timezone and memory without resetting unrelated Assistant preferences', async () => {
+		const home = await setup();
+		await main([
+			'config',
+			'assistant',
+			'--timezone',
+			'America/Chicago',
+			'--memory',
+			'off',
+			'--no-apply'
+		]);
+		await main(['config', 'assistant', '--port', '4911', '--no-apply']);
+		const path = join(home, 'state', 'stack.json');
+		const before = readFileSync(path, 'utf8');
+		expect(JSON.parse(before).assistant).toMatchObject({
+			port: 4911,
+			timezone: 'America/Chicago',
+			automaticMemory: false
+		});
+		await expect(
+			main(['config', 'assistant', '--timezone', 'Not/AZone', '--no-apply'])
+		).rejects.toThrow();
+		expect(readFileSync(path, 'utf8')).toBe(before);
+		await expect(main(['config', 'assistant', '--memory', 'maybe', '--no-apply'])).rejects.toThrow(
+			'--memory must be on or off'
+		);
+		expect(readFileSync(path, 'utf8')).toBe(before);
 	});
 
 	it('configures and disables the Guardian OAuth resource server without Docker', async () => {

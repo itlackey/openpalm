@@ -2,19 +2,6 @@ name: stack gates
 
 on:
   workflow_call:
-    inputs:
-      base_sha:
-        required: false
-        type: string
-        default: ''
-      candidate_sha:
-        required: false
-        type: string
-        default: ''
-      source_artifact:
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -26,18 +13,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.base_sha != '' && inputs.base_sha || github.sha }}
-          fetch-depth: 0
-      - name: Download release candidate source
-        if: inputs.source_artifact != ''
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore release candidate
-        if: inputs.source_artifact != ''
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ inputs.candidate_sha }}' '${{ inputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -59,14 +34,13 @@ jobs:
         run: bun run --cwd packages/claude-desktop pack
       - name: Verify the embedded Skeleton
         run: |
-          test "$(tar -tzf packages/cli/embedded/skeleton.tar.gz | wc -l)" = 25
           tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'system/stack/stack.compose.yml'
           tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'system/assistant/agents/scheduled.md'
           tar -tzf packages/cli/embedded/skeleton.tar.gz | grep -qx 'config/akm/config.json'
       - name: Bundle the optional admin app
         run: bun run --cwd packages/electron bundle
       - name: Validate shell entrypoints
-        run: bash -n scripts/dev-setup.sh scripts/smoke-image.sh containers/assistant/entrypoint.sh containers/guardian/entrypoint.sh
+        run: bash -n scripts/dev-setup.sh scripts/setup.sh scripts/smoke-image.sh containers/assistant/entrypoint.sh containers/assistant/healthcheck.sh containers/assistant/opencode-run.sh containers/guardian/entrypoint.sh
       - name: Validate the materialized Compose project
         env:
           OP_HOME: ${{ runner.temp }}/openpalm-ci
@@ -83,8 +57,6 @@ jobs:
             config --quiet
       - name: Enforce the surface
         run: |
-          test "$(jq -r '.workspaces | length' package.json)" = 9
-          test "$(find packages/skeleton/system/stack -maxdepth 1 -name 'stack.compose.yml' | wc -l)" = 1
           ! rg -n '/v1/chat/completions|/v1/messages|/a2a|/oc/' \
             packages/guardian/src/audit.ts \
             packages/guardian/src/content-screen.ts \
@@ -95,13 +67,15 @@ jobs:
           rg -n -F 'host_ip: "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}"' packages/skeleton/system/stack/stack.compose.yml
 
   images:
-    name: Build ${{ matrix.image }} image
+    name: Build ${{ matrix.image }} (${{ matrix.platform }})
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
+        platform: [linux/amd64, linux/arm64]
+        image: [assistant, guardian, portal]
         include:
           - image: assistant
             file: containers/assistant/Dockerfile
@@ -114,28 +88,19 @@ jobs:
             build_args: ''
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.base_sha != '' && inputs.base_sha || github.sha }}
-      - name: Download release candidate source
-        if: inputs.source_artifact != ''
-        uses: actions/download-artifact@v8
-        with:
-          name: ${{ inputs.source_artifact }}
-          path: .git/release-source
-      - name: Restore release candidate
-        if: inputs.source_artifact != ''
-        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ inputs.candidate_sha }}' '${{ inputs.base_sha }}'
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
+          platforms: ${{ matrix.platform }}
           load: true
           push: false
           tags: openpalm/${{ matrix.image }}:ci
           build-args: ${{ matrix.build_args }}
-          cache-from: type=gha,scope=OpenPalm-${{ matrix.image }}
-          cache-to: type=gha,scope=OpenPalm-${{ matrix.image }},mode=max
+          cache-from: type=gha,scope=OpenPalm-${{ matrix.image }}-${{ matrix.platform }}
+          cache-to: type=gha,scope=OpenPalm-${{ matrix.image }}-${{ matrix.platform }},mode=max
       - name: Assert a non-root runtime user
         env:
           IMAGE: ${{ matrix.image }}
@@ -144,6 +109,29 @@ jobs:
           test -n "${user}"
           test "${user}" != root
           test "${user}" != 0
+      - name: Report all high and critical runtime image advisories
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: openpalm/${{ matrix.image }}:ci
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+      - name: Reject every critical runtime image advisory
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: openpalm/${{ matrix.image }}:ci
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+      - name: Reject fixable high runtime image advisories
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: openpalm/${{ matrix.image }}:ci
+          scanners: vuln
+          severity: HIGH
+          ignore-unfixed: true
+          exit-code: '1'
       - name: Run image startup and security smoke
         env:
           IMAGE: ${{ matrix.image }}

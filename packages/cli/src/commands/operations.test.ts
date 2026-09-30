@@ -11,6 +11,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+	acquireStackLock,
+	buildComposeOptions,
+	composeConfigJson,
+	createOpenPalmState,
+	releaseStackLock
+} from '@openpalm/lib';
+
 import { main } from '../main.js';
 import { diagnoseStack } from './doctor.js';
 import { bootstrapInstall } from './install.js';
@@ -70,6 +78,82 @@ describe('operational command wiring', () => {
 		await main(['import', '--from', source, '--apply', '--json']);
 		expect(readFileSync(join(home, 'knowledge', 'notes', 'portable.md'), 'utf8')).toBe('portable');
 		expect(readFileSync(join(source, 'knowledge', 'notes', 'portable.md'))).toEqual(before);
+	});
+
+	it('rejects invalid installation input without materializing a home', async () => {
+		const root = fixture();
+		process.env.OP_HOME = join(root, 'home');
+		const configFile = join(root, 'invalid.json');
+		writeFileSync(configFile, '{');
+		await expect(bootstrapInstall({ start: false, configFile })).rejects.toThrow(
+			'Invalid stack config JSON'
+		);
+		expect(existsSync(process.env.OP_HOME)).toBe(false);
+		writeFileSync(configFile, JSON.stringify({ version: 999 }));
+		await expect(bootstrapInstall({ start: false, configFile })).rejects.toThrow();
+		expect(existsSync(process.env.OP_HOME)).toBe(false);
+	});
+
+	it('refuses concurrent updates before touching managed assets', async () => {
+		const root = fixture();
+		const home = await install(root);
+		const managed = join(home, 'system', 'assistant', 'AGENTS.md');
+		writeFileSync(managed, 'unchanged while lifecycle operation is active');
+		const lock = acquireStackLock(join(home, 'data'));
+		expect(lock).not.toBeNull();
+		try {
+			await expect(updateStack({ start: false })).rejects.toThrow('lifecycle_in_progress');
+			expect(readFileSync(managed, 'utf8')).toBe('unchanged while lifecycle operation is active');
+		} finally {
+			releaseStackLock(lock);
+		}
+	});
+
+	it('pulls and recreates on update, preserves user files, and allows local images', async () => {
+		const root = fixture();
+		const home = await install(root);
+		const resolved = await composeConfigJson(buildComposeOptions(createOpenPalmState()));
+		if (!resolved.ok) throw new Error(resolved.stderr);
+		const fakeDocker = join(root, 'docker');
+		const callsPath = join(root, 'docker-calls.jsonl');
+		writeFileSync(
+			fakeDocker,
+			`#!${process.execPath}
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(callsPath)}, JSON.stringify(args) + '\\n');
+if (args.includes('config') && args.includes('--format')) console.log(${JSON.stringify(JSON.stringify(resolved.config))});
+`
+		);
+		chmodSync(fakeDocker, 0o755);
+		process.env.OP_DOCKER_BIN = fakeDocker;
+		const knowledgeFile = join(home, 'knowledge', 'release-test.md');
+		const configFile = join(home, 'config', 'assistant', 'persona.md');
+		const credentialFile = join(home, 'state', 'credentials', 'owner', 'key');
+		writeFileSync(knowledgeFile, 'user knowledge survives');
+		writeFileSync(configFile, 'user persona survives');
+		const credential = readFileSync(credentialFile);
+		await updateStack({ start: true });
+		await updateStack({ start: true, pull: false });
+		const calls = readFileSync(callsPath, 'utf8')
+			.trim()
+			.split('\n')
+			.map((line) => JSON.parse(line) as string[]);
+		const updates = calls.filter((args) => args.includes('up'));
+		expect(updates).toHaveLength(2);
+		expect(updates[0]?.slice(-7)).toEqual([
+			'up',
+			'-d',
+			'--pull',
+			'always',
+			'--force-recreate',
+			'--remove-orphans',
+			'--wait'
+		]);
+		expect(updates[1]).toContain('never');
+		expect(readFileSync(knowledgeFile, 'utf8')).toBe('user knowledge survives');
+		expect(readFileSync(configFile, 'utf8')).toBe('user persona survives');
+		expect(readFileSync(credentialFile)).toEqual(credential);
 	});
 
 	it('reports Docker failures and reads status through an argument-safe fake Docker binary', async () => {

@@ -13,6 +13,8 @@ export const MANAGED_FILES = [
 	'system/assistant/agents/remote-read.md',
 	'system/assistant/agents/remote-full.md',
 	'system/assistant/agents/scheduled.md',
+	'system/assistant/agents/memory.md',
+	'system/assistant/lib/memory.js',
 	'system/assistant/plugins/akm.js',
 	'system/guardian/.gitignore',
 	'system/guardian/opencode.jsonc',

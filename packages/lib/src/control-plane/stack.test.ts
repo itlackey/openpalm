@@ -26,7 +26,7 @@ describe('release surface', () => {
 		expect(compose.match(/no-new-privileges:true/g)).toHaveLength(4);
 		expect(compose.match(/init: true/g)).toHaveLength(4);
 		expect(compose.match(/OPENCODE_DISABLE_PROJECT_CONFIG: "true"/g)).toHaveLength(2);
-		expect(compose).toContain('http://127.0.0.1:4096/config');
+		expect(compose).toContain('openpalm-healthcheck');
 		expect(compose).toContain('host_ip: "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"');
 		expect(compose).toContain('GUARDIAN_AUTH_DIR: /run/openpalm-credentials');
 		expect(compose).toContain('${OP_HOME:?}/state/credentials:/run/openpalm-credentials:ro');

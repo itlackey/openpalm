@@ -75,7 +75,10 @@ Assistant. Its process performs no package installation at boot.
 Supercronic runs inside Assistant. AKM task source files live in
 `knowledge/tasks/*.yml`. `config/akm/config.json` defines a `scheduled` engine
 that attaches to the already-running authenticated OpenCode server and selects
-the restricted `scheduled` profile. At startup and every 60 seconds:
+the restricted `scheduled` profile. Its image-baked command wrapper loads only
+the local native API password, which AKM's agent environment allowlist would
+otherwise strip. Provider credentials are used by OpenCode, not copied into
+AKM configuration. At startup and every 60 seconds:
 
 ```bash
 akm task sync --rebind
@@ -85,6 +88,19 @@ Invalid tasks are reported without preventing OpenCode from starting. OpenPalm
 seeds no default tasks in a fresh installation. The 0.14 importer stages
 allowlisted task definitions as disabled until the user reviews their
 schedule, policy, tools, secrets, and result destination.
+
+AKM 0.9.18 activates schedules in host-local `scheduler.enabled` configuration,
+not an `enabled` YAML field. `openpalm-task pause`/`resume` use native
+`akm task disable`/`enable`; importing a source never authorizes scheduling.
+The AKM configuration directory is writable to permit those atomic registry
+updates, contains no delegated ingress credentials, and remains operator-owned.
+The first sync failure marks Assistant unhealthy until successful
+reconciliation, while its native API stays available to repair the definition.
+If the scheduler, reconciliation process, or OpenCode exits, the supervisor
+stops the service so Compose restarts the complete runtime together.
+
+`assistant.timezone` in stack intent supplies `TZ` for supercronic and defaults
+to the detected host timezone. Downtime does not replay missed cron slots.
 
 The image-baked `openpalm-task` helper is the single mutation boundary for both
 Assistant-created and host-CLI task operations. It prepends hostile-content

@@ -119,8 +119,8 @@ function task(home: string, bin: string, args: string[]) {
 	});
 }
 
-describe('0.14 complete product acceptance', () => {
-	it('installs, verifies a provider, persists knowledge, schedules work, and restores safely', async () => {
+describe('0.14 deterministic control-plane integration', () => {
+	it('wires installation, fixture readiness/tasks, file persistence, and safe restore', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'openpalm-acceptance-'));
 		roots.push(root);
 		process.env.OPENPALM_REPO_ROOT = join(import.meta.dir, '..');

@@ -20,6 +20,7 @@ openpalm addon list
 openpalm addon enable gateway
 openpalm config show
 openpalm config assistant --bind 127.0.0.1 --port 3810
+openpalm config assistant --timezone America/Chicago --memory on
 openpalm config gateway --bind 127.0.0.1 --port 3830
 openpalm credential add automation read
 openpalm credential set-policy automation full
@@ -52,6 +53,12 @@ The dry-run-first importer copies an explicit allowlist into a fresh 0.14 home;
 it never performs an in-place legacy-home migration. Recurring tasks use one
 restricted Assistant helper and durable AKM history rather than a second
 scheduler API.
+
+`openpalm update` pulls the versioned release images and recreates the enabled
+containers so managed configuration changes take effect. User configuration,
+knowledge, workspace, and credentials are preserved. Use `--no-pull` for locally
+built images or `--no-start` to refresh files without changing running services;
+then run `openpalm restart` when ready. Ordinary `start` never forces an update.
 
 ## Development
 

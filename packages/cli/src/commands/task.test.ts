@@ -88,13 +88,11 @@ describe('Assistant task helper', () => {
 		expect(existsSync(join(root.knowledge, 'inbox', 'morning-news'))).toBe(true);
 
 		expect(run(root, ['pause', 'morning-news']).exitCode).toBe(0);
-		expect(readFileSync(join(root.knowledge, 'tasks', 'morning-news.yml'), 'utf8')).toContain(
-			'enabled: false'
-		);
+		const original = readFileSync(join(root.knowledge, 'tasks', 'morning-news.yml'), 'utf8');
+		expect(calls(root.calls).at(-1)).toEqual(['task', 'disable', 'morning-news', '--quiet']);
 		expect(run(root, ['resume', 'morning-news']).exitCode).toBe(0);
-		expect(readFileSync(join(root.knowledge, 'tasks', 'morning-news.yml'), 'utf8')).toContain(
-			'enabled: true'
-		);
+		expect(calls(root.calls).at(-1)).toEqual(['task', 'enable', 'morning-news', '--quiet']);
+		expect(readFileSync(join(root.knowledge, 'tasks', 'morning-news.yml'), 'utf8')).toBe(original);
 	});
 
 	it('unschedules by preserving the exact task definition', () => {
@@ -128,9 +126,10 @@ describe('Assistant task helper', () => {
 		expect(run(root, ['adopt', join(root.knowledge, 'imported-tasks', 'safe.yml')]).exitCode).toBe(
 			0
 		);
-		expect(readFileSync(join(root.knowledge, 'tasks', 'safe.yml'), 'utf8')).toContain(
-			'enabled: false'
+		expect(readFileSync(join(root.knowledge, 'tasks', 'safe.yml'), 'utf8')).not.toContain(
+			'enabled:'
 		);
+		expect(calls(root.calls)).toContainEqual(['task', 'disable', 'safe', '--quiet']);
 		expect(
 			run(root, ['adopt', join(root.knowledge, 'imported-tasks', 'unsafe.yml')]).exitCode
 		).toBe(1);

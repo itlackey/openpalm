@@ -19,6 +19,12 @@ const assistantEnvironment = {
 	AKM_CONFIG_DIR: '/etc/akm',
 	AKM_DATA_DIR: '/opt/akm/data',
 	AKM_STATE_DIR: '/opt/akm/data/state',
+	AKM_AUTO_MEMORY: '0',
+	AKM_AUTO_LEARNING: '0',
+	AKM_REDACT_HIGH_ENTROPY: '1',
+	AKM_REDACT_PII: '1',
+	OPENPALM_AUTOMATIC_MEMORY: '1',
+	TZ: defaultStackConfig().assistant.timezone,
 	HOME: '/home/opencode',
 	OPENCODE_CONFIG_DIR: '/etc/opencode',
 	OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
@@ -77,8 +83,7 @@ function assistantService(homeDir = '/tmp/home') {
 			{
 				type: 'bind',
 				source: `${homeDir}/config/akm`,
-				target: '/etc/akm',
-				read_only: true
+				target: '/etc/akm'
 			},
 			{ type: 'bind', source: `${homeDir}/knowledge`, target: '/stash' },
 			{ type: 'bind', source: `${homeDir}/data/akm/cache`, target: '/opt/akm/cache' },
@@ -86,10 +91,7 @@ function assistantService(homeDir = '/tmp/home') {
 			{ type: 'bind', source: `${homeDir}/workspace`, target: '/work' }
 		],
 		healthcheck: {
-			test: [
-				'CMD-SHELL',
-				'curl -sf -u "opencode:$$(cat /run/secrets/opencode_server_password)" http://127.0.0.1:4096/config >/dev/null'
-			]
+			test: ['CMD', 'openpalm-healthcheck']
 		},
 		logging: {
 			driver: 'json-file',
@@ -142,6 +144,24 @@ describe('Compose security audit', () => {
 		expect(issues).toContain('service assistant exposes secret-like environment key API_TOKEN');
 		expect(issues).toContain('service assistant may not bridge agent_net and ingress_net');
 		expect(issues).toContain('service assistant has unexpected network ingress_net');
+	});
+
+	it('prevents an overlay from silently re-enabling memory or changing schedule timezone', () => {
+		const home = auditHome();
+		const intent = defaultStackConfig();
+		intent.assistant.automaticMemory = false;
+		intent.assistant.timezone = 'America/Chicago';
+		writeStackConfig(home, intent);
+		const config = baseConfig(home);
+		expect(auditCompose(config, home)).toContain(
+			'assistant automatic memory must match StackConfig intent'
+		);
+		expect(auditCompose(config, home)).toContain(
+			'assistant timezone must match StackConfig intent'
+		);
+		config.services.assistant.environment.OPENPALM_AUTOMATIC_MEMORY = '0';
+		config.services.assistant.environment.TZ = 'America/Chicago';
+		expect(auditCompose(config, home)).toEqual([]);
 	});
 
 	it('rejects privilege, runtime socket, and public Assistant overrides', () => {

@@ -137,6 +137,11 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   generated keyring containing its default and explicitly mapped credentials.
 - Scheduled work uses an explicit least-privilege profile, treats fetched
   content as untrusted, and leaves durable history and results.
+- Automatic memory captures validated non-secret facts from trusted native
+  build/plan sessions only, uses the existing OpenCode provider, and is
+  configurable. Remote and unattended sessions cannot implicitly write memory.
+- Scheduler timezone is explicit intent. Restart runs future slots only;
+  Assistant health checks include scheduling and recent reconciliation.
 - No managed service runs as root. No service receives additional Linux capabilities.
 - `state/stack.env` contains non-secret derived values only.
 - Lifecycle operations never use shell-interpolated Docker commands.

@@ -104,14 +104,14 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 	import:
 		'openpalm import --from <old-home> [--dry-run|--apply] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	task: 'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
-	update: 'openpalm update [--no-start]',
+	update: 'openpalm update [--no-start] [--no-pull]',
 	addon: 'openpalm addon list | enable <gateway|discord|slack> | disable <name>',
 	credential:
 		'openpalm credential list | add <username> <chat|read|full> [--key-file <path>] [--show-key] | show <username> [--show-key] | set-policy <username> <chat|read|full> | rotate <username> [--key-file <path>] [--show-key] | remove <username> | map <discord|slack> <user-id> <username> | map oauth <issuer> <subject> <username> | unmap <discord|slack> <user-id> | unmap oauth <issuer> <subject> | mappings <discord|slack|oauth>',
 	portal:
 		'openpalm portal show <discord|slack> | access <portal> [allowlists] | token <portal> --bot-token-file <path|-> [--app-token-file <path|->]',
 	config:
-		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username> | oauth [--resource <https-url> --issuer <https-url> --jwks-url <https-url>] [--disable]',
+		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] [--timezone <IANA-zone>] [--memory <on|off>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username> | oauth [--resource <https-url> --issuer <https-url> --jwks-url <https-url>] [--disable]',
 	doctor: 'openpalm doctor [--json] [--readiness]',
 	start: 'openpalm start',
 	stop: 'openpalm stop',

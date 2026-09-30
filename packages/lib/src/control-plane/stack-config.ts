@@ -2,12 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 
-import {
-	mergeEnvContent,
-	stackConfigFile,
-	stackEnvFile,
-	writeFileAtomic
-} from './foundation.js';
+import { mergeEnvContent, stackConfigFile, stackEnvFile, writeFileAtomic } from './foundation.js';
 
 export { stackConfigFile } from './foundation.js';
 
@@ -40,6 +35,8 @@ export type StackConfig = {
 	assistant: {
 		bindAddress: string;
 		port: number;
+		timezone: string;
+		automaticMemory: boolean;
 	};
 	gateway: {
 		enabled: boolean;
@@ -94,7 +91,9 @@ export function defaultStackConfig(): StackConfig {
 		version: STACK_CONFIG_VERSION,
 		assistant: {
 			bindAddress: DEFAULT_BIND_ADDRESS,
-			port: DEFAULT_ASSISTANT_PORT
+			port: DEFAULT_ASSISTANT_PORT,
+			timezone: hostTimezone(),
+			automaticMemory: true
 		},
 		gateway: {
 			enabled: false,
@@ -119,6 +118,25 @@ export function defaultStackConfig(): StackConfig {
 			}
 		}
 	};
+}
+
+export function hostTimezone(): string {
+	try {
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+	} catch {
+		return 'UTC';
+	}
+}
+
+export function validTimezone(value: unknown): value is string {
+	if (typeof value !== 'string' || value.length > 128 || !/^[A-Za-z0-9_+/-]+$/.test(value))
+		return false;
+	try {
+		new Intl.DateTimeFormat('en', { timeZone: value }).format();
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -269,7 +287,7 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	}
 	if (
 		!hasOnlyKeys(root, ['version', 'assistant', 'gateway', 'credentials', 'portals']) ||
-		!hasOnlyKeys(assistant, ['bindAddress', 'port']) ||
+		!hasOnlyKeys(assistant, ['bindAddress', 'port', 'timezone', 'automaticMemory']) ||
 		!hasOnlyKeys(gateway, ['enabled', 'bindAddress', 'port']) ||
 		!hasOnlyKeys(portals, ['discord', 'slack']) ||
 		!hasOnlyKeys(discord, ['enabled', 'credential', 'access']) ||
@@ -286,6 +304,12 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	if (assistantPort === null) {
 		return { ok: false, error: 'assistant.port must be an integer between 1 and 65535' };
 	}
+	const timezone = assistant.timezone ?? hostTimezone();
+	const automaticMemory = assistant.automaticMemory ?? true;
+	if (!validTimezone(timezone))
+		return { ok: false, error: 'assistant.timezone must be a valid IANA timezone' };
+	if (typeof automaticMemory !== 'boolean')
+		return { ok: false, error: 'assistant.automaticMemory must be a boolean' };
 	if (typeof gateway.enabled !== 'boolean') {
 		return { ok: false, error: 'gateway.enabled must be a boolean' };
 	}
@@ -316,7 +340,12 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 
 	const config: StackConfig = {
 		version: STACK_CONFIG_VERSION,
-		assistant: { bindAddress: assistant.bindAddress, port: assistantPort },
+		assistant: {
+			bindAddress: assistant.bindAddress,
+			port: assistantPort,
+			timezone,
+			automaticMemory
+		},
 		gateway: {
 			enabled: gateway.enabled || discord.enabled || slack.enabled,
 			bindAddress: gateway.bindAddress,
@@ -377,6 +406,8 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 		OP_ENABLED_ADDONS: [...new Set(addons)].join(','),
 		OP_ASSISTANT_BIND_ADDRESS: config.assistant.bindAddress,
 		OP_ASSISTANT_PORT: String(config.assistant.port),
+		OP_TIMEZONE: config.assistant.timezone,
+		OP_AUTOMATIC_MEMORY: config.assistant.automaticMemory ? '1' : '0',
 		OP_GUARDIAN_BIND_ADDRESS: config.gateway.bindAddress,
 		OP_GUARDIAN_PORT: String(config.gateway.port),
 		DISCORD_ALLOWED_GUILDS: config.portals.discord.access.guilds.join(','),

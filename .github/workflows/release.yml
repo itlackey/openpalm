@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Already-stamped product version (for example 0.14.0)'
+        description: 'Already-stamped product version (for example 0.14.0-beta.1)'
         required: true
         type: string
       dry_run:
@@ -34,17 +34,24 @@ jobs:
           VERSION: ${{ inputs.version }}
           DRY_RUN: ${{ inputs.dry_run }}
           RELEASE_REF: ${{ github.ref }}
+          ACTIONS_ORIGIN: ${{ github.server_url }}
+          ACTIONS_REPOSITORY: ${{ github.repository }}
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           import { parseSemver } from './scripts/set-version.mjs';
           const version = process.env.VERSION ?? '';
+          if (process.env.ACTIONS_ORIGIN !== 'https://github.com' ||
+              process.env.ACTIONS_REPOSITORY !== 'itlackey/openpalm') {
+            throw new Error('Release builds run on GitHub itlackey/openpalm; Gitea is the canonical artifact destination');
+          }
           const parsed = parseSemver(version);
           if (!parsed) throw new Error(`Invalid version: ${version}`);
           if (process.env.DRY_RUN !== 'true' &&
               process.env.RELEASE_REF !== 'refs/heads/main' &&
-              !process.env.RELEASE_REF.startsWith('refs/heads/release/')) {
-            throw new Error('Live releases are restricted to main and release/* branches');
+              !process.env.RELEASE_REF.startsWith('refs/heads/release/') &&
+              !(parsed.pre !== null && process.env.RELEASE_REF === 'refs/heads/refactor/lean-stack')) {
+            throw new Error('Live stable releases require main/release/*; lean-stack may publish prereleases');
           }
           const release = JSON.parse(readFileSync('.github/release-manifest.json', 'utf8'));
           const manifests = release.manifests;
@@ -88,7 +95,25 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: existing
+        name: Reuse only an immutable image from this commit
+        if: inputs.dry_run != true
+        env:
+          IMAGE: openpalm/${{ matrix.image }}:${{ needs.validate.outputs.version }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          if docker buildx imagetools inspect "${IMAGE}" > image-manifest.txt 2> image-error.txt; then
+            docker pull --platform linux/amd64 "${IMAGE}"
+            revision="$(docker image inspect "${IMAGE}" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+            test "${revision}" = "${RELEASE_SHA}" || { echo 'Image tag belongs to another commit; use a new version'; exit 1; }
+            digest="$(docker buildx imagetools inspect "${IMAGE}" --format '{{.Manifest.Digest}}')"
+            echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          elif ! grep -qiE 'manifest unknown|not found' image-error.txt; then
+            echo 'Cannot determine image tag availability; refusing to overwrite'
+            exit 1
+          fi
       - id: build
+        if: steps.existing.outputs.digest == ''
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -97,6 +122,7 @@ jobs:
           push: ${{ inputs.dry_run != true }}
           tags: openpalm/${{ matrix.image }}:${{ needs.validate.outputs.version }}
           build-args: ${{ matrix.build_args }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=release-${{ matrix.image }}
@@ -107,7 +133,9 @@ jobs:
           cosign-release: v3.0.6
       - name: Sign the immutable manifest
         if: inputs.dry_run != true
-        run: cosign sign --yes openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+        env:
+          DIGEST: ${{ steps.existing.outputs.digest || steps.build.outputs.digest }}
+        run: cosign sign --yes openpalm/${{ matrix.image }}@${DIGEST}
 
   cli:
     name: Build CLI ${{ matrix.asset }}
@@ -139,6 +167,21 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run --cwd packages/cli ${{ matrix.script }}
+      - name: Smoke the fresh native CLI artifact
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          arch="$(node -p 'process.arch')"
+          case "${ASSET}" in
+            *"${arch}"|*"${arch}".exe)
+              actual="$("./packages/cli/dist/${ASSET}" --version)"
+              test "${actual}" = "${VERSION}"
+              "./packages/cli/dist/${ASSET}" --help
+              ;;
+            *) echo "Cross-compiled artifact; native startup covered by the matching runner" ;;
+          esac
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
@@ -169,6 +212,10 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run --cwd packages/electron ${{ matrix.script }}
+      - name: Smoke the fresh native Admin package
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: node scripts/smoke-admin-artifact.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: openpalm-admin-${{ matrix.platform }}
@@ -224,41 +271,16 @@ jobs:
         with:
           name: OpenPalm-release-assets
           path: dist
-      - name: Publish immutable Gitea release
+      - name: Stage, verify, and publish canonical Gitea release
         if: inputs.dry_run != true
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_SERVER_URL: ${{ github.server_url }}
-          GITEA_REPOSITORY: ${{ github.repository }}
+          GITEA_SERVER_URL: https://code.lab.fwdslsh.dev
+          GITEA_REPOSITORY: founder3/openpalm
           RELEASE_SHA: ${{ github.sha }}
           VERSION: ${{ needs.validate.outputs.version }}
-          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
-        run: |
-          test -n "${GITEA_TOKEN}"
-          payload="$(jq -n \
-            --arg tag "${VERSION}" \
-            --arg target "${RELEASE_SHA}" \
-            --arg name "OpenPalm ${VERSION}" \
-            --arg body "OpenPalm ${VERSION}. Verify downloads with checksums-sha256.txt." \
-            --argjson prerelease "${PRERELEASE}" \
-            '{tag_name:$tag,target_commitish:$target,name:$name,body:$body,draft:false,prerelease:$prerelease}')"
-          response="$(curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: token ${GITEA_TOKEN}" \
-            --header 'Content-Type: application/json' \
-            --data "${payload}" \
-            "${GITEA_SERVER_URL}/api/v1/repos/${GITEA_REPOSITORY}/releases")"
-          release_id="$(jq -er '.id' <<<"${response}")"
-          for asset in dist/*; do
-            name="$(basename "${asset}")"
-            encoded_name="$(jq -rn --arg value "${name}" '$value|@uri')"
-            curl --fail-with-body --silent --show-error \
-              --request POST \
-              --header "Authorization: token ${GITEA_TOKEN}" \
-              --form "attachment=@${asset}" \
-              "${GITEA_SERVER_URL}/api/v1/repos/${GITEA_REPOSITORY}/releases/${release_id}/assets?name=${encoded_name}" \
-              >/dev/null
-          done
+          RELEASE_ASSETS_DIR: dist
+        run: node scripts/publish-gitea-release.mjs
 
   publish-bootstrap:
     needs: [validate, release]
@@ -278,14 +300,4 @@ jobs:
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          if npm view "openpalm@${VERSION}" version >/dev/null 2>&1; then
-            echo "openpalm@${VERSION} already exists"
-            exit 0
-          fi
-          tag=latest
-          case "${VERSION}" in
-            *-beta.*) tag=beta ;;
-            *-rc.*) tag=rc ;;
-            *-*) tag=next ;;
-          esac
-          npm publish --provenance --access public --tag "${tag}"
+          node ../../scripts/publish-bootstrap.mjs

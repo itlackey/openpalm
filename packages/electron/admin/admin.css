@@ -478,6 +478,12 @@ button.text-button:hover:not(:disabled) {
 	content: "";
 }
 
+.disclosure > summary span {
+	color: var(--ink-soft);
+	font-size: 0.75rem;
+	font-weight: 500;
+}
+
 .setup-progress li.complete > span {
 	border-color: var(--success);
 	background: var(--success);
@@ -941,12 +947,6 @@ input[type="checkbox"] {
 	font-size: 0.875rem;
 	font-weight: 750;
 	cursor: pointer;
-}
-
-.disclosure > summary span {
-	color: var(--ink-soft);
-	font-size: 0.75rem;
-	font-weight: 500;
 }
 
 .disclosure-body {
@@ -1507,6 +1507,10 @@ body[data-busy="true"] #main-content {
 		flex-direction: column;
 	}
 
+	.input-action button {
+		width: 100%;
+	}
+
 	.button-row:not(.compact) button {
 		width: 100%;
 	}
@@ -1519,10 +1523,6 @@ body[data-busy="true"] #main-content {
 
 	.input-action {
 		grid-template-columns: 1fr;
-	}
-
-	.input-action button {
-		width: 100%;
 	}
 }
 

@@ -1,7 +1,7 @@
 FROM oven/bun:1.3.14-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 COPY package.json bun.lock ./
 COPY packages/lib/package.json ./packages/lib/package.json

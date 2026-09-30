@@ -103,12 +103,27 @@ and explain any failure in user terms.
 That verified provider/model also becomes the fresh Guardian moderator default.
 An explicit operator-selected moderator model is never replaced.
 
+Automatic personal memory uses the AKM CLI/plugin and the existing native
+OpenCode provider. It is enabled for trusted local `build`/`plan` sessions only,
+can be disabled, filters credential-bearing input, and retains validated facts
+rather than copying transcripts into knowledge. Remote, scheduled, and internal
+sessions never acquire an implicit memory-write capability. Until upstream
+AKM extraction supports attached agent engines, the image-baked plugin wrapper
+uses a no-tool OpenCode memory profile and `akm remember`; it never introduces a
+second model endpoint, provider registry, or authentication format.
+
 Recurring work is a user feature, not a YAML feature. A user should be able to
 ask the agent to create, inspect, pause, resume, and remove a schedule in
 ordinary language. AKM task files and cron expressions are implementation
 details available to advanced users. Runs need durable history and a durable
 result or inbox; Discord and Slack delivery are optional destinations, not the
 only place a result exists.
+
+Schedule intent includes an explicit IANA timezone, detected from the host by
+default and configurable by the operator. Restart resumes future cron slots,
+not missed work. Assistant health includes the scheduler and successful recent
+task reconciliation, and an essential child process exiting restarts the
+service rather than leaving an apparently working but unscheduled agent.
 
 ## Interfaces and trust
 
