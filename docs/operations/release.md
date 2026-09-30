@@ -127,6 +127,51 @@ These are not compatibility bugs to reverse. Use the
 [migration runbook](migration-to-0.14.md) and verify against the downloaded
 release artifacts, not a locally rebuilt binary carrying the same version.
 
+### Alpha.2 published-artifact verification record
+
+The 2026-09-30 Linux x64 repeat migration used the checksum-verified CLI from
+the public `0.14.0-alpha.2` GitHub release and the three published images. Image
+revision labels matched release commit `8345c0e7`. Both the complete dry run
+and live GitHub release workflow passed, including native packaging checks and
+npm publication.
+
+Importing the preserved 0.13.6 home into a fresh, distinct home copied 9,080
+files (183,052,866 bytes), with zero conflicts and a 20-line human preview.
+Every copied file matched its planned checksum before startup. The 29 reviewed
+warnings comprised 21 generated dependency trees, six unsupported task backup
+files, generated AKM metadata, and historical AKM configuration. Seven task
+definitions were staged without activation. Both approved provider files were
+copied privately by the importer; no missing-file copy or historical-config
+quarantine workaround was needed.
+
+Published-binary fixtures also verified default secret exclusion, opt-in
+provider-file import/backup/restore, and whole-config omission for remote MCP,
+local MCP environment credentials, and plugins, even with provider-auth opt-in.
+
+First provider readiness failed with `Token refresh failed: 401`: the old
+snapshot's OAuth refresh token had been invalidated during alpha.1 use. Reusing
+the current preserved sign-in through OpenCode's native authentication API
+restored readiness with the same provider/model. This is native token rotation,
+not import corruption; ordinary users should use native provider sign-in again.
+Original credentials were verified unchanged in both preserved homes. Every
+other imported file still matched after startup.
+
+Live checks passed authenticated native LAN access, guarded MCP model use,
+imported AKM knowledge retrieval, credential/session isolation, policy-filtered
+tools, injection blocking, workspace containment, and non-root mount boundaries.
+The approved owner-only Discord chat policy connected to the real gateway.
+Two timer-triggered runs retained their real model results on the host, and the
+verification task was paused afterward. No Discord messages were sent;
+interactive conversations, Slack, and public HTTPS/OAuth connectors were not
+tested live in this walkthrough.
+
+Complete cold archives of both previous homes were compared again after the
+migration and still matched. Sparse-aware archiving saved little space for this
+actual source; the separate named-volume archive's checksum was revalidated.
+Both earlier installations and unrelated containers were preserved. Private
+plans, logs, credentials, host details, and the comparison of all 15 prior
+findings remain outside Git.
+
 ## Alpha.1 candidate verification record
 
 The 2026-09-30 Linux x64 walkthrough used a fresh private home and the real
