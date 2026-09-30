@@ -29,6 +29,10 @@ The walkthrough must prove that:
     document-level horizontal overflow; and
 13. the isolated stack is stopped and removed after the test.
 
+A provider-backed run also verifies the installed default provider with a real
+native request after restart and completes a real `openpalm.agent.run` request
+through Guardian MCP. Setup success alone is insufficient for this check.
+
 Provider discovery does not prove model readiness. A complete end-user setup
 also requires one real provider response. Supply the optional provider inputs
 below or perform the provider step manually.
@@ -86,6 +90,18 @@ export OPENPALM_ADMIN_E2E_PROVIDER_KEY
 bun run admin:e2e
 unset OPENPALM_ADMIN_E2E_PROVIDER_KEY
 ```
+
+For an existing private key file, pass its path instead of putting the key in
+the environment. For example, OpenCode Go uses the `opencode-go` provider ID:
+
+```bash
+OPENPALM_ADMIN_E2E_PROVIDER=opencode-go \
+OPENPALM_ADMIN_E2E_PROVIDER_KEY_FILE=/absolute/path/to/private/key \
+bun run admin:e2e
+```
+
+The test reads that file without modifying it. `providerRuntime` in the report
+records the real native provider/model and whether the MCP response completed.
 
 The key is entered through the real Admin form and lives only in the generated
 test home, which is removed after the run. Do not place a key in a command-line
@@ -213,3 +229,19 @@ For a release sign-off, record:
 - provider/model used for real readiness, without its credential;
 - the E2E `report.json` and screenshots; and
 - any deviation from the expected `401`, `200`, or tool-policy results.
+
+### Verified provider-backed run: 2026-09-30
+
+The fresh Electron/Docker walkthrough completed with OpenCode Go using a
+private key file. OpenCode selected `opencode-go/gpt-5.6-luna`; both the initial
+readiness check and the native default-provider check after restart returned
+the expected token. A real guarded MCP agent request also completed after
+restart. The report recorded `visibleSetupJourneyComplete: true` and
+`managementUiFixtureUsed: false`.
+
+Startup recovery, all three client recipes, access-policy filtering, a Discord
+identity mapping, and configuration persistence after restart/reload passed.
+Guardian returned `401` without a key and `200` for authenticated initialization
+and tool discovery. The successful test stopped its isolated containers and
+removed its generated home. API-key sign-in was exercised; this run does not
+claim to exercise an interactive OAuth browser flow.

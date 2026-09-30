@@ -97,6 +97,21 @@ describe('OpenCode setup client', () => {
 		]);
 	});
 
+	it('offers native API-key auth for catalog providers without a custom auth plugin', async () => {
+		const root = home();
+		const fakeFetch = (async (input: RequestInfo | URL) => {
+			if (new URL(String(input)).pathname === '/provider/auth') return Response.json({});
+			return Response.json({
+				all: [{ id: 'opencode-go', name: 'OpenCode Go', models: { 'glm-5': {} } }],
+				default: { 'opencode-go': 'glm-5' },
+				connected: []
+			});
+		}) as typeof fetch;
+		expect((await listProviders(root, { fetch: fakeFetch }))[0]?.authMethods).toEqual([
+			{ index: 0, type: 'api', label: 'API key' }
+		]);
+	});
+
 	it('starts and completes the native OpenCode OAuth flow', async () => {
 		const root = home();
 		const calls: Array<{ path: string; body: unknown }> = [];
@@ -112,6 +127,7 @@ describe('OpenCode setup client', () => {
 				});
 			}
 			if (path.endsWith('/oauth/callback')) return Response.json(true);
+			if (path === '/instance/dispose') return Response.json(true);
 			throw new Error(`unexpected ${path}`);
 		}) as typeof fetch;
 
@@ -131,7 +147,8 @@ describe('OpenCode setup client', () => {
 			{
 				path: '/provider/anthropic/oauth/callback',
 				body: { method: 1, code: 'oauth-code' }
-			}
+			},
+			{ path: '/instance/dispose', body: undefined }
 		]);
 	});
 
@@ -159,15 +176,17 @@ describe('OpenCode setup client', () => {
 
 	it('sets an API key through authenticated OpenCode without logging it', async () => {
 		const root = home();
-		let request: Request | undefined;
+		const requests: Request[] = [];
 		const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-			request = new Request(input, init);
+			requests.push(new Request(input, init));
 			return Response.json(true);
 		}) as typeof fetch;
 		await setProviderApiKey(root, 'anthropic', 'secret-value', { fetch: fakeFetch });
+		const request = requests[0];
 		expect(request?.url).toEndWith('/auth/anthropic');
 		expect(request?.headers.get('authorization')).toStartWith('Basic ');
 		expect(await request?.json()).toEqual({ type: 'api', key: 'secret-value' });
+		expect(requests[1]?.url).toEndWith('/instance/dispose');
 	});
 
 	it('performs a targeted no-tool request and retains the tested model when response metadata is absent', async () => {

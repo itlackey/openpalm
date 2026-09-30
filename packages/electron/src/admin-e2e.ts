@@ -2,7 +2,7 @@ import { app, type BrowserWindow } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { markInstalled } from '@openpalm/lib';
+import { markInstalled, testAssistantReadiness } from '@openpalm/lib';
 
 import { adminSnapshot, createAdminWindow, registerAdminIpc, runAdminAction } from './admin-app.js';
 
@@ -163,7 +163,8 @@ function rpcPayload(text: string): Record<string, unknown> | null {
 async function guardianRequest(
 	url: string,
 	body: Record<string, unknown>,
-	key?: string
+	key?: string,
+	timeoutMs = 15_000
 ): Promise<{ status: number; text: string; payload: Record<string, unknown> | null }> {
 	const headers = new Headers({
 		accept: 'application/json, text/event-stream',
@@ -175,7 +176,7 @@ async function guardianRequest(
 		method: 'POST',
 		headers,
 		body: JSON.stringify(body),
-		signal: AbortSignal.timeout(15_000)
+		signal: AbortSignal.timeout(timeoutMs)
 	});
 	const text = await response.text();
 	return { status: response.status, text, payload: rpcPayload(text) };
@@ -202,7 +203,10 @@ async function run(): Promise<Record<string, unknown>> {
 	const guardianPort = requiredPort('OPENPALM_ADMIN_E2E_GUARDIAN_PORT');
 	const keepRunning = process.env.OPENPALM_ADMIN_E2E_KEEP_RUNNING === 'true';
 	const provider = process.env.OPENPALM_ADMIN_E2E_PROVIDER?.trim() || '';
-	const providerKey = process.env.OPENPALM_ADMIN_E2E_PROVIDER_KEY || '';
+	const keyFile = process.env.OPENPALM_ADMIN_E2E_PROVIDER_KEY_FILE;
+	const providerKey = keyFile
+		? readFileSync(keyFile, 'utf8').trim()
+		: process.env.OPENPALM_ADMIN_E2E_PROVIDER_KEY || '';
 	assert(Boolean(provider) === Boolean(providerKey), 'Set both E2E provider variables or neither.');
 	mkdirSync(outputDir, { recursive: true });
 	app.setName('OpenPalm Admin E2E');
@@ -297,6 +301,15 @@ async function run(): Promise<Record<string, unknown>> {
 			"JSON.parse(document.querySelector('#provider-result').value)"
 		)) as Array<Record<string, unknown>>;
 		progress(`OpenCode discovered ${providerCatalog.length} providers`);
+		// Discovery can launch an automatic existing-sign-in check. Wait for it before
+		// submitting another operation through the deliberately locked setup form.
+		await waitForRenderer(
+			window,
+			"document.body.dataset.busy !== 'true'",
+			'the existing-sign-in check to finish',
+			180_000,
+			true
+		);
 
 		let readiness: Record<string, unknown> = { attempted: false };
 		let readyScreenshot: string | undefined;
@@ -563,6 +576,64 @@ async function run(): Promise<Record<string, unknown>> {
 			'The read policy exposed full-only session.delete.'
 		);
 		progress('Guardian authentication and read-policy MCP catalog passed');
+		let providerRuntime: Record<string, unknown> | undefined;
+		if (provider) {
+			const native = await testAssistantReadiness(homeDir);
+			assert(native.ok, 'The installed default provider failed a real request after restart.');
+			let response = await guardianRequest(
+				`${guardianUrl}/mcp`,
+				{
+					jsonrpc: '2.0',
+					id: 3,
+					method: 'tools/call',
+					params: {
+						name: 'openpalm.agent.run',
+						arguments: {
+							message: 'Reply with exactly OPENPALM_MCP_READY. Do not use any tools.',
+							waitMs: 30_000
+						}
+					}
+				},
+				key,
+				45_000
+			);
+			const output = (rpc: typeof response): Record<string, unknown> => {
+				assert(rpc.status === 200 && !rpc.payload?.error, 'The live MCP request failed.');
+				const result = rpc.payload?.result as Record<string, unknown> | undefined;
+				assert(result && !result.isError, 'Guardian rejected the live MCP request.');
+				return result.structuredContent as Record<string, unknown>;
+			};
+			let result = output(response);
+			const deadline = Date.now() + 120_000;
+			while (result.status === 'running' && Date.now() < deadline) {
+				response = await guardianRequest(
+					`${guardianUrl}/mcp`,
+					{
+						jsonrpc: '2.0',
+						id: 4,
+						method: 'tools/call',
+						params: {
+							name: 'openpalm.job.get',
+							arguments: { job: result.job, waitMs: 30_000 }
+						}
+					},
+					key,
+					45_000
+				);
+				result = output(response);
+			}
+			assert(
+				result.status === 'completed' && String(result.text).includes('OPENPALM_MCP_READY'),
+				'The installed agent did not complete a real MCP response after restart.'
+			);
+			providerRuntime = {
+				nativeDefaultVerified: true,
+				provider: native.provider,
+				model: native.model,
+				mcpAgentVerified: true
+			};
+			progress('installed default provider and live MCP agent response passed after restart');
+		}
 
 		const finalSnapshot = await adminSnapshot();
 		assert(finalSnapshot.config.gateway.enabled, 'Guardian configuration was not persisted.');
@@ -580,6 +651,7 @@ async function run(): Promise<Record<string, unknown>> {
 			services: finalSnapshot.services,
 			providersDiscovered: providerCatalog.length,
 			providerReadiness: readiness,
+			...(providerRuntime ? { providerRuntime } : {}),
 			visibleSetupJourneyComplete: Boolean(provider && providerKey),
 			managementUiFixtureUsed: !provider,
 			startupRecoveryVerified: true,

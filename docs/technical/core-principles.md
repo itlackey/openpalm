@@ -92,6 +92,10 @@ selected provider and OpenCode's reported default model for it; OpenPalm does
 not maintain a separate model registry or force a nontechnical user to choose a
 model.
 
+Catalog providers without a custom authentication plugin still use OpenCode's
+standard API-key flow. Authentication changes refresh the selected OpenCode
+instance before readiness, so the test cannot use stale provider state.
+
 An installation is not ready merely because containers are running. The setup
 flow must verify that the selected provider can complete a small agent request
 and explain any failure in user terms.

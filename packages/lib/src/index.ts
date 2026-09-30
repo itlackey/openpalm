@@ -115,6 +115,7 @@ export {
 	listProviders,
 	removeProviderAuth,
 	setProviderApiKey,
+	refreshAssistantInstance,
 	testAssistantReadiness,
 	waitForAssistant,
 	type AssistantReadiness,

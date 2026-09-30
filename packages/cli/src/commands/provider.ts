@@ -8,6 +8,7 @@ import {
 	listProviders,
 	markInstalled,
 	readStackConfig,
+	refreshAssistantInstance,
 	removeProviderAuth,
 	requireInstall,
 	runComposeStreaming,
@@ -40,6 +41,7 @@ export async function runNativeProviderLogin(options: {
 	if (options.provider) args.push('--provider', options.provider);
 	if (options.method) args.push('--method', options.method);
 	await runComposeStreaming(args, { envFiles: [`${state.homeDir}/state/stack.env`] });
+	await refreshAssistantInstance(state.homeDir);
 }
 
 async function verifyAndComplete(homeDir: string, provider?: string): Promise<void> {

@@ -274,6 +274,10 @@ export async function listProviders(
 				});
 			}
 		}
+		// Catalog providers without a plugin use OpenCode's standard /auth API-key flow.
+		if (rawMethods.length === 0) {
+			authMethods.push({ index: 0, type: 'api', label: 'API key' });
+		}
 		const defaultModel = modelIdValue(defaultModels[provider.id]);
 		summaries.push({
 			id: provider.id,
@@ -303,6 +307,14 @@ export async function setProviderApiKey(
 		{ method: 'PUT', body: JSON.stringify({ type: 'api', key }) },
 		options
 	);
+	await refreshAssistantInstance(homeDir, options);
+}
+
+export async function refreshAssistantInstance(
+	homeDir: string,
+	options: { fetch?: FetchLike } = {}
+): Promise<void> {
+	await request(homeDir, '/instance/dispose', { method: 'POST' }, options);
 }
 
 export async function beginProviderOAuth(
@@ -362,6 +374,7 @@ export async function completeProviderOAuth(
 		options
 	);
 	if (result !== true) throw new Error('OpenCode did not complete provider sign-in.');
+	await refreshAssistantInstance(homeDir, options);
 }
 
 export async function removeProviderAuth(
@@ -371,6 +384,7 @@ export async function removeProviderAuth(
 ): Promise<void> {
 	const id = providerIdValue(providerId);
 	await request(homeDir, `/auth/${encodeURIComponent(id)}`, { method: 'DELETE' }, options);
+	await refreshAssistantInstance(homeDir, options);
 }
 
 export async function waitForAssistant(
