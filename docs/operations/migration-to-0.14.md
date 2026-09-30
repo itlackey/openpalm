@@ -195,7 +195,7 @@ The source home is untouched. The importer retains safety ceilings of 100,000
 files, 256 MiB per file, and 20 GiB total; review the summary before apply rather
 than raising limits merely to import generated data.
 
-The bundled AKM 0.9.18 uses host-local scheduler activation rather than
+The bundled AKM 0.9.20 uses host-local scheduler activation rather than
 `schedule[].enabled`. An old v4 task containing that retired field needs
 reviewed AKM migration before adoption; do not copy old scheduler activation
 into the fresh configuration. Adoption removes any stale local activation

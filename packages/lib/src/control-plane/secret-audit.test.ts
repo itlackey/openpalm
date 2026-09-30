@@ -24,6 +24,8 @@ const assistantEnvironment = {
 	AKM_REDACT_HIGH_ENTROPY: '1',
 	AKM_REDACT_PII: '1',
 	OPENPALM_AUTOMATIC_MEMORY: '1',
+	OPENPALM_CODEX_REMOTE: '0',
+	OPENPALM_CLAUDE_REMOTE: '0',
 	TZ: defaultStackConfig().assistant.timezone,
 	HOME: '/home/opencode',
 	OPENCODE_CONFIG_DIR: '/etc/opencode',
@@ -120,6 +122,26 @@ function auditHome(): string {
 }
 
 describe('Compose security audit', () => {
+	it('requires native remote startup to match explicit intent, never an overlay opt-in', () => {
+		const home = auditHome();
+		const config = baseConfig(home);
+		for (const key of ['OPENPALM_CODEX_REMOTE', 'OPENPALM_CLAUDE_REMOTE'] as const) {
+			config.services.assistant.environment[key] = '1';
+			expect(auditCompose(config, home)).toContain(
+				`assistant ${key} must match StackConfig intent`
+			);
+			config.services.assistant.environment[key] = 'not-a-boolean';
+			expect(auditCompose(config, home)).toContain(`service assistant ${key} must be 0 or 1`);
+			config.services.assistant.environment[key] = '0';
+		}
+		const intent = defaultStackConfig();
+		intent.assistant.codexRemote = true;
+		intent.assistant.claudeRemote = true;
+		writeStackConfig(home, intent);
+		config.services.assistant.environment.OPENPALM_CODEX_REMOTE = '1';
+		config.services.assistant.environment.OPENPALM_CLAUDE_REMOTE = '1';
+		expect(auditCompose(config, home)).toEqual([]);
+	});
 	it('accepts managed networks for an explicitly resolved Compose project', () => {
 		const home = auditHome();
 		const config = baseConfig(home);

@@ -146,10 +146,20 @@ opencode serve \
 assistant_pid=$!
 printf '%s\n' "$assistant_pid" >"$RUNTIME_DIR/assistant.pid"
 
+remote_pids=()
+for tool in codex claude; do
+  variable="OPENPALM_${tool^^}_REMOTE"
+  case "${!variable:-0}" in
+    0) ;;
+    1) openpalm-remote "$tool" & remote_pids+=("$!") ;;
+    *) echo "assistant: $variable must be 0 or 1" >&2; exit 1 ;;
+  esac
+done
+
 stop_children() {
   trap - TERM INT
-  kill "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" 2>/dev/null || true
-  wait "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" 2>/dev/null || true
+  kill "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" "${remote_pids[@]}" 2>/dev/null || true
+  wait "$assistant_pid" "$scheduler_pid" "$reconciliation_pid" "${remote_pids[@]}" 2>/dev/null || true
 }
 trap 'stop_children; exit 0' TERM INT
 # Any essential child exiting stops the container. Compose restart policy

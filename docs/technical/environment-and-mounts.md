@@ -40,6 +40,8 @@ The control plane writes or preserves these non-secret values in
 | `OP_ENABLED_ADDONS` | Derived profiles: `gateway,discord,slack` |
 | `OP_ASSISTANT_BIND_ADDRESS` | Derived native OpenCode host bind |
 | `OP_ASSISTANT_PORT` | Derived native OpenCode host port |
+| `OP_TIMEZONE`, `OP_AUTOMATIC_MEMORY` | Derived schedule timezone and automatic memory intent |
+| `OP_CODEX_REMOTE`, `OP_CLAUDE_REMOTE` | Derived native remote startup switches; both default `0` |
 | `OP_GUARDIAN_BIND_ADDRESS` | Derived Guardian host bind |
 | `OP_GUARDIAN_PORT` | Derived Guardian host port |
 | `DISCORD_ALLOWED_GUILDS`, `DISCORD_ALLOWED_ROLES` | Derived Discord scope |
@@ -110,6 +112,13 @@ bypasses Guardian.
 
 Assistant receives only the OpenCode server password. It receives no Guardian,
 portal, bot, Docker, or host-admin credential.
+
+Optional native Codex/Claude Code remote workers inherit the same nonroot
+container boundary, with no additional mounts or ports. Their own native sign-in
+state persists under `data/assistant`; it is not a delegated Guardian credential
+or portable OpenCode provider auth. Child environments omit OpenCode server
+credentials and ingress settings. The mounted filesystem remains trusted native
+agent access, not a Guardian policy boundary. See [native remote access](../native-remote-access.md).
 
 ## Guardian
 

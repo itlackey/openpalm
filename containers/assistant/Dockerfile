@@ -1,3 +1,5 @@
+FROM node:24.18.0-bookworm-slim AS node-runtime
+
 FROM oven/bun:1.3.14 AS tools
 ARG TARGETARCH
 WORKDIR /repo
@@ -58,17 +60,19 @@ RUN apt-get update \
     && chmod 0755 /usr/local/bin/supercronic
 
 COPY --from=tools /repo/node_modules /opt/openpalm/tools/node_modules
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
 COPY containers/assistant/entrypoint.sh /usr/local/bin/openpalm-assistant
 COPY containers/assistant/healthcheck.sh /usr/local/bin/openpalm-healthcheck
 COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
+COPY containers/assistant/openpalm-remote.mjs /usr/local/bin/openpalm-remote
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 RUN test -n "$PLATFORM_VERSION" \
-    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
+    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-remote /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
     && mkdir -p /home/opencode /etc/opencode /opt/akm/cache /opt/akm/data/state /stash /work \
     && chown -R bun:bun /home/opencode /etc/opencode /opt/akm /stash /work \
     && chmod -R a+rwX /home/opencode /etc/opencode /opt/akm /stash /work
@@ -90,6 +94,7 @@ ENV HOME=/home/opencode \
     AKM_REDACT_HIGH_ENTROPY=1 \
     AKM_REDACT_PII=1 \
     OPENPALM_AUTOMATIC_MEMORY=1 \
+    DISABLE_AUTOUPDATER=1 \
     TZ=UTC \
     PATH="/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/usr/local/bun-node-fallback-bin:/usr/local/bin:/usr/bin:/bin"
 

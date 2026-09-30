@@ -99,6 +99,14 @@ const assistant = defineCommand({
 			description: 'IANA schedule timezone, for example America/Chicago'
 		},
 		memory: { type: 'string', description: 'automatic personal memory capture: on or off' },
+		'codex-remote': {
+			type: 'string',
+			description: 'experimental native Codex remote startup: on or off'
+		},
+		'claude-remote': {
+			type: 'string',
+			description: 'native Claude Code Remote Control startup: on or off'
+		},
 		apply: {
 			type: 'boolean',
 			description: 'Apply the stack immediately (use --no-apply to defer)',
@@ -106,10 +114,32 @@ const assistant = defineCommand({
 		}
 	},
 	async run({ args }) {
-		if (!args.bind && !args.port && !args.timezone && !args.memory)
-			throw new Error('Pass --bind, --port, --timezone, or --memory.');
+		if (
+			!args.bind &&
+			!args.port &&
+			!args.timezone &&
+			!args.memory &&
+			!args['codex-remote'] &&
+			!args['claude-remote']
+		)
+			throw new Error(
+				'Pass --bind, --port, --timezone, --memory, --codex-remote, or --claude-remote.'
+			);
 		const { homeDir, config } = current();
 		if (args.bind) config.assistant.bindAddress = String(args.bind);
+		for (const [flag, field] of [
+			['codex-remote', 'codexRemote'],
+			['claude-remote', 'claudeRemote']
+		] as const) {
+			if (args[flag] === undefined) continue;
+			if (args[flag] !== 'on' && args[flag] !== 'off')
+				throw new Error(`--${flag} must be on or off.`);
+			config.assistant[field] = args[flag] === 'on';
+			if (config.assistant[field])
+				console.warn(
+					`${field}: trusted native workspace access bypasses Guardian. Run openpalm remote setup ${field === 'codexRemote' ? 'codex' : 'claude'} first; a toggle cannot sign in or accept vendor consent.`
+				);
+		}
 		if (args.port) config.assistant.port = Number(args.port);
 		if (args.timezone) config.assistant.timezone = String(args.timezone);
 		if (args.memory) {

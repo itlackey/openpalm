@@ -31,14 +31,15 @@
     "admin:check": "bun run --cwd packages/electron typecheck",
     "test": "bun run lib:test && bun run guardian:test && bun run cli:test && bun run --cwd packages/claude-desktop test && bun run --cwd packages/electron test && bun test --isolate packages/portal/src/*.test.ts scripts/*.test.ts",
     "check": "bun run --cwd packages/lib typecheck && bun run --cwd packages/guardian typecheck && bun run --cwd packages/portal typecheck && bun run --cwd packages/cli typecheck && bun run --cwd packages/electron typecheck && bun run --cwd packages/claude-desktop typecheck",
-    "lint": "biome lint package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs",
+    "lint": "biome lint package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/*.mjs",
     "lint:fix": "bun run lint --write",
-    "format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/openpalm-task.mjs"
+    "format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/*.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14"
   },
   "overrides": {
+    "akm-cli": "0.9.20",
     "@discordjs/rest": "2.6.3",
     "@huggingface/transformers": "4.3.0",
     "tmp": "0.2.7"

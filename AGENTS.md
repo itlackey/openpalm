@@ -43,6 +43,8 @@ The normal path is provider sign-in, a real readiness check, persistent
 knowledge, natural-language recurring work, and access from a familiar client.
 
 - **Assistant** is the only default container. It includes OpenCode, AKM, and supercronic.
+  Pinned Codex and Claude Code CLIs are image-baked optional native remote
+  workers, both default-off, with no new ports, services, or startup installs.
 - **Guardian** is optional. It exposes `/health`, MCP at `/mcp`, and RFC 9728
   protected-resource metadata when OAuth is enabled.
 - **Portal** is one private package/image with Discord and Slack adapters. Both call Guardian through MCP.
@@ -110,6 +112,10 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   other exact bind address must be explicit StackConfig intent.
 - Native OpenCode access intentionally bypasses Guardian. Guarded external
   requests enter through authenticated Guardian MCP.
+- Optional Codex/Claude Code remote sessions also bypass Guardian and use native
+  vendor accounts and explicit consent. Never copy host login files, auto-accept
+  trust, or disable native approvals. Their failure must not stop OpenCode/cron;
+  process-running status is not vendor connection readiness.
 - Provider setup delegates to OpenCode and is complete only after a real,
   no-tool Assistant request succeeds.
 - Successful provider setup replaces only the untouched Guardian moderator

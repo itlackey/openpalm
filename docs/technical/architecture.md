@@ -26,6 +26,14 @@ Assistant is one image containing:
   and task definitions; and
 - supercronic, for recurring work.
 
+Pinned Codex and Claude Code CLIs are baked into the image for optional native
+remote coding sessions. Separate startup switches default off. These agents
+share the workspace but have native vendor accounts and histories; they do not
+proxy OpenCode sessions or use Guardian policies. Their supervised workers can
+fail and retry without restarting OpenCode or scheduling. No new inbound port,
+service, privilege, or host-home mount is added. See
+[native remote access](../native-remote-access.md) for setup and upstream limitations.
+
 It mounts user knowledge at `/stash` and working files at `/work`. Its native
 OpenCode server uses file-backed Basic authentication and is published to host
 loopback by default.
@@ -112,7 +120,7 @@ process.
 
 `state/stack.json` contains only:
 
-- Assistant bind and port;
+- Assistant bind, port, timezone, automatic memory, and native remote startup intent;
 - Guardian enablement, bind, and port;
 - named credential IDs and policies; and
 - Discord and Slack enablement, fallback identities, and validated default-deny

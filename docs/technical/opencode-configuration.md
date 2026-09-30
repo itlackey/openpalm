@@ -89,7 +89,7 @@ seeds no default tasks in a fresh installation. The 0.14 importer stages
 allowlisted task definitions as disabled until the user reviews their
 schedule, policy, tools, secrets, and result destination.
 
-AKM 0.9.18 activates schedules in host-local `scheduler.enabled` configuration,
+AKM 0.9.20 activates schedules in host-local `scheduler.enabled` configuration,
 not an `enabled` YAML field. `openpalm-task pause`/`resume` use native
 `akm task disable`/`enable`; importing a source never authorizes scheduling.
 The AKM configuration directory is writable to permit those atomic registry

@@ -341,12 +341,21 @@ describe('Admin renderer behavior', () => {
 		).toBe(true);
 	});
 
-	it('renders saved timezone and automatic-memory preferences', () => {
+	it('renders saved memory, timezone, and independent native remote preferences', () => {
 		renderPreferences({
-			config: { assistant: { timezone: 'America/Chicago', automaticMemory: false } }
+			config: {
+				assistant: {
+					timezone: 'America/Chicago',
+					automaticMemory: false,
+					codexRemote: true,
+					claudeRemote: false
+				}
+			}
 		});
 		expect(control('agent-timezone').value).toBe('America/Chicago');
 		expect(control('automatic-memory').checked).toBe(false);
+		expect(control('codex-remote').checked).toBe(true);
+		expect(control('claude-remote').checked).toBe(false);
 	});
 
 	it('submits agent preferences without changing unrelated settings', async () => {
@@ -363,6 +372,8 @@ describe('Admin renderer behavior', () => {
 		};
 		control('agent-timezone').value = ' Europe/London ';
 		control('automatic-memory').checked = false;
+		control('codex-remote').checked = false;
+		control('claude-remote').checked = true;
 		bindPreferencesEvents();
 		await control('preferences-form').listeners.get('submit')?.({ preventDefault() {} });
 		expect(submitted).toEqual({
@@ -370,7 +381,9 @@ describe('Admin renderer behavior', () => {
 				bindAddress: '127.0.0.1',
 				port: 4096,
 				timezone: 'Europe/London',
-				automaticMemory: false
+				automaticMemory: false,
+				codexRemote: false,
+				claudeRemote: true
 			},
 			gateway: { enabled: false }
 		});

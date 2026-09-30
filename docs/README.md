@@ -15,6 +15,7 @@ OpenCode or optional guarded MCP.
 | [Admin setup verification](operations/admin-setup-verification.md) | Real Electron and Docker setup acceptance runbook |
 | [Claude Desktop](claude-desktop.md) | Local Claude MCPB connection |
 | [Remote MCP](remote-mcp.md) | Public HTTPS and OAuth resource-server deployment |
+| [Native remote coding](native-remote-access.md) | Optional trusted Codex and Claude Code remote startup |
 | [Discord](portals/discord-setup.md) | Default-deny Discord adapter |
 | [Slack](portals/slack-setup.md) | Default-deny Slack adapter |
 

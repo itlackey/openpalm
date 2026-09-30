@@ -28,6 +28,24 @@ async function setup(): Promise<string> {
 }
 
 describe('config commands', () => {
+	it('toggles native remote startup independently and rejects invalid values without saving', async () => {
+		const home = await setup();
+		const file = join(home, 'state', 'stack.json');
+		for (const tool of ['codex', 'claude']) {
+			await main(['config', 'assistant', `--${tool}-remote`, 'on', '--no-apply']);
+			expect(JSON.parse(readFileSync(file, 'utf8')).assistant[`${tool}Remote`]).toBe(true);
+		}
+		await main(['config', 'assistant', '--codex-remote', 'off', '--no-apply']);
+		expect(JSON.parse(readFileSync(file, 'utf8')).assistant).toMatchObject({
+			codexRemote: false,
+			claudeRemote: true
+		});
+		const before = readFileSync(file, 'utf8');
+		await expect(
+			main(['config', 'assistant', '--claude-remote', 'yes', '--no-apply'])
+		).rejects.toThrow('must be on or off');
+		expect(readFileSync(file, 'utf8')).toBe(before);
+	});
 	it('persists direct Assistant exposure and portal credential selection without Docker', async () => {
 		await setup();
 

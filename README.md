@@ -102,6 +102,10 @@ openpalm connect remote
 
 Secret values are omitted unless `--show-key` is explicitly requested.
 
+Optional [Codex and Claude Code remote coding sessions](docs/native-remote-access.md)
+have independent, default-off startup switches. They use native vendor sign-in
+and trusted workspace access, not Guardian policies or OpenCode sessions.
+
 ## Knowledge and recurring work
 
 The agent's durable knowledge, skills, and task definitions live under

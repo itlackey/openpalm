@@ -126,3 +126,8 @@ jobs:
         env:
           IMAGE: ${{ matrix.image }}
         run: bash scripts/smoke-image.sh "openpalm/${IMAGE}:ci" "${IMAGE}"
+      - name: Verify native remote failures do not interrupt Assistant
+        if: matrix.image == 'assistant'
+        env:
+          OPENPALM_SMOKE_REMOTE: '1'
+        run: bash scripts/smoke-image.sh openpalm/assistant:ci assistant

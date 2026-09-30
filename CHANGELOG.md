@@ -6,6 +6,21 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Added
+
+- Independent, default-off native Codex (experimental) and Claude Code Remote
+  Control startup switches in CLI and Admin, with native sign-in/pairing guidance.
+  These are trusted workspace agents, not Guardian clients or OpenCode sessions.
+- Optional remote-worker supervision, private bounded connection output, shutdown
+  cleanup, and intent auditing without new services, public ports, or privileges.
+
+### Changed
+
+- Image-baked Codex 0.159.2, Claude Code 2.1.286, and Node 24.18.0. No vendor
+  CLI installs or self-updates occur at runtime.
+- AKM CLI 0.9.20 and latest available OpenCode plugin 0.9.19202609301957. A
+  temporary dependency override keeps the plugin on the patched CLI too.
+
 ## [0.14.0-alpha.1] - 2026-09-30
 
 This is a testing prerelease, not the stable 0.14.0 release. Live verification

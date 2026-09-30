@@ -28,6 +28,25 @@ afterEach(() => {
 });
 
 describe('StackConfig', () => {
+	it('requires explicit boolean remote intent and defaults missing fields off', () => {
+		const config = defaultStackConfig();
+		for (const field of ['codexRemote', 'claudeRemote']) {
+			for (const value of [null, 1, 'true', {}])
+				expect(
+					parseStackConfig({ ...config, assistant: { ...config.assistant, [field]: value } }).ok
+				).toBe(false);
+		}
+		const old = parseStackConfig({
+			...config,
+			assistant: { bindAddress: '127.0.0.1', port: 3810 }
+		});
+		expect(old.ok && old.config.assistant).toMatchObject({
+			codexRemote: false,
+			claudeRemote: false
+		});
+		config.assistant.codexRemote = true;
+		expect(stackConfigEnv(config)).toMatchObject({ OP_CODEX_REMOTE: '1', OP_CLAUDE_REMOTE: '0' });
+	});
 	it('defaults to one assistant, three reusable credentials, and no ingress intent', () => {
 		expect(defaultStackConfig()).toEqual({
 			version: 1,
@@ -35,7 +54,9 @@ describe('StackConfig', () => {
 				bindAddress: '127.0.0.1',
 				port: 3810,
 				timezone: hostTimezone(),
-				automaticMemory: true
+				automaticMemory: true,
+				codexRemote: false,
+				claudeRemote: false
 			},
 			gateway: { enabled: false, bindAddress: '127.0.0.1', port: 3830 },
 			credentials: {

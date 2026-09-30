@@ -32,6 +32,14 @@ Assistant contains only what the personal agent needs:
 - AKM for durable knowledge, skills, and task definitions; and
 - supercronic for recurring task execution.
 
+The Assistant image also bakes pinned Codex and Claude Code CLIs for optional
+vendor-native remote coding sessions. Both startup switches default off. These
+are separate trusted agents sharing `/work`, not OpenCode session transports or
+Guardian clients. They add no service, profile, inbound port, or startup install.
+Their own account sign-in and consent stay native; OpenPalm never copies host
+logins or accepts workspace trust on the user's behalf. Codex remote control is
+experimental and client/account availability is an upstream constraint.
+
 The optional surfaces are:
 
 - **Guardian**, an authenticated MCP security boundary for less-trusted or
@@ -125,6 +133,11 @@ not missed work. Assistant health includes the scheduler and successful recent
 task reconciliation, and an essential child process exiting restarts the
 service rather than leaving an apparently working but unscheduled agent.
 
+Optional native remote workers are not essential children. Vendor failures retry
+with a five-minute backoff without interrupting OpenCode or scheduling. Local
+process status must not be presented as successful remote-client readiness.
+Pairing output stays private and bounded, separate from Docker and task logs.
+
 ## Interfaces and trust
 
 OpenPalm has two agent access paths:
@@ -138,6 +151,10 @@ MCP / Claude / Discord / Slack ------ Guardian policy --------------> Assistant
 - Native OpenCode access is the trusted, full-fidelity path. It is
   authenticated, loopback-bound by default, and intentionally bypasses
   Guardian.
+- Optional Codex and Claude Code remote access is also trusted native access,
+  authenticated by the respective vendor rather than Guardian credentials.
+  Native approvals remain enabled. The container remains nonroot with no Docker
+  socket, additional capabilities, host-home mounts, or Guardian/portal keys.
 - Guardian is the guarded path. It exposes MCP Streamable HTTP at `/mcp`,
   authenticates a named identity, screens untrusted input, applies that
   identity's policy, and preserves session ownership.
@@ -156,7 +173,9 @@ policy-allowed workspace capabilities.
 Security choices are configurable; security boundaries are not accidental.
 
 - Assistant receives no Docker socket, host control credential, Guardian key,
-  portal key, or OAuth token.
+  portal key, or delegated Guardian OAuth access token. OpenCode provider auth
+  and explicitly authorized native Codex/Claude account state remain local to
+  their respective native agents.
 - Published services bind to loopback unless the operator explicitly selects
   another exact address.
 - Guardian fails closed on authentication, ownership, handle validation,

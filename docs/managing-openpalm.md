@@ -89,7 +89,7 @@ full transcripts. Capture failure does not interrupt conversation and can
 retry on a later turn. Explicitly ask the agent to remember important facts
 when immediate confirmation matters.
 
-AKM 0.9.18's native `proposal extract` currently requires its own direct LLM
+AKM 0.9.20's native `proposal extract` currently requires its own direct LLM
 engine and cannot attach to the running OpenCode agent. OpenPalm disables that
 plugin path rather than asking you to configure another provider credential or
 endpoint. The wrapper keeps AKM's normal discovery, recall, and remember tools.
@@ -145,6 +145,10 @@ openpalm credential show research --show-key
 Use `openpalm connect opencode|mcp|claude|remote` to print the exact settings
 for a client. Secrets are represented by private file paths unless their
 explicit reveal flag is supplied.
+
+For separate native Codex or Claude Code remote coding sessions, see
+[optional native remote access](native-remote-access.md). These default-off
+connections bypass Guardian and require the respective vendor's native sign-in.
 
 Policies are:
 

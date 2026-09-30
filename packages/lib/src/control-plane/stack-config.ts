@@ -37,6 +37,8 @@ export type StackConfig = {
 		port: number;
 		timezone: string;
 		automaticMemory: boolean;
+		codexRemote: boolean;
+		claudeRemote: boolean;
 	};
 	gateway: {
 		enabled: boolean;
@@ -93,7 +95,9 @@ export function defaultStackConfig(): StackConfig {
 			bindAddress: DEFAULT_BIND_ADDRESS,
 			port: DEFAULT_ASSISTANT_PORT,
 			timezone: hostTimezone(),
-			automaticMemory: true
+			automaticMemory: true,
+			codexRemote: false,
+			claudeRemote: false
 		},
 		gateway: {
 			enabled: false,
@@ -287,7 +291,14 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	}
 	if (
 		!hasOnlyKeys(root, ['version', 'assistant', 'gateway', 'credentials', 'portals']) ||
-		!hasOnlyKeys(assistant, ['bindAddress', 'port', 'timezone', 'automaticMemory']) ||
+		!hasOnlyKeys(assistant, [
+			'bindAddress',
+			'port',
+			'timezone',
+			'automaticMemory',
+			'codexRemote',
+			'claudeRemote'
+		]) ||
 		!hasOnlyKeys(gateway, ['enabled', 'bindAddress', 'port']) ||
 		!hasOnlyKeys(portals, ['discord', 'slack']) ||
 		!hasOnlyKeys(discord, ['enabled', 'credential', 'access']) ||
@@ -306,6 +317,13 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	}
 	const timezone = assistant.timezone ?? hostTimezone();
 	const automaticMemory = assistant.automaticMemory ?? true;
+	const codexRemote = assistant.codexRemote === undefined ? false : assistant.codexRemote;
+	const claudeRemote = assistant.claudeRemote === undefined ? false : assistant.claudeRemote;
+	if (typeof codexRemote !== 'boolean' || typeof claudeRemote !== 'boolean')
+		return {
+			ok: false,
+			error: 'assistant.codexRemote and assistant.claudeRemote must be booleans'
+		};
 	if (!validTimezone(timezone))
 		return { ok: false, error: 'assistant.timezone must be a valid IANA timezone' };
 	if (typeof automaticMemory !== 'boolean')
@@ -344,7 +362,9 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 			bindAddress: assistant.bindAddress,
 			port: assistantPort,
 			timezone,
-			automaticMemory
+			automaticMemory,
+			codexRemote,
+			claudeRemote
 		},
 		gateway: {
 			enabled: gateway.enabled || discord.enabled || slack.enabled,
@@ -408,6 +428,8 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 		OP_ASSISTANT_PORT: String(config.assistant.port),
 		OP_TIMEZONE: config.assistant.timezone,
 		OP_AUTOMATIC_MEMORY: config.assistant.automaticMemory ? '1' : '0',
+		OP_CODEX_REMOTE: config.assistant.codexRemote ? '1' : '0',
+		OP_CLAUDE_REMOTE: config.assistant.claudeRemote ? '1' : '0',
 		OP_GUARDIAN_BIND_ADDRESS: config.gateway.bindAddress,
 		OP_GUARDIAN_PORT: String(config.gateway.port),
 		DISCORD_ALLOWED_GUILDS: config.portals.discord.access.guilds.join(','),

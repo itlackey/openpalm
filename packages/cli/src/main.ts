@@ -77,6 +77,7 @@ const subCommands = {
 	provider: () => import('./commands/provider.js').then((module) => module.default),
 	backup: () => import('./commands/backup.js').then((module) => module.default),
 	connect: () => import('./commands/connect.js').then((module) => module.default),
+	remote: () => import('./commands/remote.js').then((module) => module.default),
 	import: () => import('./commands/import.js').then((module) => module.default),
 	task: () => import('./commands/task.js').then((module) => module.default),
 	update: () => import('./commands/update.js').then((module) => module.default),
@@ -101,6 +102,7 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 		'openpalm backup --to <empty-directory> [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	connect:
 		'openpalm connect <opencode|mcp|claude|remote> [--credential <username>] [--show-key] [--json]',
+	remote: 'openpalm remote setup <codex|claude> | pair <codex|claude> | status <codex|claude> | logs <codex|claude>',
 	import:
 		'openpalm import --from <old-home> [--dry-run|--apply] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	task: 'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
@@ -111,7 +113,7 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 	portal:
 		'openpalm portal show <discord|slack> | access <portal> [allowlists] | token <portal> --bot-token-file <path|-> [--app-token-file <path|->]',
 	config:
-		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] [--timezone <IANA-zone>] [--memory <on|off>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username> | oauth [--resource <https-url> --issuer <https-url> --jwks-url <https-url>] [--disable]',
+		'openpalm config show | path | assistant [--bind <ip>] [--port <port>] [--timezone <IANA-zone>] [--memory <on|off>] [--codex-remote <on|off>] [--claude-remote <on|off>] | gateway [--bind <ip>] [--port <port>] | portal <discord|slack> --credential <username> | oauth [--resource <https-url> --issuer <https-url> --jwks-url <https-url>] [--disable]',
 	doctor: 'openpalm doctor [--json] [--readiness]',
 	start: 'openpalm start',
 	stop: 'openpalm stop',

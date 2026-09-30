@@ -2,9 +2,11 @@
   "name": "@openpalm/assistant-tools",
   "private": true,
   "dependencies": {
-    "akm-opencode": "0.9.18202609300340",
+    "@openai/codex": "0.159.2",
+    "@anthropic-ai/claude-code": "2.1.286",
+    "akm-opencode": "0.9.19202609301957",
     "opencode-ai": "1.18.21",
-    "akm-cli": "0.9.18"
+    "akm-cli": "0.9.20"
   },
   "overrides": {
     "@huggingface/transformers": "4.3.0"

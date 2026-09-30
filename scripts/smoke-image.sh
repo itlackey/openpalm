@@ -3,6 +3,7 @@ set -euo pipefail
 
 image=${1:?usage: smoke-image.sh IMAGE assistant|guardian|portal}
 kind=${2:?usage: smoke-image.sh IMAGE assistant|guardian|portal}
+remote=${OPENPALM_SMOKE_REMOTE:-0}
 root=$(mktemp -d)
 container="openpalm-${kind}-smoke-$$"
 
@@ -49,6 +50,9 @@ assistant)
 	printf '%s\n' '{}' >"$root/knowledge/secrets/auth.json"
 	chmod -R a+rwX "$root/data" "$root/knowledge" "$root/workspace"
 	docker run -d --name "$container" \
+		--init --cap-drop=ALL --security-opt no-new-privileges:true \
+		-e OPENPALM_CODEX_REMOTE="$remote" \
+		-e OPENPALM_CLAUDE_REMOTE="$remote" \
 		-e OPENCODE_SERVER_PASSWORD_FILE=/run/openpalm/password \
 		-v "$root/data:/home/opencode" \
 		-v "$root/system:/etc/opencode:ro" \
@@ -62,7 +66,28 @@ assistant)
 	wait_for_health
 	docker exec "$container" curl -sf -u 'opencode:assistant-smoke-password-0000000000000000' http://127.0.0.1:4096/config >/dev/null
 	docker exec "$container" sh -c \
-		'command -v akm >/dev/null && command -v opencode >/dev/null && command -v supercronic >/dev/null && test -x /usr/local/bin/openpalm-task && test -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js'
+		'command -v akm >/dev/null && command -v opencode >/dev/null && command -v supercronic >/dev/null && codex --version && claude --version && test -x /usr/local/bin/openpalm-remote && test -x /usr/local/bin/openpalm-task && test -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js'
+	if [ "$remote" = 1 ]; then
+		# This fixture has no vendor account. Both workers must fail independently
+		# without exposing connection output or degrading Assistant health.
+		for tool in codex claude; do
+			deadline=$((SECONDS + 45))
+			while [[ "$(docker exec "$container" openpalm-remote "$tool" status)" != *waiting-to-retry* ]]; do
+				if ((SECONDS >= deadline)); then echo "$tool did not fail safely without login" >&2; exit 1; fi
+				sleep 1
+			done
+			docker exec "$container" openpalm-remote "$tool" status
+		done
+		docker exec "$container" openpalm-healthcheck
+		logs=$(docker logs "$container" 2>&1)
+		if [[ "$logs" =~ (claude\.ai/code|pairingCode|manualPairingCode) ]]; then
+			echo 'Native pairing output reached Docker logs' >&2; exit 1
+		fi
+	else
+		for tool in codex claude; do
+			[[ "$(docker exec "$container" openpalm-remote "$tool" status)" == *not-started* ]]
+		done
+	fi
 	;;
 guardian)
 	mkdir -p "$root/credentials/owner" "$root/config" "$root/logs" "$root/workspace" "$root/auth"

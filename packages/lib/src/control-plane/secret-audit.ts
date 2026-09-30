@@ -168,7 +168,12 @@ const FIXED_ENVIRONMENT: Readonly<Record<string, Readonly<Record<string, string>
 };
 
 const DYNAMIC_ENVIRONMENT: Readonly<Record<string, ReadonlySet<string>>> = {
-	assistant: new Set(['TZ', 'OPENPALM_AUTOMATIC_MEMORY']),
+	assistant: new Set([
+		'TZ',
+		'OPENPALM_AUTOMATIC_MEMORY',
+		'OPENPALM_CODEX_REMOTE',
+		'OPENPALM_CLAUDE_REMOTE'
+	]),
 	guardian: new Set([
 		'GUARDIAN_ALLOWED_ORIGINS',
 		'GUARDIAN_ASSISTANT_TIMEOUT_MS',
@@ -366,6 +371,10 @@ function auditCoreEnvironment(
 		}
 	}
 	if (name === 'assistant') {
+		for (const key of ['OPENPALM_CODEX_REMOTE', 'OPENPALM_CLAUDE_REMOTE']) {
+			if (!['0', '1'].includes(String(environment[key])))
+				issues.push(`service assistant ${key} must be 0 or 1`);
+		}
 		if (!validTimezone(environment.TZ))
 			issues.push('service assistant must set a valid IANA timezone');
 		if (!['0', '1'].includes(String(environment.OPENPALM_AUTOMATIC_MEMORY))) {
@@ -597,6 +606,13 @@ export function auditCompose(
 		}
 		if (name === 'assistant') {
 			if (stackConfig.ok) {
+				for (const [key, enabled] of [
+					['OPENPALM_CODEX_REMOTE', stackConfig.config.assistant.codexRemote],
+					['OPENPALM_CLAUDE_REMOTE', stackConfig.config.assistant.claudeRemote]
+				] as const) {
+					if (environment[key] !== (enabled ? '1' : '0'))
+						issues.push(`assistant ${key} must match StackConfig intent`);
+				}
 				if (environment.TZ !== stackConfig.config.assistant.timezone) {
 					issues.push('assistant timezone must match StackConfig intent');
 				}

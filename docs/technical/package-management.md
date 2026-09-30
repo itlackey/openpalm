@@ -22,7 +22,7 @@ Dependency changes are made from the repository root so the workspace graph and 
 | `@openpalm/electron` | Electron build dependencies | optional static admin artifact |
 | `@openpalm/skeleton` | none | files embedded in the CLI |
 | `@openpalm/claude-desktop` | MCP client/server | optional Claude Desktop MCPB |
-| `@openpalm/assistant-tools` | OpenCode and AKM | Assistant image tool layer |
+| `@openpalm/assistant-tools` | OpenCode, AKM, and optional native Codex/Claude CLIs | Assistant image tool layer |
 | `@openpalm/guardian-tools` | OpenCode | Guardian moderator tool layer |
 
 The root `workspaces` list is the authoritative package list. Every tracked
@@ -46,10 +46,18 @@ Guardian and Portal communicate through MCP. There is no published OpenPalm port
 Images install dependencies at build time from explicit pinned manifests and
 the root lockfile:
 
-- `containers/assistant/tools/package.json` — OpenCode, AKM CLI, AKM plugin;
+- `containers/assistant/tools/package.json` — OpenCode, AKM CLI/plugin, native Codex/Claude Code CLIs;
 - `containers/guardian/tools/package.json` — classifier OpenCode runtime;
 - `packages/guardian/package.json` — Guardian application dependency;
 - `packages/portal/package.json` — unified adapter dependencies.
+
+AKM is pinned to `0.9.20`; the current `akm-opencode` publication is
+`0.9.19202609301957`. Its manifest pins CLI `0.9.19`, so the root `akm-cli`
+override keeps one patched `0.9.20` runtime in both the CLI and plugin graph.
+The 0.9.20 upstream change fixes SDK server teardown without changing the
+persisted/task schema. Memory and task acceptance cover this combination.
+Remove the override when the current plugin's declared CLI pin reaches 0.9.20
+or newer, updating both exact pins and the lockfile together.
 
 Entrypoints never run a package manager. Runtime package overrides are not supported.
 
