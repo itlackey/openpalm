@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
 	ensureCachedBinary,
 	parseExpectedChecksum,
+	RELEASE_BASE_URL,
 	resolveArtifactName,
 	resolveCacheRoot,
 	resolvePackageVersion,
@@ -9,6 +10,9 @@ import {
 } from '../bin/openpalm.js';
 
 describe('resolveArtifactName', () => {
+	it('downloads published artifacts exclusively from GitHub', () => {
+		expect(RELEASE_BASE_URL).toBe('https://github.com/itlackey/openpalm');
+	});
 	it('maps supported platform/arch pairs to their release binary name', () => {
 		expect(resolveArtifactName('linux', 'x64')).toBe('openpalm-cli-linux-x64');
 		expect(resolveArtifactName('linux', 'arm64')).toBe('openpalm-cli-linux-arm64');

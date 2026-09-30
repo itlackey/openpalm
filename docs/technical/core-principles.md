@@ -252,6 +252,12 @@ a separate project.
 
 ## Release test
 
+Gitea is for early/private development. Ready source is pushed to GitHub,
+where Actions builds and publishes the entire release: container images,
+CLI binaries, Admin packages, the Claude Desktop extension, and the npm
+bootstrap. Public metadata and downloads point to GitHub. Release workflows
+never require a Gitea token or call a Gitea API.
+
 0.14 is ready when a fresh user can complete the core path without editing a
 configuration file, the agent remembers across restarts, recurring work runs
 and leaves a durable result, both trusted OpenCode and guarded MCP access work,

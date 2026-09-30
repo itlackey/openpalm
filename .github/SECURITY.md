@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Contact the maintainers privately through the primary Gitea repository. If a
+Contact the maintainers privately through the public GitHub repository. If a
 private channel is not visible, open a minimal issue asking for one without
 including exploit details, credentials, private data, or an undisclosed
 weakness.

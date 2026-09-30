@@ -21,7 +21,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://code.lab.fwdslsh.dev/founder3/openpalm",
+    "url": "https://github.com/itlackey/openpalm",
     "directory": "packages/lib"
   },
   "devDependencies": {

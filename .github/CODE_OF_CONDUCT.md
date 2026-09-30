@@ -7,7 +7,7 @@ By participating in this project you agree to abide by its terms.
 ## Reporting
 
 If you experience or witness unacceptable behavior, contact the maintainers
-through the primary Gitea repository. Do not put private or sensitive details
+through the public GitHub repository. Do not put private or sensitive details
 in a public issue.
 
 All reports will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter.

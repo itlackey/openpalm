@@ -16,7 +16,7 @@ export function connectionDetails(
 	return sharedConnectionDetails(homeDir, type, {
 		credential: options.credential,
 		showCredentialKey: options.showKey,
-		claudeExtension: `https://code.lab.fwdslsh.dev/founder3/openpalm/releases/download/${cliPackage.version}/openpalm-claude-desktop-${cliPackage.version}.mcpb`
+		claudeExtension: `https://github.com/itlackey/openpalm/releases/download/${cliPackage.version}/openpalm-claude-desktop-${cliPackage.version}.mcpb`
 	});
 }
 

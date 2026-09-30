@@ -43,7 +43,7 @@ jobs:
           const version = process.env.VERSION ?? '';
           if (process.env.ACTIONS_ORIGIN !== 'https://github.com' ||
               process.env.ACTIONS_REPOSITORY !== 'itlackey/openpalm') {
-            throw new Error('Release builds run on GitHub itlackey/openpalm; Gitea is the canonical artifact destination');
+            throw new Error('Releases build and publish only on GitHub itlackey/openpalm');
           }
           const parsed = parseSemver(version);
           if (!parsed) throw new Error(`Invalid version: ${version}`);
@@ -271,16 +271,29 @@ jobs:
         with:
           name: OpenPalm-release-assets
           path: dist
-      - name: Stage, verify, and publish canonical Gitea release
+      - name: Publish the verified GitHub release
         if: inputs.dry_run != true
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_SERVER_URL: https://code.lab.fwdslsh.dev
-          GITEA_REPOSITORY: founder3/openpalm
+          GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
           VERSION: ${{ needs.validate.outputs.version }}
-          RELEASE_ASSETS_DIR: dist
-        run: node scripts/publish-gitea-release.mjs
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          # Published versions are immutable; never overwrite their assets.
+          if gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo 'Release already exists; use a new version rather than replacing downloads.' >&2
+            exit 1
+          fi
+          args=(release create "${VERSION}" --repo "${GITHUB_REPOSITORY}" \
+            --target "${RELEASE_SHA}" --title "OpenPalm ${VERSION}" --generate-notes --draft)
+          if [ "${PRERELEASE}" = true ]; then args+=(--prerelease --latest=false); fi
+          gh "${args[@]}" dist/*
+          # Verify the uploaded files before making the release public.
+          gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir verified-assets
+          (cd verified-assets && sha256sum --check --strict checksums-sha256.txt)
+          RELEASE_ASSETS_DIR=verified-assets node scripts/validate-release-assets.mjs
+          gh release edit "${VERSION}" --repo "${GITHUB_REPOSITORY}" --draft=false
 
   publish-bootstrap:
     needs: [validate, release]

@@ -9,7 +9,7 @@
 		"url": "https://github.com/itlackey/openpalm.git",
 		"directory": "packages/cli"
 	},
-	"homepage": "https://code.lab.fwdslsh.dev/founder3/openpalm",
+	"homepage": "https://github.com/itlackey/openpalm",
 	"bin": {
 		"openpalm": "./bin/openpalm.js"
 	},

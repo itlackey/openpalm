@@ -3,8 +3,15 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RELEASE_ORIGIN, RELEASE_REPOSITORY, releaseChannel } from './publish-gitea-release.mjs';
+import { parseSemver } from './set-version.mjs';
 import { requiredReleaseAssets } from './validate-release-assets.mjs';
+
+export function releaseChannel(version) {
+	const parsed = parseSemver(version);
+	if (!parsed) throw new Error('Invalid release version');
+	if (!parsed.pre) return 'latest';
+	return parsed.pre.startsWith('beta.') ? 'beta' : parsed.pre.startsWith('rc.') ? 'rc' : 'next';
+}
 
 export async function publishBootstrap({
 	version,
@@ -22,13 +29,19 @@ export async function publishBootstrap({
 	)
 		throw new Error('npm publication requires GitHub trusted publishing');
 	const response = await fetchImpl(
-		`${RELEASE_ORIGIN}/api/v1/repos/${RELEASE_REPOSITORY}/releases/tags/${encodeURIComponent(version)}`,
-		{ redirect: 'error' }
+		`https://api.github.com/repos/itlackey/openpalm/releases/tags/${encodeURIComponent(version)}`,
+		{ redirect: 'error', headers: { Accept: 'application/vnd.github+json' } }
 	);
-	if (!response.ok) throw new Error('Canonical public release is unavailable');
+	if (!response.ok) throw new Error('Public GitHub release is unavailable');
 	const release = await response.json();
-	if (release.draft || release.target_commitish !== sha || !Array.isArray(release.assets)) {
-		throw new Error('Canonical release is not the verified public candidate');
+	if (
+		release.draft ||
+		release.tag_name !== version ||
+		release.target_commitish !== sha ||
+		release.prerelease !== (channel !== 'latest') ||
+		!Array.isArray(release.assets)
+	) {
+		throw new Error('GitHub release is not the verified public candidate');
 	}
 	for (const name of [...requiredReleaseAssets(version), 'release-assets-manifest.json']) {
 		if (!release.assets.some((asset) => asset.name === name))

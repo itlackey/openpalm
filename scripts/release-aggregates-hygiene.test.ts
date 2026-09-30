@@ -217,15 +217,20 @@ describe('release completeness gate', () => {
 		expect(release.jobs.gates.uses).toBe('./.github/workflows/gates.yml');
 	});
 
-	test('publishes releases through the canonical Gitea API', () => {
-		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+	test('publishes only on GitHub with its built-in token and verifies uploads', () => {
+		const source = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
+		const workflow = Bun.YAML.parse(source) as {
 			jobs: { release: { steps: Array<{ run?: string; env?: Record<string, string> }> } };
 		};
-		const publish = workflow.jobs.release.steps.find(
-			(step) => step.run === 'node scripts/publish-gitea-release.mjs'
+		const publish = workflow.jobs.release.steps.find((step) =>
+			step.run?.includes('gh release download')
 		);
-		expect(publish?.env?.GITEA_SERVER_URL).toBe('https://code.lab.fwdslsh.dev');
-		expect(publish?.env?.GITEA_REPOSITORY).toBe('founder3/openpalm');
+		expect(publish?.env?.GH_TOKEN).toBe('${{ github.token }}');
+		expect(publish?.run).toContain('--target "${RELEASE_SHA}"');
+		expect(publish?.run).toContain('--prerelease --latest=false');
+		expect(publish?.run).toContain('sha256sum --check --strict checksums-sha256.txt');
+		expect(publish?.run).toContain('--draft=false');
+		expect(source).not.toMatch(/GITEA_|code\.lab|publish-gitea/);
 	});
 
 	test('the shared gate validates all active packages and optional artifacts', () => {

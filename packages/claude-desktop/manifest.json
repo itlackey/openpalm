@@ -7,14 +7,14 @@
 	"long_description": "Connect Claude Desktop to your local OpenPalm agent. Requests pass through OpenPalm's protected access layer, which applies the access level assigned to this key and screens untrusted input.",
 	"author": {
 		"name": "OpenPalm contributors",
-		"url": "https://code.lab.fwdslsh.dev/founder3/openpalm"
+		"url": "https://github.com/itlackey/openpalm"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://code.lab.fwdslsh.dev/founder3/openpalm.git"
+		"url": "https://github.com/itlackey/openpalm.git"
 	},
-	"homepage": "https://code.lab.fwdslsh.dev/founder3/openpalm",
-	"documentation": "https://code.lab.fwdslsh.dev/founder3/openpalm/src/branch/main/docs/claude-desktop.md",
+	"homepage": "https://github.com/itlackey/openpalm",
+	"documentation": "https://github.com/itlackey/openpalm/blob/main/docs/claude-desktop.md",
 	"license": "MPL-2.0",
 	"keywords": ["agents", "mcp", "opencode", "self-hosted"],
 	"server": {

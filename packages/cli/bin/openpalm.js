@@ -4,7 +4,7 @@
 // The published `openpalm` npm package ships ONLY this file (see package.json
 // `files`) — it has zero runtime dependencies and must run under plain Node
 // (no Bun, no TypeScript). The actual CLI is a Bun-compiled standalone binary
-// published as a Gitea release asset (see scripts/setup.sh, which
+// published as a GitHub release asset (see scripts/setup.sh, which
 // resolves and verifies the same artifacts).
 //
 // On each invocation this script:
@@ -24,7 +24,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const RELEASE_BASE_URL = 'https://code.lab.fwdslsh.dev/founder3/openpalm';
+export const RELEASE_BASE_URL = 'https://github.com/itlackey/openpalm';
 
 /**
  * Map a Node `platform`/`arch` pair to the published release binary name.

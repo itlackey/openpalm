@@ -7,7 +7,7 @@ secure, integrate, or operate the hosted agent.
 ## Setup
 
 ```bash
-git clone https://code.lab.fwdslsh.dev/founder3/openpalm.git
+git clone https://github.com/itlackey/openpalm.git
 cd openpalm
 bun install
 ./scripts/dev-setup.sh

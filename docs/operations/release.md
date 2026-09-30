@@ -60,51 +60,52 @@ Dispatch `.github/workflows/release.yml` with:
 - `version`: the already-stamped semantic version;
 - `dry_run: true` first.
 
-Gitea (`https://code.lab.fwdslsh.dev/founder3/openpalm`) is the source of truth
-and canonical release/download location. GitHub (`itlackey/openpalm`) mirrors
-the candidate commit and runs the cross-platform Actions builds. The workflow
-rejects execution on other Actions hosts; it never derives the Gitea API origin
-or repository from the build host. Desktop artifacts retain the existing
-unsigned release practice; this refactor adds no signing prerequisite.
-Each runner launches its native CLI binary and packaged Admin with an isolated
-temporary home. Packaged Admin must load its actual renderer and preload bridge
-and exit successfully; this startup smoke is not a substitute for the separate
-Docker/provider setup walkthrough. Cross-compiled secondary architectures are
-checksummed and packaged, not falsely reported as natively executed.
+Gitea is for early/private development only. Once source is ready for public
+testing or release, push that exact commit to GitHub `itlackey/openpalm`.
+GitHub Actions builds and publishes the complete release. There is no Gitea
+publishing API, token, artifact upload, or download dependency in the workflow.
+
+Desktop artifacts retain the existing unsigned release practice; this
+refactor adds no signing prerequisite. Each runner launches its native CLI
+binary and packaged Admin with an isolated temporary home. Packaged Admin
+must load its actual renderer and preload bridge and exit successfully; this
+startup smoke is not a substitute for the separate Docker/provider setup
+walkthrough. Cross-compiled secondary architectures are checksummed and
+packaged, not falsely reported as natively executed.
 
 The workflow validates stamps, calls the shared gate, builds every artifact,
 creates checksums and `release-assets-manifest.json`, and runs the same asset
 validator for dry and live releases. The required set is five CLI binaries,
 five updater-free Admin artifacts, the versioned MCPB, and checksums.
 A live dispatch from `main` or `release/*` (or `refactor/lean-stack` for
-prereleases only) additionally pushes
-SBOM/provenance-enabled images, signs immutable image digests with Cosign,
-stages a draft Gitea release, downloads each attachment to verify its SHA-256,
-and only then makes the complete release public. Interrupted draft uploads can
-be resumed for the same commit and identical assets. Existing public releases
-are verified without modification; conflicting commits, assets, and unexpected
-attachments fail closed and require a new version. No cleanup deletes releases.
-Published versioned image tags are reused only if their revision label matches
-the same candidate commit; another revision fails instead of replacing a tag.
+prereleases only) also publishes SBOM/provenance-enabled images to Docker Hub,
+signs their immutable digests with Cosign, and creates a draft GitHub Release
+at the candidate commit. Uploaded assets are downloaded, checksum-verified,
+and validated before the release becomes public.
 
-Configure GitHub repository secrets `GITEA_TOKEN` (release-write access to the
-canonical Gitea repository), `DOCKERHUB_USERNAME`, and `DOCKERHUB_TOKEN`.
-Ensure the candidate commit is present in Gitea before dispatching. npm uses
-the existing GitHub trusted-publisher configuration for `itlackey/openpalm`
-and `release.yml`, with OIDC and provenance; it does not require an npm token.
-Configure that exact publisher in npm before a live run. npm publication occurs
-only after the canonical complete public release is verified. A retry compares
-the packed npm integrity with an existing version and rejects differences.
-The published CLI package's `repository.url` names the GitHub build mirror,
-as [npm provenance requires](https://docs.npmjs.com/generating-provenance-statements/).
-Its homepage and binary downloads still point to canonical Gitea. This is a
-build-provenance declaration, not a second release destination.
+Existing releases are not overwritten. An interrupted upload leaves an
+unpublished draft; inspect it before choosing a new version. No cleanup
+deletes releases. Versioned image tags are reused only when their revision
+label matches the candidate commit; another revision fails instead of
+replacing the tag.
 
-`0.14.0-beta.1` is a Gitea prerelease and publishes to npm's `beta` tag;
-`*-rc.*` uses `rc`, other prereleases use `next`, and stable uses `latest`.
-Beta testing precedes the release candidate and final stable dispatch. A dry
-run never publishes images, releases, or npm packages. CI runs on the lean
-branch as well as pull requests, `main`, and `release/*`.
+GitHub release publication uses the job's built-in `github.token` with
+`contents: write`; no personal GitHub or Gitea token is required. Docker Hub
+uses the existing `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository
+secrets. npm uses the existing GitHub trusted-publisher configuration for
+`itlackey/openpalm` and `release.yml`, with OIDC and provenance; it does
+not require an npm token. The npm job verifies the complete public GitHub
+release for the exact version and candidate commit before publishing.
+Retrying that job compares packed npm integrity against an existing version
+and rejects different contents.
+
+Public repository metadata, installer binaries, Admin downloads, and the
+Claude Desktop extension all point to GitHub. `0.14.0-beta.1` is a GitHub
+prerelease and publishes to npm's `beta` tag; `*-rc.*` uses `rc`, other
+prereleases use `next`, and stable uses `latest`. Beta testing precedes
+the release candidate and final stable dispatch. A dry run never publishes
+images, releases, or npm packages. CI runs on the lean branch as well as pull
+requests, `main`, and `release/*`.
 
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.

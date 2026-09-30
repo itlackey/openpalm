@@ -50,5 +50,8 @@ describe('connection guidance', () => {
 		});
 		expect(revealed.credentialKey?.length).toBeGreaterThanOrEqual(32);
 		expect(revealed.extension).toContain(`openpalm-claude-desktop-${cliPackage.version}.mcpb`);
+		expect(revealed.extension).toStartWith(
+			'https://github.com/itlackey/openpalm/releases/download/'
+		);
 	});
 });

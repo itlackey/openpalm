@@ -77,7 +77,7 @@ Compose image defaults are stamped in the same operation through the managed
 
 Only the zero-dependency `openpalm` bootstrap is published to npm. Guardian
 and Portal are delivered as signed container images. Admin is delivered as a
-Gitea release artifact.
+GitHub release artifact.
 
 ## Verification
 

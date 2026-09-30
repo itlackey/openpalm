@@ -63,7 +63,7 @@ and platform-specific limitations are recorded in the release documentation.
   and Claude Desktop extension from one frozen workspace lock.
 - Explicit updates pull versioned images and recreate enabled containers;
   locally built images can be applied with `--no-pull`.
-- Canonical Gitea releases are staged, attachment-hash verified, and published
-  only when complete. GitHub remains the cross-platform build mirror.
+- GitHub Actions builds the complete release and verifies its uploaded assets
+  before publication. Gitea is used only for early/private development.
 - The local Admin renderer uses small task-focused modules and executable
   behavior tests, with packaged startup checks for release artifacts.

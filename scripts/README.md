@@ -12,7 +12,6 @@ Only a small script surface remains active.
 | `smoke-admin-artifact.mjs` | Extract/install and launch a fresh native Admin package on its build runner |
 | `test-isolate-op-home.ts` | Force every Bun test into a throwaway `OP_HOME` |
 | `validate-release-assets.mjs` | Verify the complete checksummed release set |
-| `publish-gitea-release.mjs` | Stage and hash-verify canonical Gitea assets before publishing |
 | `publish-bootstrap.mjs` | Publish the matching npm bootstrap through GitHub trusted publishing |
 | `live-acceptance.ts` | Opt-in real-provider runtime acceptance after a retained Admin E2E run |
 

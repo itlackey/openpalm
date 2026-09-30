@@ -55,7 +55,7 @@ import {
 const adminDirectory = fileURLToPath(new URL('../admin', import.meta.url));
 const adminIndexPath = join(adminDirectory, 'index.html');
 const adminIndexUrl = pathToFileURL(adminIndexPath).href;
-const claudeExtensionUrl = `https://code.lab.fwdslsh.dev/founder3/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
+const claudeExtensionUrl = `https://github.com/itlackey/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
 
 if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
 	process.env.OPENPALM_SKELETON_DIR = app.isPackaged
