@@ -63,6 +63,18 @@ consent error if startup failed. Open the link in claude.ai/code or use Claude's
 mobile app. Claude Code uses outbound HTTPS and does not need an inbound listener.
 See [Anthropic's requirements and troubleshooting](https://code.claude.com/docs/en/remote-control).
 
+The image includes Claude's AKM plugin: five discovery/feedback/remember commands,
+the AKM skill, and lifecycle hooks. Claude's native loader uses
+`CLAUDE_CODE_PLUGIN_DIRS=/opt/openpalm/plugins/akm`, inherited by the remote worker
+and its child sessions. There is no extra install step or marketplace download,
+and container updates replace the pinned plugin without rewriting your Claude
+settings. Run `claude plugin list` or `claude plugin details akm` inside Assistant
+to inspect it. It appears as `akm@inline`; you can disable that identity through
+Claude's own `enabledPlugins` settings. Workspace trust and tool approvals still
+apply. AKM uses the existing `/stash` knowledge bundle; automatic learning and
+session extraction remain off (`AKM_AUTO_LEARNING=0`, `AKM_AUTO_MEMORY=0`).
+See [Claude's native plugin loading reference](https://code.claude.com/docs/en/plugins/loading).
+
 ## Toggles, recovery, and trust
 
 The optional Admin utility exposes both switches under agent preferences. Native

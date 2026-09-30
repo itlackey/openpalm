@@ -38,6 +38,18 @@ RUN bun install --frozen-lockfile --production --linker hoisted --filter @openpa
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac
 
+# Claude's plugin is distributed as source, not an npm package. Bake only its
+# runtime directory and license from the immutable upstream release commit.
+ADD --checksum=sha256:e4b38b9f3d51bc2dd73db5af4d32d2b5c8e3aadff5ed46c3742f3cb13f9b34bb \
+    https://codeload.github.com/itlackey/akm-plugins/tar.gz/50c69a5255feb7d3932c4951405f2e87d49f8e73 /tmp/akm-claude.tar.gz
+RUN mkdir /akm-claude \
+    && plugin_root=akm-plugins-50c69a5255feb7d3932c4951405f2e87d49f8e73/claude \
+    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-claude --strip-components=2 \
+      "$plugin_root/.claude-plugin" "$plugin_root/commands" "$plugin_root/hooks" \
+      "$plugin_root/shared" "$plugin_root/skills" "$plugin_root/package.json" "$plugin_root/README.md" \
+    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-claude --strip-components=1 \
+      akm-plugins-50c69a5255feb7d3932c4951405f2e87d49f8e73/LICENSE
+
 FROM oven/bun:1.3.14-slim
 
 ARG TARGETARCH
@@ -67,6 +79,7 @@ COPY containers/assistant/healthcheck.sh /usr/local/bin/openpalm-healthcheck
 COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 COPY containers/assistant/openpalm-remote.mjs /usr/local/bin/openpalm-remote
+COPY --from=tools /akm-claude /opt/openpalm/plugins/akm
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
@@ -95,6 +108,8 @@ ENV HOME=/home/opencode \
     AKM_REDACT_PII=1 \
     OPENPALM_AUTOMATIC_MEMORY=1 \
     DISABLE_AUTOUPDATER=1 \
+    BUN_OPTIONS=--no-env-file \
+    CLAUDE_CODE_PLUGIN_DIRS=/opt/openpalm/plugins/akm \
     TZ=UTC \
     PATH="/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/usr/local/bun-node-fallback-bin:/usr/local/bin:/usr/bin:/bin"
 

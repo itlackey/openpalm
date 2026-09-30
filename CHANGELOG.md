@@ -18,8 +18,10 @@ and remain available in Git history.
 
 - Image-baked Codex 0.159.2, Claude Code 2.1.286, and Node 24.18.0. No vendor
   CLI installs or self-updates occur at runtime.
-- AKM CLI 0.9.20 and latest available OpenCode plugin 0.9.19202609301957. A
-  temporary dependency override keeps the plugin on the patched CLI too.
+- AKM CLI 0.9.20 and OpenCode/Claude plugins 0.9.20202609302253, without the
+  temporary CLI dependency override. Claude loads its checksum-verified,
+  image-baked AKM plugin in native terminal and remote-worker environments;
+  user settings remain untouched and no marketplace download is needed.
 
 ## [0.14.0-alpha.1] - 2026-09-30
 

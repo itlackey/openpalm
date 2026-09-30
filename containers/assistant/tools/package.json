@@ -4,7 +4,7 @@
   "dependencies": {
     "@openai/codex": "0.159.2",
     "@anthropic-ai/claude-code": "2.1.286",
-    "akm-opencode": "0.9.19202609301957",
+    "akm-opencode": "0.9.20202609302253",
     "opencode-ai": "1.18.21",
     "akm-cli": "0.9.20"
   },

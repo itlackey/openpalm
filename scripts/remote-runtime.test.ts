@@ -39,6 +39,10 @@ describe('optional native remote workers', () => {
 			remoteEnvironment({
 				HOME: '/persist',
 				AKM_BUNDLE_DIR: '/stash',
+				CLAUDE_CODE_PLUGIN_DIRS: '/opt/openpalm/plugins/akm',
+				AKM_AUTO_MEMORY: '0',
+				AKM_AUTO_LEARNING: '0',
+				BUN_OPTIONS: '--no-env-file',
 				OPENCODE_SERVER_PASSWORD: 'secret',
 				OPENCODE_SERVER_PASSWORD_FILE: '/secret',
 				GUARDIAN_KEY: 'secret',
@@ -49,7 +53,15 @@ describe('optional native remote workers', () => {
 				CODEX_API_KEY: 'secret',
 				CLAUDE_CODE_OAUTH_TOKEN: 'secret'
 			})
-		).toEqual({ HOME: '/persist', AKM_BUNDLE_DIR: '/stash', DISABLE_AUTOUPDATER: '1' });
+		).toEqual({
+			HOME: '/persist',
+			AKM_BUNDLE_DIR: '/stash',
+			CLAUDE_CODE_PLUGIN_DIRS: '/opt/openpalm/plugins/akm',
+			AKM_AUTO_MEMORY: '0',
+			AKM_AUTO_LEARNING: '0',
+			BUN_OPTIONS: '--no-env-file',
+			DISABLE_AUTOUPDATER: '1'
+		});
 	});
 	it('retries vendor failures independently with bounded private logs and clean shutdown', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'openpalm-remote-test-'));

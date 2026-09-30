@@ -39,7 +39,6 @@
     "@biomejs/biome": "^2.5.14"
   },
   "overrides": {
-    "akm-cli": "0.9.20",
     "@discordjs/rest": "2.6.3",
     "@huggingface/transformers": "4.3.0",
     "tmp": "0.2.7"

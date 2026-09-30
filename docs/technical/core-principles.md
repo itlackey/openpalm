@@ -32,6 +32,10 @@ Assistant contains only what the personal agent needs:
 - AKM for durable knowledge, skills, and task definitions; and
 - supercronic for recurring task execution.
 
+Claude Code loads its checksum-verified, image-baked AKM plugin through its
+native environment-based loader, without runtime downloads or user-settings
+rewrites. AKM automatic learning and extraction remain off in these sessions.
+
 The Assistant image also bakes pinned Codex and Claude Code CLIs for optional
 vendor-native remote coding sessions. Both startup switches default off. These
 are separate trusted agents sharing `/work`, not OpenCode session transports or

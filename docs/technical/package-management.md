@@ -51,13 +51,20 @@ the root lockfile:
 - `packages/guardian/package.json` — Guardian application dependency;
 - `packages/portal/package.json` — unified adapter dependencies.
 
-AKM is pinned to `0.9.20`; the current `akm-opencode` publication is
-`0.9.19202609301957`. Its manifest pins CLI `0.9.19`, so the root `akm-cli`
-override keeps one patched `0.9.20` runtime in both the CLI and plugin graph.
-The 0.9.20 upstream change fixes SDK server teardown without changing the
-persisted/task schema. Memory and task acceptance cover this combination.
-Remove the override when the current plugin's declared CLI pin reaches 0.9.20
-or newer, updating both exact pins and the lockfile together.
+AKM CLI is pinned to `0.9.20`; both platform plugins use release
+`0.9.20202609302253`. OpenCode's declared CLI dependency matches, so no AKM
+dependency override is needed.
+
+Claude's plugin is source-distributed. The Assistant Dockerfile downloads its
+immutable release commit with a SHA-256 check, then copies only the Claude
+directory and upstream license into the image. `CLAUDE_CODE_PLUGIN_DIRS` points
+Claude's native loader at that read-only directory in terminal and remote-worker
+environments. It works with fresh or existing persistent homes without changing
+user settings or installing a marketplace at startup. Image smoke checks validate
+the manifest, native loading, and version alignment with OpenCode.
+`BUN_OPTIONS=--no-env-file` prevents workspace dotenv loading in upstream hooks;
+automatic learning and session extraction remain disabled by the existing AKM
+environment defaults.
 
 Entrypoints never run a package manager. Runtime package overrides are not supported.
 
