@@ -68,8 +68,8 @@ assistant)
 	docker exec "$container" sh -c \
 		'command -v akm >/dev/null && command -v opencode >/dev/null && command -v supercronic >/dev/null && codex --version && claude --version && test -x /usr/local/bin/openpalm-remote && test -x /usr/local/bin/openpalm-task && test -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js'
 	docker exec "$container" sh -c 'claude plugin validate "$CLAUDE_CODE_PLUGIN_DIRS" --strict'
-	docker exec "$container" claude plugin list --json | bun --no-env-file -e \
-		'const plugins = await Bun.stdin.json(); const version = (await Bun.file("containers/assistant/tools/package.json").json()).dependencies["akm-opencode"]; if (!plugins.some(p => p.id === "akm@inline" && p.enabled && p.version === version)) throw Error("Claude AKM plugin not loaded");'
+	docker exec "$container" claude plugin list --json | docker exec -i "$container" bun -e \
+		'const plugins = await Bun.stdin.json(); const version = (await Bun.file("/opt/openpalm/tools/package.json").json()).dependencies["akm-opencode"]; if (!plugins.some(p => p.id === "akm@inline" && p.enabled && p.version === version)) throw Error("Claude AKM plugin not loaded");'
 	docker exec "$container" claude plugin details akm
 	# Upstream hooks invoke Bun directly; do not let workspace .env files inject
 	# credentials into those subprocesses.
