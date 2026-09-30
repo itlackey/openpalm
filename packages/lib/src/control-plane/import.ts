@@ -17,6 +17,13 @@ import { parseOAuthConfig, parseOAuthIdentityMap } from './oauth-store.js';
 import { parsePortalCredentialMap } from './portal-credential-store.js';
 import { readStackConfig } from './stack-config.js';
 import { managedComposeFile, stackConfigFile, writeFileAtomic } from './foundation.js';
+import {
+	assertSafePortablePath,
+	hasInlineProviderCredentials,
+	hasNonPortableNativeConfiguration,
+	providerSecretFiles,
+	readProviderSecretFile
+} from './provider-files.js';
 
 const MAX_FILES = 100_000;
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
@@ -107,10 +114,8 @@ function verifyBackupManifest(sourceHome: string): Set<string> | null {
 		value = JSON.parse(
 			readRegularSource(path, MAX_MANIFEST_BYTES).bytes.toString('utf8')
 		) as unknown;
-	} catch (error) {
-		throw new Error(
-			`Backup manifest is invalid: ${error instanceof Error ? error.message : String(error)}`
-		);
+	} catch {
+		throw new Error('Backup manifest is invalid or unreadable');
 	}
 	const root = asRecord(value);
 	if (root?.version !== 1 || !Array.isArray(root.files) || root.files.length > MAX_FILES) {
@@ -143,6 +148,7 @@ function verifyBackupManifest(sourceHome: string): Set<string> | null {
 		if (!contained(sourceHome, source)) {
 			throw new Error(`Backup manifest path escaped its source: ${entry.path}`);
 		}
+		assertSafePortablePath(sourceHome, entry.path);
 		const file = readRegularSource(source);
 		if (file.bytes.byteLength !== entry.bytes) {
 			throw new Error(`Backup size mismatch: ${entry.path}`);
@@ -159,7 +165,11 @@ function verifyBackupManifest(sourceHome: string): Set<string> | null {
 	return verified;
 }
 
-function filesBelow(root: string, warnings: string[]): string[] {
+function filesBelow(
+	root: string,
+	warnings: string[],
+	skipDirectory: (path: string) => boolean = () => false
+): string[] {
 	if (!existsSync(root)) return [];
 	const rootStat = lstatSync(root);
 	if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
@@ -173,6 +183,13 @@ function filesBelow(root: string, warnings: string[]): string[] {
 		if (!current) break;
 		for (const entry of readdirSync(current, { withFileTypes: true })) {
 			const path = join(current, entry.name);
+			if ((entry.isDirectory() || entry.isSymbolicLink()) && skipDirectory(path)) continue;
+			if ((entry.isDirectory() || entry.isSymbolicLink()) && entry.name === 'node_modules') {
+				warnings.push(
+					`Skipped generated dependencies: ${path}; reinstall dependencies after import.`
+				);
+				continue;
+			}
 			if (entry.isSymbolicLink()) {
 				warnings.push(`Skipped symlink: ${path}`);
 				continue;
@@ -257,7 +274,12 @@ function validateMappedConfiguration(
 	destinationHome: string
 ): void {
 	if (!relativePath.endsWith('.json')) return;
-	const value = JSON.parse(readFileSync(source, 'utf8')) as unknown;
+	let value: unknown;
+	try {
+		value = JSON.parse(readRegularSource(source).bytes.toString('utf8')) as unknown;
+	} catch {
+		throw new Error(`${relativePath} must contain valid JSON; no configuration values were logged`);
+	}
 	const stack = readStackConfig(destinationHome);
 	if (!stack.ok) throw new Error(stack.error);
 	if (relativePath.includes('/portal/')) {
@@ -337,10 +359,12 @@ function addTree(
 	destinationHome: string,
 	relativeRoot: string,
 	category: ImportEntry['category'],
-	filter: (relativeFile: string) => boolean = () => true
+	filter: (relativeFile: string) => boolean = () => true,
+	skipDirectory: (path: string) => boolean = () => false
 ): void {
 	const root = join(sourceHome, relativeRoot);
-	for (const source of filesBelow(root, warnings)) {
+	assertSafePortablePath(sourceHome, relativeRoot, true);
+	for (const source of filesBelow(root, warnings, skipDirectory)) {
 		const file = relative(root, source);
 		if (!filter(file)) continue;
 		candidates.push(
@@ -369,13 +393,39 @@ export function planImport(options: ImportOptions): ImportPlan {
 
 	const warnings: string[] = [];
 	const candidates: Candidate[] = [];
-	addTree(candidates, warnings, sourceHome, destinationHome, 'knowledge', 'knowledge', (file) => {
-		const first = file.split(sep)[0];
-		return !['tasks', 'secrets', 'env', '.git', 'node_modules'].includes(first ?? '');
-	});
+	const knowledgeRoot = join(sourceHome, 'knowledge');
+	addTree(
+		candidates,
+		warnings,
+		sourceHome,
+		destinationHome,
+		'knowledge',
+		'knowledge',
+		(file) => {
+			const first = file.split(sep)[0];
+			return !['tasks', 'secrets', 'env', '.git', '.akm'].includes(first ?? '');
+		},
+		(path) => {
+			const relativePath = relative(knowledgeRoot, path).split(sep).join('/');
+			if (relativePath === 'imported-config/akm') {
+				warnings.push(
+					'Skipped historical AKM staging (knowledge/imported-config/akm): it may contain credentials. Source preserved.'
+				);
+				return true;
+			}
+			if (relativePath === '.akm') {
+				warnings.push(
+					'Skipped generated AKM metadata (knowledge/.akm): the fresh installation regenerates its indexes and runtime metadata. Source preserved.'
+				);
+				return true;
+			}
+			return ['tasks', 'secrets', 'env', '.git'].includes(relativePath);
+		}
+	);
 	addTree(candidates, warnings, sourceHome, destinationHome, 'workspace', 'workspace');
 
 	const tasksRoot = join(sourceHome, 'knowledge', 'tasks');
+	assertSafePortablePath(sourceHome, 'knowledge/tasks', true);
 	for (const source of filesBelow(tasksRoot, warnings)) {
 		const name = basename(source);
 		if (!TASK_FILE_RE.test(name)) {
@@ -394,17 +444,28 @@ export function planImport(options: ImportOptions): ImportPlan {
 		);
 	}
 
+	let nonPortableNativeConfiguration = false;
 	for (const relativePath of [
 		'config/assistant/opencode.json',
 		'config/assistant/persona.md',
 		'config/assistant/user-profile.md'
 	]) {
 		const source = join(sourceHome, relativePath);
+		assertSafePortablePath(sourceHome, relativePath, true);
 		if (existsSync(source) && lstatSync(source).isFile()) {
 			if (relativePath.endsWith('/opencode.json')) {
-				const parsed = JSON.parse(readFileSync(source, 'utf8')) as unknown;
-				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-					throw new Error(`${relativePath} must contain a JSON object`);
+				nonPortableNativeConfiguration = hasNonPortableNativeConfiguration(sourceHome);
+				if (nonPortableNativeConfiguration) {
+					warnings.push(
+						'Skipped non-portable native OpenCode configuration: only $schema, model, small_model and provider are portable. Review and recreate other customization separately; source preserved.'
+					);
+					continue;
+				}
+				if (hasInlineProviderCredentials(sourceHome) && !options.includeProviderAuth) {
+					warnings.push(
+						'Skipped native OpenCode configuration containing inline provider credentials: explicitly opt in with --include-provider-auth or sign in again. Source preserved.'
+					);
+					continue;
 				}
 			}
 			candidates.push(
@@ -419,23 +480,34 @@ export function planImport(options: ImportOptions): ImportPlan {
 		}
 	}
 	const oldAkm = join(sourceHome, 'config', 'akm');
-	for (const source of filesBelow(oldAkm, warnings)) {
-		const file = relative(oldAkm, source);
-		candidates.push(
-			candidate(
-				sourceHome,
-				destinationHome,
-				source,
-				join(destinationHome, 'knowledge', 'imported-config', 'akm', file),
-				'config'
-			)
+	if (existsSync(oldAkm)) {
+		warnings.push(
+			'Skipped historical AKM configuration (config/akm): it may contain credentials; recreate supported settings in the fresh installation. Source preserved.'
 		);
 	}
 
+	let providerFiles: string[] = [];
+	try {
+		if (!nonPortableNativeConfiguration) providerFiles = providerSecretFiles(sourceHome);
+	} catch (error) {
+		if (options.includeProviderAuth) throw error;
+		warnings.push(
+			'Provider file references could not be safely imported; configure the provider again or review references before opting in to --include-provider-auth.'
+		);
+	}
+	if (!options.includeProviderAuth && providerFiles.length) {
+		warnings.push(
+			`Excluded ${providerFiles.length} referenced private provider file(s): use --include-provider-auth or configure the provider again before setup.`
+		);
+	}
 	if (options.includeProviderAuth) {
-		const relativePath = 'knowledge/secrets/auth.json';
-		const source = join(sourceHome, relativePath);
-		if (existsSync(source) && lstatSync(source).isFile()) {
+		const authPath = 'knowledge/secrets/auth.json';
+		assertSafePortablePath(sourceHome, authPath, true);
+		if (existsSync(join(sourceHome, authPath))) providerFiles.push(authPath);
+		for (const relativePath of new Set(providerFiles)) {
+			const source = join(sourceHome, relativePath);
+			readProviderSecretFile(sourceHome, relativePath);
+			assertSafePortablePath(destinationHome, relativePath, true);
 			candidates.push(
 				candidate(
 					sourceHome,
@@ -466,6 +538,7 @@ export function planImport(options: ImportOptions): ImportPlan {
 		for (const portal of ['discord', 'slack']) {
 			const relativePath = `config/portal/${portal}/credentials.json`;
 			const source = join(sourceHome, relativePath);
+			assertSafePortablePath(sourceHome, relativePath, true);
 			if (existsSync(source) && lstatSync(source).isFile()) {
 				validateMappedConfiguration(relativePath, source, destinationHome);
 				candidates.push(
@@ -484,6 +557,7 @@ export function planImport(options: ImportOptions): ImportPlan {
 		for (const name of ['oauth.json', 'oauth-identities.json']) {
 			const relativePath = `config/guardian/${name}`;
 			const source = join(sourceHome, relativePath);
+			assertSafePortablePath(sourceHome, relativePath, true);
 			if (existsSync(source) && lstatSync(source).isFile()) {
 				validateMappedConfiguration(relativePath, source, destinationHome);
 				candidates.push(
@@ -499,16 +573,23 @@ export function planImport(options: ImportOptions): ImportPlan {
 		}
 	}
 
+	if (candidates.length > MAX_FILES)
+		throw new Error(`Import exceeds ${MAX_FILES} files across all categories`);
 	let totalBytes = 0;
 	const entries: ImportEntry[] = [];
 	for (const item of candidates) {
+		assertSafePortablePath(sourceHome, item.relativeSource);
+		assertSafePortablePath(destinationHome, item.relativeDestination, true);
 		if (verifiedBackupFiles && !verifiedBackupFiles.has(item.relativeSource)) {
 			throw new Error(`Backup file is not recorded in its manifest: ${item.relativeSource}`);
 		}
 		const stat = lstatSync(item.source);
 		if (!stat.isFile() || stat.isSymbolicLink()) continue;
 		if (stat.size > MAX_FILE_BYTES) throw new Error(`Import file is too large: ${item.source}`);
-		const sourceFile = readRegularSource(item.source);
+		const sourceFile =
+			item.category === 'secret' && item.relativeSource.startsWith('knowledge/secrets/')
+				? { bytes: readProviderSecretFile(sourceHome, item.relativeSource), mode: stat.mode }
+				: readRegularSource(item.source);
 		totalBytes += sourceFile.bytes.byteLength;
 		if (totalBytes > MAX_TOTAL_BYTES) throw new Error('Import exceeds the 20 GiB safety limit');
 		let action = item.preferred;
@@ -557,16 +638,20 @@ export function applyImport(options: ImportOptions, expectedDigest?: string): Im
 	}
 	for (const entry of plan.entries) {
 		if (entry.action === 'skip-identical') continue;
+		assertSafePortablePath(plan.sourceHome, entry.relativeSource);
 		const sourceReal = realpathSync(entry.source);
 		if (!contained(plan.sourceHome, sourceReal)) {
 			throw new Error(`Import source changed or escaped its home: ${entry.source}`);
 		}
-		const sourceFile = readRegularSource(sourceReal);
+		const sourceFile =
+			entry.category === 'secret' && entry.relativeSource.startsWith('knowledge/secrets/')
+				? { bytes: readProviderSecretFile(plan.sourceHome, entry.relativeSource), mode: 0o600 }
+				: readRegularSource(entry.source);
 		const digest = createHash('sha256').update(sourceFile.bytes).digest('hex');
 		if (digest !== entry.sha256) {
 			throw new Error(`Import source changed after preview: ${entry.relativeSource}`);
 		}
-		const mode = (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600;
+		const mode = entry.category !== 'secret' && (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600;
 		ensureSafeDestinationParent(plan.destinationHome, entry.destination);
 		writeFileAtomic(entry.destination, sourceFile.bytes, mode);
 	}

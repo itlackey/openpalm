@@ -5,6 +5,19 @@ lifecycle commands. File-level configuration is an advanced interface.
 
 ## Lifecycle
 
+Commands act on `OP_HOME` (default `~/.openpalm`), not whichever instance was
+most recently installed. For a nondefault home, keep that selection explicit:
+
+```bash
+OP_HOME=/absolute/path/to/personal-openpalm openpalm status
+```
+
+A host-local alias/wrapper such as `openpalm-personal` may select a specific
+home and CLI binary; it is a convenience configured on that host, not a product
+subcommand. Inspect its target and verify the binary's `--version`, especially
+while an old installation is retained for rollback. Without the alias, the
+equivalent is `OP_HOME=<home> /absolute/path/to/verified-openpalm <command>`.
+
 ```bash
 openpalm start
 openpalm restart
@@ -202,12 +215,26 @@ Create a portable recovery directory without stopping the agent:
 openpalm backup --to /absolute/path/to/new-or-empty-backup
 ```
 
-The backup copies the allowlisted `knowledge/`, `workspace/`, Assistant
-preferences, and AKM configuration, records a SHA-256 integrity manifest, and
+The backup copies the allowlisted `knowledge/`, `workspace/`, and validated
+Assistant preferences, records a SHA-256 integrity manifest, and
 can be passed to `openpalm import --from`. Active task definitions are restored
 into the review-required staging area. Restore verifies every recorded size and
 checksum and refuses unrecorded allowlisted files. Symlinks and non-regular
 files are reported rather than followed.
+
+Generated `node_modules/` directories are omitted; reinstall dependencies from
+project lockfiles after recovery. AKM runtime configuration under `config/akm/`
+is not portable and may contain credentials, including in historical copies;
+fresh installation regenerates managed scheduler settings. It must not be
+staged in agent-searchable knowledge for reference.
+
+Automatic portable Assistant configuration accepts only `$schema`, `model`,
+`small_model`, and `provider`. Any additional top-level setting omits the whole
+config with a warning, including when provider-auth is selected. Keep native
+MCP/plugin/custom settings in a protected full-home backup and manually review
+them before reintroduction; this portable-copy restriction does not remove
+OpenCode's normal runtime customization. Literal provider credentials require
+the provider-auth opt-in as well.
 
 Provider authentication, user environment values, portal identity maps, and
 OAuth configuration require explicit backup flags:
@@ -220,8 +247,18 @@ openpalm backup --to /absolute/path/to/private-backup \
   --include-oauth
 ```
 
+Provider-auth opt-in also includes safely contained provider
+`{file:/stash/secrets/...}` references from validated Assistant configuration,
+not arbitrary secret files or external paths. Protect the backup directory as
+private credential-bearing data. After startup, OpenCode can refresh provider
+authentication; an older snapshot's refresh token may no longer work and may
+require native sign-in again.
+
 For a complete rollback snapshot of an old release, stop the old stack and use
-your operating system's backup tool on its full `OP_HOME`. Do not treat
+your operating system's backup tool on its full `OP_HOME` **and every separately
+mounted volume or external data source**. Verify integrity, preserve ownership,
+use sparse-aware archives where available, and keep the snapshot outside agent
+mounts. Do not treat
 `system/`, `state/`, or `data/` as a portable configuration API.
 
 0.14 recovery and migration use a fresh installation followed by an

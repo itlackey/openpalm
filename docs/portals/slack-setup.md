@@ -62,6 +62,11 @@ the agent inspect non-secret content in `/stash` and `/work`; `full` inherits As
 permissions and should be used only when both the Slack allowlist and every
 permitted user are trusted to trigger state-changing work.
 
+Default `chat` does not grant knowledge reads or task management. If a trusted
+personal operator requires those capabilities, assign a separate `full`
+credential explicitly to that exact allowed Slack user; mapping does not
+replace the channel/user allowlist.
+
 The selected credential is the fallback for every allowed Slack user. Map an
 exact Slack user ID to another named credential when that user needs a different
 policy:
@@ -90,3 +95,9 @@ to complete that explicit decision with a full MCP client; chat text is never
 treated as permission approval.
 
 Continuity state is stored at `data/portal/slack/portal.db`.
+
+For migration, store approved old bot/app token files through `portal token`
+with `--no-apply`, then deliberately recreate the allowlist and mappings before
+enabling Slack. Old `state/` and portal conversations are not portable imports.
+Verify Socket Mode login, an allowed message, a denied user/channel, and the
+configured policy independently; healthy containers alone do not prove them.

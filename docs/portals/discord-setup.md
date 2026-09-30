@@ -42,9 +42,17 @@ Values are comma-separated Discord snowflake IDs. Every non-empty allowlist must
 match. For example, configured guild and role lists require both a permitted
 guild and a permitted role. A blocked user always loses access.
 
-For direct messages, configure `DISCORD_ALLOWED_USERS` and leave guild/role
-lists empty; a DM cannot satisfy a guild or role constraint. The adapter refuses
-all use when every allowlist is empty.
+For direct messages, configure users and leave guild/role lists empty; a DM
+cannot satisfy a guild or role constraint. For a personal bot, explicitly
+choose your own Discord user ID:
+
+```bash
+openpalm portal access discord --users 123456789012345678 --no-apply
+```
+
+Bot ownership does not automatically grant access. A team-owned bot requires
+an operator choice of permitted users. The adapter refuses all use when every
+allowlist is empty; do not preserve an old unrestricted scope during migration.
 
 In Admin, expand **Who can use it**, enter the same IDs, choose the default
 access identity, and select **Save connections**. If a required scope or token
@@ -64,6 +72,15 @@ openpalm logs
 the agent inspect non-secret content in `/stash` and `/work`; `full` inherits Assistant tool
 permissions and should be used only when both the Discord allowlist and every
 permitted user are trusted to trigger state-changing work.
+
+In particular, default `chat` does not grant knowledge reads or task management.
+For a trusted personal operator needing the complete tool interface, choose a
+separate `full` credential and map only that exact allowed user:
+
+```bash
+openpalm credential add personal-operator full
+openpalm credential map discord 123456789012345678 personal-operator
+```
 
 The selected credential is the fallback for every allowed Discord user. Map an
 exact Discord user snowflake to another named credential when that user needs a
@@ -89,6 +106,13 @@ conversation. Changing a user's mapping starts fresh policy continuity. Send
 
 The adapter stores only opaque Guardian session handles in
 `data/portal/discord/portal.db`.
+
+After migration, reuse an approved old bot token with
+`portal token discord --bot-token-file <private-file> --no-apply`; do not import
+old `state/` or print the token. A connected gateway verifies token/intents,
+not user access or agent behavior: test an allowed DM/mention, a disallowed user,
+and the configured policy. Native session history and old portal conversations
+are not restored by the portable importer.
 
 The Discord adapter is intentionally a conversational subset of the MCP
 catalog. If a `full` agent pauses for a permission decision, the adapter tells

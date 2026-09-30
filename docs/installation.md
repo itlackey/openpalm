@@ -119,6 +119,7 @@ unchanged, choose a new `OP_HOME`, and import before completing setup:
 
 ```bash
 export OP_HOME=/absolute/path/to/new-openpalm
+export OP_PROJECT_NAME=openpalm-new
 openpalm install --no-start
 openpalm import --from /absolute/path/to/old-openpalm --dry-run
 openpalm import --from /absolute/path/to/old-openpalm --apply
@@ -135,8 +136,22 @@ and adopt a prompt task in paused state with:
 ```bash
 openpalm task adopt "$OP_HOME/knowledge/imported-tasks/example.yml"
 openpalm task show example
+openpalm task run example
+openpalm task history example
 openpalm task resume example
 ```
+
+Approve the manual test's side effects and inspect its retained result before
+resuming. Use a distinct Compose project, verify the actual released CLI's
+`--version`, and preserve a complete cold backup plus any named volumes.
+Old AKM configuration and generated dependency directories are not portable;
+provider file references require the same explicit provider-auth opt-in.
+Client keys/passwords are fresh, and old portal tokens/access scopes must be
+deliberately configured again rather than inferred from the old state.
+Only native `$schema`, `model`, `small_model`, and `provider` configuration is
+automatically portable; other top-level settings cause the entire config to
+be omitted for manual review. Preserve custom MCP/plugin settings in the full
+old-home backup and reintroduce only deliberately trusted configuration.
 
 See [Moving to 0.14](operations/migration-to-0.14.md) for the full safety
 contract.

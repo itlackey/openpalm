@@ -16,6 +16,13 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { readStackConfig } from './stack-config.js';
 import { writeFileAtomic } from './foundation.js';
+import {
+	assertSafePortablePath,
+	hasInlineProviderCredentials,
+	hasNonPortableNativeConfiguration,
+	providerSecretFiles,
+	readProviderSecretFile
+} from './provider-files.js';
 
 const MAX_FILES = 100_000;
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
@@ -99,13 +106,24 @@ function prepareDestination(path: string, source: string): string {
 	return realized;
 }
 
-function readSourceFile(path: string): { bytes: Buffer; mode: number } {
+function readSourceFile(home: string, relativePath: string): { bytes: Buffer; mode: number } {
+	assertSafePortablePath(home, relativePath);
+	const path = join(home, relativePath);
 	const descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 	try {
 		const stat = fstatSync(descriptor);
 		if (!stat.isFile()) throw new Error(`Backup source is not a regular file: ${path}`);
 		if (stat.size > MAX_FILE_BYTES) throw new Error(`Backup file is too large: ${path}`);
-		return { bytes: readFileSync(descriptor), mode: stat.mode };
+		assertSafePortablePath(home, relativePath);
+		const current = lstatSync(path);
+		if (current.dev !== stat.dev || current.ino !== stat.ino) {
+			throw new Error(`Backup source changed while opening: ${relativePath}`);
+		}
+		const bytes = readFileSync(descriptor);
+		assertSafePortablePath(home, relativePath);
+		if (bytes.byteLength > MAX_FILE_BYTES)
+			throw new Error(`Backup file is too large: ${relativePath}`);
+		return { bytes, mode: stat.mode };
 	} finally {
 		closeSync(descriptor);
 	}
@@ -119,6 +137,11 @@ function collectTree(
 ): string[] {
 	const root = join(source, relativeRoot);
 	if (!existsSync(root)) return [];
+	assertSafePortablePath(source, relativeRoot);
+	if (!lstatSync(root).isDirectory()) {
+		warnings.push(`Skipped non-directory backup root: ${relativeRoot}`);
+		return [];
+	}
 	const files: string[] = [];
 	const pending = [root];
 	while (pending.length > 0) {
@@ -127,6 +150,13 @@ function collectTree(
 		for (const entry of readdirSync(current, { withFileTypes: true })) {
 			const path = join(current, entry.name);
 			const item = relative(source, path).split(sep).join('/');
+			if (!filter(relative(root, path))) continue;
+			if (entry.name === 'node_modules' && (entry.isDirectory() || entry.isSymbolicLink())) {
+				warnings.push(
+					`Skipped generated dependency tree: ${item}; reinstall dependencies after restore.`
+				);
+				continue;
+			}
 			if (entry.isSymbolicLink()) {
 				warnings.push(`Skipped symlink: ${item}`);
 				continue;
@@ -139,62 +169,131 @@ function collectTree(
 				warnings.push(`Skipped non-regular file: ${item}`);
 				continue;
 			}
-			if (filter(relative(root, path))) files.push(path);
+			files.push(path);
 			if (files.length > MAX_FILES) throw new Error(`Backup exceeds ${MAX_FILES} files`);
 		}
 	}
 	return files.sort();
 }
 
-function addIfFile(files: Set<string>, path: string): void {
-	if (existsSync(path) && lstatSync(path).isFile()) files.add(path);
+function addIfFile(files: Set<string>, source: string, relativePath: string): void {
+	const path = join(source, relativePath);
+	if (!existsSync(path)) return;
+	assertSafePortablePath(source, relativePath);
+	if (lstatSync(path).isFile()) files.add(path);
 }
 
 export async function createBackup(options: BackupOptions): Promise<BackupManifest> {
 	const source = sourceRoot(options.sourceHome);
 	const stack = readStackConfig(source);
 	if (!stack.ok) throw new Error(stack.error);
-	const destination = prepareDestination(options.destination, source);
 	const warnings: string[] = [];
 	const files = new Set<string>();
 	for (const path of collectTree(source, 'knowledge', warnings, (file) => {
-		const first = file.split(sep)[0];
-		return !['secrets', 'env', '.git', 'node_modules'].includes(first ?? '');
+		const parts = file.split(sep);
+		return (
+			!['secrets', 'env', '.git', '.akm'].includes(parts[0] ?? '') &&
+			!(parts[0] === 'imported-config' && parts[1] === 'akm')
+		);
 	}))
 		files.add(path);
 	for (const path of collectTree(source, 'workspace', warnings)) files.add(path);
-	for (const path of collectTree(source, 'config/akm', warnings)) files.add(path);
+	if (existsSync(join(source, 'knowledge/imported-config/akm'))) {
+		warnings.push(
+			'Skipped historical knowledge/imported-config/akm; keep it in a private full-home backup, not searchable knowledge.'
+		);
+	}
+	if (existsSync(join(source, 'knowledge/.akm'))) {
+		warnings.push(
+			'Skipped generated AKM metadata (knowledge/.akm); indexes and local runtime state are rebuilt after restore.'
+		);
+	}
+	const nonPortableNativeConfiguration = hasNonPortableNativeConfiguration(source);
 	for (const relativePath of [
 		'config/assistant/opencode.json',
 		'config/assistant/persona.md',
 		'config/assistant/user-profile.md'
 	])
-		addIfFile(files, join(source, relativePath));
-	if (options.includeProviderAuth) addIfFile(files, join(source, 'knowledge/secrets/auth.json'));
-	if (options.includeUserEnv) addIfFile(files, join(source, 'knowledge/env/user.env'));
+		if (relativePath === 'config/assistant/opencode.json' && nonPortableNativeConfiguration) {
+			warnings.push(
+				'Native OpenCode configuration with settings beyond portable model/provider preferences was omitted; review and reintroduce custom configuration manually from a private full-home backup.'
+			);
+		} else if (
+			relativePath === 'config/assistant/opencode.json' &&
+			hasInlineProviderCredentials(source) &&
+			!options.includeProviderAuth
+		) {
+			warnings.push(
+				'Native OpenCode configuration containing inline provider credentials was omitted; use --include-provider-auth or sign in again after restore.'
+			);
+		} else addIfFile(files, source, relativePath);
+	let providerFiles: string[] = [];
+	try {
+		providerFiles = nonPortableNativeConfiguration ? [] : providerSecretFiles(source);
+	} catch (error) {
+		if (options.includeProviderAuth) throw error;
+		warnings.push(
+			'Provider file references could not be safely backed up; configure the provider again or review references before opting in to --include-provider-auth.'
+		);
+	}
+	if (options.includeProviderAuth) {
+		addIfFile(files, source, 'knowledge/secrets/auth.json');
+		if (files.has(join(source, 'knowledge/secrets/auth.json'))) {
+			readProviderSecretFile(source, 'knowledge/secrets/auth.json');
+		}
+		for (const relativePath of providerFiles) {
+			readProviderSecretFile(source, relativePath);
+			files.add(join(source, relativePath));
+		}
+	} else if (providerFiles.length > 0) {
+		warnings.push(
+			'Provider key files were omitted; use --include-provider-auth or sign in again after restore.'
+		);
+	}
+	if (options.includeUserEnv) addIfFile(files, source, 'knowledge/env/user.env');
 	if (options.includePortalMaps) {
 		for (const portal of ['discord', 'slack']) {
-			addIfFile(files, join(source, 'config', 'portal', portal, 'credentials.json'));
+			addIfFile(files, source, `config/portal/${portal}/credentials.json`);
 		}
 	}
 	if (options.includeOAuth) {
 		for (const name of ['oauth.json', 'oauth-identities.json']) {
-			addIfFile(files, join(source, 'config', 'guardian', name));
+			addIfFile(files, source, `config/guardian/${name}`);
 		}
 	}
 
+	if (files.size > MAX_FILES) throw new Error(`Backup exceeds ${MAX_FILES} files`);
+	let inspectedBytes = 0;
+	for (const file of files) {
+		assertSafePortablePath(source, relative(source, file).split(sep).join('/'));
+		const stat = lstatSync(file);
+		if (!stat.isFile() || stat.size > MAX_FILE_BYTES) {
+			throw new Error(`Backup source is not a bounded regular file: ${relative(source, file)}`);
+		}
+		inspectedBytes += stat.size;
+		if (inspectedBytes > MAX_TOTAL_BYTES) throw new Error('Backup exceeds the 20 GiB safety limit');
+	}
+	const destination = prepareDestination(options.destination, source);
 	let totalBytes = 0;
 	const entries: BackupManifest['files'] = [];
 	for (const file of [...files].sort()) {
-		const sourceFile = readSourceFile(file);
+		const relativePath = relative(source, file).split(sep).join('/');
+		const isSecret =
+			relativePath.startsWith('knowledge/secrets/') || relativePath === 'knowledge/env/user.env';
+		const sourceFile = relativePath.startsWith('knowledge/secrets/')
+			? { bytes: readProviderSecretFile(source, relativePath), mode: 0o600 }
+			: readSourceFile(source, relativePath);
 		totalBytes += sourceFile.bytes.byteLength;
 		if (totalBytes > MAX_TOTAL_BYTES) throw new Error('Backup exceeds the 20 GiB safety limit');
-		const relativePath = relative(source, file).split(sep).join('/');
 		const target = join(destination, ...relativePath.split('/'));
 		if (!contained(destination, target))
 			throw new Error(`Backup path escaped destination: ${relativePath}`);
 		mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-		writeFileAtomic(target, sourceFile.bytes, (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600);
+		writeFileAtomic(
+			target,
+			sourceFile.bytes,
+			!isSecret && (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600
+		);
 		const sha256 = createHash('sha256').update(sourceFile.bytes).digest('hex');
 		entries.push({ path: relativePath, bytes: sourceFile.bytes.byteLength, sha256 });
 	}

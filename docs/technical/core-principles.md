@@ -216,6 +216,25 @@ require an explicit opt-in. `system/`, generated `state/`, old Compose files,
 service databases, caches, containers, and retired feature configuration are
 not imported.
 
+Old `config/akm/`, including historical copies, is neither portable-backup data
+nor staged knowledge: it may contain credentials and managed scheduler intent.
+Fresh installation regenerates the managed settings. Generated dependency
+directories are omitted rather than copying partial linked trees. Provider-auth
+opt-in may copy native provider file references only when safely contained
+below `knowledge/secrets/`; it never grants an arbitrary secret-directory copy.
+Automatic native configuration portability allows only `$schema`, `model`,
+`small_model`, and `provider`; other top-level settings omit the entire config
+for manual review rather than activating old MCP connections/plugins or
+copying their credentials. Provider literals require secret opt-in. Runtime
+OpenCode customization remains available; migration is not a second registry.
+
+Migration chooses a distinct Compose project and explicitly re-establishes
+network intent, client credentials, portal allowlists, and policy assignments.
+Native OpenCode session databases and old external plugin/bundle mounts are
+not automatically restored or activated. The acceptance check includes real
+provider use, knowledge retrieval, durable scheduled results, and each enabled
+client path—not merely healthy containers.
+
 The old home remains the rollback artifact. OpenPalm does not maintain runtime
 compatibility shims merely to reuse it.
 

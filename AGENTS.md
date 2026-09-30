@@ -171,7 +171,15 @@ sources outside the active scheduler until reviewed.
 0.14 is a fresh-install boundary. Do not add an in-place 0.13 compatibility
 path. Import only an explicit allowlist of user-owned knowledge, disabled task
 definitions, workspace files, and validated configuration. Secret import is
-opt-in. Never infer new runtime intent from old `system/`, `state/`, `data/`,
+opt-in; supported native provider file references must remain contained below
+`knowledge/secrets/`. Never stage old `config/akm/` or historical configuration
+backups in searchable knowledge or portable backups; regenerate managed runtime
+settings. Omit generated dependency trees instead of copying incomplete linked
+directories. Automatically portable native configuration allows only `$schema`,
+`model`, `small_model`, and `provider`; omit the entire config when other
+top-level settings occur, requiring manual review rather than automatic MCP or
+plugin activation. Provider literals still require secret opt-in. Never infer
+new runtime intent from old `system/`, `state/`, `data/`,
 Compose, container, or retired-feature state, and never mutate the source home.
 
 ## Commands
