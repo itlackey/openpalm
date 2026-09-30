@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Launch the freshly packaged native Admin without Docker or provider secrets. */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expectedAdminAssets } from './validate-release-assets.mjs';
@@ -10,6 +10,7 @@ const version = process.env.VERSION;
 if (!version) throw new Error('VERSION is required');
 const packaged = resolve('packages/electron/dist/packages');
 const generated = mkdtempSync(join(tmpdir(), 'openpalm-packaged-smoke-'));
+const report = join(generated, 'startup-report.json');
 
 function run(command, args, options = {}) {
 	const result = spawnSync(command, args, {
@@ -20,12 +21,14 @@ function run(command, args, options = {}) {
 			...process.env,
 			OP_HOME: join(generated, 'home'),
 			OPENPALM_REPO_ROOT: '',
-			OPENPALM_ADMIN_SMOKE_VERSION: version
+			OPENPALM_ADMIN_SMOKE_VERSION: version,
+			OPENPALM_ADMIN_SMOKE_REPORT: report
 		},
 		...options
 	});
 	if (result.error || result.status !== 0) {
-		throw new Error(`Packaged Admin command failed: ${result.error?.message ?? result.stderr}`);
+		const detail = existsSync(report) ? readFileSync(report, 'utf8') : result.stderr;
+		throw new Error(`Packaged Admin command failed: ${result.error?.message ?? detail}`);
 	}
 	return result.stdout ?? '';
 }
@@ -52,10 +55,11 @@ try {
 		command = 'xvfb-run';
 		args = ['-a', join(generated, 'squashfs-root', 'openpalm-admin'), '--no-sandbox', ...args];
 	}
-	const output = run(command, args);
-	if (!output.includes('OPENPALM_ADMIN_SMOKE_OK'))
+	run(command, args);
+	const result = existsSync(report) ? JSON.parse(readFileSync(report, 'utf8')) : null;
+	if (result?.ok !== true || result.version !== version)
 		throw new Error('Packaged Admin did not confirm renderer and bridge readiness');
 	console.log(`Verified packaged Admin startup: ${asset}`);
 } finally {
-	rmSync(generated, { recursive: true, force: true });
+	console.log(`Packaged smoke fixtures retained at ${generated}`);
 }

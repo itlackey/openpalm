@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
@@ -8,15 +8,28 @@ import { createAdminWindow, registerAdminIpc } from './admin-app.js';
 if (process.platform === 'win32') app.setAppUserModelId('com.openpalm.admin');
 
 const releaseSmoke = process.argv.includes('--openpalm-release-smoke');
+function finishReleaseSmoke(error?: string): void {
+	const report = process.env.OPENPALM_ADMIN_SMOKE_REPORT;
+	if (report) {
+		if (!isAbsolute(report)) throw new Error('Release smoke report must be an absolute path.');
+		writeFileSync(report, JSON.stringify({ ok: !error, version: app.getVersion(), error }), {
+			flag: 'wx',
+			mode: 0o600
+		});
+	} else if (error) {
+		process.stderr.write(`${error}\n`);
+	} else {
+		process.stdout.write('OPENPALM_ADMIN_SMOKE_OK\n');
+	}
+	app.exit(error ? 1 : 0);
+}
 if (releaseSmoke) {
 	const home = process.env.OP_HOME;
 	const expectedVersion = process.env.OPENPALM_ADMIN_SMOKE_VERSION;
 	if (expectedVersion && app.getVersion() !== expectedVersion) {
-		process.stderr.write(`Release smoke expected ${expectedVersion}, found ${app.getVersion()}.\n`);
-		app.exit(1);
+		finishReleaseSmoke(`Release smoke expected ${expectedVersion}, found ${app.getVersion()}.`);
 	} else if (!home || !isAbsolute(home) || (existsSync(home) && readdirSync(home).length !== 0)) {
-		process.stderr.write('Release smoke requires an absolute, empty OP_HOME.\n');
-		app.exit(1);
+		finishReleaseSmoke('Release smoke requires an absolute, empty OP_HOME.');
 	} else {
 		// Packaged startup uses the real preload and CSP, with no production-profile writes.
 		app.setPath('userData', mkdtempSync(join(tmpdir(), 'openpalm-admin-release-profile-')));
@@ -72,11 +85,14 @@ void app
 		const window = createAdminWindow();
 		if (releaseSmoke) {
 			await verifyPackagedStartup(window);
-			process.stdout.write('OPENPALM_ADMIN_SMOKE_OK\n');
-			app.exit(0);
+			finishReleaseSmoke();
 		}
 	})
 	.catch((error: unknown) => {
+		if (releaseSmoke) {
+			finishReleaseSmoke(error instanceof Error ? error.message : String(error));
+			return;
+		}
 		process.stderr.write(
 			`OpenPalm Admin could not start: ${error instanceof Error ? error.message : String(error)}\n`
 		);
