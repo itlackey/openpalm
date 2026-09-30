@@ -82,20 +82,23 @@ describe('optional native remote workers', () => {
 			{ stdout: 'pipe', stderr: 'pipe' }
 		);
 		try {
-			await until(
-				() =>
-					existsSync(status) &&
-					JSON.parse(readFileSync(status, 'utf8')).state === 'waiting-to-retry'
-			);
-			await until(
-				() =>
-					existsSync(join(root, 'attempts')) &&
-					statSync(join(root, 'attempts')).size >= 2 &&
-					JSON.parse(readFileSync(status, 'utf8')).state === 'waiting-to-retry'
-			);
-			expect(JSON.parse(readFileSync(status, 'utf8')).exitCode).toBe(23);
-			expect(readFileSync(log, 'utf8')).toContain('no-assistant-password');
-			expect(readFileSync(log, 'utf8')).not.toContain('must-not-leak');
+			let completedLog = '';
+			let exitCode: number | undefined;
+			await until(() => {
+				if (!existsSync(status) || !existsSync(join(root, 'attempts'))) return false;
+				if (statSync(join(root, 'attempts')).size < 2) return false;
+				const snapshot = JSON.parse(readFileSync(status, 'utf8'));
+				// A retry replaces the log. Assert the completed snapshot observed
+				// here, not a later read which may belong to the next attempt.
+				completedLog = readFileSync(log, 'utf8');
+				exitCode = snapshot.exitCode;
+				return (
+					snapshot.state === 'waiting-to-retry' && completedLog.includes('no-assistant-password')
+				);
+			});
+			expect(exitCode).toBe(23);
+			expect(completedLog).toContain('no-assistant-password');
+			expect(completedLog).not.toContain('must-not-leak');
 			expect(statSync(log).size).toBeLessThanOrEqual(65_536);
 			expect(statSync(log).mode & 0o777).toBe(0o600);
 			expect(statSync(status).mode & 0o777).toBe(0o600);
