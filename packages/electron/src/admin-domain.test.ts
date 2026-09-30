@@ -49,7 +49,7 @@ async function install(
 
 describe('Admin domain', () => {
 	it('authenticates the exact local Admin page with platform-aware file paths', () => {
-		const windows = 'C:\\Users\\Runner\\OpenPalm Admin\\resources\\app.asar\\admin\\index.html';
+		const windows = 'file:///C:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/index.html';
 		expect(
 			isAdminPageUrl(
 				'file:///c:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/index.html',
@@ -64,7 +64,7 @@ describe('Admin domain', () => {
 				true
 			)
 		).toBe(true);
-		const posix = '/opt/OpenPalm Admin/admin/index.html';
+		const posix = 'file:///opt/OpenPalm%20Admin/admin/index.html';
 		expect(isAdminPageUrl('file:///opt/OpenPalm%20Admin/admin/index.html', posix, false)).toBe(
 			true
 		);

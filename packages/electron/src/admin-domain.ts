@@ -1,6 +1,3 @@
-import { win32 } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import {
 	applyHomeSeed,
 	applyImport,
@@ -38,7 +35,7 @@ import {
 
 export function isAdminPageUrl(
 	value: unknown,
-	indexPath: string,
+	indexUrl: string,
 	windows = process.platform === 'win32'
 ): boolean {
 	if (typeof value !== 'string' || value.length > 4_096) return false;
@@ -46,10 +43,12 @@ export function isAdminPageUrl(
 		const url = new URL(value);
 		if (url.protocol !== 'file:' || url.search || url.hash || url.username || url.password)
 			return false;
-		const path = fileURLToPath(url, { windows });
-		return windows
-			? win32.normalize(path).toLowerCase() === win32.normalize(indexPath).toLowerCase()
-			: path === indexPath;
+		if (/%2f|%5c/i.test(url.pathname)) return false;
+		const expected = new URL(indexUrl);
+		if (url.hostname !== expected.hostname) return false;
+		const path = decodeURIComponent(url.pathname);
+		const expectedPath = decodeURIComponent(expected.pathname);
+		return windows ? path.toLowerCase() === expectedPath.toLowerCase() : path === expectedPath;
 	} catch {
 		return false;
 	}
