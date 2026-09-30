@@ -6,7 +6,7 @@ and remain available in Git history.
 
 ## [Unreleased]
 
-## [0.14.0-beta.1] - 2026-09-30
+## [0.14.0-alpha.1] - 2026-09-30
 
 This is a testing prerelease, not the stable 0.14.0 release. Live verification
 and platform-specific limitations are recorded in the release documentation.

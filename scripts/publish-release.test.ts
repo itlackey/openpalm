@@ -24,6 +24,7 @@ describe('GitHub npm trusted publishing', () => {
 		expect(releaseChannel(version)).toBe('beta');
 		expect(releaseChannel('0.14.0-rc.1')).toBe('rc');
 		expect(releaseChannel('0.14.0-preview.1')).toBe('next');
+		expect(releaseChannel('0.14.0-alpha.1')).toBe('next');
 		expect(releaseChannel('0.14.0')).toBe('latest');
 		expect(() => releaseChannel('invalid')).toThrow();
 	});

@@ -18,8 +18,8 @@ operation.
 Preview or stamp the release:
 
 ```bash
-VERSION=0.14.0-beta.1 node scripts/bump-release.mjs
-VERSION=0.14.0-beta.1 STAMP=true node scripts/bump-release.mjs
+VERSION=0.14.0-alpha.1 node scripts/bump-release.mjs
+VERSION=0.14.0-alpha.1 STAMP=true node scripts/bump-release.mjs
 bun install
 ```
 
@@ -100,9 +100,9 @@ Retrying that job compares packed npm integrity against an existing version
 and rejects different contents.
 
 Public repository metadata, installer binaries, Admin downloads, and the
-Claude Desktop extension all point to GitHub. `0.14.0-beta.1` is a GitHub
-prerelease and publishes to npm's `beta` tag; `*-rc.*` uses `rc`, other
-prereleases use `next`, and stable uses `latest`. Beta testing precedes
+Claude Desktop extension all point to GitHub. `0.14.0-alpha.1` is a GitHub
+prerelease and publishes to npm's `next` tag; `*-beta.*` uses `beta`,
+`*-rc.*` uses `rc`, and stable uses `latest`. Beta testing precedes
 the release candidate and final stable dispatch. A dry run never publishes
 images, releases, or npm packages. CI runs on the lean branch as well as pull
 requests, `main`, and `release/*`.
@@ -110,7 +110,7 @@ requests, `main`, and `release/*`.
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
 
-## Beta.1 verification record
+## Alpha.1 candidate verification record
 
 The 2026-09-30 Linux x64 walkthrough used a fresh private home and the real
 OpenCode Go provider. Setup readiness, default-provider persistence, visible

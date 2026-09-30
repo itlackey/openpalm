@@ -8,7 +8,9 @@ container="openpalm-${kind}-smoke-$$"
 
 cleanup() {
 	docker rm -f "$container" >/dev/null 2>&1 || true
-	rm -rf "$root"
+	# Container-owned files may be intentionally inaccessible to the host user.
+	# Retain fixtures for diagnosis; disposable CI runners reclaim their temp tree.
+	printf 'Smoke fixtures retained at %s\n' "$root"
 }
 trap cleanup EXIT
 
