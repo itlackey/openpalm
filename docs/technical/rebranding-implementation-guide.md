@@ -1,33 +1,49 @@
-# OpenPalm rebranding implementation guide
+# f/hold rebranding implementation guide
 
-This is an implementation proposal, not an approved rename. It inventories the
-changes needed to give the lean personal-agent product a new name under
-fwdslsh while preserving working installations. The implementation inspected
-has baseline commit `6c7735eb`, reviewed on October 1, 2026. Existing uncommitted
-Admin work was not changed or included in this documentation change.
+The selected new name is **f/hold**, a fwdslsh product. This guide defines its
+name variants and the changes needed to rebrand OpenPalm while preserving
+working installations. The name was selected on October 1, 2026; the runtime
+rename and distribution changes have not shipped. Current release commands
+and downloads still use OpenPalm.
+
+## Selected naming contract
+
+| Context | Selected form | Usage |
+|---|---|---|
+| Primary visual identity | **f/hold** | Wordmark, website masthead and in-app brand mark |
+| Plain text and accessibility | **fHold** | Product prose, window titles, app listings and spoken-label text |
+| Technical identifiers | `fhold` | New executable, package, repository and artifact names; never put the slash in a filesystem name |
+| Compact secondary mark | **/hold** | Only where the fwdslsh parent brand is already explicit; not a standalone command or package |
+
+Pronounce the name **“eff hold.”** The descriptor is **“A home for your personal
+AI.”** Use **fwdslsh fHold** when parent-brand attribution is helpful. Fold,
+Manyfold and `f.hold` are not additional product spellings. Existing
+compatibility identifiers are exceptions to the technical slug, not variants
+of the new brand.
 
 The recommended boundary is to rename the public product and its distribution
 identity, but preserve existing data and protocol identifiers unless a separate
 breaking change has a concrete benefit. A new display name does not require a
 new database, environment-variable vocabulary, or access-control scheme.
 
-See the [candidate market review](../research/product-name-market-review-2026-10-01.md)
-before choosing a name. No proposed name, package, executable, domain, registry
-namespace, or trademark has been cleared or reserved.
+The [market review and selection record](../research/product-name-market-review-2026-10-01.md)
+records the decision and earlier alternatives. Name selection is not trademark
+clearance or reservation of a package, domain or registry namespace.
 
-## Decisions needed before implementation
+## Distribution decisions still needed
 
-Record one explicit choice for each item before editing manifests or workflows:
+The display name and technical slug are settled. Confirm the remaining
+distribution choices before editing manifests or publishing:
 
 | Decision | Suggested approach |
 |---|---|
-| Display name and slug | Use the chosen name consistently with fwdslsh; settle spelling and capitalization first |
-| Public repository | Decide rename, independent fork, or unchanged upstream; a cosmetic rebrand does not require a fork |
-| npm package and executable | Choose a verified available qualified identity; do not assume a bare command is free |
+| Display name and slug | Selected: f/hold wordmark, fHold plain text, `fhold` technical slug |
+| Public repository | Target repository slug `fhold`; owner and rename versus independent fork remain undecided |
+| npm package and executable | Target command `fhold`; verify ownership/availability of the proposed `fhold` npm package before publication, or choose an approved scoped package with the same command |
 | Container registry | Choose the actual approved registry and owner; retain Assistant, Guardian, and Portal component names |
 | Release version | Use a new release, never rename or overwrite existing release assets |
 | Existing installations | Prefer managing the same explicit `OP_HOME`, project, keys, and state schema |
-| New-install default home | Either retain `.openpalm`, or document a new default and test selection of existing homes |
+| New-install default home | Retain `~/.openpalm` initially; users can select another explicit `OP_HOME`, without adding a second home-resolution scheme |
 | Desktop identity | Preserve it for a branding-only update, or explicitly handle preferences when shipping a distinct app |
 | MCP and OAuth identifiers | Preserve existing wire identifiers initially; changing them is an integration break |
 
@@ -35,6 +51,37 @@ Package and registry examples in a future patch must follow the chosen owner
 and registry, not a guessed naming pattern. The current Compose image shape is
 `${OP_IMAGE_NAMESPACE}/assistant`, `/guardian`, and `/portal`; check that the
 chosen namespace is legal for the chosen registry before changing defaults.
+
+## Concrete rename targets
+
+These are implementation targets, not commands or downloads available today.
+Package and repository ownership must be verified before publication.
+
+| Surface | Current name | fHold target |
+|---|---|---|
+| Public product | OpenPalm | f/hold wordmark; fHold in ordinary text |
+| Admin display name | OpenPalm Admin | fHold Admin |
+| CLI executable and bootstrap | `openpalm`, `packages/cli/bin/openpalm.js` | `fhold`, `packages/cli/bin/fhold.js` |
+| Public npm package | `openpalm` | Proposed `fhold`; an approved scoped package is acceptable if unavailable |
+| Workspace package scope | `@openpalm/*` | `@fhold/*`, with all imports, filters and workspace dependency references updated together |
+| Repository slug | `openpalm` | `fhold`, under the separately approved owner on each host |
+| Compiled CLI assets | `openpalm-cli-<platform>-<arch>[.exe]` | `fhold-cli-<platform>-<arch>[.exe]`, retaining the five existing targets |
+| Admin executable | `openpalm-admin` | `fhold-admin` |
+| Admin release assets | `OpenPalm-Admin-${version}-${arch}-${os}.${ext}` | `fhold-admin-${version}-${arch}-${os}.${ext}` |
+| Windows Admin installer | `OpenPalm-Admin-Setup-${version}.${ext}` | `fhold-admin-setup-${version}.${ext}` |
+| Claude Desktop bundle | `openpalm-claude-desktop-${version}.mcpb` | `fhold-claude-desktop-${version}.mcpb`; display name fHold, existing extension identity retained |
+| Container image namespace | Current approved OpenPalm namespace | Approved registry/owner with a `fhold` product namespace; still `/assistant`, `/guardian`, `/portal` |
+
+The intended user commands are `fhold install`, `fhold setup`, `fhold status`,
+`fhold connect mcp --credential owner`, and `fhold remote enable claude` or
+`codex`; only the executable name changes. Do not introduce a separate command
+tree, another installer or a configurable branding layer. Until the rename
+ships, runnable user guides must keep the actual `openpalm` commands.
+
+Keep source filenames such as `docs/managing-openpalm.md` when moving them adds
+no user benefit. Update their displayed titles when the runtime is rebranded,
+and update links atomically if any files really move. Historical release and
+migration evidence continues to name the OpenPalm version actually tested.
 
 ## Public branding and documentation
 
@@ -61,13 +108,13 @@ must not be described as if it were renamed.
 
 | Files | Required review or change |
 |---|---|
-| `packages/electron/admin/index.html` | Page title, brand wordmark, accessibility text and setup/management headings |
+| `packages/electron/admin/index.html` | f/hold brand wordmark; fHold page title, accessibility text and setup/management headings |
 | `packages/electron/admin/*.js` | User-facing labels, statuses, copied connection recipes and CLI examples; inspect all modules, not only the welcome screen |
 | `packages/electron/admin/admin.css` | Only styles needed for an approved wordmark/icon change; preserve the polished layout and accessibility |
 | `packages/electron/assets/icon.png` | App icon if the visual identity changes; generate packaging artifacts through the existing build |
 | `packages/electron/src/admin-app.ts` | BrowserWindow title, folder-picker labels, setup messages and the hard-coded extension release URL |
 | `packages/electron/src/admin-main.ts` | Windows AppUserModelId, release-smoke flags/markers, and startup messages if distribution identity changes |
-| `packages/electron/electron-builder.yml` | `productName`, `artifactName`, executable name and app ID; update the release asset checker together |
+| `packages/electron/electron-builder.yml` | `productName: fHold Admin`, `fhold-admin` artifact/executable names above; preserve app ID initially and update the release asset checker together |
 | `packages/electron/package.json` | Description, author attribution, desktop name, dependency scope and package identity as appropriate |
 | `packages/electron/src/admin-domain.ts`, `admin-instances.ts` | Install messages and new-project prefix; preserve existing selected homes and persisted project identity |
 | `packages/electron/src/admin-preload.ts`, `admin-types.ts`, renderer callers | `window.openpalmAdmin` and IPC/type identifiers are internal, not branding; rename only if all producers, consumers and tests move together |
@@ -87,15 +134,16 @@ automatic sizing or reset deliberate instance selections.
 | Files | Required review or change |
 |---|---|
 | Root `package.json`, `packages/*/package.json`, `containers/*/tools/package.json` | Package names, descriptions, repository links, binary mapping, build artifact names and workspace dependency references |
-| `packages/cli/bin/openpalm.js` | Bootstrap filename if desired; release base URL, all five platform asset names, cache root and messages |
+| `packages/cli/bin/openpalm.js` -> `packages/cli/bin/fhold.js` | Bootstrap filename and bin mapping; approved release base URL, all five `fhold-cli-*` platform assets, distinct fhold cache root and messages |
 | `packages/cli/src/main.ts`, `src/commands/*.ts`, `src/lib/action.ts` | Program/help name, printed commands, recipe names and statuses; do not change command behavior just for naming |
 | `packages/cli/scripts/pack-embedded-assets.ts`, `src/lib/embedded-assets.ts` | Review embedded skeleton lookup/build paths; regenerate the existing embedded asset rather than hand-editing a generated archive |
-| `packages/lib/src/index.ts`, imports from `@openpalm/lib` throughout packages | Update import specifiers only if the package scope changes |
+| `packages/lib/src/index.ts`, imports from `@openpalm/lib` throughout packages | Change to `@fhold/lib` with the workspace-scope rename; update every producer, consumer and build filter together |
 | `packages/lib/src/control-plane/foundation.ts`, `state.ts`, `seed.ts` | Home resolution, default project/image namespace, environment contract, seed locations and user messages |
 | `bun.lock` | Regenerate with the locked supported Bun after manifest changes; do not manually rewrite lock metadata |
 
 Names such as `OpenPalmState`, `createOpenPalmState`, and `resolveOpenPalmHome`
-are optional source-level cleanup, not prerequisites for a user-facing rebrand.
+may become `FHoldState`, `createFHoldState`, and `resolveFHoldHome` during
+source-level cleanup, but are not prerequisites for a user-facing rebrand.
 If renamed, update exported types/functions and every import/test together.
 Do not add a runtime branding registry or duplicate installer/config parser.
 
@@ -154,7 +202,10 @@ first rebrand leaves them unchanged.
 
 Guardian display titles and its descriptive server name can change without
 changing tool IDs, cryptographic constants or ownership metadata. The same
-separation applies to MCPB display name versus extension identity.
+separation applies to the fHold MCPB display name versus its retained
+`name: openpalm` extension identity. A fHold-branded client may therefore
+correctly discover `openpalm.*` tools and `openpalm://` resources. Document
+this explicitly rather than adding duplicate protocol aliases.
 
 If the goal is an independent clean-slate product rather than continuity,
 use an explicitly selected fresh home and the reviewed portable/native-history
@@ -191,13 +242,15 @@ requires reviewing TLS, MCP client URLs and OAuth resource/provider registration
 
 ## Implementation sequence
 
-1. Settle the name and the distribution decisions above. Verify namespace
+1. Apply the selected f/hold naming contract and settle the remaining
+   distribution decisions above. Verify namespace
    ownership/availability and obtain appropriate legal clearance separately.
 2. Make a baseline inventory of the exact old home, project, images, native
    sessions, handles, credentials, portal maps and desktop preferences. Back up
    the selected instance according to the migration preservation guide.
-3. Change visible branding and documentation first, preserving behavior and
-   security identifiers. Review every actual setup/Admin screen and command help.
+3. Apply f/hold to visual marks and fHold to prose, titles and accessibility
+   labels, preserving behavior and security identifiers. Review every actual
+   setup/Admin screen and command help.
 4. If distribution changes, update packages, build helpers, artifact checks,
    installers and release workflow as one consistent change. Regenerate locks
    and embedded/bundled output using the existing build process.
@@ -267,4 +320,5 @@ Rough engineering estimates including verification: display/docs only, half to
 one day; distribution rename, two to four days; complete identity change with
 verified transition, four to seven days. Registry/signing/legal lead time is
 separate. These are planning estimates, not a guarantee. No runtime rename or
-release has been implemented by this proposal.
+release has been implemented by this guide. The selected name is settled;
+publication ownership, release timing and rename-versus-fork are not.

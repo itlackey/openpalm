@@ -5,6 +5,20 @@ It describes the 0.14 product we are building. A feature, package, container,
 document, test, or release job that does not serve this contract is legacy,
 optional, or a candidate for removal.
 
+## Selected brand and continuity
+
+The selected successor brand is **f/hold** under fwdslsh: **fHold** in plain
+text, `fhold` for new technical names, and **/hold** as a contextual secondary
+mark. The descriptor is “A home for your personal AI.” The product promise
+and lean architecture do not change with the name.
+
+The runtime is still OpenPalm until a coordinated rebrand ships. The
+[implementation guide](rebranding-implementation-guide.md) specifies targets
+and the intended continuity boundary: preserve existing `OP_HOME`, instance
+identity, data, credentials and protocol contracts rather than adding a second
+configuration or compatibility layer. Rename-versus-fork and publication
+ownership remain separate decisions.
+
 ## The promise
 
 OpenPalm is a single-install personal AI agent for people who do not want to
