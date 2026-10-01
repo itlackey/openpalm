@@ -18,9 +18,11 @@ documentation describes only this product path; earlier material is available
 only through Git history.
 
 The selected next brand is **f/hold**, with **fHold** in ordinary text and
-`fhold` for new technical names, under fwdslsh. The runtime rename has not
-shipped: current commands, downloads and existing instance paths remain
-OpenPalm. See the [rebranding implementation guide](docs/technical/rebranding-implementation-guide.md).
+`fhold` for technical names, in a new **fwdslsh/fhold** hard fork with fresh
+history. It starts on Gitea and targets `0.1.0-alpha.1`, without OpenPalm
+runtime compatibility. This repository and its current commands, downloads
+and installations remain OpenPalm; migration tooling stays here. See the
+[fork implementation guide](docs/technical/rebranding-implementation-guide.md).
 
 ## What is included
 

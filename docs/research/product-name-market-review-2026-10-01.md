@@ -21,10 +21,12 @@ an active shortlist. Fold, Manyfold and `f.hold` are not selected spellings.
 The earlier 34-candidate comparison is retained as research supporting the
 decision; its fit judgments do not override the selected naming contract.
 
-The [rebranding implementation guide](../technical/rebranding-implementation-guide.md)
+The [hard fork implementation guide](../technical/rebranding-implementation-guide.md)
 separately covers code, configuration, documentation, distribution and
-existing-install continuity, using the selected f/hold variants. The runtime
-rename has not shipped; current releases and runnable commands remain OpenPalm.
+the explicit data-transfer boundary, using the selected f/hold variants.
+The approved destination is fwdslsh/fhold with fresh history, Gitea first,
+and an initial `0.1.0-alpha.1` release. Current releases and runnable commands
+remain OpenPalm. This research stays here rather than becoming fHold product docs.
 
 ## Scope and limits
 
@@ -204,9 +206,9 @@ that the selected name has already passed comprehension testing.
   goods/services, including similar marks and common-law use. The
   [USPTO clearance overview](https://www.uspto.gov/trademarks/search/comprehensive-clearance-search-similar-trademarks)
   explains why an exact-name database lookup alone is insufficient.
-- Settle whether this is a rebranded OpenPalm distribution or an independent
-  product. Then use the implementation guide to define a single release and
-  existing-data transition, without changing technical contracts unnecessarily.
+- Follow the approved independent-product boundary: fHold has its own runtime
+  identities, and any explicit content transfer is handled by source-side
+  migration tooling rather than an OpenPalm compatibility layer in fHold.
 
 No name reservations, purchases, trademark filings or publishing changes were
 made as part of this review.

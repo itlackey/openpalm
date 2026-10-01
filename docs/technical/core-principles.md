@@ -12,12 +12,14 @@ text, `fhold` for new technical names, and **/hold** as a contextual secondary
 mark. The descriptor is “A home for your personal AI.” The product promise
 and lean architecture do not change with the name.
 
-The runtime is still OpenPalm until a coordinated rebrand ships. The
-[implementation guide](rebranding-implementation-guide.md) specifies targets
-and the intended continuity boundary: preserve existing `OP_HOME`, instance
-identity, data, credentials and protocol contracts rather than adding a second
-configuration or compatibility layer. Rename-versus-fork and publication
-ownership remain separate decisions.
+fHold is an independent hard fork into **fwdslsh/fhold**, with fresh history,
+Gitea-first development and an initial `0.1.0-alpha.1` release. The
+[implementation guide](rebranding-implementation-guide.md) specifies new
+fHold identities and a clean runtime without OpenPalm compatibility paths.
+OpenPalm installations and the contracts below remain unchanged in this
+repository. Migration tooling stays on this 0.14 branch; any future transfer
+of user content requires an explicit fresh fHold target and must preserve the
+OpenPalm source.
 
 ## The promise
 
