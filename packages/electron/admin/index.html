@@ -54,12 +54,13 @@
                 <input id="install-assistant-port" type="number" min="1" max="65535" required />
               </label>
               <label class="field" for="install-gateway-port">
-                <span>Protected-access port</span>
+                <span>Guardian MCP port</span>
                 <input id="install-gateway-port" type="number" min="1" max="65535" required />
               </label>
             </div>
             <p class="help-text">
               Keep these defaults unless another OpenPalm installation already uses them.
+              Guardian is an optional MCP API for clients, not a website.
             </p>
           </details>
         </form>
@@ -220,7 +221,7 @@
                 <details class="disclosure"><summary>Advanced network settings</summary>
 	                <div class="field-grid two-column">
 	                  <label class="field" for="recovery-assistant-port"><span>Assistant port</span><input id="recovery-assistant-port" type="number" min="1" max="65535" required /></label>
-	                  <label class="field" for="recovery-gateway-port"><span>Protected-access port</span><input id="recovery-gateway-port" type="number" min="1" max="65535" required /></label>
+	                  <label class="field" for="recovery-gateway-port"><span>Guardian MCP port</span><input id="recovery-gateway-port" type="number" min="1" max="65535" required /></label>
                 </div>
                 </details>
                 <button class="primary" type="submit">Retry startup</button>
@@ -370,11 +371,11 @@
 	              <form id="connections-form" class="form-stack" data-managed-form>
                 <article class="connection-card">
                   <div class="connection-heading">
-                    <div><h3>Guardian MCP</h3><p>Protected access for Claude Desktop and other MCP clients.</p></div>
+                    <div><h3>Guardian MCP</h3><p>An API for Claude Desktop and other MCP clients, not a website.</p></div>
                     <label class="switch"><input id="gateway" type="checkbox" /><span>Enable</span></label>
                   </div>
                   <div id="guardian-settings" class="connection-body" hidden>
-                    <div class="endpoint-row"><div><span>OpenPalm address</span><code id="guardian-url">Loading…</code></div><span class="status-badge protected">Policy protected</span></div>
+                    <div class="endpoint-row"><div><span>Guardian MCP URL</span><code id="guardian-url">Loading…</code><button class="text-button" type="button" data-copy-field="guardian-url">Copy</button></div><span class="status-badge protected">Policy protected</span></div>
                     <p class="help-text">Create a separate access key for each person or app so you can change or revoke it independently.</p>
                   </div>
                 </article>
@@ -512,11 +513,18 @@
 	                <div class="field-grid two-column">
 	                  <label class="field" for="assistant-bind"><span>Assistant bind address</span><input id="assistant-bind" autocomplete="off" /></label>
 	                  <label class="field" for="assistant-port"><span>Assistant port</span><input id="assistant-port" type="number" min="1" max="65535" /></label>
-	                  <label class="field" for="gateway-bind"><span>Protected-access bind address</span><input id="gateway-bind" autocomplete="off" /></label>
-	                  <label class="field" for="gateway-port"><span>Protected-access port</span><input id="gateway-port" type="number" min="1" max="65535" /></label>
+	                  <label class="field" for="gateway-bind"><span>Guardian MCP bind address</span><input id="gateway-bind" autocomplete="off" /></label>
+	                  <label class="field" for="gateway-port"><span>Guardian MCP port</span><input id="gateway-port" type="number" min="1" max="65535" /></label>
 	                </div>
+	                <p class="help-text">Guardian is an API for MCP clients, not a website. Connect to the full /mcp URL with an access key; that identity’s policy controls what the client can do. A bind address of 127.0.0.1 accepts connections only from this computer.</p>
 	                <button class="secondary" type="submit">Save network settings</button>
 	              </form>
+	              <p id="guardian-api-status" class="help-text">Checking Guardian MCP…</p>
+	              <dl class="connection-values">
+	                <div><dt>Guardian MCP URL</dt><dd><code id="guardian-mcp-url-detail">Loading…</code><button class="text-button" type="button" data-copy-field="guardian-mcp-url-detail">Copy</button></dd></div>
+	                <div><dt>Health-check URL</dt><dd><code id="guardian-health-url-detail">Loading…</code><button class="text-button" type="button" data-copy-field="guardian-health-url-detail">Copy</button></dd></div>
+	              </dl>
+	              <p class="help-text">The health check returns JSON. Opening Guardian’s base address without /mcp or /health returns “not_found”; this is expected.</p>
             </section>
 
             <section class="panel">
@@ -524,8 +532,9 @@
               <dl class="detail-list">
                 <div><dt>OpenPalm home</dt><dd id="home">Loading…</dd></div>
                 <div><dt>Stack configuration</dt><dd id="config-path">Loading…</dd></div>
-                <div><dt>Trusted OpenCode address</dt><dd><code id="assistant-url-detail">Loading…</code></dd></div>
+                <div><dt>Trusted OpenCode address</dt><dd><a id="assistant-url-detail" class="endpoint-link" href="about:blank" target="_blank" rel="noreferrer" hidden>Open OpenCode in your browser</a></dd></div>
               </dl>
+              <p class="help-text">The OpenCode link opens your browser and may ask for the trusted OpenCode username and password shown under Connections. Direct access bypasses Guardian.</p>
             </section>
 
             <section class="panel">

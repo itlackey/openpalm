@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clearClientKey, renderCredentials } from '../admin/access.js';
 import { importInput, importSignature, invalidateImportPreview } from '../admin/backup.js';
-import { loadClientKey } from '../admin/connections.js';
+import {
+	bindConnectionsEvents,
+	loadClientKey,
+	renderNetworkDetails
+} from '../admin/connections.js';
 import { bindConfigurationEvents } from '../admin/configuration.js';
 import { endpoint, isHealthy, promptVisible } from '../admin/model.js';
 import { bindPreferencesEvents, renderPreferences } from '../admin/preferences.js';
@@ -245,7 +249,9 @@ describe('Admin static security boundary', () => {
 		bindRemoteEvents();
 		button.listeners.get('click')?.({});
 		expect(control('remote-dialog').open).toBe(true);
-		expect(control('remote-heading').textContent).toBe('Enable Claude Remote Control (experimental)');
+		expect(control('remote-heading').textContent).toBe(
+			'Enable Claude Remote Control (experimental)'
+		);
 		expect(control('remote-trust').checked).toBe(false);
 		expect(control('remote-sandbox-field').hidden).toBe(true);
 		expect(control('remote-prompts').hidden).toBe(true);
@@ -352,6 +358,70 @@ describe('Admin static security boundary', () => {
 });
 
 describe('Admin renderer behavior', () => {
+	it('labels Guardian as an MCP API and keeps diagnostic endpoints copy-only', () => {
+		expect(html).not.toContain('Protected-access');
+		expect(html).toContain('Guardian MCP bind address');
+		expect(html).toContain('not a website');
+		expect(html).toContain('that identity’s policy');
+		for (const id of ['guardian-mcp-url-detail', 'guardian-health-url-detail']) {
+			expect(html).toContain(`data-copy-field="${id}"`);
+			expect(html).toContain(`<code id="${id}">`);
+		}
+		const link = html.match(/<a\b[^>]*id="assistant-url-detail"[^>]*>/)?.[0];
+		expect(link).toContain('href="about:blank"');
+		expect(link).toContain('target="_blank"');
+		expect(link).toContain('rel="noreferrer"');
+		expect(link).toContain('hidden');
+		expect(link).not.toContain('data-external-url');
+		expect(link).not.toContain('onclick');
+		const css = readFileSync(join(admin, 'admin.css'), 'utf8');
+		expect(css).toContain(
+			':where(a[href], button, input, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible'
+		);
+	});
+
+	it('renders a normal browser link and copyable dialable Guardian endpoints', async () => {
+		const link = control('assistant-url-detail');
+		link.hidden = true;
+		const copy = new Control();
+		copy.dataset.copyField = 'guardian-mcp-url-detail';
+		selector('[data-copy-field]', copy);
+		const copied: string[] = [];
+		state.api = {
+			copyText: async (value: string) => {
+				copied.push(value);
+			}
+		};
+		bindConnectionsEvents();
+		expect(link.hidden).toBe(true);
+		expect(link.listeners.has('click')).toBe(false);
+		renderNetworkDetails({
+			config: {
+				assistant: { bindAddress: '192.168.0.201', port: 3810 },
+				gateway: { bindAddress: '::', port: 3830, enabled: false }
+			}
+		});
+		expect(link.textContent).toBe('http://192.168.0.201:3810');
+		expect(link.getAttribute('href')).toBe(link.textContent);
+		expect(link.hidden).toBe(false);
+		expect(link.getAttribute('tabindex')).toBeNull();
+		expect(control('guardian-url').textContent).toBe('http://[::1]:3830/mcp');
+		expect(control('guardian-mcp-url-detail').textContent).toBe('http://[::1]:3830/mcp');
+		expect(control('guardian-health-url-detail').textContent).toBe('http://[::1]:3830/health');
+		expect(control('guardian-api-status').textContent).toContain('disabled');
+		await copy.listeners.get('click')?.({});
+		expect(copied).toEqual(['http://[::1]:3830/mcp']);
+		renderNetworkDetails({
+			config: {
+				assistant: { bindAddress: '::1', port: 3810 },
+				gateway: { bindAddress: '0.0.0.0', port: 3830, enabled: true }
+			}
+		});
+		expect(link.getAttribute('href')).toBe('http://[::1]:3810');
+		expect(control('guardian-health-url-detail').textContent).toBe('http://127.0.0.1:3830/health');
+		expect(control('guardian-api-status').textContent).toContain('enabled');
+	});
+
 	it('uses dialable wildcard and IPv6 addresses and reports unhealthy services', () => {
 		expect(endpoint('0.0.0.0', 4096)).toBe('http://127.0.0.1:4096');
 		expect(endpoint('::', 9180, '/mcp')).toBe('http://[::1]:9180/mcp');

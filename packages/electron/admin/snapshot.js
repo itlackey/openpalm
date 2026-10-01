@@ -1,11 +1,12 @@
 import { renderCredentials, renderMappings } from './access.js';
 import {
 	renderConnectionDetails,
+	renderNetworkDetails,
 	renderPortalSecrets,
 	updateConditionalConnections,
 	updatePortalTokenFields
 } from './connections.js';
-import { endpoint, isHealthy } from './model.js';
+import { isHealthy } from './model.js';
 import { loadProviders, renderReadiness } from './providers.js';
 import { renderPhase, renderServices } from './runtime.js';
 import { renderPreferences } from './preferences.js';
@@ -51,18 +52,7 @@ export function render(snapshot, options = {}) {
 
 	setText('home', snapshot.homeDir);
 	setText('config-path', snapshot.configPath);
-	const assistantUrl = endpoint(
-		snapshot.config.assistant.bindAddress,
-		snapshot.config.assistant.port
-	);
-	const guardianUrl = endpoint(
-		snapshot.config.gateway.bindAddress,
-		snapshot.config.gateway.port,
-		'/mcp'
-	);
-	setText('assistant-url', assistantUrl);
-	setText('assistant-url-detail', assistantUrl);
-	setText('guardian-url', guardianUrl);
+	renderNetworkDetails(snapshot);
 
 	byId('gateway').checked = snapshot.config.gateway.enabled;
 	byId('discord').checked = snapshot.config.portals.discord.enabled;

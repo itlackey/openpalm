@@ -6,6 +6,13 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Fixed
+
+- Admin labels Guardian network settings as MCP API endpoints, explains
+  credential policies and JSON health checks, and offers copyable `/mcp` and
+  `/health` URLs. The trusted OpenCode address opens the browser through the
+  existing desktop browser opener instead of appearing as inert text.
+
 ## [0.14.0-beta.1] - 2026-10-01
 
 Testing prerelease of the lean personal-agent stack. Moving from 0.13 requires

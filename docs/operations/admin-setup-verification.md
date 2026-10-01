@@ -242,6 +242,19 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    settings**, and choose **Save connections**. Confirm Assistant and Guardian
    both show **Running normally**.
 
+   In **Troubleshooting**, confirm the network labels say **Guardian MCP bind
+   address / port**, and the copy actions provide full `/mcp` and `/health`
+   URLs. The page must explain that Guardian is an API, not a website, and
+   that credentials select policies. The health endpoint returns JSON; a
+   `not_found` response at its base address is expected. With Guardian disabled,
+   the page must not imply these endpoints are active.
+
+   Under **Installation details**, Tab to **Trusted OpenCode address** and
+   press Enter, then click the link. Both should open the configured address
+   in your browser without navigating Admin away from its local page. No
+   password belongs in the link; retrieve it through the explicit Connections
+   actions if the browser asks. Direct access still bypasses Guardian.
+
 8. Open **People & access**. Create `manual-reader` with **Read files** access.
    Add a Discord identity override from a valid test platform user ID to
    `manual-reader`. The portal itself does not need to be enabled for this

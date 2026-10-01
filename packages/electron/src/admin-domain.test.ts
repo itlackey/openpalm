@@ -152,14 +152,19 @@ describe('Admin domain', () => {
 		expect(readFileSync(auth, 'utf8')).toBe('{malformed');
 	});
 
-	it('opens only HTTPS URLs without embedded credentials', () => {
-		expect(externalAdminUrl('https://example.com/sign-in?state=abc')).toBe(
+	it('opens ordinary HTTP and HTTPS links without embedded credentials', () => {
+		for (const address of [
+			'http://127.0.0.1:3810',
+			'http://192.168.0.201:3810',
+			'http://[::1]:3810',
+			'http://example.com',
 			'https://example.com/sign-in?state=abc'
-		);
+		]) {
+			expect(externalAdminUrl(address)).toBe(new URL(address).href);
+		}
 		for (const value of [
 			null,
 			42,
-			'http://example.com',
 			'file:///tmp/private',
 			'javascript:alert(1)',
 			'https://user:password@example.com',

@@ -57,8 +57,8 @@ export function isAdminPageUrl(
 export function externalAdminUrl(value: unknown): string {
 	if (typeof value !== 'string' || value.length > 4_096) throw new Error('Invalid external URL.');
 	const url = new URL(value);
-	if (url.protocol !== 'https:' || url.username || url.password) {
-		throw new Error('Only secure HTTPS links without embedded credentials can be opened.');
+	if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+		throw new Error('Only HTTP or HTTPS links without embedded credentials can be opened.');
 	}
 	return url.href;
 }

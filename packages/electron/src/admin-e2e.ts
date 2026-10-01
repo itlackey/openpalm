@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from 'electron';
+import { app, shell, type BrowserWindow } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -539,6 +539,62 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		await assertRenderedFloor(window, 'troubleshooting');
 		const troubleshootingScreenshot = await capture(window, outputDir, '04e-troubleshooting.png');
+		assert(
+			await window.webContents.executeJavaScript(`(() => {
+				const link = document.querySelector('#assistant-url-detail');
+				return link?.tagName === 'A' && link.href === 'http://127.0.0.1:${assistantPort}/' &&
+					link.tabIndex === 0 &&
+					document.querySelector('label[for="gateway-bind"]')?.textContent.includes('Guardian MCP') &&
+					document.querySelector('#guardian-mcp-url-detail')?.textContent === 'http://127.0.0.1:${guardianPort}/mcp' &&
+					document.querySelector('#guardian-health-url-detail')?.textContent === 'http://127.0.0.1:${guardianPort}/health';
+			})()`),
+			'Network details omitted clear MCP endpoints or a keyboard-accessible OpenCode link.'
+		);
+		const openedUrls: string[] = [];
+		const originalOpenExternal = shell.openExternal;
+		const adminPageUrl = window.webContents.getURL();
+		// Exercise a normal link through Electron's existing window opener;
+		// intercept only the OS browser launch.
+		shell.openExternal = async (url) => {
+			openedUrls.push(url);
+		};
+		const waitForBrowserOpen = async (count: number) => {
+			const deadline = Date.now() + 10_000;
+			while (openedUrls.length < count && Date.now() < deadline) {
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+			assert(openedUrls.length === count, 'OpenCode link did not dispatch to the browser.');
+		};
+		try {
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#assistant-url-detail').focus()"
+			);
+			window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+			window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+			await waitForBrowserOpen(1);
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#assistant-url-detail').click()"
+			);
+			await waitForBrowserOpen(2);
+			assert(
+				openedUrls.length === 2 &&
+					openedUrls.every((url) => url === `http://127.0.0.1:${assistantPort}/`),
+				'OpenCode link did not open the displayed address.'
+			);
+			assert(
+				await window.webContents.executeJavaScript(
+					"window.openpalmAdmin.openExternal('file:///tmp/private').then(() => false, () => true)"
+				),
+				'Browser dispatch accepted a non-web URL.'
+			);
+			assert(
+				window.webContents.getURL() === adminPageUrl,
+				'OpenCode link navigated the Admin renderer.'
+			);
+		} finally {
+			shell.openExternal = originalOpenExternal;
+		}
+		progress('MCP details and normal OpenCode link verified with real keyboard/click events');
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=overview]').click()"
 		);
@@ -871,6 +927,13 @@ async function run(): Promise<Record<string, unknown>> {
 				automaticMemoryRestored: true
 			},
 			connectionRecipesVerified: ['opencode', 'claude', 'mcp'],
+			networkDetailsVerified: {
+				mcpApiLabels: true,
+				fullMcpAndHealthUrls: true,
+				openCodeKeyboardAndClick: true,
+				standardBrowserLink: true,
+				rendererNavigationPrevented: true
+			},
 			credential: { username: 'e2e-reader', policy: 'read' },
 			portalMapping: { portal: 'discord', user: '123456789012345678' },
 			guardian: {

@@ -1,6 +1,6 @@
 import { clearClientKey, updateClientPolicy } from './access.js';
 import { saveConfigAndApply } from './configuration.js';
-import { csv } from './model.js';
+import { csv, endpoint } from './model.js';
 import { state } from './state.js';
 import { all, byId, notice, operation, setBadge, setText, showClient } from './ui.js';
 
@@ -102,6 +102,37 @@ export function renderConnectionDetails(snapshot) {
 	byId('show-direct-password').checked = false;
 	showClient(state.currentClient);
 	updateGuardianGuide();
+}
+
+export function renderNetworkDetails(snapshot) {
+	const assistantUrl = endpoint(
+		snapshot.config.assistant.bindAddress,
+		snapshot.config.assistant.port
+	);
+	const guardianUrl = endpoint(
+		snapshot.config.gateway.bindAddress,
+		snapshot.config.gateway.port,
+		'/mcp'
+	);
+	const healthUrl = endpoint(
+		snapshot.config.gateway.bindAddress,
+		snapshot.config.gateway.port,
+		'/health'
+	);
+	setText('assistant-url', assistantUrl);
+	const link = byId('assistant-url-detail');
+	link.textContent = assistantUrl;
+	link.setAttribute('href', assistantUrl);
+	link.hidden = false;
+	setText('guardian-url', guardianUrl);
+	setText('guardian-mcp-url-detail', guardianUrl);
+	setText('guardian-health-url-detail', healthUrl);
+	setText(
+		'guardian-api-status',
+		snapshot.config.gateway.enabled
+			? 'Guardian MCP is enabled.'
+			: 'Guardian MCP is disabled. Enable it in Connections to use these endpoints.'
+	);
 }
 
 export async function loadDirectPassword(copyOnly) {

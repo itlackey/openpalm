@@ -56,7 +56,7 @@ summary {
 	font: inherit;
 }
 
-:where(button, input, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+:where(a[href], button, input, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
 	outline: 2px solid var(--focus);
 	outline-offset: 2px;
 }
@@ -68,7 +68,7 @@ summary {
 	outline: none;
 }
 
-:where(button, input, select, summary):focus:not(:focus-visible) {
+:where(a[href], button, input, select, summary):focus:not(:focus-visible) {
 	outline: none;
 }
 
@@ -1196,6 +1196,14 @@ input[type="checkbox"] {
 	display: grid;
 	gap: 0;
 	margin: 0;
+}
+
+.endpoint-link {
+	color: var(--accent);
+	font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	overflow-wrap: anywhere;
 }
 
 .detail-list.compact {
