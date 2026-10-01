@@ -110,6 +110,41 @@ requests, `main`, and `release/*`.
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
 
+## Alpha.3 published-artifact verification record
+
+The 2026-09-30 Linux x64 upgrade used the checksum-verified CLI from the public
+`0.14.0-alpha.3` GitHub release and all three published images. Image revision
+labels matched release commit `33276b51467f33ebf61d79315dc7e95699441c17`.
+The complete dry run, live publication, and CI passed. Before publication,
+verification caught and fixed a retry-test race and an image smoke test's
+unnecessary dependency on host Bun; neither failed candidate was published.
+
+The existing alpha.2 installation was stopped and cold-archived, and the archive
+was compared against the source before installing the downloaded release CLI.
+The update completed with Assistant, Guardian, and Discord healthy. Real
+no-tool provider readiness passed before and after the update. Twelve private
+configuration and credential files matched the archive afterward, including
+portal maps and client keys. Explicit authenticated LAN access was preserved.
+AKM 0.9.20 and Claude's enabled `akm@inline` plugin
+(`0.9.20202609302253`) were verified in the published Assistant image.
+
+Both native remote switches were initially off. Enabling them exercised the
+actual vendor workers and retry reporting without stopping OpenCode or the
+scheduler; disabling them stopped the workers. Neither vendor account was
+signed in. Claude reported its subscription-login requirement. Codex reported a
+remote connection error; a separate harmless `codex sandbox /usr/bin/true`
+probe also failed because bubblewrap could not create a namespace inside the
+default container, despite host user namespaces being enabled. No sandbox,
+capability, or host security setting was weakened. Both switches remain off.
+
+Native login, pairing, remote client sessions, tool approvals, and authenticated
+restart continuity were **not verified**. In particular, Codex's sandbox failure
+must be resolved before claiming usable remote tool execution on this host.
+These limitations are not covered by successful package or process-health
+checks. No new interactive Discord, Slack, or public connector acceptance was
+performed in this upgrade. Private backups, logs, and host details stay outside
+Git.
+
 ## Alpha.2 migration hardening
 
 `0.14.0-alpha.2` includes the migration and portable-backup fixes discovered

@@ -40,6 +40,15 @@ OpenPalm does not weaken container isolation or disable sandboxing to make it ru
 See [OpenAI's command reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli)
 and [remote connection requirements](https://learn.chatgpt.com/docs/remote-connections).
 
+The alpha.3 published-image walkthrough found a host/container limitation:
+`codex sandbox /usr/bin/true` failed with `No permissions to create a new
+namespace` under the default container isolation, even though host user
+namespaces were enabled. This prevents verified sandboxed tool execution on
+that installation; enabling the switch or obtaining a pairing code does not
+resolve it. Do not disable the sandbox or make Assistant privileged as a
+workaround. See the [verification record](operations/release.md#alpha3-published-artifact-verification-record)
+and [OpenAI's sandbox requirements](https://learn.chatgpt.com/docs/sandboxing).
+
 ## Claude Code Remote Control
 
 ```sh
