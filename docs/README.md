@@ -32,6 +32,12 @@ OpenCode or optional guarded MCP.
 | [Testing workflow](technical/testing-workflow.md) | Active local and CI checks |
 | [Release workflow](operations/release.md) | Images, CLI, optional artifacts, and release gate |
 
+## Future release proposals
+
+| Document | Purpose |
+|---|---|
+| [SSH instance management](technical/ssh-management-proposal.md) | Implementation outline for consideration in 0.15; not an implemented feature |
+
 Older release documentation is retained in Git history, not in the maintained
 documentation tree. The [core principles](technical/core-principles.md) are
 the source of truth when behavior and prose disagree.
