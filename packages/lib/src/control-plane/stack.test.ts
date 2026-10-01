@@ -63,4 +63,14 @@ describe('release surface', () => {
 		expect(scheduled).toContain('    "/stash/secrets/*": deny');
 		expect(scheduled).toContain('    "/stash/inbox/*": allow');
 	});
+
+	it('keeps shared instructions policy-aware without forbidding full remote work', () => {
+		const instructions = asset('packages/skeleton/system/assistant/AGENTS.md');
+		expect(instructions).toContain('The `remote` (chat) profile cannot use tools.');
+		expect(instructions).toContain('The `remote-full` profile may use');
+		expect(instructions).toContain('explicit nonsecret knowledge saves');
+		expect(instructions).toContain('Native tool approvals still apply');
+		expect(instructions).toContain('about automatic capture, not an explicit save');
+		expect(instructions).not.toContain('not the Guardian MCP endpoint');
+	});
 });

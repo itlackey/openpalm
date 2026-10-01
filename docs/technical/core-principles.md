@@ -158,6 +158,12 @@ AKM extraction supports attached agent engines, the image-baked plugin wrapper
 uses a no-tool OpenCode memory profile and `akm remember`; it never introduces a
 second model endpoint, provider registry, or authentication format.
 
+That automatic-capture boundary does not prohibit explicit nonsecret knowledge
+saves or recurring-task management through a `full` Guardian credential. Shared
+Assistant instructions must respect the selected chat/read/full profile rather
+than describing every remote request as tool-restricted. Native tool approvals
+still apply.
+
 Recurring work is a user feature, not a YAML feature. A user should be able to
 ask the agent to create, inspect, pause, resume, and remove a schedule in
 ordinary language. AKM task files and cron expressions are implementation

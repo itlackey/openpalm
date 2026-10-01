@@ -6,6 +6,14 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Fixed
+
+- Shared Assistant instructions distinguish chat/read restrictions from
+  full-access Guardian sessions. Explicit knowledge saves and task management
+  are allowed when the selected profile permits them; automatic memory capture
+  remains limited to trusted local sessions, and native tool approvals remain
+  required.
+
 ### Added
 
 - Codex setup and Admin's independent knowledge-recall review offer explicit

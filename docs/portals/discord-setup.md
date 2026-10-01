@@ -118,3 +118,24 @@ The Discord adapter is intentionally a conversational subset of the MCP
 catalog. If a `full` agent pauses for a permission decision, the adapter tells
 the user to complete that explicit decision with a full MCP client; chat text
 is never treated as permission approval.
+
+## Troubleshooting restricted-session replies
+
+If the bot replies but says it cannot save knowledge or perform work from a
+restricted session, check `openpalm credential mappings discord`. An allowlisted
+user without a mapping still uses the default `discord` credential, normally
+`chat`. Being the bot owner or being allowed into the portal does not select the
+`owner` identity. In Admin, **People & access** can map the exact Discord user
+to an existing full-access identity; the CLI equivalent is:
+
+```bash
+openpalm credential map discord 123456789012345678 owner
+```
+
+Do this only for the trusted operator, keeping the shared default restricted.
+Mappings are reread on each message and start a fresh credential-scoped
+conversation; neither a bot restart nor deletion of old conversations is needed.
+The shared Assistant instructions must distinguish explicit full-access saves
+from automatic memory capture, which remains disabled for Guardian sessions.
+If a native tool approval is requested, use a full MCP client to complete it;
+do not broaden permissions to bypass that approval.
