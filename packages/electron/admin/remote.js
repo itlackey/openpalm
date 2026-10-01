@@ -7,8 +7,31 @@ let running = false;
 let timer;
 let starting = false;
 let connectionOnly = false;
+let recallOnly = false;
+let recallReview;
+let reviewRequest = 0;
+
+export function recallStatusLabel(review) {
+	return (
+		{ installed: 'Installed', 'approval-needed': 'Approval needed', ready: 'Ready' }[
+			review?.status
+		] ?? 'Not checked'
+	);
+}
 
 export function renderRemoteStatus(snapshot) {
+	setBadge(
+		byId('codex-recall-status'),
+		recallStatusLabel(snapshot.codexRecall),
+		snapshot.codexRecall?.status === 'ready' ? 'success' : 'neutral'
+	);
+	byId('codex-recall-guidance').textContent =
+		snapshot.codexRecallError ??
+		(snapshot.codexRecall?.status === 'approval-needed'
+			? 'AKM hooks need approval or are partly disabled. Review to enable complete automatic recall.'
+			: snapshot.codexRecall?.status === 'ready'
+				? 'Native approval saved. Knowledge recall is ready for new Codex sessions.'
+				: 'Review AKM hooks here; no Codex command is needed. Start Assistant to check approval.');
 	for (const name of ['claude', 'codex']) {
 		const enabled = snapshot.config.assistant[`${name}Remote`] === true;
 		setBadge(
@@ -19,6 +42,38 @@ export function renderRemoteStatus(snapshot) {
 		for (const button of all(`[data-remote-connect="${name}"]`))
 			button.disabled = state.operationInFlight || !enabled;
 		for (const button of all(`[data-remote-disable="${name}"]`)) button.hidden = !enabled;
+	}
+}
+
+async function loadRecall() {
+	const request = ++reviewRequest;
+	recallReview = undefined;
+	byId('remote-recall').checked = false;
+	byId('remote-recall').disabled = true;
+	byId('remote-begin').disabled = true;
+	byId('remote-recall-status').textContent = 'Checking native hook approval…';
+	byId('remote-recall-definitions').value = '';
+	byId('remote-recall-disable').hidden = true;
+	try {
+		const review = await state.api.codexRecall({ action: 'review' });
+		if (request !== reviewRequest || !byId('remote-dialog').open) return;
+		recallReview = review;
+		byId('remote-recall-status').textContent =
+			`${recallStatusLabel(review)}${review.hooks.some((h) => h.trust === 'modified') ? ' · definitions changed; review again' : ''}`;
+		byId('remote-recall-definitions').value = review.hooks
+			.map(
+				(h) =>
+					`${h.event} (${h.trust}${h.enabled ? '' : ', off'})\n${h.command}\nDefinition: ${h.sourcePath}\nHash: ${h.hash}`
+			)
+			.join('\n\n');
+		byId('remote-recall').disabled = false;
+		byId('remote-recall').checked = review.status === 'ready';
+		byId('remote-recall-disable').hidden = !recallOnly || !review.hooks.some((h) => h.enabled);
+		byId('remote-begin').disabled = false;
+	} catch (error) {
+		if (request !== reviewRequest || !byId('remote-dialog').open) return;
+		byId('remote-recall-status').textContent = message(error);
+		byId('remote-begin').disabled = recallOnly;
 	}
 }
 
@@ -80,6 +135,7 @@ function showProgress(progress) {
 		byId('remote-begin').disabled = false;
 		byId('remote-trust').disabled = false;
 		byId('remote-sandbox').disabled = false;
+		byId('remote-recall').disabled = !recallReview;
 		byId('remote-answer').value = '';
 		void refresh(false);
 	} else {
@@ -95,48 +151,66 @@ function showProgress(progress) {
 }
 
 export function bindRemoteEvents() {
-	for (const button of all('[data-remote-enable], [data-remote-connect]'))
+	for (const button of all(
+		'[data-remote-enable], [data-remote-connect], [data-codex-recall-review]'
+	))
 		button.addEventListener('click', () => {
+			reviewRequest++;
+			recallOnly = Object.hasOwn(button.dataset, 'codexRecallReview');
 			connectionOnly = Boolean(button.dataset.remoteConnect);
-			tool = button.dataset.remoteEnable ?? button.dataset.remoteConnect;
-			byId('remote-heading').textContent = connectionOnly
-				? tool === 'claude'
-					? 'Open Claude remote session'
-					: 'Get Codex pairing code'
-				: tool === 'claude'
-					? 'Enable Claude Remote Control'
-					: 'Enable Codex remote (experimental)';
-			byId('remote-trust-field').hidden = connectionOnly;
-			byId('remote-trust').required = !connectionOnly;
-			byId('remote-begin').textContent = connectionOnly ? 'Get connection details' : 'Continue';
+			tool = recallOnly ? 'codex' : (button.dataset.remoteEnable ?? button.dataset.remoteConnect);
+			byId('remote-heading').textContent = recallOnly
+				? 'Automatic knowledge recall for Codex'
+				: connectionOnly
+					? tool === 'claude'
+						? 'Open Claude remote session'
+						: 'Get Codex pairing code'
+					: tool === 'claude'
+						? 'Enable Claude Remote Control'
+						: 'Enable Codex remote (experimental)';
+			byId('remote-trust-field').hidden = connectionOnly || recallOnly;
+			byId('remote-trust').required = !connectionOnly && !recallOnly;
+			byId('remote-begin').textContent = recallOnly
+				? 'Save knowledge recall approval'
+				: connectionOnly
+					? 'Get connection details'
+					: 'Continue';
 			byId('remote-begin').hidden = false;
-			byId('remote-advanced').hidden = connectionOnly || tool !== 'codex';
+			byId('remote-begin').disabled = false;
+			byId('remote-advanced').hidden = connectionOnly || recallOnly || tool !== 'codex';
 			byId('remote-advanced').open = false;
-			byId('remote-sandbox-field').hidden = connectionOnly || tool !== 'codex';
+			byId('remote-sandbox-field').hidden = connectionOnly || recallOnly || tool !== 'codex';
+			byId('remote-recall-field').hidden = connectionOnly || tool !== 'codex';
+			byId('remote-recall').required = recallOnly;
 			byId('remote-sandbox').value =
 				state.currentConfig?.assistant.codexSandbox ?? 'workspace-write';
 			byId('remote-trust').checked = false;
-			byId('remote-stage').textContent = connectionOnly
-				? 'Get fresh private connection details from the running agent.'
-				: 'Ready to begin. Existing remote startup is paused during setup.';
+			byId('remote-stage').textContent = recallOnly
+				? 'Review the AKM commands, then save your choice. Remote startup is unchanged.'
+				: connectionOnly
+					? 'Get fresh private connection details from the running agent.'
+					: 'Ready to begin. Existing remote startup is paused during setup.';
 			byId('remote-output').value = '';
 			byId('remote-prompts').hidden = true;
 			byId('remote-output-details').open = false;
 			byId('remote-answer-field').hidden = true;
 			byId('remote-send').hidden = true;
-			byId('remote-guidance').textContent = connectionOnly
-				? 'Use these details in a supported client. Do not share pairing codes or links.'
-				: 'Sign in through your browser, then approve any account or workspace prompts yourself.';
+			byId('remote-guidance').textContent = recallOnly
+				? 'Approve only the commands you want Codex to run. No account sign-in is needed for this review.'
+				: connectionOnly
+					? 'Use these details in a supported client. Do not share pairing codes or links.'
+					: 'Sign in through your browser, then approve any account or workspace prompts yourself.';
 			for (const item of all('[data-remote-step]'))
 				item.setAttribute(
 					'aria-current',
 					!connectionOnly && item.dataset.remoteStep === 'access' ? 'step' : 'false'
 				);
-			byId('remote-steps').hidden = connectionOnly;
+			byId('remote-steps').hidden = connectionOnly || recallOnly;
 			byId('remote-answer').value = '';
 			byId('remote-send').disabled = true;
 			byId('remote-cancel').textContent = 'Cancel';
 			byId('remote-dialog').showModal();
+			if (!connectionOnly && tool === 'codex') void loadRecall();
 		});
 	byId('remote-form').addEventListener('submit', async (event) => {
 		event.preventDefault();
@@ -144,12 +218,56 @@ export function bindRemoteEvents() {
 			byId('remote-send').click();
 			return;
 		}
-		if (starting || (!connectionOnly && !byId('remote-trust').checked)) return;
+		if (
+			starting ||
+			byId('remote-begin').disabled ||
+			(!connectionOnly && !recallOnly && !byId('remote-trust').checked) ||
+			(recallOnly && !byId('remote-recall').checked)
+		)
+			return;
 		starting = true;
+		const recallRequested = byId('remote-recall').checked;
+		byId('remote-recall').disabled = true;
 		setBusy(true);
-		byId('remote-prompts').hidden = false;
+		byId('remote-prompts').hidden = recallOnly;
 		byId('remote-stage').textContent = 'Preparing Assistant…';
 		try {
+			if (!connectionOnly && tool === 'codex' && recallRequested) {
+				if (!recallReview) throw new Error('Review current AKM hooks first.');
+				{
+					const review = await state.api.codexRecall({
+						action: 'approve',
+						digest: recallReview.digest,
+						confirmed: true
+					});
+					if (review.status !== 'ready')
+						throw new Error('Native hook approval did not become ready.');
+					recallReview = review;
+				}
+				byId('remote-recall-status').textContent = 'Ready · native approval saved';
+			}
+			if (
+				!connectionOnly &&
+				!recallOnly &&
+				tool === 'codex' &&
+				!recallRequested &&
+				recallReview?.status === 'ready'
+			) {
+				await state.api.codexRecall({
+					action: 'disable',
+					digest: recallReview.digest,
+					confirmed: true
+				});
+			}
+			if (recallOnly) {
+				byId('remote-stage').textContent =
+					'Knowledge recall is ready for new Codex sessions. No remote connection was enabled.';
+				byId('remote-begin').hidden = true;
+				byId('remote-recall-disable').hidden = false;
+				setBusy(false);
+				await refresh(false);
+				return;
+			}
 			const progress = await state.api.remote(
 				connectionOnly
 					? { action: 'connection', tool }
@@ -168,8 +286,13 @@ export function bindRemoteEvents() {
 			setBusy(false);
 			byId('remote-stage').textContent = message(error);
 			byId('remote-cancel').disabled = false;
+			if (tool === 'codex' && !connectionOnly) {
+				byId('remote-recall').checked = false;
+				await loadRecall();
+			}
 		} finally {
 			starting = false;
+			if (!running) byId('remote-recall').disabled = !recallReview;
 		}
 	});
 	byId('remote-send').addEventListener('click', async () => {
@@ -196,6 +319,8 @@ export function bindRemoteEvents() {
 			}
 		}
 		if (running) return;
+		reviewRequest++;
+		recallReview = undefined;
 		byId('remote-answer').value = '';
 		byId('remote-output').value = '';
 		byId('remote-dialog').close();
@@ -204,6 +329,29 @@ export function bindRemoteEvents() {
 	byId('remote-dialog').addEventListener('cancel', (event) => {
 		event.preventDefault();
 		void cancel();
+	});
+	byId('remote-recall-disable').addEventListener('click', async () => {
+		if (starting || running || !recallOnly || !recallReview) return;
+		starting = true;
+		setBusy(true);
+		try {
+			await state.api.codexRecall({
+				action: 'disable',
+				digest: recallReview.digest,
+				confirmed: true
+			});
+			byId('remote-stage').textContent =
+				'Automatic knowledge recall is off. Native approval is retained; remote startup is unchanged.';
+			byId('remote-begin').hidden = false;
+			await loadRecall();
+			await refresh(false);
+		} catch (error) {
+			byId('remote-stage').textContent = message(error);
+			await loadRecall();
+		} finally {
+			starting = false;
+			setBusy(false);
+		}
 	});
 	for (const button of all('[data-remote-disable]'))
 		button.addEventListener('click', async () => {

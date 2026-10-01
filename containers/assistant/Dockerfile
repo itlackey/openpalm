@@ -89,6 +89,7 @@ COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 COPY containers/assistant/openpalm-remote.mjs /usr/local/bin/openpalm-remote
 COPY containers/assistant/openpalm-remote-setup.mjs /usr/local/bin/openpalm-remote-setup
+COPY containers/assistant/openpalm-codex-recall.mjs /usr/local/bin/openpalm-codex-recall.mjs
 COPY --from=tools /akm-marketplace /akm-marketplace
 COPY --from=tools /native-defaults /native-defaults
 COPY containers/assistant/codex.config.toml /etc/codex/config.toml
@@ -97,7 +98,7 @@ ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 RUN test -n "$PLATFORM_VERSION" \
-    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-remote /usr/local/bin/openpalm-remote-setup /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
+    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-remote /usr/local/bin/openpalm-remote-setup /usr/local/bin/openpalm-codex-recall.mjs /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
     && ln -s openpalm-remote /usr/local/bin/openpalm-remote.mjs \
     && mkdir -p /home/opencode /etc/opencode /opt/akm/cache /opt/akm/data/state /stash /work \
     && chown -R bun:bun /home/opencode /etc/opencode /opt/akm /stash /work \

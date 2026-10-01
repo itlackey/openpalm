@@ -358,8 +358,8 @@
                 <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up</button><button class="secondary" type="button" data-remote-connect="claude" disabled>Open session</button><button class="text-button" type="button" data-remote-disable="claude" hidden>Disable startup</button></div>
               </div>
               <div class="remote-connection-row">
-                <div><h3>Codex <span class="card-label">Experimental</span></h3><p>ChatGPT account sign-in. Client and host support are required.</p><span id="codex-remote-status" class="status-badge neutral">Startup off</span></div>
-                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up</button><button class="secondary" type="button" data-remote-connect="codex" disabled>Get pairing code</button><button class="text-button" type="button" data-remote-disable="codex" hidden>Disable startup</button></div>
+                <div><h3>Codex <span class="card-label">Experimental</span></h3><p>ChatGPT account sign-in. Client and host support are required.</p><span id="codex-remote-status" class="status-badge neutral">Startup off</span><p class="help-text">Automatic knowledge recall: <span id="codex-recall-status" class="status-badge neutral">Not checked</span></p><p id="codex-recall-guidance" class="help-text">Review AKM hooks here; no Codex command is needed.</p></div>
+                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up</button><button class="secondary" type="button" data-codex-recall-review>Review knowledge recall</button><button class="secondary" type="button" data-remote-connect="codex" disabled>Get pairing code</button><button class="text-button" type="button" data-remote-disable="codex" hidden>Disable startup</button></div>
               </div>
               <p class="help-text">Setup enables startup automatically. Disabling startup keeps your account sign-in; revoke paired devices through the account provider.</p>
             </section>
@@ -544,6 +544,15 @@
         <ol id="remote-steps" class="remote-steps" aria-label="Remote setup progress"><li data-remote-step="access" aria-current="step">Allow access</li><li data-remote-step="sign-in">Sign in</li><li data-remote-step="connect">Connect</li></ol>
         <p id="remote-guidance">Sign in through your browser, then approve any account or workspace prompts yourself.</p>
         <label id="remote-trust-field" class="check-row"><input id="remote-trust" type="checkbox" required /> I allow this separate agent to access my workspace and knowledge. OpenPalm’s protected-client policies do not apply.</label>
+        <section id="remote-recall-field" class="form-stack" aria-labelledby="remote-recall-heading" hidden>
+          <h3 id="remote-recall-heading">Automatic knowledge recall</h3>
+          <p>AKM runs commands when Codex starts and before each prompt. It searches your configured knowledge bundles and adds relevant context to Codex. Your prompt goes to AKM, which may contact configured search or embedding services. This does not approve tools or enable automatic memory writes.</p>
+          <p id="remote-recall-status" role="status" aria-live="polite">Checking native hook approval…</p>
+          <details class="disclosure"><summary>Review the commands Codex will run</summary><textarea id="remote-recall-definitions" class="technical-output log-output" readonly spellcheck="false" aria-label="Actual AKM hook definitions"></textarea></details>
+          <label class="check-row"><input id="remote-recall" type="checkbox" disabled /> Enable automatic knowledge recall. I approve the AKM commands shown above.</label>
+          <p class="help-text">Your choice is saved by Codex and survives restarts. Changed definitions require another review. Applies to new sessions.</p>
+          <button id="remote-recall-disable" class="text-button" type="button" hidden>Turn off automatic knowledge recall</button>
+        </section>
         <details id="remote-advanced" class="disclosure"><summary>Advanced settings</summary><label id="remote-sandbox-field" class="field" for="remote-sandbox"><span>Workspace access</span><select id="remote-sandbox"><option value="workspace-write">Allow workspace changes (default)</option><option value="read-only">Read files only</option></select></label><p class="help-text">Both modes keep native sandboxing and tool approvals. This cannot work around missing host sandbox support.</p></details>
         <p id="remote-stage" role="status" aria-live="polite">Ready to begin.</p>
         <div id="remote-prompts" class="form-stack" hidden>

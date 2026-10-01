@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { remoteBrowserUrls, remoteTool, beginRemoteEnable } from './remote.js';
 import { createOpenPalmState } from './foundation.js';
+import { changeCodexRecall } from './codex-recall.js';
 
 describe('native remote setup boundaries', () => {
 	it('opens only complete vendor sign-in and pairing URLs, not arbitrary native output', () => {
@@ -31,6 +32,12 @@ describe('native remote setup boundaries', () => {
 		expect(remoteBrowserUrls('https://auth.openai.com/codex/device')).toEqual([]);
 	});
 	it('rejects untrusted enable and invalid tools before touching an installation', async () => {
+		await expect(
+			changeCodexRecall(createOpenPalmState(), 'approve', 'a'.repeat(64), false)
+		).rejects.toThrow('explicitly confirm');
+		await expect(
+			changeCodexRecall(createOpenPalmState(), 'approve', 'invalid', true)
+		).rejects.toThrow('explicitly confirm');
 		expect(() => remoteTool('claude; echo pwn')).toThrow();
 		await expect(
 			beginRemoteEnable(createOpenPalmState(), 'claude', { trusted: false })

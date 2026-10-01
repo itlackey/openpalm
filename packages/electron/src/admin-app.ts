@@ -38,7 +38,8 @@ import {
 	testAssistantReadiness,
 	writePortalSecret
 } from '@openpalm/lib';
-import type { AssistantReadiness, RemoteEnableSession } from '@openpalm/lib';
+import { reviewCodexRecall, changeCodexRecall } from '@openpalm/lib';
+import type { AssistantReadiness, RemoteEnableSession, CodexRecallReview } from '@openpalm/lib';
 
 import electronPackage from '../package.json' with { type: 'json' };
 
@@ -154,12 +155,23 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
 				health: row.health
 			}))
 		: [];
+	let recall: CodexRecallReview | undefined;
+	let recallError: string | undefined;
+	if (services.some((s) => s.name === 'assistant' && s.state === 'running')) {
+		try {
+			recall = await reviewCodexRecall(current);
+		} catch (error) {
+			recallError = error instanceof Error ? error.message : String(error);
+		}
+	}
 	return {
 		phase: installState === 'installed' ? 'ready' : 'setup_incomplete',
 		homeDir: current.homeDir,
 		configPath: stackConfigFile(current.homeDir),
 		config: config.config,
 		services,
+		...(recall ? { codexRecall: recall } : {}),
+		...(recallError ? { codexRecallError: recallError } : {}),
 		...(result.ok ? {} : { dockerError: result.stderr || 'Docker is unavailable' }),
 		portalMappings: adminPortalMappings(current.homeDir),
 		portalSecrets: {
@@ -205,6 +217,20 @@ async function completeAdminReadiness(
 }
 
 export function registerAdminIpc(): void {
+	ipcMain.handle(ADMIN_CHANNELS.codexRecall, async (event, value: unknown) => {
+		requireAdminSender(event);
+		if (!value || typeof value !== 'object' || Array.isArray(value))
+			throw new Error('Invalid recall request.');
+		const input = value as Record<string, unknown>;
+		const current = state();
+		if (input.action === 'review') return reviewCodexRecall(current);
+		if (input.action !== 'approve' && input.action !== 'disable')
+			throw new Error('Unknown recall action.');
+		if (typeof input.digest !== 'string') throw new Error('Review the current hooks first.');
+		if (remoteStarting || activeRemote?.session.snapshot().running)
+			throw new Error('Finish or cancel remote setup first.');
+		return changeCodexRecall(current, input.action, input.digest, input.confirmed === true);
+	});
 	ipcMain.handle(ADMIN_CHANNELS.remote, async (event, value: unknown) => {
 		requireAdminSender(event);
 		if (!value || typeof value !== 'object') throw new Error('Invalid native remote request.');

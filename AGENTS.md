@@ -116,6 +116,10 @@ Profiles are exactly `gateway`, `discord`, and `slack`.
   vendor accounts and explicit consent. Never copy host login files, auto-accept
   trust, or disable native approvals. Their failure must not stop OpenCode/cron;
   process-running status is not vendor connection readiness.
+- Codex AKM recall approval is an explicit setup/Admin choice using native hook
+  inventory and version-checked config writes. Trust only the exact reviewed AKM
+  definitions; changed definitions require another review. Preserve native
+  decisions and unrelated hooks. Never pre-trust or bypass hook review.
 - Provider setup delegates to OpenCode and is complete only after a real,
   no-tool Assistant request succeeds.
 - Successful provider setup replaces only the untouched Guardian moderator

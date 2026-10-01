@@ -7,7 +7,12 @@ import { loadClientKey } from '../admin/connections.js';
 import { bindConfigurationEvents } from '../admin/configuration.js';
 import { endpoint, isHealthy, promptVisible } from '../admin/model.js';
 import { bindPreferencesEvents, renderPreferences } from '../admin/preferences.js';
-import { bindRemoteEvents, renderRemoteStatus, remoteStageText } from '../admin/remote.js';
+import {
+	bindRemoteEvents,
+	renderRemoteStatus,
+	remoteStageText,
+	recallStatusLabel
+} from '../admin/remote.js';
 import { resetOAuthAttempt, renderProviders } from '../admin/providers.js';
 import { renderPhase, renderServices } from '../admin/runtime.js';
 import { render, refresh } from '../admin/snapshot.js';
@@ -195,6 +200,10 @@ describe('Admin static security boundary', () => {
 	});
 
 	it('uses human-readable remote stages and never equates startup with connection readiness', () => {
+		expect(recallStatusLabel({ status: 'installed' })).toBe('Installed');
+		expect(recallStatusLabel({ status: 'approval-needed' })).toBe('Approval needed');
+		expect(recallStatusLabel({ status: 'ready' })).toBe('Ready');
+		expect(recallStatusLabel(undefined)).toBe('Not checked');
 		expect(remoteStageText({ stage: 'sandbox' })).toContain('safely run Codex');
 		expect(remoteStageText({ stage: 'enabling', enabled: true })).toContain(
 			'verify a real request'
@@ -205,7 +214,7 @@ describe('Admin static security boundary', () => {
 	it('requires explicit remote trust, reports setup failure, and clears native answers before IPC', async () => {
 		const button = new Control();
 		button.dataset.remoteEnable = 'claude';
-		selector('[data-remote-enable], [data-remote-connect]', button);
+		selector('[data-remote-enable], [data-remote-connect], [data-codex-recall-review]', button);
 		let calls = 0;
 		let answer: unknown;
 		state.api = {
@@ -238,6 +247,53 @@ describe('Admin static security boundary', () => {
 		expect(answer).toBe('private-native-code');
 		await control('remote-cancel').listeners.get('click')?.({});
 		expect(control('remote-dialog').open).toBe(false);
+	});
+
+	it('requires an explicit Codex recall choice, sends only the current digest, and rejects stale reviews', async () => {
+		const button = new Control();
+		button.dataset.codexRecallReview = '';
+		selector('[data-remote-enable], [data-remote-connect], [data-codex-recall-review]', button);
+		const review = {
+			status: 'approval-needed',
+			digest: 'a'.repeat(64),
+			hooks: [
+				{
+					event: 'sessionStart',
+					command: 'literal <script> is text',
+					sourcePath: '/plugin',
+					hash: 'sha256:abc',
+					trust: 'modified',
+					enabled: true
+				}
+			]
+		};
+		const calls: unknown[] = [];
+		state.api = {
+			codexRecall: async (request: { action: string; digest?: string }) => {
+				calls.push(request);
+				if (request.action === 'review') return review;
+				throw new Error('AKM hooks changed since review.');
+			}
+		};
+		bindRemoteEvents();
+		button.listeners.get('click')?.({});
+		await Bun.sleep(1);
+		expect(control('remote-recall').checked).toBe(false);
+		expect(control('remote-trust-field').hidden).toBe(true);
+		expect(control('remote-recall-definitions').value).toContain('literal <script> is text');
+		expect(control('remote-recall-status').textContent).toContain('definitions changed');
+		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });
+		expect(calls).toEqual([{ action: 'review' }]);
+		control('remote-recall').checked = true;
+		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });
+		expect(calls).toEqual([
+			{ action: 'review' },
+			{ action: 'approve', digest: review.digest, confirmed: true },
+			{ action: 'review' }
+		]);
+		expect(control('remote-stage').textContent).toContain('changed since review');
+		expect(control('remote-recall').checked).toBe(false);
+		await control('remote-cancel').listeners.get('click')?.({});
 	});
 	it('loads local modules under a closed CSP with no renderer network access', () => {
 		const csp = html.match(/content="([^"]+)"/)?.[1] ?? '';

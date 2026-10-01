@@ -75,9 +75,11 @@ user configuration takes precedence. Operators who customize the native plugin
 registry can use the corresponding native install/update command rather than
 having OpenPalm merge a vendor-specific configuration format.
 
-Codex hooks are installed but not pre-trusted: review/approve them through native
-`/hooks` before expecting automatic recall in personal sessions. No approval or
-sandbox bypass is added. Image smoke checks exercise all three real harnesses
+Codex hooks are installed but not pre-trusted. Guided Codex setup and Admin
+explain and approve only the exact reviewed AKM definitions through Codex's
+native hook/config APIs. Approval and opt-out persist in its normal configuration;
+changed definitions require review again. No manual `/hooks` command, independent
+trust store, approval bypass, or sandbox bypass is needed. Image smoke checks exercise all three real harnesses
 with the real AKM CLI, confirming session hooks and successful fixture recall.
 `BUN_OPTIONS=--no-env-file` prevents workspace dotenv loading in upstream hooks;
 automatic learning and session extraction remain disabled by the existing AKM

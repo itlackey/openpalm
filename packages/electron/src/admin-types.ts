@@ -8,6 +8,7 @@ import type {
 	StackConfig
 } from '@openpalm/lib';
 import type { RemoteProgress, RemoteTool, CodexSandbox } from '@openpalm/lib';
+import type { CodexRecallReview } from '@openpalm/lib';
 
 export type AdminSnapshot = {
 	phase: 'not_installed' | 'setup_incomplete' | 'ready';
@@ -28,11 +29,18 @@ export type AdminSnapshot = {
 		mcp: ConnectionDetails;
 		claude: ConnectionDetails;
 	};
+	codexRecall?: CodexRecallReview;
+	codexRecallError?: string;
 };
 
 export type StackAction = 'start' | 'restart' | 'stop';
 
 export type AdminApi = {
+	codexRecall(value: {
+		action: 'review' | 'approve' | 'disable';
+		digest?: string;
+		confirmed?: boolean;
+	}): Promise<CodexRecallReview>;
 	remote(value: {
 		action: 'enable' | 'progress' | 'input' | 'cancel' | 'disable' | 'connection';
 		tool: RemoteTool;
@@ -98,6 +106,7 @@ export type AdminApi = {
 };
 
 export const ADMIN_CHANNELS = {
+	codexRecall: 'admin:codex-recall',
 	remote: 'admin:remote',
 	snapshot: 'admin:snapshot',
 	selectedHome: 'admin:selected-home',

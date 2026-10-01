@@ -64,8 +64,11 @@ version. Merely finding a manifest or executable is insufficient.
 Claude/Codex use build-installed native marketplace caches/settings, without
 an inline plugin loader. No vendor authentication is supplied: Claude hooks run
 before its sign-in gate, while OpenCode/Codex use a refused loopback model URL.
-Codex must initially report untrusted hooks; only the disposable test home
-receives native hook-trust state so execution can be tested. The image smoke
+Codex must initially report untrusted hooks. The disposable test home uses the
+same native inventory/version-checked writer as guided setup to approve them.
+Fresh native processes verify persistence; unrelated hooks stay untrusted,
+changed definitions invalidate approval, stale review digests fail, and opting
+out persists. The image smoke
 also verifies native user settings survive restart and untouched generated
 plugin registrations refresh. CI runs this on native AMD64 and ARM64 hosts,
 with a runner-architecture assertion. QEMU is used for multi-architecture

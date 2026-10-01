@@ -104,8 +104,13 @@ async function capture(window: BrowserWindow, directory: string, name: string): 
 
 async function assertRenderedFloor(window: BrowserWindow, label: string): Promise<void> {
 	// Exercise real keyboard modality; focus-visible should not decorate mouse clicks.
+	window.focus();
+	window.webContents.focus();
 	window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
 	window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+	await window.webContents.executeJavaScript(
+		'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))'
+	);
 	const result = (await window.webContents.executeJavaScript(`(() => {
 		const visible = (element) => {
 			const modal = document.querySelector('dialog[open]');
@@ -122,13 +127,12 @@ async function assertRenderedFloor(window: BrowserWindow, label: string): Promis
 				return { tag: element.tagName, id: element.id, width: rect.width, height: rect.height };
 			})
 			.filter((item) => item.width < 24 || item.height < 24);
-		const focusTarget = controls[0];
-		focusTarget?.focus();
+		const focusTarget = document.activeElement;
 		const focusStyle = focusTarget ? getComputedStyle(focusTarget) : null;
 		return {
 			overflow: document.documentElement.scrollWidth - window.innerWidth,
 			undersized,
-			focus: focusStyle ? { style: focusStyle.outlineStyle, width: focusStyle.outlineWidth } : null
+			focus: focusStyle ? { id: focusTarget.id, tag: focusTarget.tagName, style: focusStyle.outlineStyle, width: focusStyle.outlineWidth } : null
 		};
 	})()`)) as {
 		overflow: number;
@@ -142,7 +146,7 @@ async function assertRenderedFloor(window: BrowserWindow, label: string): Promis
 	);
 	assert(
 		result.focus !== null && result.focus.style !== 'none' && result.focus.width !== '0px',
-		`${label} does not expose a visible focus outline.`
+		`${label} does not expose a visible focus outline: ${JSON.stringify(result.focus)}`
 	);
 }
 
@@ -421,6 +425,19 @@ async function run(): Promise<Record<string, unknown>> {
 			if (!document.querySelector('#remote-send').hidden) throw new Error('An irrelevant native answer control is exposed before setup.');
 			if ([...document.querySelector('#remote-sandbox').options].some(option => /danger|bypass/i.test(option.value))) throw new Error('Sandbox bypass is offered.');
 		})()`);
+		await waitForRenderer(
+			window,
+			`document.querySelector('#remote-recall-status')?.textContent === 'Approval needed' && !document.querySelector('#remote-recall').disabled`,
+			'native AKM hook review',
+			60_000,
+			!provider
+		);
+		assert(
+			await window.webContents.executeJavaScript(
+				"!document.querySelector('#remote-recall').checked && !document.querySelector('#remote-recall-field').hidden"
+			),
+			'Recall approval was missing or preaccepted in Codex setup.'
+		);
 		await assertRenderedFloor(window, 'native remote setup dialog');
 		const nativeRemoteScreenshot = await capture(window, outputDir, '04-native-remote-setup.png');
 		await window.webContents.executeJavaScript(`(() => {
@@ -433,10 +450,81 @@ async function run(): Promise<Record<string, unknown>> {
 			'native remote setup opens from Admin with explicit trust and safe sandbox choices; no subscription login was performed'
 		);
 		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-codex-recall-review]').click()"
+		);
+		await waitForRenderer(
+			window,
+			"!document.querySelector('#remote-recall').disabled && document.querySelector('#remote-recall-status').textContent === 'Approval needed'",
+			'standalone native recall review',
+			60_000,
+			!provider
+		);
+		await window.webContents.executeJavaScript(`(async () => {
+			const review = await window.openpalmAdmin.codexRecall({action:'review'});
+			let rejected = false;
+			try { await window.openpalmAdmin.codexRecall({action:'approve',digest:review.digest}); } catch { rejected = true; }
+			if (!rejected) throw new Error('Recall approval accepted without explicit consent.');
+			document.querySelector('#remote-recall').click();
+			document.querySelector('#remote-form').requestSubmit();
+		})()`);
+		await waitForRenderer(
+			window,
+			"document.querySelector('#remote-stage').textContent.includes('Knowledge recall is ready') && document.querySelector('#codex-recall-status').textContent === 'Ready'",
+			'native recall approval saved',
+			60_000,
+			!provider
+		);
+		const recallScreenshot = await capture(window, outputDir, '04a-codex-knowledge-recall.png');
+		await window.webContents.executeJavaScript("document.querySelector('#remote-cancel').click()");
+		await runAdminAction('restart');
+		await window.webContents.executeJavaScript("document.querySelector('#refresh').click()");
+		await waitForRenderer(
+			window,
+			"document.querySelector('#codex-recall-status').textContent === 'Ready' && document.querySelector('#refresh').textContent === 'Status up to date'",
+			'recall approval after container recreation',
+			60_000,
+			!provider
+		);
+		const recallSnapshot = await adminSnapshot();
+		assert(
+			recallSnapshot.codexRecall?.status === 'ready' &&
+				recallSnapshot.config.assistant.codexRemote === false,
+			'Recall did not persist independently from remote startup.'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-codex-recall-review]').click()"
+		);
+		await waitForRenderer(
+			window,
+			"!document.querySelector('#remote-recall-disable').hidden && !document.querySelector('#remote-recall').disabled",
+			'recall off control',
+			60_000,
+			!provider
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#remote-recall-disable').click()"
+		);
+		await waitForRenderer(
+			window,
+			"document.querySelector('#remote-recall-status').textContent === 'Installed' && !document.querySelector('#remote-recall').checked && document.querySelector('#codex-recall-status').textContent === 'Installed'",
+			'recall opt-out saved',
+			60_000,
+			!provider
+		);
+		await window.webContents.executeJavaScript("document.querySelector('#remote-cancel').click()");
+		progress(
+			'native AKM approval required consent, persisted across recreation, and opted out without remote startup or vendor login'
+		);
+		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=overview]').click()"
 		);
 		const overviewScreenshot = await capture(window, outputDir, '04b-overview.png');
-		assert(await window.webContents.executeJavaScript("document.querySelector('#view-title').focus(); getComputedStyle(document.querySelector('#view-title')).outlineStyle === 'none'"), 'Programmatically focused headings have a decorative outline.');
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#view-title').focus(); getComputedStyle(document.querySelector('#view-title')).outlineStyle === 'none'"
+			),
+			'Programmatically focused headings have a decorative outline.'
+		);
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=connections]').click()"
 		);
@@ -770,6 +858,13 @@ async function run(): Promise<Record<string, unknown>> {
 				sandboxChoices: ['workspace-write', 'read-only'],
 				subscriptionLoginVerified: false
 			},
+			codexRecall: {
+				explicitConsent: true,
+				nativeApproval: true,
+				restartPersistence: true,
+				optOut: true,
+				noRemoteStartup: true
+			},
 			agentPreferencesVerified: {
 				timezone: 'Europe/London',
 				memoryOptOutPersisted: true,
@@ -791,6 +886,7 @@ async function run(): Promise<Record<string, unknown>> {
 				recoveryScreenshot,
 				reflowScreenshot,
 				nativeRemoteScreenshot,
+				recallScreenshot,
 				overviewScreenshot,
 				connectionsScreenshot,
 				backupScreenshot,

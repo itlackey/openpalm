@@ -12,10 +12,45 @@ import {
 	requireInstall,
 	runComposeStreaming
 } from '@openpalm/lib';
-import type { CodexSandbox } from '@openpalm/lib';
+import { reviewCodexRecall, changeCodexRecall } from '@openpalm/lib';
+import type { CodexSandbox, CodexRecallReview } from '@openpalm/lib';
 
 import { defineAction } from '../lib/action.js';
 import { runStartAction } from './lifecycle.js';
+
+export function describeRecall(review: CodexRecallReview): string {
+	return (
+		'Automatic knowledge recall: AKM runs local commands when a Codex session starts and before each prompt. It searches your configured knowledge bundles and adds relevant context to Codex. Your prompt is passed to AKM; configured search/embedding endpoints may be contacted. This does not grant tool permissions or enable automatic memory writes.\n' +
+		review.hooks
+			.map(
+				(h) =>
+					`${h.event} (${h.trust}${h.enabled ? '' : ', off'})\n  ${h.command}\n  Definition: ${h.sourcePath}`
+			)
+			.join('\n')
+	);
+}
+
+async function guideRecall(reader: ReturnType<typeof createInterface>): Promise<void> {
+	const state = createOpenPalmState();
+	const review = await reviewCodexRecall(state);
+	if (review.status === 'ready') {
+		console.log('Automatic knowledge recall: Ready (previous approval retained).');
+		return;
+	}
+	console.log(describeRecall(review));
+	if (
+		/^y(es)?$/i.test(
+			(await reader.question('Enable automatic knowledge recall with these hooks? [y/N] ')).trim()
+		)
+	) {
+		const result = await changeCodexRecall(state, 'approve', review.digest, true);
+		if (result.status !== 'ready') throw new Error('Native hook approval did not become ready.');
+		console.log(
+			'Automatic knowledge recall: Ready. Approval applies to new sessions and survives restarts. Changed definitions require another review.'
+		);
+	} else
+		console.log('Knowledge recall approval skipped. Your previous native decision is unchanged.');
+}
 
 export async function enableRemote(
 	toolValue: unknown,
@@ -43,6 +78,10 @@ export async function enableRemote(
 		console.log(
 			'Follow the native sign-in prompts. Browser links open automatically when a desktop is available. Trust and consent require your answers; Ctrl+C cancels.'
 		);
+		if (tool === 'codex') {
+			await runStartAction();
+			await guideRecall(reader);
+		}
 		const opened = new Set<string>();
 		let displayed = '';
 		let stage = '';
@@ -146,6 +185,63 @@ const disable = defineCommand({
 	})
 });
 
+const recall = defineCommand({
+	meta: {
+		name: 'recall',
+		description: 'Review and approve Codex automatic knowledge recall using native hook trust'
+	},
+	args: {
+		tool: { type: 'positional', required: true, description: 'codex' },
+		status: {
+			type: 'boolean',
+			default: false,
+			description: 'Print current native hook review as JSON (read-only)'
+		},
+		approve: {
+			type: 'boolean',
+			default: false,
+			description: 'Explicitly approve the exact --review digest'
+		},
+		review: {
+			type: 'string',
+			description: 'Current digest returned by --status; changes invalidate approval'
+		},
+		off: {
+			type: 'boolean',
+			default: false,
+			description: 'Disable the exact reviewed hooks; requires --review'
+		}
+	},
+	run: defineAction(async ({ args }) => {
+		if (args.tool !== 'codex') throw new Error('Knowledge hook review is for codex.');
+		if ((args.approve && args.off) || (args.status && (args.approve || args.off)))
+			throw new Error('Choose status, approve, or off.');
+		const state = createOpenPalmState();
+		if (args.approve || args.off) {
+			console.log(
+				JSON.stringify(
+					await changeCodexRecall(state, args.off ? 'disable' : 'approve', args.review ?? '', true),
+					null,
+					2
+				)
+			);
+		} else if (args.status) console.log(JSON.stringify(await reviewCodexRecall(state), null, 2));
+		else {
+			if (!process.stdin.isTTY || !process.stdout.isTTY)
+				throw new Error(
+					'Use Admin or --status, then --approve --review DIGEST after reviewing the hooks.'
+				);
+			await runStartAction();
+			const reader = createInterface({ input: process.stdin, output: process.stdout });
+			try {
+				await guideRecall(reader);
+			} finally {
+				reader.close();
+			}
+		}
+	})
+});
+
 export function remoteExecArguments(action: string, tool: string): string[] {
 	if (tool !== 'codex' && tool !== 'claude') throw new Error('Choose codex or claude.');
 	if (action === 'setup')
@@ -201,6 +297,14 @@ function command(action: 'setup' | 'pair' | 'status' | 'logs') {
 					`Remote startup is disabled. Complete openpalm remote setup ${tool}, then openpalm config assistant --${tool}-remote on.`
 				);
 			await runStartAction();
+			if (action === 'setup' && tool === 'codex') {
+				const reader = createInterface({ input: process.stdin, output: process.stdout });
+				try {
+					await guideRecall(reader);
+				} finally {
+					reader.close();
+				}
+			}
 			await runComposeStreaming(
 				[
 					...buildComposeCliArgs(state),
@@ -237,6 +341,7 @@ export default defineCommand({
 	subCommands: {
 		enable,
 		disable,
+		recall,
 		setup: command('setup'),
 		pair: command('pair'),
 		status: command('status'),

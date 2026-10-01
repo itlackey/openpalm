@@ -94,6 +94,39 @@ requires unchecked workspace consent; Codex's workspace-write default is
 selected inside a closed Advanced settings disclosure. Connection details
 remain private and startup status explicitly leaves client readiness unverified.
 
+Codex setup includes an unchecked automatic-recall approval choice, an explanation
+of prompt/knowledge access, and the actual native commands. The E2E walkthrough
+also reviews recall independently, rejects approval without explicit consent,
+saves native approval through real IPC, verifies **Ready** after container
+recreation, and turns it off to **Installed** without enabling remote startup or
+using a vendor account. A dedicated recall screenshot is retained in the report.
+Image smoke separately changes definitions and verifies **Approval needed** plus
+stale-review rejection. These checks require the unreleased guided-recall image,
+not just a new Admin bundle pointed at the published alpha.4 image.
+
+### Guided-recall verification receipt (unreleased)
+
+The October 1, 2026 Linux walkthrough used an isolated Assistant image built
+from the guided-recall checkout, real Electron IPC, and a disposable home. It
+passed explicit consent, native approval, container-recreation persistence,
+opt-out, and unchanged remote startup. The rest of the Admin journey passed
+startup recovery, preferences, connection recipes, credential/mapping
+persistence, and authenticated Guardian MCP. The provider-free lane correctly
+reported provider readiness as unsuccessful and used the documented management
+fixture; it did not verify subscription sign-in or claim a complete provider
+setup. Screenshots were visually reviewed.
+
+Two test-harness corrections were needed: focus checks now inspect the control
+actually reached by keyboard navigation rather than programmatically focusing
+a possibly disabled control, and independent recall checks tolerate the expected
+provider error only in the provider-free fixture lane. Neither correction
+relaxes native recall consent or the provider-backed setup acceptance criteria.
+
+Image smoke also exercises real recall in OpenCode, Claude Code, and Codex,
+then verifies native approval persistence, changed-definition review, stale
+approval rejection, opt-out persistence, and preservation of an unrelated
+untrusted hook. No existing user instance is changed by these tests.
+
 The default run intentionally uses no provider secret. It verifies provider
 discovery, lets Admin automatically test any detected sign-in, and proves that
 an unsuccessful real request remains an incomplete setup error. It then marks

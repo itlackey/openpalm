@@ -3,7 +3,6 @@
 // These are real harnesses and the real AKM CLI, not a replacement plugin loader.
 import assert from 'node:assert/strict';
 import {
-	appendFileSync,
 	closeSync,
 	cpSync,
 	existsSync,
@@ -15,6 +14,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+	withCodexRecall,
+	reviewRecall,
+	changeRecall
+} from '/usr/local/bin/openpalm-codex-recall.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'openpalm-akm-harnesses-'));
 const prompt = 'Find the lean release verification knowledge for the personal agent rollout';
@@ -217,60 +221,21 @@ function recalled(file, harness) {
 			(p) => p.pluginId === 'akm@akm-plugins' && p.enabled && p.version === tools['akm-opencode']
 		)
 	);
-	const server = Bun.spawn(['codex', 'app-server'], {
-		cwd: f.cwd,
-		env: f.env,
-		stdin: 'pipe',
-		stdout: 'pipe',
-		stderr: 'ignore'
-	});
-	const pending = new Map();
-	const reader = (async () => {
-		let buffer = '';
-		for await (const chunk of server.stdout) {
-			buffer += new TextDecoder().decode(chunk);
-			for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
-				const line = buffer.slice(0, end);
-				buffer = buffer.slice(end + 1);
-				try {
-					const message = JSON.parse(line);
-					pending.get(message.id)?.(message);
-				} catch {
-					/* non-RPC output */
-				}
-			}
-		}
-	})();
-	let id = 0;
-	const rpc = async (method, params) => {
-		const requestId = ++id;
-		let answer;
-		pending.set(requestId, (response) => {
-			answer = response;
-		});
-		server.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: requestId, method, params })}\n`);
-		server.stdin.flush();
-		const response = await waitFor(() => answer, method);
-		assert.ok(!response.error, JSON.stringify(response.error));
-		return response.result;
-	};
-	let hooks;
-	try {
-		await rpc('initialize', { clientInfo: { name: 'openpalm-smoke', version: '1' } });
-		server.stdin.write('{"jsonrpc":"2.0","method":"initialized"}\n');
-		server.stdin.flush();
-		hooks = (await rpc('hooks/list', { cwds: [f.cwd] })).data[0].hooks;
-		assert.deepEqual(hooks.map((h) => h.eventName).sort(), ['sessionStart', 'userPromptSubmit']);
-		assert.ok(
-			hooks.every((h) => h.trustStatus === 'untrusted'),
-			'Production defaults must not pre-trust hooks'
-		);
-	} finally {
-		server.kill();
-		await server.exited;
-		await reader;
-	}
-	// Test-only native /hooks trust state, isolated from runtime/user homes.
+	const options = { env: f.env, workdir: f.cwd };
+	writeFileSync(
+		join(f.env.CODEX_HOME, 'hooks.json'),
+		JSON.stringify({
+			hooks: { SessionStart: [{ hooks: [{ type: 'command', command: '/usr/bin/true' }] }] }
+		})
+	);
+	const review = await withCodexRecall(reviewRecall, options);
+	assert.equal(review.status, 'approval-needed');
+	assert.deepEqual(review.hooks.map((h) => h.event).sort(), ['sessionStart', 'userPromptSubmit']);
+	assert.ok(
+		review.hooks.every((h) => h.trust === 'untrusted'),
+		'Production defaults must not pre-trust hooks'
+	);
+	// Use the same native writer as guided setup, only in this disposable home.
 	const config = join(f.env.CODEX_HOME, 'config.toml');
 	writeFileSync(
 		config,
@@ -279,11 +244,22 @@ function recalled(file, harness) {
 			'\n[model_providers.offline]\nname="offline"\nbase_url="http://127.0.0.1:9/v1"\n' +
 			'wire_api="responses"\nrequires_openai_auth=false\nrequest_max_retries=0\nstream_max_retries=0\n'
 	);
-	for (const hook of hooks)
-		appendFileSync(
-			config,
-			`\n[hooks.state.${JSON.stringify(hook.key)}]\ntrusted_hash=${JSON.stringify(hook.currentHash)}\n`
-		);
+	assert.equal(
+		(await withCodexRecall((rpc) => changeRecall(rpc, 'approve', review.digest), options)).status,
+		'ready'
+	);
+	assert.equal(
+		(await withCodexRecall(reviewRecall, options)).status,
+		'ready',
+		'Approval must survive a fresh native process'
+	);
+	const inventory = await withCodexRecall((rpc) => rpc('hooks/list', { cwds: ['/work'] }), options);
+	assert.ok(
+		inventory.data[0].hooks
+			.filter((h) => h.source === 'user')
+			.every((h) => h.trustStatus === 'untrusted'),
+		'Approval must not trust unrelated native hooks'
+	);
 	const { proc, log, close } = launch(f, [
 		'codex',
 		'exec',
@@ -304,6 +280,29 @@ function recalled(file, harness) {
 		await proc.exited;
 		close();
 	}
+	const definition = review.hooks[0].sourcePath;
+	const manifest = JSON.parse(readFileSync(definition, 'utf8'));
+	manifest.hooks.hooks.SessionStart[0].hooks[0].command += ' # changed fixture definition';
+	writeFileSync(definition, JSON.stringify(manifest));
+	const changed = await withCodexRecall(reviewRecall, options);
+	assert.equal(changed.status, 'approval-needed');
+	assert.ok(changed.hooks.some((h) => h.trust === 'modified'));
+	await assert.rejects(
+		withCodexRecall((rpc) => changeRecall(rpc, 'approve', review.digest), options),
+		/changed since review/
+	);
+	assert.equal(
+		(await withCodexRecall((rpc) => changeRecall(rpc, 'disable', changed.digest), options)).status,
+		'installed'
+	);
+	assert.equal(
+		(await withCodexRecall(reviewRecall, options)).status,
+		'installed',
+		'Recall-off choice must survive a fresh process'
+	);
+	console.log(
+		'codex: native approval persisted; changed definitions required review; stale approval rejected; recall-off persisted'
+	);
 }
 
 console.log(

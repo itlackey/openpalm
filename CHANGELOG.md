@@ -6,6 +6,18 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Added
+
+- Codex setup and Admin's independent knowledge-recall review offer explicit
+  approval of the actual AKM commands using native hook/config APIs. Admin shows
+  Installed / Approval needed / Ready, with opt-out and renewed review for
+  changed definitions; no manual `/hooks` command or trust bypass is needed.
+- `openpalm remote recall codex` offers the same guided review, plus read-only
+  status and digest-bound explicit approval/opt-out for automation.
+- Real-harness image tests verify native approval persistence, unchanged
+  unrelated trust, changed-definition and stale-review rejection, and opt-out.
+  Admin E2E verifies consent and approval across container recreation.
+
 ## [0.14.0-alpha.4] - 2026-10-01
 
 ### Added

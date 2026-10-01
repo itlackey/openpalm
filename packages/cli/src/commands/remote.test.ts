@@ -12,7 +12,7 @@ import {
 	acquireStackLock,
 	releaseStackLock
 } from '@openpalm/lib';
-import { remoteExecArguments } from './remote.js';
+import { remoteExecArguments, describeRecall } from './remote.js';
 import { bootstrapInstall } from './install.js';
 
 const original = {
@@ -72,6 +72,27 @@ if(args.includes('config')) {
 }
 
 describe('native remote commands', () => {
+	it('explains native recall commands and data access without requiring a Codex slash command', () => {
+		const text = describeRecall({
+			status: 'approval-needed',
+			digest: 'a'.repeat(64),
+			hooks: [
+				{
+					key: 'akm',
+					hash: 'sha256:abc',
+					event: 'sessionStart',
+					command: 'sh /actual/akm-hook.sh session-start',
+					sourcePath: '/actual/plugin.json',
+					enabled: true,
+					trust: 'untrusted'
+				}
+			]
+		});
+		expect(text).toContain('sh /actual/akm-hook.sh session-start');
+		expect(text).toContain('search/embedding endpoints');
+		expect(text).toContain('does not grant tool permissions');
+		expect(text).not.toContain('/hooks');
+	});
 	it('guides sign-in and enables only after native readiness, preserving credentials and releasing the lifecycle lock', async () => {
 		const state = await guidedFixture();
 		const keyFile = join(state.homeDir, 'state/credentials/owner/key');

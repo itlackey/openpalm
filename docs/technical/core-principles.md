@@ -40,6 +40,13 @@ user configuration, or pre-trusts hooks. Real-harness image tests verify session
 hooks and knowledge recall. AKM automatic learning and extraction remain off in
 native Claude/Codex sessions.
 
+Codex setup and Admin offer explicit AKM automatic-recall approval. They show
+the native commands and use Codex's hook inventory and version-checked config
+writer to persist only the exact reviewed AKM hook hashes. Changed definitions
+require renewed review. Recall readiness is independent from account sign-in
+and remote startup; opt-out and approval survive restarts. No separate trust
+registry, pre-trust, unrelated-hook approval, or hook-trust bypass is added.
+
 The Assistant image also bakes pinned Codex and Claude Code CLIs for optional
 vendor-native remote coding sessions. Both startup switches default off. These
 are separate trusted agents sharing `/work`, not OpenCode session transports or

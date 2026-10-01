@@ -172,6 +172,11 @@ export {
 } from './control-plane/remote.js';
 export { acquireStackLock, releaseStackLock, type StackLock } from './control-plane/lock.js';
 export {
+	reviewCodexRecall,
+	changeCodexRecall,
+	type CodexRecallReview
+} from './control-plane/codex-recall.js';
+export {
 	activateComposeCommand,
 	deactivateComposeCommand
 } from './control-plane/activation.js';

@@ -3,10 +3,14 @@
 Available in `0.14.0-alpha.3` and later. Updating source alone does not update
 a running installation's CLI or image; install the release CLI and run `update`.
 
-The guided `remote enable` command and Admin sign-in dialog described below
-are unreleased changes after alpha.3. They require both the new CLI/Admin and
+The guided `remote enable` command and Admin sign-in dialog are available in
+alpha.4. They require both the matching CLI/Admin and
 an Assistant image containing `openpalm-remote-setup`; the published alpha.3
 still uses the manual `remote setup` flow documented under advanced controls.
+
+Guided AKM recall approval is an unreleased addition after alpha.4 and requires
+the matching CLI/Admin and Assistant image with `openpalm-codex-recall.mjs`.
+Updating only Admin or CLI cannot add the helper to a running alpha.4 image.
 
 These options start **separate native coding agents** in the Assistant's
 workspace. They do not turn Codex or Claude Code into clients of OpenCode, expose
@@ -30,7 +34,8 @@ openpalm remote status codex
 openpalm remote pair codex
 ```
 
-Guided enable pauses the selected worker, checks its native sandbox with a
+Guided enable first offers automatic knowledge recall as described below. It
+then pauses the selected worker, checks its native sandbox with a
 harmless local command, and then uses Codex device sign-in. It opens the native
 sign-in URL in the host browser; enter the one-time code there. Use
 `--no-browser` over SSH and open the printed link on your own computer. If device
@@ -103,14 +108,58 @@ Run `claude plugin list`, `claude plugin details akm`, or
 `codex plugin list --json` inside Assistant to inspect `akm@akm-plugins`.
 Claude provides the five discovery/feedback/remember commands and AKM skill;
 Codex uses the AKM skill and CLI forms. Codex's lifecycle hooks require your
-native `/hooks` review and approval before automatic recall starts—OpenPalm
-does not pre-trust them. Native workspace trust and tool approvals still apply.
+explicit review and approval before automatic recall starts—OpenPalm
+does not pre-trust them. Guided setup and Admin provide that native review;
+users do not need to open Codex or run `/hooks`. Native workspace trust and tool
+approvals still apply.
 All harnesses use `/stash` knowledge and aligned AKM versions. Automatic learning
 and session extraction remain off in the native remote workers
 (`AKM_AUTO_LEARNING=0`, `AKM_AUTO_MEMORY=0`). Image tests verify real session hooks
 and knowledge recall in each harness, separately from vendor sign-in.
 See [Claude's standard plugin installation](https://code.claude.com/docs/en/discover-plugins)
 and [Codex plugins](https://developers.openai.com/plugins/build/plugins).
+
+## Codex automatic knowledge recall
+
+During Codex setup, choose **Enable automatic knowledge recall** after reviewing
+the explanation and actual commands. AKM executes a session-start command to
+check its CLI and load bundle hints, then a pre-prompt command that passes the
+prompt to `akm curate` and adds relevant knowledge to Codex. Configured search or
+embedding services may be contacted. This does not enable automatic memory
+writes, approve tools, or bypass Guardian/native sandboxing.
+
+Admin **Connections → Codex → Review knowledge recall** provides the same review
+independently from remote startup and vendor sign-in. Its states are:
+
+- **Installed**: hooks are installed but automatic recall is off.
+- **Approval needed**: hooks are new/changed, not yet trusted, or only partly enabled.
+- **Ready**: every AKM hook is enabled and trusted by Codex.
+
+Approval is bound to the exact definitions displayed. Changed definitions or
+native-config write conflicts reject a stale review; review again rather than
+reusing the old confirmation. Codex's native `hooks/list` and version-checked
+`config/batchWrite` interfaces persist trust in its normal configuration. No
+separate trust store, blanket approval, managed-hook exemption, or bypass flag
+is used. Unrelated user/project/plugin hooks are left alone. Approval and opt-out
+survive container recreation and apply to new sessions. Admin also offers
+**Turn off automatic knowledge recall** without changing remote startup.
+
+CLI setup/enable offers the same choice. To review separately:
+
+```sh
+openpalm remote recall codex
+# Read-only inventory, including the current review digest:
+openpalm remote recall codex --status
+# Explicit automation consent, only after reviewing that inventory:
+openpalm remote recall codex --approve --review CURRENT_DIGEST
+openpalm remote recall codex --off --review CURRENT_DIGEST
+```
+
+`--trust` confirms native workspace access only, never hook approval. Declining
+the recall prompt leaves the previous native decision unchanged. In Admin's
+Codex setup, clearing an already-enabled recall choice turns recall off when
+you continue. An unsupported/stopped image is reported as not checked, not Ready.
+See [Codex's hook trust model](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
 
 ## Toggles, recovery, and trust
 
