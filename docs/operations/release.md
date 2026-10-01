@@ -117,6 +117,51 @@ requests, `main`, and `release/*`.
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
 
+## Beta.2 published-artifact verification
+
+On 2026-10-01, `0.14.0-beta.2` was published from the frozen
+`release/0.14.0-beta.2` candidate
+`a6300cd83857961812b84116f3921b2887052761`. Concurrent naming/fork documentation
+continued on the lean branch; it did not change the tested release commit.
+The complete [dry run](https://github.com/itlackey/openpalm/actions/runs/36928384003)
+and [live publication](https://github.com/itlackey/openpalm/actions/runs/36930442528)
+passed. GitHub built and verified the entire release; Gitea received source only.
+
+The first live attempt failed while exporting the Guardian AMD64 build cache:
+GitHub's backing blob returned `404 BlobNotFound`. Publication was blocked.
+Rerunning only failed jobs and their dependents on the identical commit resolved
+the infrastructure failure. No code, security gate, image tag, or package version
+was changed to work around it.
+
+The public [beta.2 release](https://github.com/itlackey/openpalm/releases/tag/0.14.0-beta.2)
+contains all 13 expected assets. GitHub downloaded and checksum-validated the
+uploaded set before publication. Independent Linux x64 CLI and MCPB downloads
+matched their published checksums; the CLI reported `0.14.0-beta.2`, exposed
+native history recovery, and retained experimental remote-access warnings.
+Initial restricted-shell stream-descriptor warnings disappeared when the same
+verified CLI ran with normal host permissions; version/help commands were clean.
+
+Independent registry inspection verified AMD64 and ARM64 configurations for all
+three public images, with non-root users and the exact candidate revision label.
+The workflow published SBOM/provenance and signed the immutable image manifests.
+Native image gates covered startup/security, all three AKM harnesses, failure
+isolation, and real-engine native history recovery. Image scans reported unfixed
+upstream OS high advisories; these remain visible, not described as repaired.
+All critical and fixable-high gates passed.
+
+Public npm checks confirmed `openpalm@beta` resolves to `0.14.0-beta.2`; `latest`
+remains `0.13.6`. The first metadata read briefly returned the old beta tag while
+the new version was already available; a subsequent read confirmed propagation
+without republishing or a local registry write.
+
+The UI changes had already passed the real Electron/Docker walkthrough and a
+three-reviewer panel. Their management fixture does not claim successful native
+subscription sign-in or a new live-provider acceptance. Codex/Claude remote
+access remain experimental and default-off. The 0.13 fresh-install/import boundary
+is unchanged, with separate history/external-data recovery rather than a claim
+that portable copying is complete migration. No production instance, including
+Splinter, was updated during publication.
+
 ## Beta.1 candidate verification record
 
 The beta includes guided native Codex recall approval, policy-aware shared
