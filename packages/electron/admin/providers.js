@@ -86,7 +86,7 @@ export function resetOAuthAttempt() {
 export function renderProviderMethod() {
 	const provider = providerById(byId('provider').value);
 	const method = selectedProviderMethod();
-	byId('provider-method-field').hidden = !provider;
+	byId('provider-method-field').hidden = !provider || provider.authMethods.length < 2;
 	byId('api-key-fields').hidden = method?.type !== 'api';
 	byId('oauth-provider-note').hidden = method?.type !== 'oauth';
 	if (method?.type === 'oauth') renderOAuthPrompts(method);
@@ -111,7 +111,10 @@ export function renderProviderMethods() {
 
 export function renderProviderOptions() {
 	const query = byId('provider-search').value.trim().toLocaleLowerCase();
-	const selected = byId('provider').value;
+	const selected =
+		byId('provider').value ||
+		state.providerSummaries.find((provider) => provider.authenticated || provider.connected)?.id ||
+		'';
 	let visible = state.providerSummaries;
 	if (query) {
 		visible = state.providerSummaries.filter((provider) =>
@@ -171,7 +174,7 @@ export function renderProviders(providers) {
 		const title = document.createElement('strong');
 		title.textContent = `${connected[0].name} sign-in found.`;
 		const detail = document.createElement('span');
-		detail.textContent = 'Choose “Check existing sign-in” to verify a real Assistant response.';
+		detail.textContent = 'Choose “Verify connection” to check a real agent response.';
 		byId('provider-status').append(title, detail);
 		setBadge(byId('provider-badge'), 'Sign-in found', 'success');
 	} else if (state.currentSnapshot?.phase === 'setup_incomplete') {
@@ -194,9 +197,7 @@ export function renderReadiness(result) {
 	if (result.ok) {
 		const provider = providerById(result.provider);
 		title.textContent = `${provider?.name || result.provider || 'Your provider'} is connected.`;
-		detail.textContent = result.model
-			? `OpenPalm verified a real response using ${result.model}.`
-			: 'OpenPalm verified a real Assistant response.';
+		detail.textContent = 'OpenPalm verified a real agent response.';
 		status.className = 'inline-status success';
 		setBadge(byId('provider-badge'), 'Connected', 'success');
 	} else {

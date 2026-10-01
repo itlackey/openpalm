@@ -31,24 +31,21 @@
 	    <main id="install-section" class="welcome-shell" tabindex="-1" hidden>
       <section class="welcome-card" aria-labelledby="welcome-title">
         <div class="brand-lockup">
-          <img class="brand-image" src="../assets/icon.png" alt="" />
-          <span>OpenPalm</span>
+          <span class="brand-mark" aria-hidden="true">/</span>
+          <div class="brand-copy"><strong>OpenPalm</strong><span class="brand-subtitle">A simpler path to your personal agent</span></div>
         </div>
-        <p class="eyebrow">YOUR PERSONAL AI</p>
-        <h1 id="welcome-title">An assistant that remembers and keeps working.</h1>
+        <h1 id="welcome-title">Set up OpenPalm</h1>
         <p class="welcome-copy">
-          OpenPalm creates a private personal agent on this computer. Connect your AI provider,
-          then use it from OpenCode, Claude Desktop, or another MCP app.
+          Create your personal AI agent on this computer. Connect an AI account,
+          then choose an app to use it. Your knowledge and recurring tasks stay here.
         </p>
-        <ul class="benefit-list" aria-label="What OpenPalm includes">
-          <li><span aria-hidden="true">✓</span> Persistent knowledge you control</li>
-          <li><span aria-hidden="true">✓</span> Recurring tasks and durable results</li>
-          <li><span aria-hidden="true">✓</span> Protected access for external apps</li>
-        </ul>
+        <p id="install-prerequisite" class="prerequisite" role="status">Checking this computer…</p>
+        <p id="install-status" class="help-text" role="status" aria-live="polite" hidden></p>
 
         <form id="install-form">
-          <button id="install" class="primary large" type="submit">Set up OpenPalm</button>
-          <p class="form-note">Docker must be installed and running. Your files stay on this computer.</p>
+          <button id="install" class="primary" type="submit" disabled>Install OpenPalm</button>
+          <button id="check-prerequisites" class="text-button" type="button" hidden>Check again</button>
+          <p class="form-note">Docker runs your agent locally. We check it before installing anything.</p>
           <details class="disclosure">
             <summary>Advanced network settings</summary>
             <div class="field-grid two-column disclosure-body">
@@ -67,27 +64,19 @@
           </details>
         </form>
       </section>
-      <aside class="welcome-aside" aria-label="Setup overview">
-        <p class="eyebrow">THREE SIMPLE STEPS</p>
-        <ol class="setup-preview">
-          <li><span>1</span><div><strong>Install locally</strong><p>Create your private agent.</p></div></li>
-          <li><span>2</span><div><strong>Connect your AI</strong><p>Use an existing provider account or API key.</p></div></li>
-          <li><span>3</span><div><strong>Choose an app</strong><p>OpenCode, Claude Desktop, or any MCP client.</p></div></li>
-        </ol>
-      </aside>
     </main>
 
     <div id="app-shell" class="app-shell" hidden>
       <aside class="sidebar">
         <div class="brand-lockup compact">
-          <img class="brand-image" src="../assets/icon.png" alt="" />
+          <span class="brand-mark" aria-hidden="true">/</span>
           <div class="brand-copy"><strong>OpenPalm</strong><span class="brand-subtitle">Setup & settings</span></div>
         </div>
 
         <div class="setup-only setup-progress" hidden>
-          <p class="eyebrow">SETUP PROGRESS</p>
+          <p id="setup-step" class="eyebrow">Step 2 of 3</p>
           <ol>
-            <li class="complete"><span aria-hidden="true">✓</span><div><strong>Installed</strong><small>Your agent is running locally.</small></div></li>
+            <li class="complete"><span aria-hidden="true">✓</span><div><strong>Installed</strong><small id="setup-runtime">Checking your agent…</small></div></li>
             <li class="current" aria-current="step"><span>2</span><div><strong>Connect your AI</strong><small>Sign in and verify a real response.</small></div></li>
             <li><span>3</span><div><strong>Ready to use</strong><small>Choose how you want to connect.</small></div></li>
           </ol>
@@ -95,22 +84,22 @@
 
         <nav id="primary-nav" class="ready-only" aria-label="OpenPalm settings" hidden>
           <button class="nav-item" type="button" data-view="overview" aria-controls="view-overview">
-            <span class="nav-icon" aria-hidden="true">⌂</span><span>Overview</span>
+            <span>Overview</span>
           </button>
           <button class="nav-item" type="button" data-view="provider" aria-controls="view-provider">
-            <span class="nav-icon" aria-hidden="true">◇</span><span>AI provider</span>
+            <span>AI account</span>
           </button>
           <button class="nav-item" type="button" data-view="connections" aria-controls="view-connections">
-            <span class="nav-icon" aria-hidden="true">↗</span><span>Connections</span>
+            <span>Connections</span>
           </button>
           <button class="nav-item" type="button" data-view="access" aria-controls="view-access">
-            <span class="nav-icon" aria-hidden="true">♙</span><span>People & access</span>
+            <span>People & access</span>
           </button>
           <button class="nav-item" type="button" data-view="backup" aria-controls="view-backup">
-            <span class="nav-icon" aria-hidden="true">↓</span><span>Backup</span>
+            <span>Backup</span>
           </button>
           <button class="nav-item" type="button" data-view="diagnostics" aria-controls="view-diagnostics">
-            <span class="nav-icon" aria-hidden="true">···</span><span>Troubleshooting</span>
+            <span>Troubleshooting</span>
           </button>
         </nav>
 
@@ -127,14 +116,17 @@
             <h1 id="view-title" tabindex="-1">Connect your AI</h1>
             <p id="view-description" class="page-description">Choose a provider and verify that your agent can respond.</p>
           </div>
+          <div id="notice" class="notice" role="status" aria-live="polite" hidden>
+            <span id="notice-icon" class="notice-icon" aria-hidden="true">●</span>
+            <span id="notice-message"></span>
+            <button id="dismiss-notice" type="button" aria-label="Dismiss message">×</button>
+          </div>
         </header>
 
         <main id="main-content" tabindex="-1">
           <section id="view-overview" class="view-panel ready-only" data-view-panel="overview" hidden aria-labelledby="overview-heading">
             <div class="hero-card ready-hero">
-              <div class="hero-symbol" aria-hidden="true">✓</div>
               <div>
-                <p class="eyebrow">READY ON THIS COMPUTER</p>
                 <h2 id="overview-heading">Your personal agent is ready.</h2>
                 <p>OpenPalm can remember useful context, run recurring work, and connect securely to the apps you already use.</p>
               </div>
@@ -203,16 +195,7 @@
                 <p class="help-text">Uses your connected AI provider and AKM to keep useful facts from trusted local OpenCode conversations, not full transcripts. MCP, chat-app, and scheduled conversations are not captured automatically. Turning this off does not erase existing knowledge.</p>
                 <label class="field" for="agent-timezone"><span>Timezone for recurring work</span><input id="agent-timezone" autocomplete="off" required placeholder="America/Chicago" aria-describedby="timezone-help" /></label>
                 <p id="timezone-help" class="help-text">Starts with this computer’s timezone. Use a timezone such as America/Chicago or Europe/London. After downtime, tasks resume at their next scheduled time; missed runs are not replayed.</p>
-                <fieldset class="form-stack">
-                  <legend>Optional remote coding sessions</legend>
-                  <p class="help-text">Separate native coding agents—not remote views of OpenCode. Guided setup opens sign-in in your browser, shows native trust and consent prompts here, and checks prerequisites before enabling startup. These trusted connections bypass Guardian. No new public port is opened.</p>
-                  <label class="check-row"><input id="codex-remote" type="checkbox" /> Start Codex remote control with Assistant (experimental)</label>
-                  <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up Codex remote</button><button class="text-button" type="button" data-remote-connect="codex">Show pairing code</button></div>
-                  <p class="help-text">Experimental. Guided setup checks sandbox support and uses ChatGPT device sign-in. Supported clients depend on OpenAI’s rollout.</p>
-                  <label class="check-row"><input id="claude-remote" type="checkbox" /> Start Claude Code Remote Control with Assistant</label>
-                  <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up Claude remote</button><button class="text-button" type="button" data-remote-connect="claude">Open remote session</button></div>
-                  <p class="help-text">Requires an eligible Claude subscription. Accept the native workspace-trust and Remote Control consent prompts yourself. Successful setup enables startup automatically.</p>
-                </fieldset>
+                <p class="help-text">Manage optional Claude Code and Codex remote access in <button class="text-button" type="button" data-view-target="connections">Connections</button>.</p>
                 <button class="secondary" type="submit">Save agent preferences</button>
               </form>
             </section>
@@ -227,51 +210,41 @@
           </section>
 
           <section id="view-provider" class="view-panel" data-view-panel="provider" hidden aria-labelledby="provider-heading">
-	            <div class="setup-only hero-card" hidden>
-              <div class="hero-symbol provider-symbol" aria-hidden="true">2</div>
-              <div>
-                <p class="eyebrow">STEP 2 OF 3</p>
-                <h2>Connect an AI provider.</h2>
-	                <p>OpenPalm uses OpenCode’s provider sign-in and will send one small request to make sure everything works.</p>
-	            </div>
-	          </div>
-
 	            <section id="setup-recovery" class="setup-only panel recovery-panel" hidden aria-labelledby="recovery-heading">
 	              <div class="section-heading">
 	                <div><p class="eyebrow">STARTUP RECOVERY</p><h2 id="recovery-heading">Your files are installed, but the Assistant is not running.</h2></div>
 	                <span class="status-badge error">Needs attention</span>
 	              </div>
 	              <p id="recovery-message" class="section-intro">A port conflict or Docker problem may have interrupted the first start. Adjust the ports if needed, then retry safely.</p>
-	              <form id="recovery-form" class="form-stack">
+              <form id="recovery-form" class="form-stack">
+                <details class="disclosure"><summary>Advanced network settings</summary>
 	                <div class="field-grid two-column">
 	                  <label class="field" for="recovery-assistant-port"><span>Assistant port</span><input id="recovery-assistant-port" type="number" min="1" max="65535" required /></label>
 	                  <label class="field" for="recovery-gateway-port"><span>Protected-access port</span><input id="recovery-gateway-port" type="number" min="1" max="65535" required /></label>
-	                </div>
-	                <button class="primary" type="submit">Save ports and retry startup</button>
+                </div>
+                </details>
+                <button class="primary" type="submit">Retry startup</button>
 	              </form>
 	            </section>
 
-            <section class="panel" aria-labelledby="provider-heading">
+            <section id="provider-connection" class="panel" aria-labelledby="provider-heading">
               <div class="section-heading">
-                <div><p class="eyebrow">AI CONNECTION</p><h2 id="provider-heading">Provider</h2></div>
+                <div><h2 id="provider-heading">Connect an AI account</h2></div>
                 <span id="provider-badge" class="status-badge neutral">Not checked</span>
               </div>
-              <p class="section-intro">Choose a provider OpenCode discovered. Existing sign-ins appear first and never need to be re-entered here.</p>
+              <p class="section-intro">Use an account you already have. OpenPalm checks a real response before finishing setup.</p>
               <div id="provider-status" class="inline-status neutral" role="status" aria-live="polite">
                 <strong>Checking available providers…</strong>
                 <span>This can take a few seconds after the Assistant starts.</span>
               </div>
               <div class="button-row">
-                <button id="load-providers" class="secondary" type="button">Find providers</button>
-                <button id="test-provider" class="secondary" type="button">Check existing sign-in</button>
+                <button id="test-provider" class="secondary" type="button">Verify connection</button>
+                <button id="load-providers" class="text-button" type="button">Refresh accounts</button>
               </div>
 	              <form id="provider-form" class="form-stack">
-	                <label class="field" for="provider-search">
-	                  <span>Find a provider</span>
-	                  <input id="provider-search" type="search" autocomplete="off" placeholder="Search by provider name" />
-	                </label>
+	                <label class="field" for="provider-search"><span>Search accounts</span><input id="provider-search" type="search" autocomplete="off" placeholder="Search by name" /></label>
 	                <label class="field" for="provider">
-	                  <span>AI provider</span>
+	                  <span>Account provider</span>
 	                  <select id="provider" aria-describedby="provider-help"><option value="">Find providers first</option></select>
 	                </label>
 	                <div class="button-row compact"><button id="show-all-providers" class="text-button" type="button">Show all providers</button></div>
@@ -289,8 +262,7 @@
                   <button class="primary" type="submit">Save key and verify</button>
                 </div>
 	                <div id="oauth-provider-note" class="callout form-stack" hidden>
-	                  <strong>Sign in securely in your browser.</strong>
-	                  <p>OpenPalm uses OpenCode’s native sign-in for this exact installation. Your provider password never passes through OpenPalm.</p>
+                  <p>Sign-in opens in your browser. Your password never passes through OpenPalm.</p>
 	                  <div id="oauth-prompt-fields" class="form-stack"></div>
 	                  <button id="start-provider-oauth" class="primary" type="button">Open provider sign-in</button>
 	                  <div id="oauth-progress" class="inline-status neutral" hidden><strong>Finish sign-in in your browser.</strong><span id="oauth-instructions">Return here when the provider says you are connected.</span></div>
@@ -330,7 +302,6 @@
 	            <section id="client-setup" class="panel" aria-labelledby="client-setup-heading">
 	              <div class="section-heading"><div><p class="eyebrow">GUIDED CONNECTION</p><h2 id="client-setup-heading">Connect an app</h2></div></div>
 	              <p class="section-intro">Choose a client to see every value and action it needs. Secrets appear only when you ask to reveal or copy them.</p>
-	              <details class="form-stack"><summary>Optional native Codex and Claude Code remote sessions</summary><p class="help-text">These are separate coding agents with trusted workspace access, not Guardian MCP clients.</p><div class="button-row"><button class="secondary" type="button" data-remote-enable="claude">Set up Claude remote</button><button class="secondary" type="button" data-remote-enable="codex">Set up Codex remote</button></div></details>
 	              <fieldset class="segmented-control">
 	                <legend class="visually-hidden">Client setup</legend>
 	                <button class="secondary" type="button" data-client-setup="opencode">OpenCode</button>
@@ -378,6 +349,20 @@
 	                <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="mcp">Reveal key</button><button class="secondary" type="button" data-copy-client-key="mcp">Copy key</button><label class="check-row compact"><input id="show-mcp-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create another identity</button></div>
 	              </article>
 	            </section>
+
+            <section id="native-connections" class="panel" aria-labelledby="native-connections-heading">
+              <div class="section-heading"><h2 id="native-connections-heading">Remote coding agents</h2><span class="card-label">Optional</span></div>
+              <p class="section-intro">Run Claude Code or Codex in your workspace. These are separate agents, not remote views of OpenPalm. They use their own accounts and bypass protected-client access policies.</p>
+              <div class="remote-connection-row">
+                <div><h3>Claude Code</h3><p>Remote Control with an eligible Claude subscription.</p><span id="claude-remote-status" class="status-badge neutral">Startup off</span></div>
+                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up</button><button class="secondary" type="button" data-remote-connect="claude" disabled>Open session</button><button class="text-button" type="button" data-remote-disable="claude" hidden>Disable startup</button></div>
+              </div>
+              <div class="remote-connection-row">
+                <div><h3>Codex <span class="card-label">Experimental</span></h3><p>ChatGPT account sign-in. Client and host support are required.</p><span id="codex-remote-status" class="status-badge neutral">Startup off</span></div>
+                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up</button><button class="secondary" type="button" data-remote-connect="codex" disabled>Get pairing code</button><button class="text-button" type="button" data-remote-disable="codex" hidden>Disable startup</button></div>
+              </div>
+              <p class="help-text">Setup enables startup automatically. Disabling startup keeps your account sign-in; revoke paired devices through the account provider.</p>
+            </section>
 
 	            <section class="panel">
               <div class="section-heading"><div><p class="eyebrow">PROTECTED CLIENTS</p><h2 id="connections-heading">Connections</h2></div></div>
@@ -455,12 +440,12 @@
               <div class="section-heading"><div><p class="eyebrow">PEOPLE & APPS</p><h2 id="access-heading">Access keys</h2></div></div>
               <p class="section-intro">Give each person or app its own key. The access level decides which OpenPalm capabilities it receives.</p>
 	              <form id="access-form" class="form-stack" data-managed-form>
-	                <fieldset class="policy-explainer">
-	                  <legend class="visually-hidden">Access level descriptions</legend>
+	                <details class="disclosure"><summary>What each access level allows</summary><div class="policy-explainer">
 	                  <div><strong>Conversation only</strong><span>Can chat, but cannot use tools.</span></div>
 	                  <div><strong>Read files</strong><span>Can also read non-sensitive knowledge and workspace files.</span></div>
 	                  <div><strong>Full control</strong><span>Inherits the Assistant’s permissions. Use only for trusted clients.</span></div>
-	                </fieldset>
+	                </div></details>
+	                <div class="credential-columns" aria-hidden="true"><span>Name</span><span>Used by</span><span>Access</span><span>Actions</span></div>
 	                <div id="credential-policies" class="credential-list"></div>
 	                <button class="secondary" type="submit">Save access levels</button>
 	              </form>
@@ -474,7 +459,7 @@
                 <button class="primary span-two" type="submit">Create access key</button>
               </form>
               <div class="key-manager">
-                <label class="field" for="credential-action-name"><span>Existing access</span><select id="credential-action-name"></select></label>
+                <label class="field" for="credential-action-name"><span>Identity to manage</span><select id="credential-action-name"></select></label>
                 <div class="button-row">
                   <button id="rotate-credential" class="secondary" type="button">Rotate key</button>
                   <button id="remove-credential" class="danger subtle" type="button">Remove access</button>
@@ -493,7 +478,7 @@
               <form id="mapping-form" class="field-grid three-column">
                 <label class="field" for="mapping-portal"><span>Chat app</span><select id="mapping-portal"><option value="discord">Discord</option><option value="slack">Slack</option></select></label>
                 <label class="field" for="mapping-user"><span>Platform user ID</span><input id="mapping-user" autocomplete="off" /></label>
-                <label class="field" for="mapping-credential"><span>Access key</span><select id="mapping-credential"></select></label>
+                <label class="field" for="mapping-credential"><span>Access identity</span><select id="mapping-credential"></select></label>
                 <button class="secondary span-three" type="submit">Save user access</button>
               </form>
               <div id="mappings" class="mapping-list" aria-live="polite"></div>
@@ -555,25 +540,19 @@
 
     <dialog id="remote-dialog" aria-labelledby="remote-heading">
       <form id="remote-form" class="form-stack">
-        <h2 id="remote-heading">Set up native remote access</h2>
-        <p>Sign-in opens in your browser. Follow the native prompts below; approve only choices you understand. OpenPalm keeps tool approvals and container isolation intact.</p>
-        <label id="remote-trust-field" class="check-row"><input id="remote-trust" type="checkbox" required /> I trust this native agent with my workspace and knowledge. It bypasses Guardian policies.</label>
-        <label id="remote-sandbox-field" class="field" for="remote-sandbox"><span>Codex tool access</span><select id="remote-sandbox"><option value="workspace-write">Sandboxed workspace edits (recommended)</option><option value="read-only">Sandboxed read-only access</option></select></label>
+        <h2 id="remote-heading">Set up remote access</h2>
+        <ol id="remote-steps" class="remote-steps" aria-label="Remote setup progress"><li data-remote-step="access" aria-current="step">Allow access</li><li data-remote-step="sign-in">Sign in</li><li data-remote-step="connect">Connect</li></ol>
+        <p id="remote-guidance">Sign in through your browser, then approve any account or workspace prompts yourself.</p>
+        <label id="remote-trust-field" class="check-row"><input id="remote-trust" type="checkbox" required /> I allow this separate agent to access my workspace and knowledge. OpenPalm’s protected-client policies do not apply.</label>
+        <details id="remote-advanced" class="disclosure"><summary>Advanced settings</summary><label id="remote-sandbox-field" class="field" for="remote-sandbox"><span>Workspace access</span><select id="remote-sandbox"><option value="workspace-write">Allow workspace changes (default)</option><option value="read-only">Read files only</option></select></label><p class="help-text">Both modes keep native sandboxing and tool approvals. This cannot work around missing host sandbox support.</p></details>
         <p id="remote-stage" role="status" aria-live="polite">Ready to begin.</p>
         <div id="remote-prompts" class="form-stack" hidden>
-        <textarea id="remote-output" class="technical-output log-output" readonly spellcheck="false" aria-label="Private native sign-in and consent output"></textarea>
-        <p class="help-text">Private output may contain sign-in or pairing codes. If your browser does not open, use the native link shown above. For a trust or consent prompt, enter <code>y</code> to accept or <code>n</code> to decline.</p>
-        <label class="field" for="remote-answer"><span>Native prompt answer or sign-in code</span><input id="remote-answer" type="password" autocomplete="off" maxlength="2048" /></label>
+        <details id="remote-output-details" class="disclosure"><summary>Private sign-in and connection details</summary><textarea id="remote-output" class="technical-output log-output" readonly spellcheck="false" aria-label="Private native sign-in and consent output"></textarea><p class="help-text">Keep these codes and links private. If the browser does not open, use the link here.</p></details>
+        <label id="remote-answer-field" class="field" for="remote-answer" hidden><span id="remote-answer-label">Sign-in code</span><input id="remote-answer" type="password" autocomplete="off" maxlength="2048" /></label>
         </div>
-        <div class="button-row"><button id="remote-begin" type="submit">Begin guided setup</button><button id="remote-send" class="secondary" type="button" disabled>Send answer</button><button id="remote-cancel" class="secondary" type="button">Cancel</button></div>
+        <div class="button-row"><button id="remote-begin" type="submit">Continue</button><button id="remote-send" class="secondary" type="button" disabled hidden>Send answer</button><button id="remote-cancel" class="secondary" type="button">Cancel</button></div>
       </form>
     </dialog>
-
-    <div id="notice" class="notice" role="status" aria-live="polite" hidden>
-      <span id="notice-icon" class="notice-icon" aria-hidden="true">●</span>
-      <span id="notice-message"></span>
-      <button id="dismiss-notice" type="button" aria-label="Dismiss message">×</button>
-    </div>
 
     <script type="module" src="admin.js"></script>
   </body>

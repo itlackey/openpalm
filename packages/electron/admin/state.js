@@ -56,8 +56,8 @@ export const viewMeta = {
 	},
 	provider: {
 		kicker: 'AI CONNECTION',
-		title: 'AI provider',
-		description: 'Manage the provider OpenCode uses and verify a real response.'
+		title: 'AI account',
+		description: 'Connect the account your agent uses and verify it can respond.'
 	},
 	connections: {
 		kicker: 'CLIENTS & CHAT APPS',

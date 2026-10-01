@@ -38,8 +38,6 @@ export function renderCredentials(snapshot) {
 	for (const username of usernames) {
 		const row = document.createElement('div');
 		row.className = 'credential-row';
-		const identity = document.createElement('div');
-		identity.className = 'credential-identity';
 		const name = document.createElement('strong');
 		name.textContent = username;
 		const usage = document.createElement('small');
@@ -49,7 +47,6 @@ export function renderCredentials(snapshot) {
 		usage.textContent = usedBy.length
 			? `Default for ${usedBy.join(' and ')}`
 			: 'Available for MCP clients';
-		identity.append(name, usage);
 		const select = document.createElement('select');
 		select.id = `credential-policy-${username}`;
 		select.dataset.credential = username;
@@ -59,7 +56,19 @@ export function renderCredentials(snapshot) {
 			Object.entries(policyLabels).map(([value, label]) => ({ value, label })),
 			snapshot.config.credentials[username].policy
 		);
-		row.append(identity, select);
+		const manage = document.createElement('button');
+		manage.type = 'button';
+		manage.className = 'secondary';
+		manage.textContent = 'Manage';
+		manage.setAttribute('aria-label', `Manage ${username}`);
+		manage.addEventListener('click', () => {
+			byId('credential-action-name').value = username;
+			byId('credential-key').value = '';
+			byId('credential-key').type = 'password';
+			byId('show-credential-key').checked = false;
+			byId('credential-action-name').focus();
+		});
+		row.append(name, usage, select, manage);
 		policies.append(row);
 	}
 	for (const portal of ['discord', 'slack']) {

@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { clearClientKey } from '../admin/access.js';
+import { clearClientKey, renderCredentials } from '../admin/access.js';
 import { importInput, importSignature, invalidateImportPreview } from '../admin/backup.js';
 import { loadClientKey } from '../admin/connections.js';
 import { bindConfigurationEvents } from '../admin/configuration.js';
 import { endpoint, isHealthy, promptVisible } from '../admin/model.js';
 import { bindPreferencesEvents, renderPreferences } from '../admin/preferences.js';
-import { bindRemoteEvents } from '../admin/remote.js';
-import { resetOAuthAttempt } from '../admin/providers.js';
-import { renderPhase } from '../admin/runtime.js';
+import { bindRemoteEvents, renderRemoteStatus, remoteStageText } from '../admin/remote.js';
+import { resetOAuthAttempt, renderProviders } from '../admin/providers.js';
+import { renderPhase, renderServices } from '../admin/runtime.js';
+import { render, refresh } from '../admin/snapshot.js';
 import { createAdminState, state } from '../admin/state.js';
 import {
 	captureDirtyForms,
@@ -40,6 +41,9 @@ class Control {
 	listeners = new Map<string, (event: unknown) => unknown>();
 	focused = false;
 	open = false;
+	get options() {
+		return this.children;
+	}
 	showModal() {
 		this.open = true;
 	}
@@ -118,6 +122,86 @@ afterEach(() => {
 });
 
 describe('Admin static security boundary', () => {
+	it('requires Docker readiness before installing and refreshes quietly without clearing errors', async () => {
+		const snapshot = {
+			phase: 'not_installed',
+			config: { assistant: { port: 4096 }, gateway: { port: 9180 } },
+			installationReadiness: { ok: false, message: 'Docker is stopped.' }
+		};
+		render(snapshot);
+		expect(control('install').disabled).toBe(true);
+		expect(control('install-prerequisite').textContent).toBe('Docker is stopped.');
+		expect(control('check-prerequisites').hidden).toBe(false);
+		state.api = { snapshot: async () => ({ ...snapshot, installationReadiness: { ok: true } }) };
+		control('notice').className = 'notice error';
+		control('notice').hidden = false;
+		await refresh(true);
+		expect(control('install').disabled).toBe(false);
+		expect(control('check-prerequisites').hidden).toBe(true);
+		expect(control('notice').hidden).toBe(false);
+		expect(control('refresh').textContent).toBe('Status up to date');
+	});
+
+	it('prioritizes startup recovery without claiming that the agent is running', () => {
+		renderServices({
+			phase: 'setup_incomplete',
+			services: [],
+			config: {
+				gateway: { enabled: false },
+				portals: { discord: { enabled: false }, slack: { enabled: false } }
+			}
+		});
+		expect(control('setup-recovery').hidden).toBe(false);
+		expect(control('provider-connection').hidden).toBe(true);
+		expect(control('setup-runtime').textContent).toBe('Agent startup needs attention.');
+		expect(control('view-title').textContent).toBe('Start your agent');
+	});
+
+	it('selects an existing native account and hides a redundant single sign-in method', () => {
+		renderProviders([
+			{
+				id: 'example',
+				name: 'Example',
+				authenticated: true,
+				authMethods: [{ index: 0, type: 'api', label: 'API key' }]
+			}
+		]);
+		expect(control('provider').value).toBe('example');
+		expect(control('provider-method').value).toBe('0');
+		expect(control('provider-method-field').hidden).toBe(true);
+		expect(control('provider-status').children[1].textContent).toContain('Verify connection');
+	});
+
+	it('offers per-identity management without revealing or retaining a previous key', () => {
+		const snapshot = {
+			config: {
+				credentials: { owner: { policy: 'full' }, guest: { policy: 'chat' } },
+				portals: { discord: { credential: 'guest' }, slack: { credential: 'guest' } }
+			}
+		};
+		state.currentSnapshot = snapshot;
+		renderCredentials(snapshot);
+		const row = control('credential-policies').children[0];
+		expect(row.children).toHaveLength(4);
+		expect(row.children[0].textContent).toBe('guest');
+		control('credential-key').value = 'previous-private-key';
+		control('credential-key').type = 'text';
+		control('show-credential-key').checked = true;
+		row.children[3].listeners.get('click')?.({});
+		expect(control('credential-action-name').value).toBe('guest');
+		expect(control('credential-key').value).toBe('');
+		expect(control('credential-key').type).toBe('password');
+		expect(control('credential-action-name').focused).toBe(true);
+	});
+
+	it('uses human-readable remote stages and never equates startup with connection readiness', () => {
+		expect(remoteStageText({ stage: 'sandbox' })).toContain('safely run Codex');
+		expect(remoteStageText({ stage: 'enabling', enabled: true })).toContain(
+			'verify a real request'
+		);
+		expect(remoteStageText({ error: 'Native failure' })).toBe('Native failure');
+	});
+
 	it('requires explicit remote trust, reports setup failure, and clears native answers before IPC', async () => {
 		const button = new Control();
 		button.dataset.remoteEnable = 'claude';
@@ -141,6 +225,8 @@ describe('Admin static security boundary', () => {
 		expect(control('remote-trust').checked).toBe(false);
 		expect(control('remote-sandbox-field').hidden).toBe(true);
 		expect(control('remote-prompts').hidden).toBe(true);
+		expect(control('remote-advanced').open).toBe(false);
+		expect(control('remote-send').hidden).toBe(true);
 		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });
 		expect(calls).toBe(0);
 		control('remote-trust').checked = true;
@@ -384,8 +470,8 @@ describe('Admin renderer behavior', () => {
 		).toBe(true);
 	});
 
-	it('renders saved memory, timezone, and independent native remote preferences', () => {
-		renderPreferences({
+	it('renders preferences without duplicate remote toggles or false connection readiness', () => {
+		const snapshot = {
 			config: {
 				assistant: {
 					timezone: 'America/Chicago',
@@ -394,16 +480,27 @@ describe('Admin renderer behavior', () => {
 					claudeRemote: false
 				}
 			}
-		});
+		};
+		renderPreferences(snapshot);
+		renderRemoteStatus(snapshot);
 		expect(control('agent-timezone').value).toBe('America/Chicago');
 		expect(control('automatic-memory').checked).toBe(false);
-		expect(control('codex-remote').checked).toBe(true);
-		expect(control('claude-remote').checked).toBe(false);
+		expect(control('codex-remote-status').textContent).toContain('client connection not checked');
+		expect(control('claude-remote-status').textContent).toBe('Startup off');
+		expect(html).not.toContain('id="codex-remote"');
+		expect(html).not.toContain('id="claude-remote"');
 	});
 
 	it('submits agent preferences without changing unrelated settings', async () => {
 		state.currentConfig = {
-			assistant: { bindAddress: '127.0.0.1', port: 4096, timezone: 'UTC', automaticMemory: true },
+			assistant: {
+				bindAddress: '127.0.0.1',
+				port: 4096,
+				timezone: 'UTC',
+				automaticMemory: true,
+				codexRemote: true,
+				claudeRemote: false
+			},
 			gateway: { enabled: false }
 		};
 		let submitted: unknown;
@@ -415,8 +512,6 @@ describe('Admin renderer behavior', () => {
 		};
 		control('agent-timezone').value = ' Europe/London ';
 		control('automatic-memory').checked = false;
-		control('codex-remote').checked = false;
-		control('claude-remote').checked = true;
 		bindPreferencesEvents();
 		await control('preferences-form').listeners.get('submit')?.({ preventDefault() {} });
 		expect(submitted).toEqual({
@@ -425,8 +520,8 @@ describe('Admin renderer behavior', () => {
 				port: 4096,
 				timezone: 'Europe/London',
 				automaticMemory: false,
-				codexRemote: false,
-				claudeRemote: true
+				codexRemote: true,
+				claudeRemote: false
 			},
 			gateway: { enabled: false }
 		});

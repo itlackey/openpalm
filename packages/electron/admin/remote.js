@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { all, byId, message, notice, setBusy } from './ui.js';
+import { all, byId, message, notice, operation, setBadge, setBusy } from './ui.js';
 import { refresh } from './snapshot.js';
 
 let tool;
@@ -8,17 +8,71 @@ let timer;
 let starting = false;
 let connectionOnly = false;
 
+export function renderRemoteStatus(snapshot) {
+	for (const name of ['claude', 'codex']) {
+		const enabled = snapshot.config.assistant[`${name}Remote`] === true;
+		setBadge(
+			byId(`${name}-remote-status`),
+			enabled ? 'Startup enabled · client connection not checked' : 'Startup off',
+			'neutral'
+		);
+		for (const button of all(`[data-remote-connect="${name}"]`))
+			button.disabled = state.operationInFlight || !enabled;
+		for (const button of all(`[data-remote-disable="${name}"]`)) button.hidden = !enabled;
+	}
+}
+
+export function remoteStageText(progress) {
+	if (progress.error) return progress.error;
+	if (progress.enabled) return 'Startup enabled. Connect your client and verify a real request.';
+	return (
+		{
+			starting: 'Preparing your agent…',
+			sandbox: 'Checking that this computer can safely run Codex…',
+			'sign-in': 'Finish account sign-in in your browser.',
+			account: 'Checking your account…',
+			'trust-and-consent': 'Review the workspace and remote-access prompts below.',
+			enabling: 'Enabling remote startup…',
+			pairing: 'Getting your connection details…',
+			connection: 'Your private connection details are below.',
+			failed: 'Setup did not finish. Remote startup is off.'
+		}[progress.stage] ?? 'Preparing remote access…'
+	);
+}
+
 function showProgress(progress) {
 	running = progress.running;
-	byId('remote-stage').textContent =
-		progress.error ??
-		(progress.enabled
-			? 'Startup enabled. Connect your supported client and verify a real tool request.'
-			: `Setup: ${progress.stage}`);
+	byId('remote-stage').textContent = remoteStageText(progress);
+	const answering =
+		running &&
+		tool === 'claude' &&
+		['sign-in', 'trust-and-consent'].includes(progress.stage) &&
+		Boolean(progress.output.trim());
+	byId('remote-answer-field').hidden = !answering;
+	byId('remote-answer-label').textContent =
+		progress.stage === 'trust-and-consent'
+			? 'Your answer, as requested in the native prompt'
+			: 'Sign-in code, if requested';
+	byId('remote-guidance').textContent =
+		progress.stage === 'trust-and-consent'
+			? 'Read the native prompts before answering. OpenPalm will not approve workspace trust or remote access for you.'
+			: progress.stage === 'sign-in'
+				? 'Complete sign-in in the browser. If Claude asks for a code, paste it below. Codex device codes are entered in the browser.'
+				: 'Keep connection details private. Startup alone does not confirm that your client is connected.';
+	const step = ['starting', 'sandbox'].includes(progress.stage)
+		? 'access'
+		: ['sign-in', 'account', 'trust-and-consent'].includes(progress.stage)
+			? 'sign-in'
+			: 'connect';
+	for (const item of all('[data-remote-step]'))
+		item.setAttribute('aria-current', item.dataset.remoteStep === step ? 'step' : 'false');
+	byId('remote-begin').hidden = running || progress.enabled;
 	byId('remote-output').value = progress.output;
+	if (answering || progress.enabled || progress.error || progress.stage === 'connection')
+		byId('remote-output-details').open = true;
 	byId('remote-output').scrollTop = byId('remote-output').scrollHeight;
-	byId('remote-send').disabled =
-		!running || !['sign-in', 'trust-and-consent'].includes(progress.stage);
+	byId('remote-send').disabled = !answering;
+	byId('remote-send').hidden = !answering;
 	byId('remote-cancel').textContent = running ? 'Cancel setup' : 'Close';
 	if (!running) {
 		clearTimeout(timer);
@@ -45,29 +99,40 @@ export function bindRemoteEvents() {
 		button.addEventListener('click', () => {
 			connectionOnly = Boolean(button.dataset.remoteConnect);
 			tool = button.dataset.remoteEnable ?? button.dataset.remoteConnect;
-			byId('remote-heading').textContent =
-				connectionOnly
-					? tool === 'claude'
-						? 'Open Claude remote session'
-						: 'Get Codex pairing code'
-					: tool === 'claude'
-						? 'Enable Claude Remote Control'
-						: 'Enable Codex remote (experimental)';
+			byId('remote-heading').textContent = connectionOnly
+				? tool === 'claude'
+					? 'Open Claude remote session'
+					: 'Get Codex pairing code'
+				: tool === 'claude'
+					? 'Enable Claude Remote Control'
+					: 'Enable Codex remote (experimental)';
 			byId('remote-trust-field').hidden = connectionOnly;
 			byId('remote-trust').required = !connectionOnly;
-			byId('remote-begin').textContent = connectionOnly
-				? 'Get connection details'
-				: 'Begin guided setup';
+			byId('remote-begin').textContent = connectionOnly ? 'Get connection details' : 'Continue';
+			byId('remote-begin').hidden = false;
+			byId('remote-advanced').hidden = connectionOnly || tool !== 'codex';
+			byId('remote-advanced').open = false;
 			byId('remote-sandbox-field').hidden = connectionOnly || tool !== 'codex';
 			byId('remote-sandbox').value =
 				state.currentConfig?.assistant.codexSandbox ?? 'workspace-write';
 			byId('remote-trust').checked = false;
-			byId('remote-stage').textContent =
-				connectionOnly
-					? 'Get fresh private connection details from the running agent.'
-					: 'Ready to begin. Existing remote startup is paused during setup.';
+			byId('remote-stage').textContent = connectionOnly
+				? 'Get fresh private connection details from the running agent.'
+				: 'Ready to begin. Existing remote startup is paused during setup.';
 			byId('remote-output').value = '';
 			byId('remote-prompts').hidden = true;
+			byId('remote-output-details').open = false;
+			byId('remote-answer-field').hidden = true;
+			byId('remote-send').hidden = true;
+			byId('remote-guidance').textContent = connectionOnly
+				? 'Use these details in a supported client. Do not share pairing codes or links.'
+				: 'Sign in through your browser, then approve any account or workspace prompts yourself.';
+			for (const item of all('[data-remote-step]'))
+				item.setAttribute(
+					'aria-current',
+					!connectionOnly && item.dataset.remoteStep === 'access' ? 'step' : 'false'
+				);
+			byId('remote-steps').hidden = connectionOnly;
 			byId('remote-answer').value = '';
 			byId('remote-send').disabled = true;
 			byId('remote-cancel').textContent = 'Cancel';
@@ -92,7 +157,7 @@ export function bindRemoteEvents() {
 							action: 'enable',
 							tool,
 							trusted: true,
-							sandbox: byId('remote-sandbox').value
+							...(tool === 'codex' ? { sandbox: byId('remote-sandbox').value } : {})
 						}
 			);
 			byId('remote-trust').disabled = true;
@@ -102,6 +167,7 @@ export function bindRemoteEvents() {
 		} catch (error) {
 			setBusy(false);
 			byId('remote-stage').textContent = message(error);
+			byId('remote-cancel').disabled = false;
 		} finally {
 			starting = false;
 		}
@@ -139,4 +205,14 @@ export function bindRemoteEvents() {
 		event.preventDefault();
 		void cancel();
 	});
+	for (const button of all('[data-remote-disable]'))
+		button.addEventListener('click', async () => {
+			const name = button.dataset.remoteDisable;
+			const result = await operation(
+				'Disabling remote startup',
+				() => state.api.remote({ action: 'disable', tool: name }),
+				'Remote startup disabled. Account sign-in is retained.'
+			);
+			if (result) await refresh(false);
+		});
 }

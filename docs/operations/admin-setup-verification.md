@@ -80,9 +80,19 @@ home without provider authentication is removed unless retention is requested.
 Provider-backed homes and explicitly supplied homes are always retained, even
 on failure, so copied operator authentication is never silently deleted.
 Populated or unreadable provider-auth files also force retention. It retains a
-report and five PNG screenshots, including startup recovery and 200%-zoom
+report and PNG screenshots, including startup recovery, remote setup and 200%-zoom
 reflow, in a printed `/tmp/openpalm-admin-e2e-artifacts-*` directory. A
 provider-backed run also captures the ready overview.
+
+Visual acceptance: the install action is visible at the default window size;
+Docker readiness is checked before it becomes enabled. A stopped agent shows
+startup recovery, not a running-agent claim or a competing account form.
+At 200% zoom, setup progress becomes a compact header and forms remain usable
+without horizontal scrolling. Refresh adds no overlay or success toast and
+does not dismiss a persistent error. Under Connections, native remote setup
+requires unchecked workspace consent; Codex's workspace-write default is
+selected inside a closed Advanced settings disclosure. Connection details
+remain private and startup status explicitly leaves client readiness unverified.
 
 The default run intentionally uses no provider secret. It verifies provider
 discovery, lets Admin automatically test any detected sign-in, and proves that
@@ -154,11 +164,11 @@ Use this process for release-candidate inspection or a provider OAuth flow.
 3. Confirm that the welcome screen describes the personal agent without
    showing ports, paths, Guardian, credentials, or Compose terminology. Open
    **Advanced network settings** only when this isolated test needs different
-   ports, then click **Set up OpenPalm**. Confirm that the action immediately
+   ports, then click **Install OpenPalm**. Confirm that the action immediately
    shows progress and cannot be submitted twice.
 
 4. Confirm Admin advances to **Connect your AI**, Assistant shows **Running
-   normally**, and provider discovery begins automatically. **Find providers**
+   normally**, and provider discovery begins automatically. **Refresh accounts**
    refreshes the list. Connected providers must be listed first by display
    name, not an arbitrary raw provider ID.
 
@@ -180,7 +190,7 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    another MCP app as connection choices. Technical details may contain the
    real provider/model but must not be the primary status.
 
-6. In Overview, change **Memory & recurring work** to a different IANA timezone
+6. In Overview, change **Agent preferences** to a different IANA timezone
    and turn automatic memory off. Save, wait for the restart, and refresh.
    Confirm both settings remain saved. Turning memory off must not remove
    existing knowledge. Re-enable it when testing the memory acceptance path.
@@ -268,3 +278,22 @@ Guardian returned `401` without a key and `200` for authenticated initialization
 and tool discovery. The successful test stopped its isolated containers and
 removed its generated home. API-key sign-in was exercised; this run does not
 claim to exercise an interactive OAuth browser flow.
+
+### Verified fwdslsh-style redesign: 2026-09-30
+
+The redesigned installer and Admin passed the isolated Electron/Docker E2E,
+including Docker readiness, startup recovery, all client recipes, credential
+policies and mapping, restart persistence, and 200%-zoom reflow. Guardian
+returned `401` without authentication and `200` for authenticated MCP discovery.
+The full regression suite, type checks, lint, CLI/Admin builds, and Compose
+validation with all three profiles passed. An independent design specialist
+visually reviewed all ten screenshots and approved the design, contrast,
+keyboard-focus treatment, explicit consent, and masked-secret presentation.
+
+This redesign run used no provider secret. OpenCode's free-tier request was
+rejected; setup correctly remained incomplete. Management screens used the
+explicit disposable-home fixture (`managementUiFixtureUsed: true`), not a
+claim of live account readiness. No native vendor login or remote-client
+connection was verified. Test containers were stopped and private test homes
+retained. Screenshot and report artifacts were retained under
+`/tmp/openpalm-admin-e2e-artifacts-gowN7Y/` on the verification host.

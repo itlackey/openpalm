@@ -16,6 +16,18 @@ and remain available in Git history.
 - Optional `openpalm setup --claude-remote --codex-remote` onboarding and
   `openpalm remote disable claude|codex` without deleting vendor account state.
 
+### Changed
+
+- Compact, task-first Admin setup and management, using fwdslsh's charcoal,
+  green-accent, forward-slash visual identity without external fonts or assets.
+- Docker readiness gates installation; stopped-agent recovery takes priority
+  over account setup. Refresh feedback is quiet and does not dismiss errors.
+- Native remote access lives only under Connections. Codex defaults to
+  workspace-write, with sandbox choices under Advanced settings and explicit
+  native consent preserved. Startup status never claims a verified connection.
+- Existing AI accounts are selected first; redundant sign-in choices are hidden.
+  Access identities use a flatter list with per-identity management actions.
+
 ## [0.14.0-alpha.3] - 2026-09-30
 
 ### Added

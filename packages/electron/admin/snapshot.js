@@ -9,6 +9,7 @@ import { endpoint, isHealthy } from './model.js';
 import { loadProviders, renderReadiness } from './providers.js';
 import { renderPhase, renderServices } from './runtime.js';
 import { renderPreferences } from './preferences.js';
+import { renderRemoteStatus } from './remote.js';
 import { state } from './state.js';
 import {
 	byId,
@@ -34,6 +35,16 @@ export function render(snapshot, options = {}) {
 	byId('recovery-gateway-port').value = String(snapshot.config.gateway.port);
 	renderPhase(snapshot.phase);
 	if (snapshot.phase === 'not_installed') {
+		const ready = snapshot.installationReadiness?.ok === true;
+		setText(
+			'install-prerequisite',
+			ready
+				? 'This computer is ready. Docker is running.'
+				: snapshot.installationReadiness?.message || 'Install and open Docker, then check again.'
+		);
+		byId('install-prerequisite').className = `prerequisite ${ready ? 'ready' : 'error'}`;
+		byId('install').disabled = state.operationInFlight || !ready;
+		byId('check-prerequisites').hidden = ready;
 		state.renderingSnapshot = false;
 		return;
 	}
@@ -72,6 +83,7 @@ export function render(snapshot, options = {}) {
 
 	renderServices(snapshot);
 	renderPreferences(snapshot);
+	renderRemoteStatus(snapshot);
 	renderCredentials(snapshot);
 	renderMappings(snapshot);
 	renderPortalSecrets(snapshot);
@@ -129,7 +141,10 @@ export async function refresh(announce = false) {
 	try {
 		const snapshot = await state.api.snapshot();
 		render(snapshot);
-		if (announce) notice('Status refreshed.', 'success');
+		if (announce) {
+			byId('refresh').textContent = 'Status up to date';
+			if (!byId('notice').className.includes('error')) byId('notice').hidden = true;
+		}
 	} catch (error) {
 		if (state.currentSnapshot) {
 			notice(`Could not refresh status: ${message(error)}`, 'error', { persist: true });

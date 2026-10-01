@@ -91,6 +91,20 @@ organized around user tasks rather than runtime components. A failed first
 start remains recoverable in the setup flow; the operator can correct ports and
 retry without reinstalling or editing files.
 
+The interface is a compact operational utility using fwdslsh's restrained
+charcoal and green-accent visual language, not a marketing page or a product
+rebrand. It uses local assets and system fonts. Installation checks Docker
+readiness before enabling its primary action. Setup progress and recovery
+messages agree with actual service health; refresh does not obscure forms or
+dismiss persistent errors. Narrow windows and zoom retain a compact setup
+header rather than stacking decorative progress cards.
+
+Connections is the single place to configure native remote coding agents,
+clearly distinguished from Guardian-protected clients. Codex defaults to
+workspace-write; other sandbox choices are advanced settings, not prerequisites
+the user must understand. Native consent remains explicit. Startup intent and
+unverified client connection status are never conflated.
+
 Each client connection guide is task-complete. Direct OpenCode guidance shows
 its URL, username, and explicitly requested password. Claude Desktop guidance
 shows the extension, Guardian endpoint, named identity, and key. Generic MCP

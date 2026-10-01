@@ -130,6 +130,7 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
 	const installState = classifyInstall(candidate.homeDir);
 	if (installState === 'not_installed') {
 		return {
+			installationReadiness: await ensureDockerReady(),
 			phase: 'not_installed',
 			homeDir: candidate.homeDir,
 			configPath: stackConfigFile(candidate.homeDir),
@@ -494,6 +495,7 @@ export function createAdminWindow(options: { show?: boolean } = {}): BrowserWind
 		minWidth: 640,
 		minHeight: 540,
 		title: 'OpenPalm — Setup & settings',
+		backgroundColor: '#0d1117',
 		show: options.show ?? true,
 		webPreferences: {
 			preload: join(import.meta.dirname, 'admin-preload.cjs'),

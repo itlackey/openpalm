@@ -106,16 +106,17 @@ See [Claude's native plugin loading reference](https://code.claude.com/docs/en/p
 
 ## Toggles, recovery, and trust
 
-In Admin, choose **Set up Claude remote** or **Set up Codex remote** under
-agent preferences or Connections. Confirm trusted workspace access, choose
-Codex's sandbox mode if applicable, and select **Begin guided setup**. The
-browser handles account login; the private dialog displays native prompts and
+In Admin, open **Connections → Remote coding agents** and choose **Set up**
+for Claude Code or Codex. Confirm trusted workspace access and select
+**Continue**. Codex uses workspace-write automatically; its optional read-only
+mode is under **Advanced settings**. The browser handles account login;
+the private dialog displays native prompts and
 accepts your answers. Cancellation or a failed prerequisite leaves startup off.
 No terminal is required for the guided Admin flow. CLI enable requires a
 terminal for prompt answers; `--trust` explicitly confirms OpenPalm's trust
 warning but does not accept any vendor prompt.
-After setup or restart, use Admin's **Open remote session** for Claude or
-**Show pairing code** for Codex to refresh private connection details.
+After setup or restart, use Admin's **Open session** for Claude or
+**Get pairing code** for Codex to refresh private connection details.
 
 During initial CLI onboarding, optionally use:
 

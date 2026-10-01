@@ -26,11 +26,17 @@ export function notice(value, tone = 'success', options = {}) {
 	clearTimeout(state.noticeTimer);
 	if (!value) {
 		element.hidden = true;
+		byId('install-status').hidden = true;
 		return;
 	}
 	setText('notice-message', value);
+	const installing = state.currentSnapshot?.phase === 'not_installed';
+	setText('install-status', installing ? value : '');
+	byId('install-status').hidden = !installing;
+	byId('install-status').className = `help-text${tone === 'error' ? ' danger-text' : ''}`;
+	byId('install-status').setAttribute('role', tone === 'error' ? 'alert' : 'status');
 	element.className = `notice ${tone}`;
-	element.hidden = false;
+	element.hidden = installing;
 	if (tone === 'error') {
 		element.setAttribute('role', 'alert');
 		element.setAttribute('aria-live', 'assertive');
@@ -43,7 +49,7 @@ export function notice(value, tone = 'success', options = {}) {
 	if (tone === 'success' && options.persist !== true) {
 		state.noticeTimer = setTimeout(() => {
 			element.hidden = true;
-		}, 7000);
+		}, 3500);
 	}
 }
 
@@ -144,7 +150,7 @@ export function showView(name, options = {}) {
 	for (const panel of all('[data-view-panel]')) panel.hidden = panel.dataset.viewPanel !== name;
 	for (const button of all('[data-view]')) {
 		const active = button.dataset.view === name;
-		button.toggleAttribute('aria-current', active);
+		button.setAttribute('aria-current', active ? 'page' : 'false');
 	}
 	const meta = viewMeta[name];
 	setText(

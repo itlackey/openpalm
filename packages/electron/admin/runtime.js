@@ -63,6 +63,14 @@ export function renderServices(snapshot) {
 	const assistant = snapshot.services.find((service) => service.name === 'assistant');
 	const guardian = snapshot.services.find((service) => service.name === 'guardian');
 	setText(
+		'overview-heading',
+		isHealthy(assistant)
+			? 'Your personal agent is ready.'
+			: assistant
+				? 'Your agent needs attention.'
+				: 'Your agent is stopped.'
+	);
+	setText(
 		'assistant-summary',
 		isHealthy(assistant) ? 'Running normally' : assistant ? 'Needs attention' : 'Stopped'
 	);
@@ -91,6 +99,22 @@ export function renderServices(snapshot) {
 	renderRuntimeControls(snapshot);
 	const needsRecovery = snapshot.phase === 'setup_incomplete' && !isHealthy(assistant);
 	byId('setup-recovery').hidden = !needsRecovery;
+	byId('provider-connection').hidden = needsRecovery;
+	setText(
+		'setup-runtime',
+		isHealthy(assistant) ? 'Your agent is running locally.' : 'Agent startup needs attention.'
+	);
+	setText(
+		'setup-step',
+		needsRecovery ? 'Step 1 of 3 · Start your agent' : 'Step 2 of 3 · Connect your AI'
+	);
+	if (needsRecovery) {
+		setText('view-title', 'Start your agent');
+		setText(
+			'view-description',
+			'Your files are safe. Retry startup before connecting an AI account.'
+		);
+	}
 	if (needsRecovery) {
 		setText(
 			'recovery-message',
@@ -101,6 +125,7 @@ export function renderServices(snapshot) {
 }
 
 export function bindRuntimeEvents() {
+	byId('check-prerequisites').addEventListener('click', () => void refresh(false));
 	byId('install-form').addEventListener('submit', async (event) => {
 		event.preventDefault();
 		if (!state.currentConfig) return;

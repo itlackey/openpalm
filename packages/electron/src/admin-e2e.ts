@@ -86,6 +86,9 @@ async function waitForRenderer(
 
 async function capture(window: BrowserWindow, directory: string, name: string): Promise<string> {
 	const path = join(directory, name);
+	await window.webContents.executeJavaScript(
+		'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))'
+	);
 	let timeout: NodeJS.Timeout | undefined;
 	const image = await Promise.race([
 		window.webContents.capturePage(),
@@ -228,7 +231,7 @@ async function run(): Promise<Record<string, unknown>> {
 		await waitForLoad(window);
 		await waitForRenderer(
 			window,
-			"document.querySelector('#install-section')?.hidden === false",
+			"document.querySelector('#install-section')?.hidden === false && document.querySelector('#install')?.disabled === false",
 			'the fresh-install screen'
 		);
 		progress('fresh-install screen loaded');
@@ -237,6 +240,12 @@ async function run(): Promise<Record<string, unknown>> {
 			"document.querySelector('#install-assistant-port').closest('details').open === false"
 		)) as boolean;
 		assert(advancedHidden, 'Fresh setup exposed advanced ports by default.');
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#install').getBoundingClientRect().bottom <= innerHeight"
+			),
+			'Install button requires scrolling at the default window size.'
+		);
 		await assertRenderedFloor(window, 'fresh setup');
 
 		await window.webContents.executeJavaScript(`(() => {
@@ -270,6 +279,12 @@ async function run(): Promise<Record<string, unknown>> {
 			'the visible startup recovery controls'
 		);
 		const recoveryScreenshot = await capture(window, outputDir, '02b-startup-recovery.png');
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#provider-connection').hidden && !/running locally/.test(document.querySelector('#setup-runtime').textContent)"
+			),
+			'Recovery contradicts the agent status.'
+		);
 		await window.webContents.executeJavaScript(
 			"document.querySelector('#recovery-form').requestSubmit()"
 		);
@@ -287,6 +302,12 @@ async function run(): Promise<Record<string, unknown>> {
 		window.webContents.setZoomFactor(2);
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		await assertRenderedFloor(window, 'provider setup at 200% zoom');
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('.sidebar').getBoundingClientRect().height < 70 && document.querySelector('#provider-connection').getBoundingClientRect().top < innerHeight * 0.65"
+			),
+			'Setup chrome crowds out the account form at 200% zoom.'
+		);
 		const reflowScreenshot = await capture(window, outputDir, '03-provider-reflow.png');
 		window.webContents.setZoomFactor(1);
 		window.setSize(1120, 780);
@@ -378,7 +399,7 @@ async function run(): Promise<Record<string, unknown>> {
 				window,
 				`document.querySelector('#view-overview')?.hidden === false &&
 						document.querySelector('#primary-nav')?.hidden === false &&
-						document.querySelector('#notice-message')?.textContent === 'Status refreshed.'`,
+						document.querySelector('#refresh')?.textContent === 'Status up to date'`,
 				'the isolated management UI fixture',
 				60_000,
 				true
@@ -387,10 +408,14 @@ async function run(): Promise<Record<string, unknown>> {
 		}
 
 		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#dismiss-notice').click();
+			document.querySelector('[data-view=connections]').click();
 			document.querySelector('[data-remote-enable=codex]').click();
 			if (!document.querySelector('#remote-dialog').open) throw new Error('Remote setup dialog did not open.');
 			if (document.querySelector('#remote-trust').checked) throw new Error('Native trust was preaccepted.');
 			if (document.querySelector('#remote-sandbox-field').hidden) throw new Error('Codex sandbox choice is missing.');
+			if (document.querySelector('#remote-advanced').open || document.querySelector('#remote-sandbox').value !== 'workspace-write') throw new Error('Safe sandbox default is not tucked into Advanced settings.');
+			if (!document.querySelector('#remote-send').hidden) throw new Error('An irrelevant native answer control is exposed before setup.');
 			if ([...document.querySelector('#remote-sandbox').options].some(option => /danger|bypass/i.test(option.value))) throw new Error('Sandbox bypass is offered.');
 		})()`);
 		await assertRenderedFloor(window, 'native remote setup dialog');
@@ -403,6 +428,27 @@ async function run(): Promise<Record<string, unknown>> {
 		})()`);
 		progress(
 			'native remote setup opens from Admin with explicit trust and safe sandbox choices; no subscription login was performed'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-view=overview]').click()"
+		);
+		const overviewScreenshot = await capture(window, outputDir, '04b-overview.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-view=connections]').click()"
+		);
+		const connectionsScreenshot = await capture(window, outputDir, '04c-connections.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-view=backup]').click()"
+		);
+		await assertRenderedFloor(window, 'backup and restore');
+		const backupScreenshot = await capture(window, outputDir, '04d-backup.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-view=diagnostics]').click()"
+		);
+		await assertRenderedFloor(window, 'troubleshooting');
+		const troubleshootingScreenshot = await capture(window, outputDir, '04e-troubleshooting.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('[data-view=overview]').click()"
 		);
 
 		await window.webContents.executeJavaScript(`(() => {
@@ -741,6 +787,10 @@ async function run(): Promise<Record<string, unknown>> {
 				recoveryScreenshot,
 				reflowScreenshot,
 				nativeRemoteScreenshot,
+				overviewScreenshot,
+				connectionsScreenshot,
+				backupScreenshot,
+				troubleshootingScreenshot,
 				...(readyScreenshot ? [readyScreenshot] : []),
 				guardianScreenshot
 			],

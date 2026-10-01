@@ -20,6 +20,7 @@ export type AdminSnapshot = {
 		health: string;
 	}>;
 	dockerError?: string;
+	installationReadiness?: { ok: boolean; message?: string };
 	portalMappings: Record<string, { default: string; users: Record<string, string> }>;
 	portalSecrets: Record<string, Record<string, boolean>>;
 	connectionDetails?: {
