@@ -162,6 +162,39 @@ without a republish or local registry write.
 This remains a testing prerelease with the fresh-install/allowlisted-import
 boundary for 0.13 homes. Splinter was not upgraded as part of cutting this beta.
 
+### Splinter alpha.4-to-beta.1 verification
+
+After separate operator approval on 2026-10-01, Splinter updated using the public
+checksum-verified Linux x64 CLI and the three published beta.1 images. All image
+revision labels matched `bc58bddc9d176ccd79ec1aa1f034cf702f8d753c`. Before
+installing the CLI, only Splinter was stopped and its complete home was archived;
+the cold archive was compared against its source and its checksum retained
+privately for rollback.
+
+Assistant, Guardian, and Discord were healthy afterward. Stack intent and all
+32 protected configuration, credential, provider-secret, task-definition, and
+delegated-keyring files stayed unchanged. Six unrelated running containers were
+preserved. OpenCode retained its explicit authenticated LAN binding, Guardian
+remained loopback-published, and real no-tool provider readiness passed before
+and after the update. All services retained their non-root, capability-dropped
+boundaries; no delegated credential or Docker socket reached Assistant.
+
+Live checks rejected anonymous native/MCP access, listed sessions, retained the
+Discord owner-only allowlist and owner-to-`full` mapping, and confirmed the
+default Discord credential remained `chat`. The same portal client completed
+a harmless directory tool call in a real `remote-full` session. Cross-credential
+session access and workspace traversal were rejected. No Discord messages were
+posted. Bun 1.4.2, Node 24.21.0, and both enabled native AKM plugin registrations
+at 0.9.20202610010250 were verified in the upgraded Assistant.
+
+No product upgrade issue was encountered. One verification assertion initially
+looked for raw tool parts in Guardian's sanitized message summaries; the corrected
+check verified native tool evidence through the authenticated OpenCode API.
+Codex recall review now works on the installed beta image and reports two hooks
+with `approval-needed`. No native approval was granted or changed. Codex/Claude
+remote switches and login state were preserved; authenticated vendor remote
+acceptance was not tested and remains experimental.
+
 ## Alpha.4 candidate verification record
 
 The 2026-10-01 local Linux x64 candidate passed the full package/security suite,
