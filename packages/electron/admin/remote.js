@@ -181,6 +181,7 @@ export function bindRemoteEvents() {
 			byId('remote-advanced').open = false;
 			byId('remote-sandbox-field').hidden = connectionOnly || recallOnly || tool !== 'codex';
 			byId('remote-recall-field').hidden = connectionOnly || tool !== 'codex';
+			byId('remote-recall-heading').hidden = recallOnly;
 			byId('remote-recall').required = recallOnly;
 			byId('remote-sandbox').value =
 				state.currentConfig?.assistant.codexSandbox ?? 'workspace-write';

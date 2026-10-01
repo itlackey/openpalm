@@ -95,11 +95,22 @@ async function waitForRenderer(
 	throw new Error(`Timed out waiting for ${description}.`);
 }
 
-async function capture(window: BrowserWindow, directory: string, name: string): Promise<string> {
+async function capture(
+	window: BrowserWindow,
+	directory: string,
+	name: string,
+	preserveFocus = false
+): Promise<string> {
 	const path = join(directory, name);
+	if (!preserveFocus)
+		await window.webContents.executeJavaScript(
+			'document.activeElement?.blur(); window.scrollTo(0, 0)'
+		);
 	await window.webContents.executeJavaScript(
 		'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))'
 	);
+	// Let the 120ms control transitions finish before recording presentation pixels.
+	await new Promise((resolve) => setTimeout(resolve, 180));
 	let timeout: NodeJS.Timeout | undefined;
 	const image = await Promise.race([
 		window.webContents.capturePage(),
@@ -436,6 +447,7 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 
 		let readiness: Record<string, unknown> = { attempted: false };
+		const providerPickerScreenshot = await capture(window, outputDir, '03a-provider-picker.png');
 		let readyScreenshot: string | undefined;
 		if (provider && providerKey) {
 			await window.webContents.executeJavaScript(`(() => {
@@ -474,9 +486,16 @@ async function run(): Promise<Record<string, unknown>> {
 			progress('provider readiness passed');
 			readyScreenshot = await capture(window, outputDir, '04-agent-ready.png');
 		} else {
-			await window.webContents.executeJavaScript(
-				"if (!document.querySelector('#test-provider').disabled) document.querySelector('#test-provider').click()"
-			);
+			await window.webContents.executeJavaScript(`(() => {
+				const provider = document.querySelector('#provider');
+				if (!provider.value) {
+					if (!document.querySelector('#test-provider').hidden) throw new Error('Verification appears before choosing a provider.');
+					provider.value = [...provider.options].find(option => option.value === 'anthropic')?.value || [...provider.options].find(option => option.value)?.value;
+					provider.dispatchEvent(new Event('change', { bubbles: true }));
+				}
+				if (document.querySelector('#test-provider').hidden) throw new Error('Verification is unavailable after provider selection.');
+				if (!document.querySelector('#test-provider').disabled) document.querySelector('#test-provider').click();
+			})()`);
 			await waitForRenderer(
 				window,
 				`document.querySelector('#notice')?.classList.contains('error') &&
@@ -511,6 +530,7 @@ async function run(): Promise<Record<string, unknown>> {
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#dismiss-notice').click();
 			document.querySelector('[data-view=connections]').click();
+			document.querySelector('#native-connections > summary').click();
 			document.querySelector('[data-remote-enable=codex]').click();
 			if (!document.querySelector('#remote-dialog').open) throw new Error('Remote setup dialog did not open.');
 			if (document.querySelector('#remote-trust').checked) throw new Error('Native trust was preaccepted.');
@@ -610,9 +630,13 @@ async function run(): Promise<Record<string, unknown>> {
 			'native AKM approval required consent, persisted across recreation, and opted out without remote startup or vendor login'
 		);
 		await window.webContents.executeJavaScript(
+			"document.querySelector('#native-connections').open = false"
+		);
+		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=overview]').click()"
 		);
 		const overviewScreenshot = await capture(window, outputDir, '04b-overview.png');
+		await assertRenderedFloor(window, 'overview');
 		assert(
 			await window.webContents.executeJavaScript(
 				"document.querySelector('#view-title').focus(); getComputedStyle(document.querySelector('#view-title')).outlineStyle === 'none'"
@@ -623,6 +647,16 @@ async function run(): Promise<Record<string, unknown>> {
 			"document.querySelector('[data-view=connections]').click()"
 		);
 		const connectionsScreenshot = await capture(window, outputDir, '04c-connections.png');
+		await assertRenderedFloor(window, 'connections');
+		assert(
+			await window.webContents.executeJavaScript(`(() => {
+			return !document.querySelector('#native-connections').open && !document.querySelector('#portal-tokens').open &&
+				document.querySelector('#direct-url').tagName === 'A' &&
+				document.querySelector('#direct-url').href === document.querySelector('#overview-opencode-link').href &&
+				getComputedStyle(document.querySelector('[data-client-setup][aria-pressed="true"]')).backgroundColor !== getComputedStyle(document.querySelector('.primary-link')).backgroundColor;
+		})()`),
+			'Optional connections are not collapsed, OpenCode links disagree, or client selection looks like a primary action.'
+		);
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=backup]').click()"
 		);
@@ -694,6 +728,7 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 
 		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#agent-preferences > summary').click();
 			document.querySelector('#agent-timezone').value = 'Europe/London';
 			document.querySelector('#automatic-memory').checked = false;
 			document.querySelector('#agent-timezone').dispatchEvent(new Event('input', { bubbles: true }));
@@ -739,6 +774,8 @@ async function run(): Promise<Record<string, unknown>> {
 		assert(claudeRecipe.url?.endsWith('/mcp'), 'Claude recipe omitted the MCP endpoint.');
 		assert(claudeRecipe.credential === 'owner', 'Claude recipe omitted its access identity.');
 		assert(claudeRecipe.extension?.endsWith('.mcpb'), 'Claude recipe omitted its extension.');
+		await assertRenderedFloor(window, 'Claude Desktop recipe');
+		const claudeScreenshot = await capture(window, outputDir, '04f-claude-desktop.png');
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-client-setup=mcp]').click()"
 		);
@@ -749,6 +786,14 @@ async function run(): Promise<Record<string, unknown>> {
 			'The generic MCP recipe was incomplete.'
 		);
 		progress('all three complete client connection recipes rendered');
+		await assertRenderedFloor(window, 'MCP connection recipe');
+		const mcpScreenshot = await capture(window, outputDir, '04g-mcp.png');
+		window.setContentSize(640, 540);
+		window.webContents.setZoomFactor(2);
+		await assertRenderedFloor(window, 'MCP recipe at minimum size and 200% zoom');
+		const narrowMcpScreenshot = await capture(window, outputDir, '04h-mcp-reflow.png');
+		window.webContents.setZoomFactor(1);
+		window.setContentSize(1120, 780);
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#discord').checked = true;
@@ -773,6 +818,7 @@ async function run(): Promise<Record<string, unknown>> {
 			window,
 			`document.querySelector('#notice-message')?.textContent === 'Store a Discord bot token before enabling Discord.' &&
 					document.querySelector('#token-portal')?.value === 'discord' &&
+					document.querySelector('#portal-tokens')?.open === true &&
 					document.activeElement?.id === 'bot-token'`,
 			'the Discord private-token guidance',
 			10_000,
@@ -814,6 +860,7 @@ async function run(): Promise<Record<string, unknown>> {
 		progress('read credential created');
 
 		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#chat-user-access > summary').click();
 			document.querySelector('#mapping-portal').value = 'discord';
 			document.querySelector('#mapping-user').value = '123456789012345678';
 			document.querySelector('#mapping-credential').value = 'e2e-reader';
@@ -827,6 +874,11 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		progress('Discord identity mapping persisted');
 		const guardianScreenshot = await capture(window, outputDir, '05-people-access.png');
+		window.setContentSize(640, 540);
+		await assertRenderedFloor(window, 'people and access at minimum size');
+		const narrowAccessScreenshot = await capture(window, outputDir, '05a-people-access-narrow.png');
+		const keyboardScreenshot = await capture(window, outputDir, '05b-keyboard-focus.png', true);
+		window.setContentSize(1120, 780);
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('[data-view=overview]').click();
@@ -1145,14 +1197,20 @@ async function run(): Promise<Record<string, unknown>> {
 				assistantScreenshot,
 				recoveryScreenshot,
 				reflowScreenshot,
+				providerPickerScreenshot,
 				nativeRemoteScreenshot,
 				recallScreenshot,
 				overviewScreenshot,
 				connectionsScreenshot,
 				backupScreenshot,
 				troubleshootingScreenshot,
+				claudeScreenshot,
+				mcpScreenshot,
+				narrowMcpScreenshot,
 				...(readyScreenshot ? [readyScreenshot] : []),
-				guardianScreenshot
+				guardianScreenshot,
+				narrowAccessScreenshot,
+				keyboardScreenshot
 			],
 			keptRunning: keepRunning,
 			homeRetained: process.env.OPENPALM_ADMIN_E2E_KEEP_HOME === 'true'

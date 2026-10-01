@@ -6,7 +6,8 @@ import { importInput, importSignature, invalidateImportPreview } from '../admin/
 import {
 	bindConnectionsEvents,
 	loadClientKey,
-	renderNetworkDetails
+	renderNetworkDetails,
+	showPortalTokenForm
 } from '../admin/connections.js';
 import { bindConfigurationEvents } from '../admin/configuration.js';
 import { endpoint, isHealthy, promptVisible } from '../admin/model.js';
@@ -17,7 +18,7 @@ import {
 	remoteStageText,
 	recallStatusLabel
 } from '../admin/remote.js';
-import { resetOAuthAttempt, renderProviders } from '../admin/providers.js';
+import { resetOAuthAttempt, renderProviders, loadProviders } from '../admin/providers.js';
 import { renderPhase, renderServices } from '../admin/runtime.js';
 import { render, refresh } from '../admin/snapshot.js';
 import { createAdminState, state } from '../admin/state.js';
@@ -88,12 +89,16 @@ class Control {
 	querySelectorAll() {
 		return this.children;
 	}
+	querySelector() {
+		return this.children[0] ?? new Control();
+	}
 	contains(control: Control) {
 		return this.children.includes(control);
 	}
 	focus() {
 		this.focused = true;
 	}
+	scrollIntoView() {}
 }
 
 let controls: Map<string, Control>;
@@ -255,6 +260,45 @@ describe('Admin static security boundary', () => {
 		expect(control('provider-method').value).toBe('0');
 		expect(control('provider-method-field').hidden).toBe(true);
 		expect(control('provider-status').children[1].textContent).toContain('Verify connection');
+		expect(control('test-provider').hidden).toBe(false);
+	});
+
+	it('offers verification after account selection, not before it', () => {
+		state.currentSnapshot = { phase: 'setup_incomplete' };
+		renderProviders([
+			{ id: 'example', name: 'Example', authMethods: [{ index: 0, type: 'api', label: 'API key' }] }
+		]);
+		expect(control('provider').value).toBe('');
+		expect(control('test-provider').hidden).toBe(true);
+		expect(html.indexOf('id="test-provider"')).toBeGreaterThan(html.indexOf('id="provider-form"'));
+	});
+
+	it('keeps provider transport failures in technical details and offers a recovery action', async () => {
+		state.api = {
+			providers: async () => {
+				throw new Error('Error invoking remote method admin:providers: fetch failed');
+			}
+		};
+		await loadProviders(false);
+		expect(control('provider-status').children[0].textContent).toBe('Cannot reach your agent.');
+		expect(control('provider-status').children[1].textContent).toContain('Refresh accounts');
+		expect(control('provider-status').children[1].textContent).not.toContain(
+			'invoking remote method'
+		);
+		expect(control('provider-result').value).toContain('fetch failed');
+		expect(state.providerLoadPromise).toBeUndefined();
+		await loadProviders(true);
+		expect(control('notice-message').textContent).toBe(
+			'Cannot reach your agent. Check that it is running, then refresh accounts.'
+		);
+	});
+
+	it('opens optional portal tokens before focusing a validation or setup target', async () => {
+		control('token-portal').value = 'discord';
+		showPortalTokenForm('discord');
+		await Bun.sleep(0);
+		expect(control('portal-tokens').open).toBe(true);
+		expect(control('bot-token').focused).toBe(true);
 	});
 
 	it('offers per-identity management without revealing or retaining a previous key', () => {
@@ -273,6 +317,7 @@ describe('Admin static security boundary', () => {
 		control('credential-key').type = 'text';
 		control('show-credential-key').checked = true;
 		row.children[3].listeners.get('click')?.({});
+		expect(control('key-manager-details').open).toBe(true);
 		expect(control('credential-action-name').value).toBe('guest');
 		expect(control('credential-key').value).toBe('');
 		expect(control('credential-key').type).toBe('password');
@@ -377,6 +422,7 @@ describe('Admin static security boundary', () => {
 		await Bun.sleep(1);
 		expect(control('remote-recall').checked).toBe(false);
 		expect(control('remote-trust-field').hidden).toBe(true);
+		expect(control('remote-recall-heading').hidden).toBe(true);
 		expect(control('remote-recall-definitions').value).toContain('literal <script> is text');
 		expect(control('remote-recall-status').textContent).toContain('definitions changed');
 		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });

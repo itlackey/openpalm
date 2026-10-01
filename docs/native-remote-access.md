@@ -168,7 +168,7 @@ See [Codex's hook trust model](https://learn.chatgpt.com/docs/hooks#review-and-t
 
 ## Toggles, recovery, and trust
 
-In Admin, open **Connections → Remote coding agents** and choose **Set up**
+In Admin, expand **Connections → Remote coding agents** and choose **Set up**
 for Claude Code or Codex. Confirm trusted workspace access and select
 **Continue**. Codex uses workspace-write automatically; its optional read-only
 mode is under **Advanced settings**. The browser handles account login;

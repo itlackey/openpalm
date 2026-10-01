@@ -62,6 +62,7 @@ export function renderCredentials(snapshot) {
 		manage.textContent = 'Manage';
 		manage.setAttribute('aria-label', `Manage ${username}`);
 		manage.addEventListener('click', () => {
+			byId('key-manager-details').open = true;
 			byId('credential-action-name').value = username;
 			byId('credential-key').value = '';
 			byId('credential-key').type = 'password';
@@ -175,9 +176,10 @@ export function bindAccessEvents() {
 		const result = await operation(
 			'Creating access key',
 			() => state.api.credential({ action: 'create', username, policy }),
-			`Access for ${username} created. Reveal the key when you are ready to connect it.`
+			`Access for ${username} created. Load the key when you are ready to connect it.`
 		);
 		if (result) {
+			byId('key-manager-details').open = true;
 			byId('credential-username').value = '';
 			byId('credential-action-name').value = username;
 		}

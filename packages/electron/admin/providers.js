@@ -86,6 +86,7 @@ export function resetOAuthAttempt() {
 export function renderProviderMethod() {
 	const provider = providerById(byId('provider').value);
 	const method = selectedProviderMethod();
+	byId('test-provider').hidden = !provider && state.currentSnapshot?.phase !== 'ready';
 	byId('provider-method-field').hidden = !provider || provider.authMethods.length < 2;
 	byId('api-key-fields').hidden = method?.type !== 'api';
 	byId('oauth-provider-note').hidden = method?.type !== 'oauth';
@@ -221,6 +222,20 @@ export async function loadProviders(withNotice = true) {
 					renderProviders(providers);
 					return providers;
 				})
+				.catch((error) => {
+					byId('provider-result').value = JSON.stringify({ error: message(error) }, null, 2);
+					byId('provider-status').className = 'inline-status error';
+					byId('provider-status').replaceChildren();
+					const title = document.createElement('strong');
+					title.textContent = 'Cannot reach your agent.';
+					const detail = document.createElement('span');
+					detail.textContent =
+						'Check that it is running, then choose Refresh accounts. Technical details are available below.';
+					byId('provider-status').append(title, detail);
+					throw new Error(
+						'Cannot reach your agent. Check that it is running, then refresh accounts.'
+					);
+				})
 				.finally(() => {
 					state.providerLoadPromise = undefined;
 				});
@@ -231,14 +246,8 @@ export async function loadProviders(withNotice = true) {
 	else {
 		try {
 			await action();
-		} catch (error) {
-			byId('provider-status').className = 'inline-status error';
-			byId('provider-status').replaceChildren();
-			const title = document.createElement('strong');
-			title.textContent = 'Providers could not be loaded.';
-			const detail = document.createElement('span');
-			detail.textContent = message(error);
-			byId('provider-status').append(title, detail);
+		} catch {
+			// The shared loader already renders the actionable error and technical details.
 		}
 	}
 	if (

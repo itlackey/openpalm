@@ -242,17 +242,17 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    another MCP app as connection choices. Technical details may contain the
    real provider/model but must not be the primary status.
 
-6. In Overview, change **Agent preferences** to a different IANA timezone
+6. In Overview, expand **Agent preferences** and change to a different IANA timezone
    and turn automatic memory off. Save, wait for the restart, and refresh.
    Confirm both settings remain saved. Turning memory off must not remove
    existing knowledge. Re-enable it when testing the memory acceptance path.
 
    Follow each connection choice and confirm its guided panel is complete:
 
-   - OpenCode shows server address, username `opencode`, and explicit password
-     reveal/copy actions;
+   - OpenCode shows a clickable server address, username `opencode`, and explicit
+     **Load password**, **Show password**, and **Copy password** actions;
    - Claude Desktop shows protected-access state, extension download, endpoint,
-     named identity, and explicit key reveal/copy actions; and
+     named identity, and explicit **Load key**, **Show key**, and **Copy key** actions; and
    - another MCP app shows its Streamable HTTP endpoint, bearer convention,
      named identity, and key actions.
 
@@ -327,6 +327,35 @@ For a release sign-off, record:
 - provider/model used for real readiness, without its credential;
 - the E2E `report.json` and screenshots; and
 - any deviation from the expected `401`, `200`, or tool-policy results.
+
+### Verified final UI refinement: 2026-10-01
+
+An independent design specialist reviewed the current welcome, install,
+provider setup, recovery, overview, all client recipes, access management,
+backup, troubleshooting, experimental setup, and Codex recall screens. The
+final refinement was approved with no release-blocking design findings.
+Neutral controls and disclosures reserve green for meaningful primary actions;
+the overview leads with OpenCode access, and optional management forms are
+collapsed without removing their controls. Validation automatically opens
+portal tokens, and key management opens from its identity row.
+
+The real Electron/Docker walkthrough passed before and after refinement.
+The final report and 20 screenshots are retained at
+`/tmp/openpalm-admin-e2e-artifacts-ZGLcEZ/` on the verification host. Normal
+screenshots wait for control transitions and show the page from the top;
+keyboard-focused controls are checked separately. Minimum-size layouts,
+200%-zoom MCP reflow, masked secrets, native approvals, portal mapping,
+restart persistence, and two-instance isolation passed. Production window
+dimensions remain under user control. Dedicated narrow screenshots show only
+the visible viewport, not every control inspected by the automated checks.
+
+The regression suite passed 329 tests with one environment-dependent skip.
+Type checks, lint, and the Admin build passed. No new dependencies or services
+were added. These runs used no provider secret or native vendor sign-in:
+the free provider rejected readiness, setup correctly remained incomplete,
+and management used the explicit disposable-home fixture. This is UI and
+management verification, not a new provider-authentication sign-off. Isolated
+test containers were removed; private test homes and evidence were retained.
 
 ### Verified instance welcome and stable window size: 2026-10-01
 

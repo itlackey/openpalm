@@ -83,6 +83,7 @@ export function updatePortalTokenFields() {
 }
 
 export function showPortalTokenForm(portal, field = 'bot-token') {
+	byId('portal-tokens').open = true;
 	byId('token-portal').value = portal;
 	updatePortalTokenFields();
 	byId('portal-token-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -92,7 +93,10 @@ export function showPortalTokenForm(portal, field = 'bot-token') {
 export function renderConnectionDetails(snapshot) {
 	const details = snapshot.connectionDetails;
 	if (!details) return;
-	setText('direct-url', details.opencode.url);
+	const directLink = byId('direct-url');
+	directLink.textContent = details.opencode.url;
+	directLink.setAttribute('href', details.opencode.url);
+	directLink.hidden = false;
 	setText('direct-username', details.opencode.username || 'opencode');
 	setText('claude-url', details.claude.url);
 	setText('mcp-url', details.mcp.url);
@@ -120,10 +124,12 @@ export function renderNetworkDetails(snapshot) {
 		'/health'
 	);
 	setText('assistant-url', assistantUrl);
-	const link = byId('assistant-url-detail');
-	link.textContent = assistantUrl;
-	link.setAttribute('href', assistantUrl);
-	link.hidden = false;
+	for (const id of ['assistant-url-detail', 'overview-opencode-link']) {
+		const link = byId(id);
+		if (id === 'assistant-url-detail') link.textContent = assistantUrl;
+		link.setAttribute('href', assistantUrl);
+		link.hidden = false;
+	}
 	setText('guardian-url', guardianUrl);
 	setText('guardian-mcp-url-detail', guardianUrl);
 	setText('guardian-health-url-detail', healthUrl);
@@ -136,10 +142,10 @@ export function renderNetworkDetails(snapshot) {
 }
 
 export async function loadDirectPassword(copyOnly) {
-	const verb = copyOnly ? 'copy' : 'reveal';
+	const verb = copyOnly ? 'copy' : 'load';
 	if (
 		!window.confirm(
-			`${verb === 'copy' ? 'Copy' : 'Reveal'} the trusted OpenCode password? It provides full local access.`
+			`${verb === 'copy' ? 'Copy' : 'Load'} the trusted OpenCode password? It provides full local access.`
 		)
 	)
 		return;
@@ -160,7 +166,7 @@ export async function loadClientKey(client, copyOnly) {
 	if (!username) return;
 	if (
 		!window.confirm(
-			`${copyOnly ? 'Copy' : 'Reveal'} the key for ${username}? Its policy controls what this client can do.`
+			`${copyOnly ? 'Copy' : 'Load'} the key for ${username}? Its policy controls what this client can do.`
 		)
 	)
 		return;

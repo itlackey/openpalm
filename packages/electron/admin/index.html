@@ -159,8 +159,9 @@
           <section id="view-overview" class="view-panel ready-only" data-view-panel="overview" hidden aria-labelledby="overview-heading">
             <div class="hero-card ready-hero">
               <div>
-                <h2 id="overview-heading">Your personal agent is ready.</h2>
-                <p>OpenPalm can remember useful context, run recurring work, and connect securely to the apps you already use.</p>
+                <h2 id="overview-heading">Your personal agent</h2>
+                <p>Open your agent, or connect it to an app you already use.</p>
+                <a id="overview-opencode-link" class="primary-link" href="about:blank" target="_blank" rel="noreferrer" hidden>Open OpenCode</a>
               </div>
             </div>
 
@@ -183,18 +184,6 @@
               </article>
             </fieldset>
 
-            <section class="panel" aria-labelledby="runtime-heading">
-              <div class="section-heading">
-                <div><p class="eyebrow">SYSTEM STATUS</p><h2 id="runtime-heading">OpenPalm services</h2></div>
-                <div class="button-row compact">
-                  <button id="start-stack" data-action="start" class="secondary" type="button">Start</button>
-                  <button id="restart-stack" data-action="restart" class="secondary" type="button">Restart</button>
-                  <button id="stop-stack" data-action="stop" class="danger subtle" type="button">Stop</button>
-                </div>
-              </div>
-              <div id="services" class="services" aria-live="polite"></div>
-            </section>
-
             <section class="panel" aria-labelledby="next-heading">
               <div class="section-heading"><div><p class="eyebrow">NEXT STEP</p><h2 id="next-heading">Choose how you want to use your agent</h2></div></div>
               <div class="choice-grid">
@@ -209,7 +198,7 @@
                   <span class="choice-tag protected">Policy protected</span>
                   <h3>Claude Desktop</h3>
                   <p>Use the OpenPalm desktop extension through protected MCP access.</p>
-	                  <button class="primary inline-nav" type="button" data-client-target="claude">Set up Claude Desktop</button>
+	                  <button class="secondary inline-nav" type="button" data-client-target="claude">Set up Claude Desktop</button>
                 </article>
                 <article class="choice-card">
                   <span class="choice-tag protected">Policy protected</span>
@@ -220,8 +209,21 @@
               </div>
             </section>
 
-            <section class="panel" aria-labelledby="preferences-heading">
-              <div class="section-heading"><div><p class="eyebrow">YOUR AGENT</p><h2 id="preferences-heading">Agent preferences</h2></div></div>
+            <section class="panel" aria-labelledby="runtime-heading">
+              <div class="section-heading">
+                <div><p class="eyebrow">SYSTEM STATUS</p><h2 id="runtime-heading">OpenPalm services</h2></div>
+                <div class="button-row compact">
+                  <button id="start-stack" data-action="start" class="secondary" type="button">Start</button>
+                  <button id="restart-stack" data-action="restart" class="secondary" type="button">Restart</button>
+                  <button id="stop-stack" data-action="stop" class="danger subtle" type="button">Stop</button>
+                </div>
+              </div>
+              <div id="services" class="services" aria-live="polite"></div>
+            </section>
+
+            <details id="agent-preferences" class="panel panel-disclosure">
+              <summary id="preferences-heading">Agent preferences</summary>
+
               <form id="preferences-form" class="form-stack" data-managed-form>
                 <label class="check-row"><input id="automatic-memory" type="checkbox" checked /> Automatically remember useful long-term context</label>
                 <p class="help-text">Uses your connected AI provider and AKM to keep useful facts from trusted local OpenCode conversations, not full transcripts. MCP, chat-app, and scheduled conversations are not captured automatically. Turning this off does not erase existing knowledge.</p>
@@ -230,15 +232,16 @@
                 <p class="help-text">Manage experimental Claude Code and Codex remote access in <button class="text-button" type="button" data-view-target="connections">Connections</button>.</p>
                 <button class="secondary" type="submit">Save agent preferences</button>
               </form>
-            </section>
+            </details>
 
-            <section class="prompt-card" aria-labelledby="starter-heading">
-              <div><p class="eyebrow">TRY IT IN YOUR CLIENT</p><h2 id="starter-heading">Start with something useful</h2></div>
+            <details class="panel panel-disclosure">
+              <summary id="starter-heading">Things to try with your agent</summary>
+
               <div class="prompt-list">
                 <p>“Remember that my current project is called Northstar.”</p>
                 <p>“Every weekday at 8 AM, check the news about Northstar and save a short summary.”</p>
               </div>
-            </section>
+            </details>
           </section>
 
           <section id="view-provider" class="view-panel" data-view-panel="provider" hidden aria-labelledby="provider-heading">
@@ -264,22 +267,19 @@
                 <div><h2 id="provider-heading">Connect an AI account</h2></div>
                 <span id="provider-badge" class="status-badge neutral">Not checked</span>
               </div>
-              <p class="section-intro">Use an account you already have. OpenPalm checks a real response before finishing setup.</p>
+              <p class="section-intro">Choose your AI provider and sign in. We’ll check a real response to finish setup.</p>
               <div id="provider-status" class="inline-status neutral" role="status" aria-live="polite">
                 <strong>Checking available providers…</strong>
                 <span>This can take a few seconds after the Assistant starts.</span>
               </div>
-              <div class="button-row">
-                <button id="test-provider" class="secondary" type="button">Verify connection</button>
-                <button id="load-providers" class="text-button" type="button">Refresh accounts</button>
-              </div>
+
 	              <form id="provider-form" class="form-stack">
-	                <label class="field" for="provider-search"><span>Search accounts</span><input id="provider-search" type="search" autocomplete="off" placeholder="Search by name" /></label>
+	                <label class="field" for="provider-search"><span>Find your provider</span><input id="provider-search" type="search" autocomplete="off" placeholder="Search by name" /></label>
 	                <label class="field" for="provider">
-	                  <span>Account provider</span>
+	                  <span>AI provider</span>
 	                  <select id="provider" aria-describedby="provider-help"><option value="">Find providers first</option></select>
 	                </label>
-	                <div class="button-row compact"><button id="show-all-providers" class="text-button" type="button">Show all providers</button></div>
+	                <div class="button-row compact provider-catalog-actions"><button id="show-all-providers" class="text-button" type="button">Show all providers</button><button id="load-providers" class="text-button" type="button">Refresh accounts</button></div>
 	                <p id="provider-help" class="help-text">Connected and common providers appear first. Search or show the full OpenCode catalog for another provider.</p>
 	                <label id="provider-method-field" class="field" for="provider-method" hidden>
 	                  <span>Sign-in method</span>
@@ -302,6 +302,9 @@
 	                  <button id="finish-provider-oauth" class="secondary" type="button" hidden>Finish sign-in and verify</button>
 	                </div>
               </form>
+              <div class="button-row">
+                <button id="test-provider" class="secondary" type="button" hidden>Verify connection</button>
+              </div>
               <details class="disclosure technical-disclosure">
                 <summary>Technical details</summary>
                 <textarea id="provider-result" class="technical-output" readonly spellcheck="false" aria-label="Provider technical details">Provider status has not been checked.</textarea>
@@ -313,12 +316,14 @@
               <div class="disclosure-body">
                 <form id="import-form" class="form-stack">
 	                  <label class="field" for="import-source"><span>Backup or previous OpenPalm home</span><span class="input-action"><input id="import-source" autocomplete="off" placeholder="/path/to/backup" /><button id="choose-import-source" class="secondary" type="button">Choose folder</button></span></label>
+                  <details class="disclosure"><summary>Include sensitive data (optional)</summary>
                   <fieldset class="option-group">
-                    <legend>Include sensitive data</legend>
+                    <legend class="visually-hidden">Include sensitive data</legend>
                     <label class="check-row"><input id="import-auth" type="checkbox" /> Provider authentication</label>
                     <label class="check-row"><input id="import-env" type="checkbox" /> Private user environment</label>
                     <label class="check-row"><input id="import-maps" type="checkbox" /> Portal and OAuth mappings</label>
                   </fieldset>
+                  </details>
                   <div class="button-row">
                     <button id="preview-import" class="secondary" type="button">Preview restore</button>
                     <button id="apply-import" class="primary" type="button" disabled>Apply reviewed restore</button>
@@ -333,7 +338,7 @@
 	          <section id="view-connections" class="view-panel ready-only" data-view-panel="connections" hidden aria-labelledby="connections-heading">
 	            <section id="client-setup" class="panel" aria-labelledby="client-setup-heading">
 	              <div class="section-heading"><div><p class="eyebrow">GUIDED CONNECTION</p><h2 id="client-setup-heading">Connect an app</h2></div></div>
-	              <p class="section-intro">Choose a client to see every value and action it needs. Secrets appear only when you ask to reveal or copy them.</p>
+	              <p class="section-intro">Choose an app for connection instructions. Access keys stay private until you request them.</p>
 	              <fieldset class="segmented-control">
 	                <legend class="visually-hidden">Client setup</legend>
 	                <button class="secondary" type="button" data-client-setup="opencode">OpenCode</button>
@@ -344,12 +349,12 @@
 	              <article id="client-opencode" class="client-panel" data-client-panel="opencode">
 	                <div class="connection-heading"><div><h3>Trusted local OpenCode</h3><p>Direct native access with the Assistant’s full permissions. Keep it on this computer or a trusted private network.</p></div><span class="choice-tag">Full local access</span></div>
 	                <dl class="connection-values">
-	                  <div><dt>Server address</dt><dd><code id="direct-url">Loading…</code><button class="text-button" type="button" data-copy-field="direct-url">Copy</button></dd></div>
+	                  <div><dt>Server address</dt><dd><a id="direct-url" class="endpoint-link" href="about:blank" target="_blank" rel="noreferrer" hidden>Loading…</a><button class="text-button" type="button" data-copy-field="direct-url">Copy</button></dd></div>
 	                  <div><dt>Username</dt><dd><code id="direct-username">opencode</code><button class="text-button" type="button" data-copy-field="direct-username">Copy</button></dd></div>
 	                </dl>
 	                <label class="field" for="direct-password"><span>Password</span><input id="direct-password" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
 	                <div class="button-row compact">
-	                  <button id="load-direct-password" class="secondary" type="button">Reveal password</button>
+	                  <button id="load-direct-password" class="secondary" type="button">Load password</button>
 	                  <button id="copy-direct-password" class="secondary" type="button">Copy password</button>
 	                  <label class="check-row compact"><input id="show-direct-password" type="checkbox" /> Show password</label>
 	                </div>
@@ -365,7 +370,7 @@
 	                    <p id="claude-policy-help" class="help-text">Choose the least access this client needs.</p>
 	                    <dl class="connection-values"><div><dt>Local OpenPalm address</dt><dd><code id="claude-url">Loading…</code><button class="text-button" type="button" data-copy-field="claude-url">Copy</button></dd></div></dl>
 	                    <label class="field" for="claude-key"><span>Access key</span><input id="claude-key" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
-	                    <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="claude">Reveal key</button><button class="secondary" type="button" data-copy-client-key="claude">Copy key</button><label class="check-row compact"><input id="show-claude-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create a dedicated identity</button></div>
+	                    <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="claude">Load key</button><button class="secondary" type="button" data-copy-client-key="claude">Copy key</button><label class="check-row compact"><input id="show-claude-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create a dedicated identity</button></div>
 	                  </div></li>
 	                </ol>
 	              </article>
@@ -378,26 +383,14 @@
 	                <p id="mcp-policy-help" class="help-text">Choose the least access this client needs.</p>
 	                <dl class="connection-values"><div><dt>Streamable HTTP address</dt><dd><code id="mcp-url">Loading…</code><button class="text-button" type="button" data-copy-field="mcp-url">Copy</button></dd></div><div><dt>Authentication</dt><dd><code>Authorization: Bearer &lt;access key&gt;</code></dd></div></dl>
 	                <label class="field" for="mcp-key"><span>Access key</span><input id="mcp-key" type="password" readonly autocomplete="off" placeholder="Load when needed" /></label>
-	                <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="mcp">Reveal key</button><button class="secondary" type="button" data-copy-client-key="mcp">Copy key</button><label class="check-row compact"><input id="show-mcp-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create another identity</button></div>
+	                <div class="button-row compact"><button class="secondary" type="button" data-load-client-key="mcp">Load key</button><button class="secondary" type="button" data-copy-client-key="mcp">Copy key</button><label class="check-row compact"><input id="show-mcp-key" type="checkbox" /> Show key</label><button class="text-button" type="button" data-view-target="access">Create another identity</button></div>
 	              </article>
 	            </section>
 
-            <section id="native-connections" class="panel" aria-labelledby="native-connections-heading">
-              <div class="section-heading"><h2 id="native-connections-heading">Remote coding agents</h2><span class="card-label">Optional</span></div>
-              <p class="section-intro">Experimental: run Claude Code or Codex in your workspace. Host and account support vary. These are separate agents, not remote views of OpenPalm. They use their own accounts and bypass protected-client access policies.</p>
-              <div class="remote-connection-row">
-                <div><h3>Claude Code <span class="card-label">Experimental</span></h3><p>Remote Control with an eligible Claude subscription.</p><span id="claude-remote-status" class="status-badge neutral">Startup off</span></div>
-                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up</button><button class="secondary" type="button" data-remote-connect="claude" disabled>Open session</button><button class="text-button" type="button" data-remote-disable="claude" hidden>Disable startup</button></div>
-              </div>
-              <div class="remote-connection-row">
-                <div><h3>Codex <span class="card-label">Experimental</span></h3><p>ChatGPT account sign-in. Client and host support are required.</p><span id="codex-remote-status" class="status-badge neutral">Startup off</span><p class="help-text">Automatic knowledge recall: <span id="codex-recall-status" class="status-badge neutral">Not checked</span></p><p id="codex-recall-guidance" class="help-text">Review AKM hooks here; no Codex command is needed.</p></div>
-                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up</button><button class="secondary" type="button" data-codex-recall-review>Review knowledge recall</button><button class="secondary" type="button" data-remote-connect="codex" disabled>Get pairing code</button><button class="text-button" type="button" data-remote-disable="codex" hidden>Disable startup</button></div>
-              </div>
-              <p class="help-text">Setup enables startup automatically. Disabling startup keeps your account sign-in; revoke paired devices through the account provider.</p>
-            </section>
+
 
 	            <section class="panel">
-              <div class="section-heading"><div><p class="eyebrow">PROTECTED CLIENTS</p><h2 id="connections-heading">Connections</h2></div></div>
+              <div class="section-heading"><h2 id="connections-heading">Enable connections</h2></div>
               <p class="section-intro">Keep trusted local clients direct. Use protected access when an app or person should receive a specific policy.</p>
 	              <form id="connections-form" class="form-stack" data-managed-form>
                 <article class="connection-card">
@@ -455,8 +448,8 @@
               </form>
             </section>
 
-            <section class="panel" aria-labelledby="tokens-heading">
-              <div class="section-heading"><div><p class="eyebrow">CHAT APP SECRETS</p><h2 id="tokens-heading">Bot tokens</h2></div><span id="token-status" class="status-badge neutral">Not configured</span></div>
+            <details id="portal-tokens" class="panel panel-disclosure">
+              <summary id="tokens-heading"><span>Discord and Slack tokens<small id="token-status" class="status-badge neutral">Not configured</small></span></summary>
               <form id="portal-token-form" class="form-stack">
 	                <label class="field" for="token-portal"><span>Chat app</span><select id="token-portal"><option value="discord">Discord</option><option value="slack">Slack</option></select></label>
 	                <label class="field" for="bot-token"><span id="bot-token-label">Discord bot token</span><input id="bot-token" type="password" autocomplete="off" /></label>
@@ -464,7 +457,21 @@
 	                <p id="token-help" class="help-text">Tokens are stored in private files and are never shown again.</p>
                 <button class="secondary" type="submit">Store tokens privately</button>
               </form>
-            </section>
+            </details>
+
+            <details id="native-connections" class="panel panel-disclosure">
+              <summary id="native-connections-heading"><span>Remote coding agents<small>Experimental · Claude Code and Codex</small></span></summary>
+              <p class="section-intro">Experimental: run Claude Code or Codex in your workspace. Host and account support vary. These are separate agents, not remote views of OpenPalm. They use their own accounts and bypass protected-client access policies.</p>
+              <div class="remote-connection-row">
+                <div><h3>Claude Code <span class="card-label">Experimental</span></h3><p>Remote Control with an eligible Claude subscription.</p><span id="claude-remote-status" class="status-badge neutral">Startup off</span></div>
+                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up</button><button class="secondary" type="button" data-remote-connect="claude" disabled>Open session</button><button class="text-button" type="button" data-remote-disable="claude" hidden>Disable startup</button></div>
+              </div>
+              <div class="remote-connection-row">
+                <div><h3>Codex <span class="card-label">Experimental</span></h3><p>ChatGPT account sign-in. Client and host support are required.</p><span id="codex-remote-status" class="status-badge neutral">Startup off</span><p class="help-text">Automatic knowledge recall: <span id="codex-recall-status" class="status-badge neutral">Not checked</span></p><p id="codex-recall-guidance" class="help-text">Review AKM hooks here; no Codex command is needed.</p></div>
+                <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up</button><button class="secondary" type="button" data-codex-recall-review>Review knowledge recall</button><button class="secondary" type="button" data-remote-connect="codex" disabled>Get pairing code</button><button class="text-button" type="button" data-remote-disable="codex" hidden>Disable startup</button></div>
+              </div>
+              <p class="help-text">Setup enables startup automatically. Disabling startup keeps your account sign-in; revoke paired devices through the account provider.</p>
+            </details>
           </section>
 
           <section id="view-access" class="view-panel ready-only" data-view-panel="access" hidden aria-labelledby="access-heading">
@@ -490,6 +497,8 @@
                 <label class="field" for="credential-policy"><span>Access level</span><select id="credential-policy"><option value="chat">Conversation only</option><option value="read" selected>Read files</option><option value="full">Full control</option></select></label>
                 <button class="primary span-two" type="submit">Create access key</button>
               </form>
+              <details id="key-manager-details" class="disclosure">
+                <summary>Manage an existing access key</summary>
               <div class="key-manager">
                 <label class="field" for="credential-action-name"><span>Identity to manage</span><select id="credential-action-name"></select></label>
                 <div class="button-row">
@@ -498,14 +507,16 @@
                 </div>
                 <label class="field" for="credential-key"><span>Access key</span><input id="credential-key" type="password" readonly autocomplete="off" /></label>
                 <div class="button-row">
-                  <button id="reveal-credential" class="secondary" type="button">Reveal key</button>
+                  <button id="reveal-credential" class="secondary" type="button">Load key</button>
                   <label class="check-row compact"><input id="show-credential-key" type="checkbox" /> Show key</label>
                 </div>
               </div>
+              </details>
             </section>
 
-            <section class="panel" aria-labelledby="mapping-heading">
-              <div class="section-heading"><div><p class="eyebrow">INDIVIDUAL OVERRIDES</p><h2 id="mapping-heading">Chat app users</h2></div></div>
+            <details id="chat-user-access" class="panel panel-disclosure">
+              <summary id="mapping-heading"><span>Individual chat app access<small>Optional overrides for Discord and Slack users</small></span></summary>
+
 	              <p class="section-intro">Map a specific Discord or Slack user to a different access key than the app default. A mapping selects policy; it never grants portal access. The user must still pass every configured allowlist.</p>
               <form id="mapping-form" class="field-grid three-column">
                 <label class="field" for="mapping-portal"><span>Chat app</span><select id="mapping-portal"><option value="discord">Discord</option><option value="slack">Slack</option></select></label>
@@ -514,7 +525,7 @@
                 <button class="secondary span-three" type="submit">Save user access</button>
               </form>
               <div id="mappings" class="mapping-list" aria-live="polite"></div>
-            </section>
+            </details>
           </section>
 
           <section id="view-backup" class="view-panel ready-only" data-view-panel="backup" hidden aria-labelledby="backup-heading">
@@ -523,12 +534,14 @@
               <p class="section-intro">Save your knowledge, workspace, settings, and task definitions to a new or empty directory. Runtime data is intentionally left out.</p>
               <form id="backup-form" class="form-stack">
 	                <label class="field" for="backup-destination"><span>Backup directory</span><span class="input-action"><input id="backup-destination" autocomplete="off" placeholder="/path/to/openpalm-backup" /><button id="choose-backup-destination" class="secondary" type="button">Choose folder</button></span></label>
-                <fieldset class="option-group">
-                  <legend>Include sensitive data</legend>
+                <details class="disclosure"><summary>Include sensitive data (optional)</summary>
+                  <fieldset class="option-group">
+                  <legend class="visually-hidden">Include sensitive data</legend>
                   <label class="check-row"><input id="backup-auth" type="checkbox" /> Provider authentication</label>
                   <label class="check-row"><input id="backup-env" type="checkbox" /> Private user environment</label>
                   <label class="check-row"><input id="backup-maps" type="checkbox" /> Portal and OAuth mappings</label>
                 </fieldset>
+                  </details>
                 <button class="primary" type="submit">Create backup</button>
               </form>
               <div id="backup-summary" class="inline-status neutral"><strong>No backup created yet.</strong><span>Choose a new or empty directory to begin.</span></div>
@@ -599,7 +612,7 @@
         <details id="remote-output-details" class="disclosure"><summary>Private sign-in and connection details</summary><textarea id="remote-output" class="technical-output log-output" readonly spellcheck="false" aria-label="Private native sign-in and consent output"></textarea><p class="help-text">Keep these codes and links private. If the browser does not open, use the link here.</p></details>
         <label id="remote-answer-field" class="field" for="remote-answer" hidden><span id="remote-answer-label">Sign-in code</span><input id="remote-answer" type="password" autocomplete="off" maxlength="2048" /></label>
         </div>
-        <div class="button-row"><button id="remote-begin" type="submit">Continue</button><button id="remote-send" class="secondary" type="button" disabled hidden>Send answer</button><button id="remote-cancel" class="secondary" type="button">Cancel</button></div>
+        <div class="button-row"><button id="remote-begin" class="primary" type="submit">Continue</button><button id="remote-send" class="secondary" type="button" disabled hidden>Send answer</button><button id="remote-cancel" class="secondary" type="button">Cancel</button></div>
       </form>
     </dialog>
 

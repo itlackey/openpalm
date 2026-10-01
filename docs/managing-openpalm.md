@@ -29,6 +29,23 @@ selected at its new location; Admin does not recreate it automatically.
 
 Remote instance management over SSH is not implemented yet.
 
+### Find settings in Admin
+
+Overview offers **Open OpenCode** and connection choices first. Expand
+**Agent preferences** for automatic memory and scheduling timezone settings.
+In **Connections**, choose an app for its connection instructions, then use
+**Enable connections** to configure Guardian, Discord, or Slack. **Discord and
+Slack tokens** and experimental **Remote coding agents** are collapsed until
+needed. Missing-token guidance opens the correct token form automatically.
+
+In **People & access**, choose **Manage** beside an identity to open its key
+controls, or expand **Manage an existing access key** directly. **Load key**
+and **Load password** retrieve the value but keep it masked; **Show** makes it
+visible, and **Copy** copies it where offered. **Individual chat app access**
+contains optional per-user policy mappings. Backup and restore keep sensitive
+data opt-ins under **Include sensitive data (optional)**; they remain off by
+default.
+
 ### Select an instance in CLI
 
 Commands act on `OP_HOME` (default `~/.openpalm`), not whichever instance was
