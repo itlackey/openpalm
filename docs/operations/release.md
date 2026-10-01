@@ -33,6 +33,13 @@ schedule.
 
 ## Gate
 
+Codex and Claude Code native remote access remain explicitly experimental
+in 0.14.0, including its stable release. They remain optional and default-off.
+Their documented host/account limitations and unverified vendor-client paths
+must not be advertised as stable capabilities. Promotion is a separate future
+release decision after real sign-in, tool execution, approvals, and reconnect
+acceptance. Their failure isolation and normal security gates remain required.
+
 Run locally:
 
 ```bash

@@ -35,6 +35,9 @@ describe('CLI help', () => {
 		expect(helpText('provider')).toContain('login');
 		expect(helpText('import')).toContain('--dry-run');
 		expect(helpText('task')).toContain('create <id>');
+		for (const command of ['remote', 'setup', 'config']) {
+			expect(helpText(command)).toContain('Codex and Claude Code native remote access is experimental');
+		}
 	});
 	it('shows nested remote help without running setup or requiring a tool', async () => {
 		const output = spyOn(console, 'log').mockImplementation(() => {});
@@ -43,6 +46,7 @@ describe('CLI help', () => {
 			await main(['remote', 'enable', 'claude', '--help']);
 			expect(output).toHaveBeenCalledTimes(2);
 			expect(output.mock.calls[0]?.[0]).toContain('remote enable');
+			expect(output.mock.calls[1]?.[0]).toContain('experimental');
 		} finally {
 			output.mockRestore();
 		}

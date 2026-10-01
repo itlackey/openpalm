@@ -1,4 +1,9 @@
-# Optional Codex and Claude Code remote sessions
+# Experimental Codex and Claude Code remote sessions
+
+Both integrations remain experimental in 0.14.0.
+They are optional and default-off, with host, account, and client limitations.
+Only a future release with explicit end-to-end validation may remove that label.
+This status does not apply to the core OpenPalm agent or Claude Desktop MCPB.
 
 Available in `0.14.0-alpha.3` and later. Updating source alone does not update
 a running installation's CLI or image; install the release CLI and run `update`.
@@ -69,7 +74,7 @@ resolve it. Do not disable the sandbox or make Assistant privileged as a
 workaround. See the [verification record](operations/release.md#alpha3-published-artifact-verification-record)
 and [OpenAI's sandbox requirements](https://learn.chatgpt.com/docs/sandboxing).
 
-## Claude Code Remote Control
+## Claude Code Remote Control (experimental)
 
 ```sh
 openpalm remote enable claude

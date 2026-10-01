@@ -6,6 +6,12 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Changed
+
+- Both Codex and Claude Code native remote access remain experimental in
+  0.14.0, with consistent Admin, CLI, and documentation labels. They remain
+  optional and default-off; promotion requires a future validated release.
+
 ### Fixed
 
 - Shared Assistant instructions distinguish chat/read restrictions from

@@ -195,7 +195,7 @@
                 <p class="help-text">Uses your connected AI provider and AKM to keep useful facts from trusted local OpenCode conversations, not full transcripts. MCP, chat-app, and scheduled conversations are not captured automatically. Turning this off does not erase existing knowledge.</p>
                 <label class="field" for="agent-timezone"><span>Timezone for recurring work</span><input id="agent-timezone" autocomplete="off" required placeholder="America/Chicago" aria-describedby="timezone-help" /></label>
                 <p id="timezone-help" class="help-text">Starts with this computer’s timezone. Use a timezone such as America/Chicago or Europe/London. After downtime, tasks resume at their next scheduled time; missed runs are not replayed.</p>
-                <p class="help-text">Manage optional Claude Code and Codex remote access in <button class="text-button" type="button" data-view-target="connections">Connections</button>.</p>
+                <p class="help-text">Manage experimental Claude Code and Codex remote access in <button class="text-button" type="button" data-view-target="connections">Connections</button>.</p>
                 <button class="secondary" type="submit">Save agent preferences</button>
               </form>
             </section>
@@ -352,9 +352,9 @@
 
             <section id="native-connections" class="panel" aria-labelledby="native-connections-heading">
               <div class="section-heading"><h2 id="native-connections-heading">Remote coding agents</h2><span class="card-label">Optional</span></div>
-              <p class="section-intro">Run Claude Code or Codex in your workspace. These are separate agents, not remote views of OpenPalm. They use their own accounts and bypass protected-client access policies.</p>
+              <p class="section-intro">Experimental: run Claude Code or Codex in your workspace. Host and account support vary. These are separate agents, not remote views of OpenPalm. They use their own accounts and bypass protected-client access policies.</p>
               <div class="remote-connection-row">
-                <div><h3>Claude Code</h3><p>Remote Control with an eligible Claude subscription.</p><span id="claude-remote-status" class="status-badge neutral">Startup off</span></div>
+                <div><h3>Claude Code <span class="card-label">Experimental</span></h3><p>Remote Control with an eligible Claude subscription.</p><span id="claude-remote-status" class="status-badge neutral">Startup off</span></div>
                 <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up</button><button class="secondary" type="button" data-remote-connect="claude" disabled>Open session</button><button class="text-button" type="button" data-remote-disable="claude" hidden>Disable startup</button></div>
               </div>
               <div class="remote-connection-row">

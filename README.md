@@ -102,9 +102,11 @@ openpalm connect remote
 
 Secret values are omitted unless `--show-key` is explicitly requested.
 
-Optional [Codex and Claude Code remote coding sessions](docs/native-remote-access.md)
+Experimental [Codex and Claude Code remote coding sessions](docs/native-remote-access.md)
 have independent, default-off startup switches. They use native vendor sign-in
 and trusted workspace access, not Guardian policies or OpenCode sessions.
+Both remain experimental in 0.14.0; host/account limitations do not affect
+the core OpenPalm agent or Claude Desktop MCP access.
 Alpha.4 provides guided `openpalm remote enable claude|codex` and Admin
 sign-in/trust setup. The next release adds guided AKM recall approval in Codex
 setup/Admin, without requiring a manual `/hooks` command. See the guide for

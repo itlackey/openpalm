@@ -44,7 +44,9 @@ knowledge, natural-language recurring work, and access from a familiar client.
 
 - **Assistant** is the only default container. It includes OpenCode, AKM, and supercronic.
   Pinned Codex and Claude Code CLIs are image-baked optional native remote
-  workers, both default-off, with no new ports, services, or startup installs.
+  workers, both experimental in 0.14.0 and default-off, with no new
+  ports, services, or startup installs. Promotion requires a future release
+  and explicit end-to-end validation.
 - **Guardian** is optional. It exposes `/health`, MCP at `/mcp`, and RFC 9728
   protected-resource metadata when OAuth is enabled.
 - **Portal** is one private package/image with Discord and Slack adapters. Both call Guardian through MCP.

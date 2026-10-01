@@ -163,10 +163,10 @@ export function bindRemoteEvents() {
 				? 'Automatic knowledge recall for Codex'
 				: connectionOnly
 					? tool === 'claude'
-						? 'Open Claude remote session'
-						: 'Get Codex pairing code'
+						? 'Open Claude remote session (experimental)'
+						: 'Get Codex pairing code (experimental)'
 					: tool === 'claude'
-						? 'Enable Claude Remote Control'
+						? 'Enable Claude Remote Control (experimental)'
 						: 'Enable Codex remote (experimental)';
 			byId('remote-trust-field').hidden = connectionOnly || recallOnly;
 			byId('remote-trust').required = !connectionOnly && !recallOnly;

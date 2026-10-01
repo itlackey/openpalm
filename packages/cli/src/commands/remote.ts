@@ -66,7 +66,7 @@ export async function enableRemote(
 	const reader = createInterface({ input: process.stdin, output: process.stdout });
 	try {
 		console.log(
-			'This enables a separate native coding agent with trusted workspace and knowledge access, bypassing Guardian. Your OpenCode provider login is not reused.'
+			'Experimental: this enables a separate native coding agent with trusted workspace and knowledge access, bypassing Guardian. Host and account support vary. Your OpenCode provider login is not reused.'
 		);
 		if (
 			!options.trust &&
@@ -147,7 +147,7 @@ export async function enableRemote(
 const enable = defineCommand({
 	meta: {
 		name: 'enable',
-		description: 'Guide native sign-in, trust, sandbox checks, and remote startup'
+		description: 'Guide experimental native sign-in, trust, sandbox checks, and remote startup'
 	},
 	args: {
 		tool: { type: 'positional', required: true, description: 'codex or claude' },
@@ -259,7 +259,7 @@ function command(action: 'setup' | 'pair' | 'status' | 'logs') {
 	return defineCommand({
 		meta: {
 			name: action,
-			description: `${action} a vendor-native remote coding agent (not Guardian MCP)`
+			description: `${action} an experimental vendor-native remote coding agent (not Guardian MCP)`
 		},
 		args: { tool: { type: 'positional', required: true, description: 'codex or claude' } },
 		run: defineAction(async ({ args }) => {
@@ -283,7 +283,7 @@ function command(action: 'setup' | 'pair' | 'status' | 'logs') {
 						'Remote setup needs an interactive terminal for native sign-in and consent.'
 					);
 				console.log(
-					'This grants trusted native workspace access, bypassing Guardian. Your OpenCode provider login is not reused.'
+					'Experimental: this grants trusted native workspace access, bypassing Guardian. Host and account support vary. Your OpenCode provider login is not reused.'
 				);
 				if (tool === 'claude')
 					console.log(
@@ -336,7 +336,7 @@ function command(action: 'setup' | 'pair' | 'status' | 'logs') {
 export default defineCommand({
 	meta: {
 		name: 'remote',
-		description: 'Set up optional native Codex / Claude Code remote sessions'
+		description: 'Set up experimental native Codex / Claude Code remote sessions'
 	},
 	subCommands: {
 		enable,

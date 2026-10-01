@@ -69,11 +69,11 @@ export default defineCommand({
 		method: { type: 'string', description: 'OpenCode login method label' },
 		'claude-remote': {
 			type: 'boolean',
-			description: 'Guide Claude Remote Control sign-in after provider setup'
+			description: 'Guide experimental Claude Remote Control sign-in after provider setup'
 		},
 		'codex-remote': {
 			type: 'boolean',
-			description: 'Guide Codex remote sign-in after provider setup'
+			description: 'Guide experimental Codex remote sign-in after provider setup'
 		}
 	},
 	run: defineAction(async ({ args }) => {

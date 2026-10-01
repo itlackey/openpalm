@@ -127,7 +127,7 @@ export function helpText(command?: string): string {
 	if (command) {
 		const usage = COMMAND_USAGE[command];
 		if (!usage) throw new Error(`Unknown command: ${command}`);
-		return `Usage: ${usage}\n`;
+		return `Usage: ${usage}\n${['remote', 'setup', 'config'].includes(command) ? 'Codex and Claude Code native remote access is experimental; host and account support vary.\n' : ''}`;
 	}
 	return [
 		'OpenPalm — manage your self-hosted personal agent',
@@ -140,6 +140,7 @@ export function helpText(command?: string): string {
 		),
 		'',
 		'Run `openpalm help <command>` for command usage.',
+		'Codex and Claude Code native remote access is experimental.',
 		'Run `openpalm --version` for the installed version.'
 	].join('\n');
 }

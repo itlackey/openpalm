@@ -211,6 +211,20 @@ describe('Admin static security boundary', () => {
 		expect(remoteStageText({ error: 'Native failure' })).toBe('Native failure');
 	});
 
+	it('labels both native remote workers experimental without labeling Claude Desktop MCP', () => {
+		for (const name of ['Claude Code', 'Codex'])
+			expect(html).toContain(`<h3>${name} <span class="card-label">Experimental</span></h3>`);
+		expect(html).toContain('<h3>Claude Desktop</h3>');
+		for (const tool of ['claude', 'codex']) {
+			const button = new Control();
+			button.dataset.remoteConnect = tool;
+			selector('[data-remote-enable], [data-remote-connect], [data-codex-recall-review]', button);
+			bindRemoteEvents();
+			button.listeners.get('click')?.({});
+			expect(control('remote-heading').textContent).toContain('(experimental)');
+		}
+	});
+
 	it('requires explicit remote trust, reports setup failure, and clears native answers before IPC', async () => {
 		const button = new Control();
 		button.dataset.remoteEnable = 'claude';
@@ -231,6 +245,7 @@ describe('Admin static security boundary', () => {
 		bindRemoteEvents();
 		button.listeners.get('click')?.({});
 		expect(control('remote-dialog').open).toBe(true);
+		expect(control('remote-heading').textContent).toBe('Enable Claude Remote Control (experimental)');
 		expect(control('remote-trust').checked).toBe(false);
 		expect(control('remote-sandbox-field').hidden).toBe(true);
 		expect(control('remote-prompts').hidden).toBe(true);

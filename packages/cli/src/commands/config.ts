@@ -105,7 +105,7 @@ const assistant = defineCommand({
 		},
 		'claude-remote': {
 			type: 'string',
-			description: 'native Claude Code Remote Control startup: on or off'
+			description: 'experimental native Claude Code Remote Control startup: on or off'
 		},
 		apply: {
 			type: 'boolean',
@@ -137,7 +137,7 @@ const assistant = defineCommand({
 			config.assistant[field] = args[flag] === 'on';
 			if (config.assistant[field])
 				console.warn(
-					`${field}: trusted native workspace access bypasses Guardian. Run openpalm remote setup ${field === 'codexRemote' ? 'codex' : 'claude'} first; a toggle cannot sign in or accept vendor consent.`
+					`${field} (experimental): trusted native workspace access bypasses Guardian. Run openpalm remote setup ${field === 'codexRemote' ? 'codex' : 'claude'} first; a toggle cannot sign in or accept vendor consent.`
 				);
 		}
 		if (args.port) config.assistant.port = Number(args.port);

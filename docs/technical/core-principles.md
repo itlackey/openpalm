@@ -52,8 +52,10 @@ vendor-native remote coding sessions. Both startup switches default off. These
 are separate trusted agents sharing `/work`, not OpenCode session transports or
 Guardian clients. They add no service, profile, inbound port, or startup install.
 Their own account sign-in and consent stay native; OpenPalm never copies host
-logins or accepts workspace trust on the user's behalf. Codex remote control is
-experimental and client/account availability is an upstream constraint.
+logins or accepts workspace trust on the user's behalf. Both Codex and Claude
+Code remote access remain experimental in 0.14.0; only a future release
+with explicit end-to-end validation can promote them. Host support and
+client/account availability are constraints, not core-agent readiness claims.
 
 CLI and Admin share a guided native onboarding flow. It temporarily pauses the
 selected remote worker, opens only allowlisted vendor sign-in/pairing URLs,
