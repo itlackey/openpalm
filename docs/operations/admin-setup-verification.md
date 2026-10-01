@@ -101,10 +101,10 @@ saves native approval through real IPC, verifies **Ready** after container
 recreation, and turns it off to **Installed** without enabling remote startup or
 using a vendor account. A dedicated recall screenshot is retained in the report.
 Image smoke separately changes definitions and verifies **Approval needed** plus
-stale-review rejection. These checks require the unreleased guided-recall image,
+stale-review rejection. These checks require the beta.1 guided-recall image,
 not just a new Admin bundle pointed at the published alpha.4 image.
 
-### Guided-recall verification receipt (unreleased)
+### Guided-recall verification receipt (beta.1 candidate)
 
 The October 1, 2026 Linux walkthrough used an isolated Assistant image built
 from the guided-recall checkout, real Electron IPC, and a disposable home. It

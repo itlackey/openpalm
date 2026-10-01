@@ -13,7 +13,7 @@ alpha.4. They require both the matching CLI/Admin and
 an Assistant image containing `openpalm-remote-setup`; the published alpha.3
 still uses the manual `remote setup` flow documented under advanced controls.
 
-Guided AKM recall approval is an unreleased addition after alpha.4 and requires
+Guided AKM recall approval is available in beta.1 and later and requires
 the matching CLI/Admin and Assistant image with `openpalm-codex-recall.mjs`.
 Updating only Admin or CLI cannot add the helper to a running alpha.4 image.
 

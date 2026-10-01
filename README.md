@@ -108,7 +108,7 @@ and trusted workspace access, not Guardian policies or OpenCode sessions.
 Both remain experimental in 0.14.0; host/account limitations do not affect
 the core OpenPalm agent or Claude Desktop MCP access.
 Alpha.4 provides guided `openpalm remote enable claude|codex` and Admin
-sign-in/trust setup. The next release adds guided AKM recall approval in Codex
+sign-in/trust setup. Beta.1 adds guided AKM recall approval in Codex
 setup/Admin, without requiring a manual `/hooks` command. See the guide for
 version requirements and sandbox checks.
 

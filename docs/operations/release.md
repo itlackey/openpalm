@@ -117,6 +117,24 @@ requests, `main`, and `release/*`.
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
 
+## Beta.1 candidate verification record
+
+The beta includes guided native Codex recall approval, policy-aware shared
+Assistant instructions, and explicit experimental labeling of both Codex and
+Claude Code remote access. Local package tests, type checks, lint, CLI/Admin
+builds, real three-harness recall, and Electron/Docker native-approval persistence
+passed. The real Discord owner mapping was checked through the same portal MCP
+client and a completed `remote-full` tool invocation; the operator also confirmed
+that the Discord conversation worked afterward. Default chat policy and the
+operator's portal allowlist stayed unchanged. Private user mappings are not
+part of the release or repository.
+
+These checks do not claim authenticated vendor remote-session acceptance. That
+feature remains experimental and default-off, with the documented Codex
+host-sandbox limitation. Publication must still pass GitHub's complete dry-run
+and live release gates for the exact beta candidate; prior-alpha artifact
+verification is not proof of beta publication.
+
 ## Alpha.4 candidate verification record
 
 The 2026-10-01 local Linux x64 candidate passed the full package/security suite,

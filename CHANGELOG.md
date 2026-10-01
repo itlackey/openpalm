@@ -6,6 +6,11 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+## [0.14.0-beta.1] - 2026-10-01
+
+Testing prerelease of the lean personal-agent stack. Moving from 0.13 requires
+a fresh installation and the previewable importer, not an in-place upgrade.
+
 ### Changed
 
 - Both Codex and Claude Code native remote access remain experimental in
