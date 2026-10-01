@@ -31,12 +31,15 @@ Remote instance management over SSH is not implemented yet.
 
 ### Find settings in Admin
 
-Overview offers **Open OpenCode** and connection choices first. Expand
-**Agent preferences** for automatic memory and scheduling timezone settings.
-In **Connections**, choose an app for its connection instructions, then use
-**Enable connections** to configure Guardian, Discord, or Slack. **Discord and
-Slack tokens** and experimental **Remote coding agents** are collapsed until
-needed. Missing-token guidance opens the correct token form automatically.
+Overview offers **Open OpenCode**, **Connect an app**, and concise service status.
+In **Agent settings**, expand **Memory & recurring work** for automatic memory
+and the scheduling timezone. In **Connections**, choose an app for its connection
+instructions. Claude Desktop and other MCP apps expose **Guardian MCP settings**;
+expand **Chat apps** to configure Discord or Slack alongside its tokens,
+allowlist, and default access identity. Experimental **Remote coding agents**
+and **Advanced network settings** are collapsed until needed. Missing-token
+guidance opens the correct token form automatically. **System** groups portable
+backups, installation details, and logs.
 
 In **People & access**, choose **Manage** beside an identity to open its key
 controls, or expand **Manage an existing access key** directly. **Load key**
@@ -123,7 +126,7 @@ filters reduce risk, but do not guarantee detection of every secret: never
 paste credentials into a conversation. Guardian, scheduled, and internal
 sessions do not automatically write personal memory.
 
-Turn **Automatic personal memory** off in Admin Agent preferences, or set
+Turn **Automatic personal memory** off in **Agent settings → Memory & recurring work**, or set
 `assistant.automaticMemory` to `false` in `state/stack.json` and restart with
 `openpalm start`. This stops new automatic capture, not explicit `remember`
 requests, and does not erase existing memories. OpenCode's own conversation
@@ -138,7 +141,7 @@ plugin path rather than asking you to configure another provider credential or
 endpoint. The wrapper keeps AKM's normal discovery, recall, and remember tools.
 
 Schedules use the host timezone detected at installation. Set an IANA zone
-such as `America/Chicago` in Admin Agent preferences or
+such as `America/Chicago` in **Agent settings → Memory & recurring work** or
 `assistant.timezone` in `state/stack.json`; `openpalm start` applies it. Daylight
 saving follows that zone. After downtime, future schedule slots resume without
 replaying missed runs. If the scheduler dies, the Assistant service restarts
@@ -194,7 +197,7 @@ For separate native Codex or Claude Code remote coding sessions, see
 connections bypass Guardian and require the respective vendor's native sign-in.
 The unreleased guided `openpalm remote enable claude|codex` flow combines stack
 configuration, browser sign-in, explicit native trust/consent, and prerequisite
-checks. Admin offers the same flow under agent preferences and Connections.
+checks. Admin offers the same flow under **Connections → Remote coding agents**.
 
 Policies are:
 
@@ -339,8 +342,10 @@ client. Default installation does not ask for ports or bind addresses; those
 choices remain under **Advanced network settings**. Admin does not report the
 agent as ready until a real provider request succeeds.
 
-After setup, task-based views separate **Overview**, **AI provider**,
-**Connections**, **People & access**, **Backup**, and **Troubleshooting**.
+After setup, five task-based views separate **Overview**, **Agent settings**,
+**Connections**, **People & access**, and **System**. Optional settings and
+technical explanations expand only when needed; important consent and access
+warnings remain visible.
 Admin supports API-key provider setup, detects existing OpenCode sign-ins,
 creates and rotates named access keys, maps Discord and Slack identities,
 configures portal allowlists and tokens, previews restores, creates portable

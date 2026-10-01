@@ -246,16 +246,16 @@ Use this process for release-candidate inspection or a provider OAuth flow.
 
    A rejected sign-in must show **OpenPalm could not verify this provider** and
    remain in setup. A successful real request must open **Overview**, show
-   **Your personal agent is ready**, and offer OpenCode, Claude Desktop, and
-   another MCP app as connection choices. Technical details may contain the
+   a primary **Open OpenCode** action and service status. Find app-specific
+   instructions in **Connections**. Technical details may contain the
    real provider/model but must not be the primary status.
 
-6. In Overview, expand **Agent preferences** and change to a different IANA timezone
+6. In **Agent settings**, expand **Memory & recurring work** and change to a different IANA timezone
    and turn automatic memory off. Save, wait for the restart, and refresh.
    Confirm both settings remain saved. Turning memory off must not remove
    existing knowledge. Re-enable it when testing the memory acceptance path.
 
-   Follow each connection choice and confirm its guided panel is complete:
+   In **Connections**, select each app and confirm its guided panel is complete:
 
    - OpenCode shows a clickable server address, username `opencode`, and explicit
      **Load password**, **Show password**, and **Copy password** actions;
@@ -265,24 +265,24 @@ Use this process for release-candidate inspection or a provider OAuth flow.
      named identity, and key actions.
 
 7. In **Connections**, enable **Guardian MCP**, leave its loopback default
-   unless the test needs another port under **Troubleshooting → Network
-   settings**, and choose **Save connections**. Confirm Assistant and Guardian
+   unless the test needs another port under **Advanced network settings**.
+   Expand **Guardian MCP settings** and choose **Save MCP access**. Confirm Assistant and Guardian
    both show **Running normally**.
 
-   In **Troubleshooting**, confirm the network labels say **Guardian MCP bind
+   In **Connections → Advanced network settings**, confirm the labels say **Guardian MCP bind
    address / port**, and the copy actions provide full `/mcp` and `/health`
    URLs. The page must explain that Guardian is an API, not a website, and
    that credentials select policies. The health endpoint returns JSON; a
    `not_found` response at its base address is expected. With Guardian disabled,
    the page must not imply these endpoints are active.
 
-   Under **Installation details**, Tab to **Trusted OpenCode address** and
+   Under **System → Installation details**, Tab to **Trusted OpenCode address** and
    press Enter, then click the link. Both should open the configured address
    in your browser without navigating Admin away from its local page. No
    password belongs in the link; retrieve it through the explicit Connections
    actions if the browser asks. Direct access still bypasses Guardian.
 
-8. Open **People & access**. Create `manual-reader` with **Read files** access.
+8. Open **People & access → Create an access key**. Create `manual-reader` with **Read files** access.
    Add a Discord identity override from a valid test platform user ID to
    `manual-reader`. The portal itself does not need to be enabled for this
    registry test.
@@ -364,6 +364,46 @@ the free provider rejected readiness, setup correctly remained incomplete,
 and management used the explicit disposable-home fixture. This is UI and
 management verification, not a new provider-authentication sign-off. Isolated
 test containers were removed; private test homes and evidence were retained.
+
+### Verified final layout and usability refinement: 2026-10-01
+
+An information-architecture reviewer, a visual-design reviewer, and an independent
+accessibility/cognitive-load reviewer approved the revised rendered layouts with
+no remaining blocking findings. Their review used the AKM measurable UX rubric,
+[Nielsen's usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/),
+and W3C guidance for [reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)
+and [visible focus](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html).
+
+Five views now group tasks: Overview, Agent settings, Connections, People & access,
+and System. The duplicate connection catalog and “Things to try” section are
+removed. Optional configuration is collapsed; provider verification precedes it.
+Chat-app tokens, allowlists, and default identities are together. Migration
+omissions use concise status rows with expandable detail. Consent stays explicit.
+
+The complete provider-free Electron/Docker walkthrough passed startup recovery,
+reviewed portable restore, credential/mapping persistence, authenticated Guardian
+MCP, native recall approval, two-instance isolation, and stable window dimensions.
+Reports record actual viewports: normal 1120×780, narrow 640×640, and effective
+320×320 at 200% zoom for consent. Real Tab, Shift+Tab, Enter and Space exercise
+native navigation; Escape closes consent and restores trigger focus. Both consent
+labels are fully readable when scrolled into view, and both 44px actions remain
+reachable. Review caught a sticky-footer overlap that automated scanning missed;
+actions now remain in normal flow. Only the test harness resizes the window.
+
+The test-only pinned axe-core dependency scans every capture. The completed
+review reported no violations; unresolved contrast checks remain recorded in
+`visualAudits.incomplete`, including decorative glyphs and offscreen modal text.
+This is scoped usability acceptance, not formal WCAG certification or a substitute
+for screen-reader and other-OS testing. Minor nonblocking follow-ups are a create-key
+shortcut near the identity list and suppressing transient startup notices alongside
+provider errors. The provider-free fixture proves truthful failure, not successful
+provider authentication or subscription remote sign-in. The separate provider-backed
+receipt below records the earlier live-provider acceptance.
+
+The final walkthrough report and 26 screenshots are retained at
+`/tmp/openpalm-admin-e2e-artifacts-pdB5oR/` on the verification host. Disposable
+test containers were removed; private homes were retained. The existing Splinter
+instance was not changed.
 
 ### Verified instance welcome and stable window size: 2026-10-01
 

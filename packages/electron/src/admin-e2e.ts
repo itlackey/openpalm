@@ -1,4 +1,5 @@
 import { app, dialog, shell, type BrowserWindow } from 'electron';
+import axe from 'axe-core';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -14,6 +15,92 @@ import { installFromAdmin } from './admin-domain.js';
 import { adminSnapshot, createAdminWindow, registerAdminIpc, runAdminAction } from './admin-app.js';
 
 type RendererWaitState = { ready: boolean; error: string };
+
+const visualAudits: Array<Record<string, unknown>> = [];
+
+async function sizeViewport(
+	window: BrowserWindow,
+	width: number,
+	height: number,
+	zoom = 1
+): Promise<void> {
+	window.webContents.setZoomFactor(zoom);
+	window.setContentSize(width, height);
+	await waitForRenderer(
+		window,
+		`Math.abs(innerWidth - ${width / zoom}) < 2 && Math.abs(innerHeight - ${height / zoom}) < 2`,
+		'actual test viewport dimensions',
+		10_000,
+		true
+	);
+}
+
+async function keyboardNavigation(window: BrowserWindow): Promise<void> {
+	const press = async (keyCode: string, modifiers: Array<'shift'> = []) => {
+		window.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+		if (keyCode === 'Return' || keyCode === 'Space')
+			window.webContents.sendInputEvent({ type: 'char', keyCode, modifiers });
+		window.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+		await window.webContents.executeJavaScript(
+			'new Promise(resolve => requestAnimationFrame(resolve))'
+		);
+	};
+	await window.webContents.executeJavaScript(
+		'document.body.tabIndex=-1; document.body.focus(); window.scrollTo(0,0)'
+	);
+	// Traverse from document start with actual keyboard events, not programmatic focus.
+	await waitForRenderer(
+		window,
+		"!document.querySelector('#mobile-navigation').open",
+		'collapsed narrow navigation',
+		10_000,
+		true
+	);
+	await press('Tab');
+	await press('Tab');
+	assert(
+		await window.webContents.executeJavaScript(
+			"document.activeElement?.id === 'mobile-navigation-label'"
+		),
+		'Keyboard did not reach collapsed navigation after the skip link.'
+	);
+	await press('Return');
+	assert(
+		await window.webContents.executeJavaScript("document.querySelector('#mobile-navigation').open"),
+		'Enter did not expand navigation.'
+	);
+	await press('Space');
+	assert(
+		await window.webContents.executeJavaScript(
+			"!document.querySelector('#mobile-navigation').open"
+		),
+		'Space did not collapse navigation.'
+	);
+	await press('Tab', ['shift']);
+	assert(
+		await window.webContents.executeJavaScript("document.activeElement?.id === 'skip-link'"),
+		'Reverse traversal did not reach the skip link.'
+	);
+	await press('Tab');
+	await press('Return');
+	await press('Tab');
+	await press('Tab');
+	await press('Tab');
+	assert(
+		await window.webContents.executeJavaScript(
+			"document.activeElement?.dataset.view === 'connections'"
+		),
+		'Navigation task order is inconsistent.'
+	);
+	await press('Return');
+	assert(
+		await window.webContents.executeJavaScript(
+			"!document.querySelector('#mobile-navigation').open && !document.querySelector('#view-connections').hidden && document.activeElement?.id === 'view-title'"
+		),
+		'Selecting a page did not close navigation and focus its heading.'
+	);
+	visualAudits.push({ keyboard: 'Tab, Shift+Tab, Enter, Space, page selection', passed: true });
+}
 
 function requiredEnvironment(name: string): string {
 	const value = process.env[name]?.trim();
@@ -81,10 +168,10 @@ async function waitForRenderer(
 			await new Promise((resolve) => setTimeout(resolve, 100));
 			continue;
 		}
-		const state = (await window.webContents.executeJavaScript(`(() => {
+		const state = (await window.webContents.executeJavaScript(`(async () => {
 			const notice = document.querySelector('#notice');
 			return {
-				ready: Boolean(${expression}),
+				ready: Boolean(await (${expression})),
 				error: notice && !notice.hidden && notice.classList.contains('error') ? notice.textContent || 'Unknown Admin error' : ''
 			};
 		})()`)) as RendererWaitState;
@@ -92,7 +179,13 @@ async function waitForRenderer(
 		if (state.ready) return;
 		await new Promise((resolve) => setTimeout(resolve, 250));
 	}
-	throw new Error(`Timed out waiting for ${description}.`);
+	const diagnostics = await window.webContents.executeJavaScript(`({
+		busy: document.body.dataset.busy,
+		notice: document.querySelector('#notice-message')?.textContent,
+		importSummary: document.querySelector('#import-summary')?.textContent,
+		importDisabled: document.querySelector('#apply-import')?.disabled
+	})`);
+	throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(diagnostics)}.`);
 }
 
 async function capture(
@@ -102,6 +195,7 @@ async function capture(
 	preserveFocus = false
 ): Promise<string> {
 	const path = join(directory, name);
+	progress(`capturing ${name}`);
 	if (!preserveFocus)
 		await window.webContents.executeJavaScript(
 			'document.activeElement?.blur(); window.scrollTo(0, 0)'
@@ -111,6 +205,21 @@ async function capture(
 	);
 	// Let the 120ms control transitions finish before recording presentation pixels.
 	await new Promise((resolve) => setTimeout(resolve, 180));
+	await window.webContents.executeJavaScript(axe.source);
+	const audit = await window.webContents.executeJavaScript(`(async () => {
+		const result = await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a','wcag2aa','wcag21aa','wcag22aa'] } });
+		return { width: innerWidth, height: innerHeight, zoom: ${window.webContents.getZoomFactor()}, overflow: document.documentElement.scrollWidth - innerWidth,
+			violations: result.violations.map(({id,impact,nodes}) => ({id,impact,targets:nodes.map(node=>node.target)})),
+			incomplete: result.incomplete.map(({id,nodes}) => ({id,targets:nodes.map(node=>node.target)})) };
+	})()`);
+	visualAudits.push({ screenshot: name, ...audit });
+	assert(audit.overflow <= 1, `Screenshot ${name} has horizontal overflow.`);
+	assert(
+		!audit.violations.some((item: { impact: string }) =>
+			['critical', 'serious'].includes(item.impact)
+		),
+		`Accessibility blockers in ${name}: ${JSON.stringify(audit.violations)}`
+	);
 	let timeout: NodeJS.Timeout | undefined;
 	const image = await Promise.race([
 		window.webContents.capturePage(),
@@ -271,14 +380,14 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		await assertRenderedFloor(window, 'instance welcome');
 		const welcomeScreenshot = await capture(window, outputDir, '00-instance-welcome.png');
-		window.setContentSize(640, 540);
+		await sizeViewport(window, 640, 640);
 		await assertRenderedFloor(window, 'narrow instance welcome');
 		const narrowWelcomeScreenshot = await capture(
 			window,
 			outputDir,
 			'00b-instance-welcome-narrow.png'
 		);
-		window.setContentSize(1120, 780);
+		await sizeViewport(window, 1120, 780);
 		const originalPicker = dialog.showOpenDialog;
 		const otherHome = join(outputDir, 'other-empty-instance');
 		const incompatibleHome = join(outputDir, 'legacy-instance');
@@ -389,8 +498,9 @@ async function run(): Promise<Record<string, unknown>> {
 		writeFileSync(join(legacyImport, 'data/assistant/runtime-artifact'), 'not portable');
 		await waitForRenderer(
 			window,
-			"document.body.dataset.busy !== 'true'",
-			'initial provider discovery'
+			"(await import('./state.js')).state.providersLoaded && !(await import('./state.js')).state.providerLoadPromise && document.body.dataset.busy !== 'true'",
+			'initial provider discovery and automatic readiness',
+			240_000
 		);
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('.restore-panel').open = true;
@@ -428,6 +538,11 @@ async function run(): Promise<Record<string, unknown>> {
 			'02c-migration-preservation.png',
 			true
 		);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.busy !== 'true' && !document.querySelector('#apply-import').disabled",
+			'reviewed restore action to be available'
+		);
 		await window.webContents.executeJavaScript(
 			"window.confirm = () => true; document.querySelector('#apply-import').click()"
 		);
@@ -449,6 +564,11 @@ async function run(): Promise<Record<string, unknown>> {
 			"document.querySelector('.restore-panel').open = false"
 		);
 		progress('migration preservation preview, acknowledgement and verified portable copy passed');
+		await waitForRenderer(
+			window,
+			"!(await import('./state.js')).state.providerLoadPromise && document.body.dataset.busy !== 'true'",
+			'provider discovery after restore'
+		);
 
 		await runAdminAction('stop');
 		await window.webContents.executeJavaScript("document.querySelector('#refresh').click()");
@@ -566,7 +686,7 @@ async function run(): Promise<Record<string, unknown>> {
 			})()`);
 			await waitForRenderer(
 				window,
-				`document.querySelector('#notice')?.classList.contains('error') &&
+				`document.querySelector('#notice')?.hidden === true &&
 						document.querySelector('#provider-status')?.classList.contains('error') &&
 						document.querySelector('#view-provider')?.hidden === false`,
 				'a truthful provider-required error',
@@ -599,6 +719,7 @@ async function run(): Promise<Record<string, unknown>> {
 			document.querySelector('#dismiss-notice').click();
 			document.querySelector('[data-view=connections]').click();
 			document.querySelector('#native-connections > summary').click();
+			document.querySelector('[data-remote-enable=codex]').focus();
 			document.querySelector('[data-remote-enable=codex]').click();
 			if (!document.querySelector('#remote-dialog').open) throw new Error('Remote setup dialog did not open.');
 			if (document.querySelector('#remote-trust').checked) throw new Error('Native trust was preaccepted.');
@@ -622,8 +743,57 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		await assertRenderedFloor(window, 'native remote setup dialog');
 		const nativeRemoteScreenshot = await capture(window, outputDir, '04-native-remote-setup.png');
+		await sizeViewport(window, 640, 640, 2);
+		await assertRenderedFloor(window, 'native consent at 200%');
+		for (const consentId of ['remote-trust', 'remote-recall']) {
+			await window.webContents.executeJavaScript(
+				`document.querySelector('#${consentId}').closest('label').scrollIntoView({block:'start'})`
+			);
+			assert(
+				await window.webContents.executeJavaScript(`(() => {
+				const label = document.querySelector('#${consentId}').closest('label').getBoundingClientRect();
+				const dialog = document.querySelector('#remote-dialog').getBoundingClientRect();
+				const footer = document.querySelector('#remote-form > .button-row');
+				return label.top >= dialog.top && label.bottom <= dialog.bottom &&
+					getComputedStyle(footer).position === 'static' && footer.getBoundingClientRect().top >= label.bottom;
+			})()`),
+				`${consentId} consent is obscured by dialog actions at 200% zoom.`
+			);
+		}
+		const narrowConsentScreenshot = await capture(
+			window,
+			outputDir,
+			'04j-native-consent-reflow.png'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#remote-begin').scrollIntoView({block:'end'})"
+		);
+		assert(
+			await window.webContents.executeJavaScript(`(() => {
+				const dialog = document.querySelector('#remote-dialog').getBoundingClientRect();
+				return ['remote-begin','remote-cancel'].every(id => {
+					const rect = document.getElementById(id).getBoundingClientRect();
+					return rect.top >= dialog.top && rect.bottom <= dialog.bottom && rect.height >= 44;
+				});
+			})()`),
+			'Consent actions cannot both be reached at 200% zoom.'
+		);
+		const narrowConsentActionsScreenshot = await capture(
+			window,
+			outputDir,
+			'04m-native-consent-actions.png'
+		);
+		await sizeViewport(window, 1120, 780);
+		window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+		window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+		await waitForRenderer(
+			window,
+			"!document.querySelector('#remote-dialog').open && document.activeElement?.dataset.remoteEnable === 'codex'",
+			'Escape closes consent and restores trigger focus',
+			10_000,
+			true
+		);
 		await window.webContents.executeJavaScript(`(() => {
-			document.querySelector('#remote-cancel').click();
 			document.querySelector('[data-remote-enable=claude]').click();
 			if (!document.querySelector('#remote-sandbox-field').hidden) throw new Error('Codex-only sandbox option appears for Claude.');
 			document.querySelector('#remote-cancel').click();
@@ -688,7 +858,7 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		await waitForRenderer(
 			window,
-			"document.querySelector('#remote-recall-status').textContent === 'Installed' && !document.querySelector('#remote-recall').checked && document.querySelector('#codex-recall-status').textContent === 'Installed'",
+			"document.body.dataset.busy !== 'true' && document.querySelector('#remote-recall-status').textContent === 'Installed' && !document.querySelector('#remote-recall').checked && document.querySelector('#codex-recall-status').textContent === 'Installed'",
 			'recall opt-out saved',
 			60_000,
 			!provider
@@ -704,6 +874,12 @@ async function run(): Promise<Record<string, unknown>> {
 			"document.querySelector('[data-view=overview]').click()"
 		);
 		const overviewScreenshot = await capture(window, outputDir, '04b-overview.png');
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#stop-stack').getBoundingClientRect().bottom < innerHeight && !document.querySelector('#starter-heading') && !document.querySelector('.choice-grid')"
+			),
+			'Overview still crowds out service controls or duplicates the connection catalog.'
+		);
 		await assertRenderedFloor(window, 'overview');
 		assert(
 			await window.webContents.executeJavaScript(
@@ -726,12 +902,16 @@ async function run(): Promise<Record<string, unknown>> {
 			'Optional connections are not collapsed, OpenCode links disagree, or client selection looks like a primary action.'
 		);
 		await window.webContents.executeJavaScript(
-			"document.querySelector('[data-view=backup]').click()"
+			"document.querySelector('[data-view=system]').click(); document.querySelector('#portable-backup').open=true"
 		);
 		await assertRenderedFloor(window, 'backup and restore');
 		const backupScreenshot = await capture(window, outputDir, '04d-backup.png');
 		await window.webContents.executeJavaScript(
-			"document.querySelector('[data-view=diagnostics]').click()"
+			"document.querySelector('#portable-backup').open=false"
+		);
+		const systemScreenshot = await capture(window, outputDir, '04k-system.png');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#portable-backup').open=false; document.querySelector('#view-diagnostics > details').open=true"
 		);
 		await assertRenderedFloor(window, 'troubleshooting');
 		const troubleshootingScreenshot = await capture(window, outputDir, '04e-troubleshooting.png');
@@ -792,7 +972,7 @@ async function run(): Promise<Record<string, unknown>> {
 		}
 		progress('MCP details and normal OpenCode link verified with real keyboard/click events');
 		await window.webContents.executeJavaScript(
-			"document.querySelector('[data-view=overview]').click()"
+			"document.querySelector('[data-view=provider]').click()"
 		);
 
 		await window.webContents.executeJavaScript(`(() => {
@@ -810,9 +990,11 @@ async function run(): Promise<Record<string, unknown>> {
 			'agent timezone and memory preferences to be applied'
 		);
 		progress('timezone and automatic-memory preferences saved through the real UI');
+		await window.webContents.executeJavaScript("document.querySelector('#dismiss-notice').click()");
+		const agentSettingsScreenshot = await capture(window, outputDir, '04i-agent-settings.png');
 
 		await window.webContents.executeJavaScript(
-			"document.querySelector('[data-client-target=opencode]').click()"
+			"document.querySelector('[data-view=connections]').click(); document.querySelector('[data-client-setup=opencode]').click()"
 		);
 		await waitForRenderer(
 			window,
@@ -856,12 +1038,11 @@ async function run(): Promise<Record<string, unknown>> {
 		progress('all three complete client connection recipes rendered');
 		await assertRenderedFloor(window, 'MCP connection recipe');
 		const mcpScreenshot = await capture(window, outputDir, '04g-mcp.png');
-		window.setContentSize(640, 540);
-		window.webContents.setZoomFactor(2);
+		await sizeViewport(window, 640, 640, 2);
+		await keyboardNavigation(window);
 		await assertRenderedFloor(window, 'MCP recipe at minimum size and 200% zoom');
 		const narrowMcpScreenshot = await capture(window, outputDir, '04h-mcp-reflow.png');
-		window.webContents.setZoomFactor(1);
-		window.setContentSize(1120, 780);
+		await sizeViewport(window, 1120, 780);
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#discord').checked = true;
@@ -892,12 +1073,16 @@ async function run(): Promise<Record<string, unknown>> {
 			10_000,
 			true
 		);
+		progress('portal setup errors opened and focused the required controls');
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#dismiss-notice').click(); document.querySelector('#chat-apps').scrollIntoView({block:'start'})"
+		);
+		const chatAppsScreenshot = await capture(window, outputDir, '04l-chat-apps.png', true);
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#discord').checked = false;
 			document.querySelector('#discord-users').value = '';
 			document.querySelector('#discord').dispatchEvent(new Event('change', { bubbles: true }));
 		})()`);
-		progress('portal setup errors opened and focused the required controls');
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#gateway').checked = true;
@@ -915,6 +1100,7 @@ async function run(): Promise<Record<string, unknown>> {
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('[data-view=access]').click();
+			document.querySelector('#create-credential').open=true;
 			document.querySelector('#credential-username').value = 'e2e-reader';
 			document.querySelector('#credential-policy').value = 'read';
 			document.querySelector('#credential-form').requestSubmit();
@@ -942,11 +1128,11 @@ async function run(): Promise<Record<string, unknown>> {
 		);
 		progress('Discord identity mapping persisted');
 		const guardianScreenshot = await capture(window, outputDir, '05-people-access.png');
-		window.setContentSize(640, 540);
+		await sizeViewport(window, 640, 640);
 		await assertRenderedFloor(window, 'people and access at minimum size');
 		const narrowAccessScreenshot = await capture(window, outputDir, '05a-people-access-narrow.png');
 		const keyboardScreenshot = await capture(window, outputDir, '05b-keyboard-focus.png', true);
-		window.setContentSize(1120, 780);
+		await sizeViewport(window, 1120, 780);
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('[data-view=overview]').click();
@@ -1133,7 +1319,7 @@ async function run(): Promise<Record<string, unknown>> {
 			'Returning to welcome resized Admin.'
 		);
 		const recentScreenshot = await capture(window, outputDir, '06-recent-instances.png');
-		window.setContentSize(640, 540);
+		await sizeViewport(window, 640, 640);
 		await assertRenderedFloor(window, 'narrow recent-instance list');
 		window.setSize(managedWindowSize[0], managedWindowSize[1]);
 		await window.webContents.executeJavaScript(
@@ -1251,6 +1437,7 @@ async function run(): Promise<Record<string, unknown>> {
 			},
 			credential: { username: 'e2e-reader', policy: 'read' },
 			portalMapping: { portal: 'discord', user: '123456789012345678' },
+			visualAudits,
 			guardian: {
 				healthStatus: health.status,
 				unauthenticatedStatus: unauthorized.status,
@@ -1272,6 +1459,11 @@ async function run(): Promise<Record<string, unknown>> {
 				overviewScreenshot,
 				connectionsScreenshot,
 				backupScreenshot,
+				systemScreenshot,
+				agentSettingsScreenshot,
+				chatAppsScreenshot,
+				narrowConsentScreenshot,
+				narrowConsentActionsScreenshot,
 				migrationScreenshot,
 				troubleshootingScreenshot,
 				claudeScreenshot,

@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@openpalm/lib": "workspace:*",
+    "axe-core": "4.13.0",
     "electron": "44.5.1",
     "electron-builder": "^26.15.3",
     "typescript": "^7.0.2",

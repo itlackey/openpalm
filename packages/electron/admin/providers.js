@@ -89,6 +89,7 @@ export function renderProviderMethod() {
 	byId('test-provider').hidden = !provider && state.currentSnapshot?.phase !== 'ready';
 	byId('provider-method-field').hidden = !provider || provider.authMethods.length < 2;
 	byId('api-key-fields').hidden = method?.type !== 'api';
+	byId('api-key-fields').open = !(provider?.authenticated || provider?.connected);
 	byId('oauth-provider-note').hidden = method?.type !== 'oauth';
 	if (method?.type === 'oauth') renderOAuthPrompts(method);
 }
@@ -183,15 +184,15 @@ export function renderProviders(providers) {
 		byId('provider-status').replaceChildren();
 		const title = document.createElement('strong');
 		title.textContent = 'Choose the provider account you already use.';
-		const detail = document.createElement('span');
-		detail.textContent = 'Use an API key or OpenCode’s secure browser sign-in.';
-		byId('provider-status').append(title, detail);
+		byId('provider-status').append(title);
 		setBadge(byId('provider-badge'), 'Sign-in needed', 'neutral');
 	}
 }
 
 export function renderReadiness(result) {
 	const status = byId('provider-status');
+	status.setAttribute('role', result.ok ? 'status' : 'alert');
+	status.setAttribute('aria-live', result.ok ? 'polite' : 'assertive');
 	status.replaceChildren();
 	const title = document.createElement('strong');
 	const detail = document.createElement('span');

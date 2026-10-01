@@ -398,7 +398,7 @@ button.text-button:hover:not(:disabled) {
 
 .form-note,
 .help-text {
-	max-width: 72ch;
+	max-width: 62ch;
 	margin: 10px 0 0;
 	color: var(--ink-soft);
 	font-size: 0.8125rem;
@@ -466,6 +466,10 @@ button.text-button:hover:not(:disabled) {
 
 #primary-nav:not([hidden]) {
 	display: grid;
+}
+
+:where(#mobile-navigation) > summary {
+	display: none;
 }
 
 .nav-item {
@@ -552,7 +556,7 @@ button.text-button:hover:not(:disabled) {
 }
 
 .page-header {
-	padding: 28px 0 20px;
+	padding: 28px 0 24px;
 }
 
 .page-header h1 {
@@ -565,7 +569,7 @@ button.text-button:hover:not(:disabled) {
 
 .page-description,
 .section-intro {
-	max-width: 72ch;
+	max-width: 62ch;
 	margin: 0;
 	color: var(--ink-soft);
 	line-height: 1.6;
@@ -573,25 +577,23 @@ button.text-button:hover:not(:disabled) {
 
 .view-panel {
 	display: grid;
-	gap: 20px;
+	gap: 24px;
 }
 
 .panel,
-.hero-card,
-.prompt-card {
+.hero-card {
 	border: 1px solid var(--border-soft);
 	border-radius: 6px;
 	background: var(--surface);
 }
 
 .panel {
-	padding: 20px;
+	padding: 24px;
 }
 
 .panel > h2,
 .section-heading h2,
-.hero-card h2,
-.prompt-card h2 {
+.hero-card h2 {
 	margin: 4px 0 0;
 	font-family: inherit;
 	font-size: 1.125rem;
@@ -626,19 +628,44 @@ button.text-button:hover:not(:disabled) {
 	background: var(--surface);
 }
 
-.ready-hero .primary-link {
-	margin-top: 16px;
+.ready-hero > div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+.view-panel[data-view-panel="system"] + .view-panel {
+	margin-top: 24px;
+}
+:where(.connection-card) > summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	min-height: 52px;
+	cursor: pointer;
+	font-weight: 600;
+}
+:where(.connection-card) > summary::after {
+	content: "+";
+}
+:where(.connection-card[open]) > summary::after {
+	content: "−";
+}
+:where(.connection-card > summary) .status-badge {
+	margin-left: auto;
 }
 
-.summary-grid,
-.choice-grid {
+.ready-hero .primary-link {
+	margin-top: 0;
+}
+
+.summary-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 16px;
+	gap: 24px;
 }
 
-.summary-card,
-.choice-card {
+.summary-card {
 	min-width: 0;
 	padding: 16px 0;
 	border: 1px solid var(--border-soft);
@@ -650,32 +677,14 @@ button.text-button:hover:not(:disabled) {
 .summary-card strong {
 	display: block;
 	margin-top: 8px;
-	font-size: 1.125rem;
+	font-size: 1rem;
 }
 
-.summary-card p,
-.choice-card p {
+.summary-card p {
 	margin: 6px 0 0;
 	color: var(--ink-soft);
 	font-size: 0.875rem;
 	line-height: 1.55;
-}
-
-.choice-card {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 10px;
-}
-
-.choice-card h3 {
-	margin: 4px 0 0;
-	font-size: 1.125rem;
-}
-
-.choice-card p {
-	flex: 1;
-	margin: 0;
 }
 
 code {
@@ -688,15 +697,6 @@ code {
 	font-size: 0.8125rem;
 	font-weight: 550;
 	overflow-wrap: anywhere;
-}
-
-.choice-card code {
-	width: 100%;
-}
-
-.choice-card button {
-	width: 100%;
-	margin-top: 6px;
 }
 
 .choice-tag {
@@ -714,34 +714,6 @@ code {
 .choice-tag.protected {
 	background: transparent;
 	color: var(--ink-soft);
-}
-
-.prompt-card {
-	display: grid;
-	grid-template-columns: 0.85fr 1.15fr;
-	gap: 28px;
-	padding: 28px;
-	background: var(--surface);
-	color: var(--ink);
-}
-
-.prompt-card .eyebrow {
-	color: var(--ink-faint);
-}
-
-.prompt-list {
-	display: grid;
-	gap: 10px;
-}
-
-.prompt-list p {
-	margin: 0;
-	padding: 14px 16px;
-	border: 1px solid rgba(255, 255, 255, 0.18);
-	border-radius: 6px;
-	background: rgba(255, 255, 255, 0.08);
-	font-size: 0.875rem;
-	line-height: 1.5;
 }
 
 .button-row {
@@ -826,7 +798,7 @@ code {
 
 .form-stack {
 	display: grid;
-	gap: 16px;
+	gap: 20px;
 	margin-top: 20px;
 }
 
@@ -1311,7 +1283,7 @@ input[type="checkbox"] {
 }
 
 .endpoint-link {
-	color: var(--accent);
+	color: var(--success);
 	font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
 	text-decoration: underline;
 	text-underline-offset: 0.2em;
@@ -1524,16 +1496,38 @@ body[data-busy="true"] #main-content {
 	}
 
 	.summary-grid,
-	.choice-grid {
-		grid-template-columns: 1fr;
-	}
-
-	.prompt-card {
+	.status-fieldset {
 		grid-template-columns: 1fr;
 	}
 }
 
 @media (max-width: 700px) {
+	:where(#mobile-navigation) > summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-height: 44px;
+		cursor: pointer;
+		color: var(--ink);
+	}
+	:where(#mobile-navigation) > summary::after {
+		content: "+";
+	}
+	:where(#mobile-navigation[open]) > summary::after {
+		content: "−";
+	}
+	.sidebar .brand-lockup.compact {
+		display: none;
+	}
+	.sidebar-footer {
+		display: none;
+	}
+	#mobile-navigation[open] ~ .sidebar-footer {
+		display: flex;
+	}
+	#primary-nav {
+		grid-template-columns: 1fr;
+	}
 	.welcome-shell,
 	.page-header,
 	#main-content {
@@ -1549,9 +1543,8 @@ body[data-busy="true"] #main-content {
 	}
 
 	.panel,
-	.hero-card,
-	.prompt-card {
-		padding: 22px;
+	.hero-card {
+		padding: 20px;
 	}
 
 	.field-grid.two-column,
@@ -1599,17 +1592,12 @@ body[data-busy="true"] #main-content {
 
 	.welcome-card,
 	.panel,
-	.hero-card,
-	.prompt-card {
+	.hero-card {
 		padding: 18px;
 	}
 
 	.sidebar {
 		padding: 16px 12px;
-	}
-
-	#primary-nav {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.nav-item {
@@ -1643,6 +1631,37 @@ body[data-busy="true"] #main-content {
 @media (max-width: 360px) {
 	#primary-nav {
 		grid-template-columns: 1fr;
+	}
+}
+
+.preservation-row {
+	border-bottom: 1px solid var(--border-soft);
+	padding: 8px 0;
+	margin-top: 0;
+}
+.preservation-row > summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 44px;
+	cursor: pointer;
+	font-size: 0.875rem;
+	padding: 0;
+}
+.preservation-row .status-badge {
+	margin-left: auto;
+	flex-shrink: 0;
+}
+.preservation-row p {
+	padding: 0 0 12px;
+}
+@media (max-width: 520px) {
+	.preservation-row > summary {
+		flex-wrap: wrap;
+	}
+	.preservation-row .status-badge {
+		margin-left: 0;
 	}
 }
 
@@ -1681,10 +1700,13 @@ body[data-busy="true"] #main-content {
 	height: min(200px, 25vh);
 }
 #remote-form > .button-row {
-	position: sticky;
-	bottom: -24px;
-	padding: 16px 0;
-	background: var(--surface);
+	flex-direction: row;
+	flex-wrap: wrap;
+	padding: 8px 0;
+}
+#remote-form > .button-row > button {
+	width: auto;
+	flex: 1 1 auto;
 }
 
 .section-heading .eyebrow {
@@ -1703,6 +1725,10 @@ body[data-busy="true"] #main-content {
 	gap: 12px;
 	padding: 16px 0;
 	border-bottom: 1px solid var(--border-soft);
+}
+
+.connection-body > .field {
+	margin-top: 16px;
 }
 
 .remote-connection-row h3 {
@@ -1731,4 +1757,23 @@ body[data-busy="true"] #main-content {
 .remote-steps [aria-current="step"] {
 	color: var(--accent);
 	font-weight: 600;
+}
+
+:where(#remote-form h3) {
+	margin: 0;
+	font-size: 1rem;
+}
+:where(#remote-form) .form-stack {
+	margin-top: 0;
+	gap: 12px;
+}
+:where(#remote-form) {
+	margin-top: 0;
+	gap: 14px;
+}
+:where(body[data-phase="setup_incomplete"] #provider-connection) .section-heading {
+	margin-bottom: 8px;
+}
+:where(body[data-phase="setup_incomplete"] #provider-connection h2) {
+	display: none;
 }

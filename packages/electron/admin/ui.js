@@ -81,7 +81,10 @@ export async function operation(progress, action, success = `${progress} complet
 		if (readinessResult(result)) {
 			state.lastReadiness = result;
 			renderReadiness(result);
-			if (!result.ok) throw new Error(result.error || 'The provider readiness check failed.');
+			if (!result.ok) {
+				notice('');
+				return undefined;
+			}
 		}
 		if (result?.phase && result?.config) render(result);
 		notice(success, 'success');
@@ -109,7 +112,9 @@ export function setOptions(select, values, selected) {
 
 export function formDraft(form) {
 	const values = {};
-	for (const control of form.querySelectorAll('input[id], select[id], textarea[id]')) {
+	for (const control of form.elements ||
+		form.querySelectorAll('input[id], select[id], textarea[id]')) {
+		if (!control.id || !['INPUT', 'SELECT', 'TEXTAREA'].includes(control.tagName)) continue;
 		values[control.id] =
 			control instanceof HTMLInputElement && ['checkbox', 'radio'].includes(control.type)
 				? { checked: control.checked }
@@ -128,7 +133,7 @@ export function restoreDirtyForms(drafts) {
 	for (const [formId, values] of Object.entries(drafts)) {
 		for (const [id, state] of Object.entries(values)) {
 			const control = byId(id);
-			if (!control || !byId(formId).contains(control)) continue;
+			if (!control || (!byId(formId).contains(control) && control.form !== byId(formId))) continue;
 			if ('checked' in state && control instanceof HTMLInputElement)
 				control.checked = state.checked;
 			else if ('value' in state) control.value = state.value;
@@ -147,6 +152,7 @@ export function setSkipTarget(id) {
 export function showView(name, options = {}) {
 	if (!viewMeta[name]) return;
 	if (state.currentSnapshot?.phase !== 'ready' && name !== 'provider') return;
+	if (state.currentView !== name && !byId('notice').className.includes('error')) notice('');
 	state.currentView = name;
 	for (const panel of all('[data-view-panel]')) panel.hidden = panel.dataset.viewPanel !== name;
 	for (const button of all('[data-view]')) {
@@ -154,6 +160,8 @@ export function showView(name, options = {}) {
 		button.setAttribute('aria-current', active ? 'page' : 'false');
 	}
 	const meta = viewMeta[name];
+	setText('mobile-navigation-label', `Navigation · ${meta.title}`);
+	if (window.matchMedia?.('(max-width: 700px)').matches) byId('mobile-navigation').open = false;
 	setText(
 		'view-kicker',
 		state.currentSnapshot?.phase === 'setup_incomplete' ? 'SETUP IN PROGRESS' : meta.kicker
@@ -173,7 +181,10 @@ export function showView(name, options = {}) {
 
 export function showClient(name, options = {}) {
 	if (!['opencode', 'claude', 'mcp'].includes(name)) return;
+	if (state.currentClient !== name && !byId('notice').className.includes('error')) notice('');
 	state.currentClient = name;
+	byId('gateway-connection').hidden = name === 'opencode';
+	byId('save-client-connections').hidden = name === 'opencode';
 	for (const panel of all('[data-client-panel]')) panel.hidden = panel.dataset.clientPanel !== name;
 	for (const button of all('[data-client-setup]')) {
 		button.setAttribute('aria-pressed', String(button.dataset.clientSetup === name));
@@ -186,6 +197,14 @@ export function showClient(name, options = {}) {
 }
 
 export function bindUiEvents() {
+	const narrow = window.matchMedia?.('(max-width: 700px)');
+	if (narrow) {
+		const update = () => {
+			byId('mobile-navigation').open = !narrow.matches;
+		};
+		update();
+		narrow.addEventListener('change', update);
+	}
 	byId('dismiss-notice').addEventListener('click', () => notice(''));
 
 	byId('refresh').addEventListener('click', () => void refresh(true));
@@ -215,6 +234,14 @@ export function bindUiEvents() {
 
 	for (const button of all('[data-view-target]')) {
 		button.addEventListener('click', () => showView(button.dataset.viewTarget, { focus: true }));
+	}
+	for (const button of all('[data-mapping-target]')) {
+		button.addEventListener('click', () => {
+			showView('access');
+			byId('chat-user-access').open = true;
+			byId('mapping-portal').value = button.dataset.mappingTarget;
+			byId('mapping-user').focus();
+		});
 	}
 
 	for (const button of all('[data-client-target]')) {

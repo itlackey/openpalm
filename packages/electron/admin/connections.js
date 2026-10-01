@@ -19,6 +19,17 @@ export function renderPortalSecrets(snapshot) {
 		configured.length ? `${configured.join(' and ')} configured` : 'Not configured',
 		configured.length ? 'success' : 'neutral'
 	);
+	for (const [portal, ready] of [
+		['discord', discordReady],
+		['slack', slackReady]
+	]) {
+		const enabled = snapshot.config.portals[portal].enabled;
+		setBadge(
+			byId(`${portal}-connection-status`),
+			enabled ? 'Enabled' : ready ? 'Configured' : 'Not configured',
+			enabled ? 'success' : 'neutral'
+		);
+	}
 }
 
 export function updateGuardianGuide() {
@@ -30,7 +41,7 @@ export function updateGuardianGuide() {
 		saved
 			? 'Protected access is enabled.'
 			: selected
-				? 'Protected access is selected. Save connections below to apply it.'
+				? 'Selected · save to enable.'
 				: 'Protected access is currently disabled.'
 	);
 	const status = byId('mcp-guardian-help');
@@ -42,9 +53,7 @@ export function updateGuardianGuide() {
 		: selected
 			? 'Guardian is ready to be saved.'
 			: 'Guardian must be enabled.';
-	const detail = document.createElement('span');
-	detail.textContent = 'It applies the policy associated with the selected identity.';
-	status.append(title, detail);
+	status.append(title);
 	for (const button of all('[data-enable-gateway]')) button.hidden = selected;
 }
 
@@ -83,6 +92,8 @@ export function updatePortalTokenFields() {
 }
 
 export function showPortalTokenForm(portal, field = 'bot-token') {
+	byId('chat-apps').open = true;
+	byId(`${portal}-connection`).open = true;
 	byId('portal-tokens').open = true;
 	byId('token-portal').value = portal;
 	updatePortalTokenFields();
@@ -123,7 +134,6 @@ export function renderNetworkDetails(snapshot) {
 		snapshot.config.gateway.port,
 		'/health'
 	);
-	setText('assistant-url', assistantUrl);
 	for (const id of ['assistant-url-detail', 'overview-opencode-link']) {
 		const link = byId(id);
 		if (id === 'assistant-url-detail') link.textContent = assistantUrl;
@@ -184,7 +194,10 @@ export async function loadClientKey(client, copyOnly) {
 
 export function bindConnectionsEvents() {
 	for (const id of ['gateway', 'discord', 'slack']) {
-		byId(id).addEventListener('change', updateConditionalConnections);
+		byId(id).addEventListener('change', () => {
+			state.dirtyForms.add('connections-form');
+			updateConditionalConnections();
+		});
 	}
 
 	for (const button of all('[data-enable-gateway]')) {
@@ -192,7 +205,8 @@ export function bindConnectionsEvents() {
 			byId('gateway').checked = true;
 			state.dirtyForms.add('connections-form');
 			updateConditionalConnections();
-			byId('connections-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+			byId('gateway-connection').open = true;
+			byId('save-client-connections').focus();
 			notice('Protected access selected. Review and save Connections to apply it.', 'progress', {
 				persist: true
 			});
@@ -219,6 +233,8 @@ export function bindConnectionsEvents() {
 			discord &&
 			discordAccess.guilds.length + discordAccess.roles.length + discordAccess.users.length === 0
 		) {
+			byId('chat-apps').open = true;
+			byId('discord-connection').open = true;
 			notice(
 				'Add at least one allowed Discord server, role, or user before enabling Discord.',
 				'error',
@@ -229,6 +245,8 @@ export function bindConnectionsEvents() {
 			return;
 		}
 		if (slack && slackAccess.channels.length + slackAccess.users.length === 0) {
+			byId('chat-apps').open = true;
+			byId('slack-connection').open = true;
 			notice('Add at least one allowed Slack channel or user before enabling Slack.', 'error', {
 				persist: true
 			});

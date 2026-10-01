@@ -1,6 +1,6 @@
 import { loadProviders } from './providers.js';
 import { state } from './state.js';
-import { byId, message, notice, operation } from './ui.js';
+import { byId, message, notice, operation, setBadge } from './ui.js';
 
 export function importInput(apply) {
 	return {
@@ -51,8 +51,26 @@ export function renderImportPlan(result, applied) {
 	const inventory = byId('import-preservation');
 	inventory.replaceChildren();
 	for (const item of result.preservation) {
-		const row = document.createElement('p');
-		row.textContent = `${item.category}: ${item.disposition === 'selected' ? 'selected for portable restore' : item.disposition === 'review-required' ? 'needs separate recovery' : 'not included'}. ${item.note}`;
+		const row = document.createElement('details');
+		row.className = 'disclosure preservation-row';
+		const heading = document.createElement('summary');
+		const name = document.createElement('span');
+		name.textContent = item.category;
+		const badge = document.createElement('span');
+		setBadge(
+			badge,
+			item.disposition === 'selected'
+				? 'Selected'
+				: item.disposition === 'review-required'
+					? 'Separate recovery'
+					: 'Not included',
+			item.disposition === 'selected' ? 'success' : 'neutral'
+		);
+		heading.append(name, badge);
+		const note = document.createElement('p');
+		note.className = 'help-text';
+		note.textContent = item.note;
+		row.append(heading, note);
 		inventory.append(row);
 	}
 	byId('import-acknowledge-row').hidden = !result.reviewRequired || applied;
@@ -99,6 +117,7 @@ export function bindBackupEvents() {
 		if (!result) return;
 		byId('backup-result').value = JSON.stringify(result, null, 2);
 		byId('backup-summary').className = 'inline-status success';
+		byId('backup-summary').hidden = false;
 		byId('backup-summary').replaceChildren();
 		const title = document.createElement('strong');
 		title.textContent = `${result.files.length} portable file${result.files.length === 1 ? '' : 's'} backed up.`;

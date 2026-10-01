@@ -49,6 +49,7 @@ const html = readFileSync(join(admin, 'index.html'), 'utf8');
 // The real Chromium layout, keyboard, IPC and Docker journey runs in admin:e2e.
 class Control {
 	id = '';
+	tagName = 'INPUT';
 	type = 'text';
 	value = '';
 	checked = false;
@@ -58,6 +59,8 @@ class Control {
 	className = '';
 	dataset: Record<string, string> = {};
 	children: Control[] = [];
+	elements?: Control[];
+	form?: Control;
 	attributes = new Map<string, string>();
 	listeners = new Map<string, (event: unknown) => unknown>();
 	focused = false;
@@ -485,11 +488,36 @@ describe('Admin static security boundary', () => {
 });
 
 describe('Admin renderer behavior', () => {
+	it('groups settings by task and removes the duplicate overview catalog', () => {
+		expect(html).not.toContain('Things to try');
+		expect(html).not.toContain('choice-grid');
+		expect([...html.matchAll(/data-view="/g)].length).toBe(5);
+		expect(html).toContain('data-view="system"');
+		expect(html.indexOf('id="agent-preferences"')).toBeGreaterThan(
+			html.indexOf('id="view-provider"')
+		);
+		expect(html.indexOf('id="network-settings"')).toBeLessThan(html.indexOf('id="view-access"'));
+	});
+
+	it('captures and restores externally associated MCP configuration controls', () => {
+		const form = control('connections-form');
+		const gateway = control('gateway');
+		form.elements = [gateway];
+		gateway.form = form;
+		gateway.type = 'checkbox';
+		gateway.checked = true;
+		state.dirtyForms.add('connections-form');
+		const drafts = captureDirtyForms();
+		expect(drafts['connections-form'].gateway).toEqual({ checked: true });
+		gateway.checked = false;
+		restoreDirtyForms(drafts);
+		expect(gateway.checked).toBe(true);
+	});
 	it('labels Guardian as an MCP API and keeps diagnostic endpoints copy-only', () => {
 		expect(html).not.toContain('Protected-access');
 		expect(html).toContain('Guardian MCP bind address');
 		expect(html).toContain('not a website');
-		expect(html).toContain('that identity’s policy');
+		expect(html).toContain('selected access key’s policy');
 		for (const id of ['guardian-mcp-url-detail', 'guardian-health-url-detail']) {
 			expect(html).toContain(`data-copy-field="${id}"`);
 			expect(html).toContain(`<code id="${id}">`);
@@ -595,9 +623,9 @@ describe('Admin renderer behavior', () => {
 			error: 'Sign-in expired'
 		}));
 		expect(failed).toBeUndefined();
-		expect(control('notice-message').textContent).toBe('Sign-in expired');
-		expect(control('notice').getAttribute('role')).toBe('alert');
-		expect(control('notice').getAttribute('aria-live')).toBe('assertive');
+		expect(control('notice').hidden).toBe(true);
+		expect(control('provider-status').getAttribute('role')).toBe('alert');
+		expect(control('provider-status').getAttribute('aria-live')).toBe('assertive');
 		expect(control('provider-badge').textContent).toBe('Needs attention');
 		expect(state.noticeTimer).toBeUndefined();
 		expect(state.operationInFlight).toBe(false);
@@ -730,9 +758,11 @@ describe('Admin renderer behavior', () => {
 			]
 		};
 		renderImportPlan(result, false);
-		expect(control('import-preservation').children[0]?.textContent).toContain(
-			'needs separate recovery'
-		);
+		const row = control('import-preservation').children[0];
+		expect(row.open).toBe(false);
+		expect(row.children[0]?.children[0]?.textContent).toBe('Native history');
+		expect(row.children[0]?.children[1]?.textContent).toBe('Separate recovery');
+		expect(row.children[1]?.textContent).toBe('Preserve separately.');
 		expect(control('import-acknowledge-row').hidden).toBe(false);
 		renderImportPlan(result, true);
 		expect(control('import-summary').children[1]?.textContent).toContain('not a full migration');

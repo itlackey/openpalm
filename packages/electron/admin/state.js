@@ -52,31 +52,26 @@ export const viewMeta = {
 	overview: {
 		kicker: 'PERSONAL AGENT',
 		title: 'Your OpenPalm',
-		description: 'See what is running and choose how you want to use your agent.'
+		description: 'Your agent and its connections, at a glance.'
 	},
 	provider: {
 		kicker: 'AI CONNECTION',
-		title: 'AI account',
-		description: 'Connect the account your agent uses and verify it can respond.'
+		title: 'Agent settings',
+		description: 'AI account, memory, and recurring work.'
 	},
 	connections: {
 		kicker: 'CLIENTS & CHAT APPS',
 		title: 'Connections',
-		description: 'Choose which apps can reach your agent and how they are protected.'
+		description: 'Connect an app or manage access from chat.'
 	},
 	access: {
 		kicker: 'PEOPLE & PERMISSIONS',
 		title: 'People & access',
 		description: 'Give each person or app its own key and access level.'
 	},
-	backup: {
-		kicker: 'PORTABLE RECOVERY',
-		title: 'Backup',
-		description: 'Protect your knowledge, workspace, preferences, and recurring work.'
-	},
-	diagnostics: {
-		kicker: 'ADVANCED',
-		title: 'Troubleshooting',
-		description: 'Inspect network settings, local paths, and recent service logs.'
+	system: {
+		kicker: 'SYSTEM',
+		title: 'System',
+		description: 'Backups, logs, and installation details.'
 	}
 };
