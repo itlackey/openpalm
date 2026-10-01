@@ -178,9 +178,11 @@ describe('0.14 deterministic control-plane integration', () => {
 		const importOptions = {
 			sourceHome: backup,
 			destinationHome: destination,
-			includePortalMaps: true
+			includePortalMaps: true,
+			acknowledgeUnrestored: true
 		};
 		const preview = planImport(importOptions);
+		expect(preview.reviewRequired).toBe(true);
 		expect(preview.conflicts).toBe(0);
 		expect(preview.entries.some((entry) => entry.action === 'stage-task')).toBe(true);
 		applyImport(importOptions);

@@ -180,6 +180,14 @@ managed-file allowlist and never wholesale-sync or delete stale paths.
 home as a source, refuses conflicts and path escapes, and stages imported task
 sources outside the active scheduler until reviewed.
 
+Portable import/backup is not complete runtime recovery. Preserve detected
+runtime data and links separately; never hide history omissions in warning
+groups. `openpalm history` uses offline non-root native export/import with
+consistent WAL-inclusive snapshots, explicit workspace mappings, stripped old
+authority, collision checks, preserved target sessions and private retry
+journals. It can recover into a stopped initialized target without introducing
+an in-place legacy upgrade. Recovery artifacts stay outside searchable knowledge.
+
 0.14 is a fresh-install boundary. Do not add an in-place 0.13 compatibility
 path. Import only an explicit allowlist of user-owned knowledge, disabled task
 definitions, workspace files, and validated configuration. Secret import is

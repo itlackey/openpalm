@@ -6,6 +6,7 @@ export function importInput(apply) {
 	return {
 		sourceHome: byId('import-source').value.trim(),
 		apply,
+		...(apply ? { acknowledgeUnrestored: byId('import-acknowledge').checked } : {}),
 		...(apply && state.importPreviewDigest ? { previewDigest: state.importPreviewDigest } : {}),
 		includeProviderAuth: byId('import-auth').checked,
 		includeUserEnv: byId('import-env').checked,
@@ -22,6 +23,7 @@ export function invalidateImportPreview() {
 	state.importPreviewSignature = null;
 	state.importPreviewDigest = null;
 	byId('apply-import').disabled = true;
+	byId('import-acknowledge').checked = false;
 }
 
 export function renderImportPlan(result, applied) {
@@ -31,8 +33,8 @@ export function renderImportPlan(result, applied) {
 	const title = document.createElement('strong');
 	const detail = document.createElement('span');
 	if (applied) {
-		title.textContent = 'Restore applied.';
-		detail.textContent = `${result.copyCount} items were restored. Review imported task definitions before enabling them.`;
+		title.textContent = 'Portable files restored and verified.';
+		detail.textContent = `${result.copyCount} items copied. This is not a full migration: history and other unrestored data need separate acceptance. Tasks remain inactive.`;
 		summary.className = 'inline-status success';
 	} else if (result.conflicts > 0) {
 		title.textContent = `Restore preview found ${result.conflicts} conflict${result.conflicts === 1 ? '' : 's'}.`;
@@ -46,6 +48,14 @@ export function renderImportPlan(result, applied) {
 		summary.className = 'inline-status success';
 	}
 	summary.append(title, detail);
+	const inventory = byId('import-preservation');
+	inventory.replaceChildren();
+	for (const item of result.preservation) {
+		const row = document.createElement('p');
+		row.textContent = `${item.category}: ${item.disposition === 'selected' ? 'selected for portable restore' : item.disposition === 'review-required' ? 'needs separate recovery' : 'not included'}. ${item.note}`;
+		inventory.append(row);
+	}
+	byId('import-acknowledge-row').hidden = !result.reviewRequired || applied;
 }
 
 export async function chooseDirectory(purpose, inputId) {
@@ -84,23 +94,28 @@ export function bindBackupEvents() {
 					includePortalMaps: byId('backup-maps').checked,
 					includeOAuth: byId('backup-maps').checked
 				}),
-			'Backup created successfully.'
+			'Portable backup created. Native conversation history is not included.'
 		);
 		if (!result) return;
 		byId('backup-result').value = JSON.stringify(result, null, 2);
 		byId('backup-summary').className = 'inline-status success';
 		byId('backup-summary').replaceChildren();
 		const title = document.createElement('strong');
-		title.textContent = `${result.files.length} file${result.files.length === 1 ? '' : 's'} backed up.`;
+		title.textContent = `${result.files.length} portable file${result.files.length === 1 ? '' : 's'} backed up.`;
 		const detail = document.createElement('span');
-		detail.textContent = result.warnings.length
-			? `Backup completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}.`
-			: `Saved to ${destination}.`;
+		detail.textContent = `Saved to ${destination}. Native history, runtime artifacts and external sources are not included.${result.warnings.length ? ` ${result.warnings.length} warnings need review.` : ''}`;
 		byId('backup-summary').append(title, detail);
 	});
 
 	for (const eventName of ['input', 'change']) {
-		byId('import-form').addEventListener(eventName, invalidateImportPreview);
+		byId('import-form').addEventListener(eventName, (event) => {
+			if (event.target.id === 'import-acknowledge') {
+				byId('apply-import').disabled =
+					!state.importPreviewDigest || !byId('import-acknowledge').checked;
+				return;
+			}
+			invalidateImportPreview();
+		});
 	}
 
 	byId('preview-import').addEventListener('click', async () => {
@@ -113,8 +128,9 @@ export function bindBackupEvents() {
 		if (!result) return;
 		renderImportPlan(result, false);
 		state.importPreviewSignature = signature;
-		state.importPreviewDigest = result.digest;
-		byId('apply-import').disabled = result.conflicts > 0;
+		state.importPreviewDigest = result.conflicts > 0 ? null : result.digest;
+		byId('import-acknowledge').checked = false;
+		byId('apply-import').disabled = result.conflicts > 0 || result.reviewRequired;
 	});
 
 	byId('apply-import').addEventListener('click', async () => {
@@ -125,7 +141,11 @@ export function bindBackupEvents() {
 			invalidateImportPreview();
 			return;
 		}
-		if (!window.confirm('Apply this reviewed restore plan to the fresh OpenPalm installation?'))
+		if (
+			!window.confirm(
+				'Copy the reviewed portable files? Native history and other unrestored data will not be copied.'
+			)
+		)
 			return;
 		const result = await operation(
 			'Applying restore',

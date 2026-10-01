@@ -48,6 +48,8 @@ function plan(override: Partial<ImportPlan> = {}): ImportPlan {
 		destinationHome: '/fresh',
 		entries: [],
 		warnings: [],
+		preservation: [],
+		reviewRequired: false,
 		totalBytes: 0,
 		conflicts: 0,
 		copyCount: 0,
@@ -61,6 +63,26 @@ function output(): string {
 }
 
 describe('import plan output', () => {
+	it('never buries missing native history behind bounded filesystem warnings', () => {
+		printImportPlan(
+			plan({
+				reviewRequired: true,
+				preservation: [
+					{
+						category: 'Native history',
+						disposition: 'review-required',
+						paths: ['data'],
+						note: 'Recover conversations separately.'
+					}
+				],
+				warnings: Array.from({ length: 50 }, (_, i) => `Other warning ${i}`)
+			}),
+			false
+		);
+		expect(output()).toContain('NOT a full migration');
+		expect(output()).toContain('review-required: Native history');
+		expect(output()).toContain('--acknowledge-unrestored');
+	});
 	it('summarizes large homes without flooding the terminal and retains actionable warnings', () => {
 		const entries = Array.from({ length: 93_056 }, (_, index) => entry(index));
 		entries.push(entry(93_057, { category: 'task', action: 'stage-task' }));
@@ -78,7 +100,7 @@ describe('import plan output', () => {
 			plan({ entries, warnings, copyCount: entries.length, totalBytes: entries.length }),
 			false
 		);
-		expect(log.mock.calls.length + warn.mock.calls.length).toBeLessThan(20);
+		expect(log.mock.calls.length + warn.mock.calls.length).toBeLessThan(25);
 		expect(output()).toContain('workspace: 93056 copy');
 		expect(output()).toContain('task: 1 stage-task');
 		expect(output()).toContain('warning (4356): Skipped symlink');
@@ -113,7 +135,7 @@ describe('import plan output', () => {
 		expect(output()).toContain('31 warning(s) in 31 group(s)');
 		expect(output()).toContain('configure a new provider credential');
 		expect(output()).toContain('23 more warning group(s)');
-		expect(log.mock.calls.length + warn.mock.calls.length).toBeLessThan(20);
+		expect(log.mock.calls.length + warn.mock.calls.length).toBeLessThan(25);
 	});
 
 	it('keeps complete machine-readable JSON without human summaries or warnings', () => {

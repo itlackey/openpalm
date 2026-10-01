@@ -15,6 +15,11 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { readStackConfig } from './stack-config.js';
+import {
+	inspectUnrestoredData,
+	PORTABLE_BACKUP_EXCLUSIONS,
+	type PreservationItem
+} from './preservation.js';
 import { writeFileAtomic } from './foundation.js';
 import {
 	assertSafePortablePath,
@@ -39,6 +44,9 @@ export type BackupOptions = {
 
 export type BackupManifest = {
 	version: 1;
+	scope: 'portable';
+	excludedCategories: string[];
+	preservation: PreservationItem[];
 	createdAt: string;
 	sourceVersion: number;
 	stackConfig: unknown;
@@ -300,6 +308,9 @@ export async function createBackup(options: BackupOptions): Promise<BackupManife
 
 	const manifest: BackupManifest = {
 		version: 1,
+		scope: 'portable',
+		excludedCategories: PORTABLE_BACKUP_EXCLUSIONS,
+		preservation: inspectUnrestoredData(source, warnings),
 		createdAt: new Date().toISOString(),
 		sourceVersion: stack.config.version,
 		stackConfig: stack.config,

@@ -47,6 +47,48 @@ afterEach(() => {
 });
 
 describe('0.14 fresh-install importer', () => {
+	it('accounts for omitted runtime data and external links before any portable write', () => {
+		const { source, destination, root } = fixture();
+		mkdirSync(join(source, 'data'), { recursive: true });
+		mkdirSync(join(root, 'external-runtime'));
+		symlinkSync(join(root, 'external-runtime'), join(source, 'data/assistant'));
+		mkdirSync(join(source, 'knowledge'));
+		writeFileSync(join(source, 'knowledge/note.md'), 'keep this');
+		const options = { sourceHome: source, destinationHome: destination };
+		const preview = planImport(options);
+		expect(preview.reviewRequired).toBe(true);
+		expect(
+			preview.preservation.some(
+				(item) => item.paths.includes('data/assistant') && item.note.includes('Link only')
+			)
+		).toBe(true);
+		expect(() => applyImport(options)).toThrow('--acknowledge-unrestored');
+		expect(existsSync(join(destination, 'knowledge/note.md'))).toBe(false);
+		const applied = applyImport({ ...options, acknowledgeUnrestored: true }, preview.digest);
+		expect(readFileSync(join(destination, 'knowledge/note.md'), 'utf8')).toBe('keep this');
+		const receipt = JSON.parse(
+			readFileSync(join(destination, 'state/import-receipts', `${applied.digest}.json`), 'utf8')
+		);
+		expect(receipt.scope).toBe('portable-files');
+		expect(receipt.acknowledgeUnrestored).toBe(true);
+		expect(receipt.reviewRequired).toBe(true);
+	});
+
+	it('carries unrestored-source inventory through a portable backup without claiming full recovery', async () => {
+		const { source, destination, root } = fixture();
+		writeStackConfig(source, defaultStackConfig());
+		mkdirSync(join(source, 'data/assistant'), { recursive: true });
+		writeFileSync(join(source, 'data/assistant/runtime-file'), 'not portable');
+		const backup = join(root, 'portable-backup');
+		const manifest = await createBackup({ sourceHome: source, destination: backup });
+		expect(manifest.scope).toBe('portable');
+		expect(manifest.excludedCategories).toContain('Native OpenCode conversations and databases');
+		const plan = planImport({ sourceHome: backup, destinationHome: destination });
+		expect(plan.reviewRequired).toBe(true);
+		expect(() => applyImport({ sourceHome: backup, destinationHome: destination })).toThrow(
+			'Some source data'
+		);
+	});
 	it('never stages historical AKM configuration or prior unsafe staging into searchable knowledge', () => {
 		const { source, destination } = fixture();
 		for (const path of ['config/akm', 'knowledge/imported-config/akm']) {

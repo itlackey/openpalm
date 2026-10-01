@@ -33,6 +33,14 @@ The walkthrough must prove that:
     credential changes only at the selected home, and leaves the other stack running;
 14. the isolated stack is stopped and removed after the test.
 
+The setup restore walkthrough also previews a synthetic old home with omitted
+runtime data, verifies that native-history disclosure is visible outside technical
+details and apply stays disabled, then explicitly acknowledges the omission and
+checks the copied file's content. It must not call that portable copy a complete
+migration or activate the old runtime artifact. Native SQLite history recovery
+has a separate real-engine suite described in the
+[migration guide](migration-to-0.14.md#repeatable-migration-verification).
+
 The walkthrough also changes the recurring-work timezone and automatic-memory
 preference through the visible UI, applies them with a restart, and verifies
 that both survive a renderer reload. It temporarily disables automatic memory

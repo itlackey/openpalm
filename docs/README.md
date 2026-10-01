@@ -11,7 +11,7 @@ OpenCode or optional guarded MCP.
 | [Project README](../README.md) | Product overview and current 0.14 status |
 | [Installation](installation.md) | Fresh install, provider readiness, and first connection |
 | [Managing OpenPalm](managing-openpalm.md) | Knowledge, schedules, access policies, backup, and lifecycle |
-| [Moving to 0.14](operations/migration-to-0.14.md) | Fresh-install and allowlisted-import contract |
+| [Moving to 0.14](operations/migration-to-0.14.md) | Preservation inventory, portable import, native history recovery and acceptance |
 | [Admin setup verification](operations/admin-setup-verification.md) | Real Electron and Docker setup acceptance runbook |
 | [Claude Desktop](claude-desktop.md) | Local Claude MCPB connection |
 | [Remote MCP](remote-mcp.md) | Public HTTPS and OAuth resource-server deployment |

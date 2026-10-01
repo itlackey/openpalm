@@ -143,3 +143,15 @@ jobs:
         env:
           OPENPALM_SMOKE_REMOTE: '1'
         run: bash scripts/smoke-image.sh openpalm/assistant:ci assistant
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.image == 'assistant'
+        with:
+          bun-version: 1.4.2
+      - name: Install locked workspace for native history verification
+        if: matrix.image == 'assistant'
+        run: bun install --frozen-lockfile
+      - name: Verify native history recovery with the built Assistant engine
+        if: matrix.image == 'assistant'
+        env:
+          OPENPALM_HISTORY_TEST_IMAGE: openpalm/assistant:ci
+        run: bun test packages/lib/src/control-plane/history.test.ts

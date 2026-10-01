@@ -272,6 +272,21 @@ into the review-required staging area. Restore verifies every recorded size and
 checksum and refuses unrecorded allowlisted files. Symlinks and non-regular
 files are reported rather than followed.
 
+This is a **portable-files backup**, not full runtime recovery. It does not
+contain native OpenCode conversations, runtime snapshots, external binds/volumes
+or symlink targets. That scope appears in Admin, CLI output and the manifest.
+Restore previews make detected unrestored data prominent and require an explicit
+acknowledgement before copying only portable files; copied hashes and the plan
+are recorded privately in `state/import-receipts/`.
+
+For native conversations, use `openpalm history export` and `history restore`
+with the selected destination stopped, explicit workspace directory mappings
+and same-instance confirmation. This also supports recovery after setup without
+rerunning the portable importer against a live home. See the
+[migration guide](operations/migration-to-0.14.md#native-conversation-recovery)
+for private archives, collision checks, retry and separate acceptance of
+transcripts versus resumable projects. These refinements are post-beta.1.
+
 Generated `node_modules/` directories are omitted; reinstall dependencies from
 project lockfiles after recovery. AKM runtime configuration under `config/akm/`
 is not portable and may contain credentials, including in historical copies;

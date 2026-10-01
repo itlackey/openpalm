@@ -315,6 +315,7 @@
               <summary><strong>Restore from an OpenPalm backup</strong><span>Optional · do this before setup is complete</span></summary>
               <div class="disclosure-body">
                 <form id="import-form" class="form-stack">
+	                <p class="section-intro">Restores portable knowledge and workspace files, not native conversations. Keep a full private recovery backup of your previous instance.</p>
 	                  <label class="field" for="import-source"><span>Backup or previous OpenPalm home</span><span class="input-action"><input id="import-source" autocomplete="off" placeholder="/path/to/backup" /><button id="choose-import-source" class="secondary" type="button">Choose folder</button></span></label>
                   <details class="disclosure"><summary>Include sensitive data (optional)</summary>
                   <fieldset class="option-group">
@@ -324,6 +325,8 @@
                     <label class="check-row"><input id="import-maps" type="checkbox" /> Portal and OAuth mappings</label>
                   </fieldset>
                   </details>
+                  <div id="import-preservation" class="section-intro" aria-live="polite"></div>
+                  <label id="import-acknowledge-row" class="check-row" hidden><input id="import-acknowledge" type="checkbox" /> I have reviewed the unrestored data and preserved it separately or chosen to defer its recovery.</label>
                   <div class="button-row">
                     <button id="preview-import" class="secondary" type="button">Preview restore</button>
                     <button id="apply-import" class="primary" type="button" disabled>Apply reviewed restore</button>
@@ -530,8 +533,8 @@
 
           <section id="view-backup" class="view-panel ready-only" data-view-panel="backup" hidden aria-labelledby="backup-heading">
             <section class="panel">
-              <div class="section-heading"><div><p class="eyebrow">PORTABLE RECOVERY</p><h2 id="backup-heading">Create a backup</h2></div></div>
-              <p class="section-intro">Save your knowledge, workspace, settings, and task definitions to a new or empty directory. Runtime data is intentionally left out.</p>
+              <div class="section-heading"><div><p class="eyebrow">PORTABLE RECOVERY</p><h2 id="backup-heading">Create a portable backup</h2></div></div>
+              <p class="section-intro">Save your knowledge, workspace, settings, and task definitions. Native conversations, runtime snapshots, external mounts and symlink targets are not included. This is not a full rollback backup.</p>
               <form id="backup-form" class="form-stack">
 	                <label class="field" for="backup-destination"><span>Backup directory</span><span class="input-action"><input id="backup-destination" autocomplete="off" placeholder="/path/to/openpalm-backup" /><button id="choose-backup-destination" class="secondary" type="button">Choose folder</button></span></label>
                 <details class="disclosure"><summary>Include sensitive data (optional)</summary>
@@ -542,7 +545,7 @@
                   <label class="check-row"><input id="backup-maps" type="checkbox" /> Portal and OAuth mappings</label>
                 </fieldset>
                   </details>
-                <button class="primary" type="submit">Create backup</button>
+                <button class="primary" type="submit">Create portable backup</button>
               </form>
               <div id="backup-summary" class="inline-status neutral"><strong>No backup created yet.</strong><span>Choose a new or empty directory to begin.</span></div>
               <details class="disclosure technical-disclosure"><summary>Backup details</summary><textarea id="backup-result" class="technical-output" readonly spellcheck="false" aria-label="Backup technical details">No backup operation has run.</textarea></details>

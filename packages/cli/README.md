@@ -15,7 +15,7 @@ openpalm connect opencode
 openpalm connect claude --credential owner
 openpalm backup --to /path/to/empty-backup
 openpalm import --from /path/to/old-home --dry-run
-openpalm import --from /path/to/old-home --apply
+openpalm import --from /path/to/old-home --apply --acknowledge-unrestored
 openpalm task create morning-news --schedule '0 8 * * 1-5' --prompt 'Summarize project news'
 openpalm task history morning-news
 openpalm update
@@ -56,6 +56,28 @@ The dry-run-first importer copies an explicit allowlist into a fresh 0.14 home;
 it never performs an in-place legacy-home migration. Recurring tasks use one
 restricted Assistant helper and durable AKM history rather than a second
 scheduler API.
+
+Portable backup/import does not restore native conversations or external runtime
+sources. Its preview and private receipt show that scope explicitly. When
+runtime data or skipped links are detected, applying requires acknowledging
+separate preservation or deferred recovery.
+
+Native history has a separate same-instance path, usable with a stopped fresh
+or initialized target. It uses private WAL-inclusive SQLite snapshots and
+plugin-free offline native export/import, not legacy database replacement:
+
+```bash
+openpalm history export --from /path/to/old-home --image <exact-old-assistant-image> --to /private/new-history
+openpalm stop
+openpalm history restore --from /private/new-history --directory-map /private/directories.json
+openpalm history restore --from /private/new-history --directory-map /private/directories.json --apply --same-instance
+openpalm start
+```
+
+Every old directory requires a reviewed mapping to an existing `/work` context.
+Keep old originals and full physical-source backups until acceptance. See the
+[migration guide](../../docs/operations/migration-to-0.14.md) for linked runtime
+selection, collision handling, retry, limitations and verification.
 
 `openpalm update` pulls the versioned release images and recreates the enabled
 containers so managed configuration changes take effect. User configuration,

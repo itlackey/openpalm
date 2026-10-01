@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { clearClientKey, renderCredentials } from '../admin/access.js';
-import { importInput, importSignature, invalidateImportPreview } from '../admin/backup.js';
+import {
+	importInput,
+	importSignature,
+	invalidateImportPreview,
+	renderImportPlan
+} from '../admin/backup.js';
 import {
 	bindConnectionsEvents,
 	loadClientKey,
@@ -713,6 +718,25 @@ describe('Admin renderer behavior', () => {
 		invalidateImportPreview();
 		expect(state.importPreviewDigest).toBeNull();
 		expect(control('apply-import').disabled).toBe(true);
+	});
+	it('shows missing history outside technical details and never calls portable restore a complete migration', () => {
+		const result = {
+			copyCount: 3,
+			conflicts: 0,
+			warnings: [],
+			reviewRequired: true,
+			preservation: [
+				{ category: 'Native history', disposition: 'review-required', note: 'Preserve separately.' }
+			]
+		};
+		renderImportPlan(result, false);
+		expect(control('import-preservation').children[0]?.textContent).toContain(
+			'needs separate recovery'
+		);
+		expect(control('import-acknowledge-row').hidden).toBe(false);
+		renderImportPlan(result, true);
+		expect(control('import-summary').children[1]?.textContent).toContain('not a full migration');
+		expect(control('import-acknowledge-row').hidden).toBe(true);
 	});
 
 	it('clears OAuth attempts and evaluates conditional provider prompts', () => {

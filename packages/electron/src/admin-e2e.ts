@@ -382,6 +382,74 @@ async function run(): Promise<Record<string, unknown>> {
 		const assistantScreenshot = await capture(window, outputDir, '02-provider-required.png');
 		await assertRenderedFloor(window, 'provider setup');
 
+		const legacyImport = join(homeDir, '..', 'legacy-import-fixture');
+		mkdirSync(join(legacyImport, 'knowledge'), { recursive: true });
+		mkdirSync(join(legacyImport, 'data/assistant'), { recursive: true });
+		writeFileSync(join(legacyImport, 'knowledge/migration-test.md'), 'synthetic preservation test');
+		writeFileSync(join(legacyImport, 'data/assistant/runtime-artifact'), 'not portable');
+		await waitForRenderer(
+			window,
+			"document.body.dataset.busy !== 'true'",
+			'initial provider discovery'
+		);
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('.restore-panel').open = true;
+			const input=document.querySelector('#import-source');
+			input.value=${JSON.stringify(legacyImport)};
+			input.dispatchEvent(new Event('input',{bubbles:true}));
+			document.querySelector('#preview-import').click();
+		})()`);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.busy !== 'true' && !document.querySelector('#import-acknowledge-row').hidden && document.querySelector('#apply-import').disabled",
+			'migration omissions and acknowledgement gate'
+		);
+		assert(
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#import-preservation').textContent.includes('Native history')"
+			),
+			'Migration history omission was hidden in technical details.'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#import-acknowledge').click()"
+		);
+		assert(
+			await window.webContents.executeJavaScript(
+				"!document.querySelector('#apply-import').disabled"
+			),
+			'Reviewed omission acknowledgement did not allow the portable copy.'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('.restore-panel').scrollIntoView({block:'start'})"
+		);
+		const migrationScreenshot = await capture(
+			window,
+			outputDir,
+			'02c-migration-preservation.png',
+			true
+		);
+		await window.webContents.executeJavaScript(
+			"window.confirm = () => true; document.querySelector('#apply-import').click()"
+		);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.busy !== 'true' && document.querySelector('#import-summary').textContent.includes('not a full migration')",
+			'verified portable restore receipt'
+		);
+		assert(
+			readFileSync(join(homeDir, 'knowledge/migration-test.md'), 'utf8') ===
+				'synthetic preservation test',
+			'Portable restore did not preserve fixture content.'
+		);
+		assert(
+			!existsSync(join(homeDir, 'data/assistant/runtime-artifact')),
+			'Portable restore activated an old runtime artifact.'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('.restore-panel').open = false"
+		);
+		progress('migration preservation preview, acknowledgement and verified portable copy passed');
+
 		await runAdminAction('stop');
 		await window.webContents.executeJavaScript("document.querySelector('#refresh').click()");
 		await waitForRenderer(
@@ -1143,6 +1211,7 @@ async function run(): Promise<Record<string, unknown>> {
 			visibleSetupJourneyComplete: Boolean(provider && providerKey),
 			managementUiFixtureUsed: !provider,
 			startupRecoveryVerified: true,
+			migrationPreservationVerified: true,
 			instanceWelcomeVerified: {
 				defaultOneClick: true,
 				folderSelectionAndCancellation: true,
@@ -1203,6 +1272,7 @@ async function run(): Promise<Record<string, unknown>> {
 				overviewScreenshot,
 				connectionsScreenshot,
 				backupScreenshot,
+				migrationScreenshot,
 				troubleshootingScreenshot,
 				claudeScreenshot,
 				mcpScreenshot,

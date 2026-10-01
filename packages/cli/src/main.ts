@@ -76,6 +76,7 @@ const subCommands = {
 	setup: () => import('./commands/setup.js').then((module) => module.default),
 	provider: () => import('./commands/provider.js').then((module) => module.default),
 	backup: () => import('./commands/backup.js').then((module) => module.default),
+	history: () => import('./commands/history.js').then((module) => module.default),
 	connect: () => import('./commands/connect.js').then((module) => module.default),
 	remote: () => import('./commands/remote.js').then((module) => module.default),
 	import: () => import('./commands/import.js').then((module) => module.default),
@@ -100,12 +101,14 @@ const COMMAND_USAGE: Readonly<Record<string, string>> = {
 		'openpalm provider list | login [provider] [--method <label>] | key <provider> --key-file <path|-> | logout <provider> | test',
 	backup:
 		'openpalm backup --to <empty-directory> [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
+	history:
+		'openpalm history export --from <old-home> --image <old-assistant-image> --to <new-private-archive> [--runtime <resolved-opencode-data-directory>] | restore --from <archive> --directory-map <file> [--apply --same-instance]',
 	connect:
 		'openpalm connect <opencode|mcp|claude|remote> [--credential <username>] [--show-key] [--json]',
 	remote:
 		'openpalm remote enable <codex|claude> [--trust] [--sandbox <workspace-write|read-only>] [--no-browser] | disable <codex|claude> | setup <codex|claude> | pair <codex|claude> | status <codex|claude> | logs <codex|claude>',
 	import:
-		'openpalm import --from <old-home> [--dry-run|--apply] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
+		'openpalm import --from <old-home> [--dry-run|--apply] [--acknowledge-unrestored] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	task: 'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
 	update: 'openpalm update [--no-start] [--no-pull]',
 	addon: 'openpalm addon list | enable <gateway|discord|slack> | disable <name>',

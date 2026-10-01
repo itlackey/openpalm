@@ -147,6 +147,15 @@ export {
 	type BackupOptions
 } from './control-plane/backup.js';
 export {
+	exportHistory,
+	restoreHistory,
+	validateHistoryDirectories,
+	type HistoryExportOptions,
+	type HistoryRestoreOptions,
+	type HistoryReceipt
+} from './control-plane/history.js';
+export type { PreservationItem } from './control-plane/preservation.js';
+export {
 	buildComposeCliArgs,
 	buildComposeOptions,
 	type ComposeOptions

@@ -177,6 +177,8 @@ the portal's configured fallback identity.
 Create a portable, allowlisted recovery directory with `openpalm backup --to
 /path/to/empty-directory`. Provider authentication and identity maps are
 excluded unless their explicit `--include-*` flags are supplied.
+Portable backups do **not** contain native conversations, runtime snapshots or
+external mount/symlink contents; they are not full rollback snapshots.
 
 ## 0.14 is a clean break
 
@@ -190,10 +192,20 @@ feature settings do not migrate. Access credentials are recreated. Provider
 credentials and other secrets require explicit import approval. Imported
 schedules remain inactive until reviewed.
 
+Preserve native conversations separately with `openpalm history export`, then
+recover them with `openpalm history restore` into the stopped new instance.
+Both operations use native OpenCode tooling without reactivating legacy
+authority. Explicit project mappings, collision checks and private verification
+receipts protect both old and existing destination conversations.
+
 `openpalm import` previews the allowlisted copy by default and applies only with
 `--apply`. It never mutates the old home, refuses conflicts and symlinks,
 requires explicit flags for secrets and identity maps, and stages old task
-sources outside the active scheduler until they are reviewed. See
+sources outside the active scheduler until they are reviewed.
+The preview prominently lists unrestored runtime data and links; applying a
+partial portable import requires `--acknowledge-unrestored` when those are found.
+Do not call the migration complete until required history, authored work,
+external backup coverage and client usability have been accepted. See
 [the 0.14 transition guide](docs/operations/migration-to-0.14.md).
 
 ## Development

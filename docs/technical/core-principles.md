@@ -317,7 +317,29 @@ OpenCode customization remains available; migration is not a second registry.
 Migration chooses a distinct Compose project and explicitly re-establishes
 network intent, client credentials, portal allowlists, and policy assignments.
 Native OpenCode session databases and old external plugin/bundle mounts are
-not automatically restored or activated. The acceptance check includes real
+not wholesale restored or activated. Native transcripts have a separate
+same-instance recovery path through compatible OpenCode export/import, usable
+with a stopped fresh or already initialized target. Offline non-root one-off
+containers use immutable local image IDs, no network, no external plugins and
+no old configuration; they do not become managed services. Consistent SQLite
+snapshots include WAL; raw exports and recovery snapshots remain private,
+outside searchable knowledge. Every project context requires an explicit
+contained workspace mapping. Old permission/share/ownership/revert authority
+is stripped, ID collisions fail closed, existing destination sessions remain
+unchanged and a private per-session journal supports interrupted retries.
+
+Portable backup/import receipts explicitly state that native history, runtime
+artifacts, external physical sources and portal handles are not included. The
+import preview makes detected runtime data and skipped links prominent; apply
+requires acknowledging separate preservation or deferred recovery, not claiming
+those categories were restored. Imported file checksums are verified and a
+private receipt persists the selected plan and unresolved inventory.
+
+The acceptance check includes native transcript content and client/project
+discoverability, existing target sessions, authored workspace hashes and Git
+references, separately reviewed external artifacts, and complete physical-source
+backup coverage—not merely an archive checksum or selected-file count. It also
+includes real
 provider use, knowledge retrieval, durable scheduled results, and each enabled
 client path—not merely healthy containers.
 

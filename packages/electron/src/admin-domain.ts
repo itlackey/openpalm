@@ -243,6 +243,7 @@ export function importFromAdmin(
 		sourceHome: string;
 		apply?: boolean;
 		previewDigest?: string;
+		acknowledgeUnrestored?: boolean;
 		includeProviderAuth?: boolean;
 		includeUserEnv?: boolean;
 		includePortalMaps?: boolean;

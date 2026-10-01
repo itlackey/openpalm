@@ -19,7 +19,8 @@ function optionsFromArgs(args: Record<string, unknown>): ImportOptions {
 		includeProviderAuth: args['include-provider-auth'] === true,
 		includeUserEnv: args['include-user-env'] === true,
 		includePortalMaps: args['include-portal-maps'] === true,
-		includeOAuth: args['include-oauth'] === true
+		includeOAuth: args['include-oauth'] === true,
+		acknowledgeUnrestored: args['acknowledge-unrestored'] === true
 	};
 }
 
@@ -38,6 +39,14 @@ export function printImportPlan(plan: ImportPlan, json: boolean): void {
 	}
 	console.log(`Import source: ${displayText(plan.sourceHome)}`);
 	console.log(`Fresh 0.14 destination: ${displayText(plan.destinationHome)}`);
+	console.log('Scope: portable files only — NOT a full migration or native history restore.');
+	for (const item of plan.preservation) {
+		console.log(`${item.disposition}: ${displayText(item.category)} — ${displayText(item.note)}`);
+	}
+	if (plan.reviewRequired)
+		console.warn(
+			'Unrestored data needs a separate recovery decision. Apply requires --acknowledge-unrestored after you have reviewed and privately preserved it.'
+		);
 	const totals = new Map<string, Map<string, number>>();
 	const conflicts: ImportPlan['entries'] = [];
 	for (const entry of plan.entries) {
@@ -129,6 +138,11 @@ export default defineCommand({
 		'include-oauth': {
 			type: 'boolean',
 			description: 'copy validated Guardian OAuth settings and identity maps'
+		},
+		'acknowledge-unrestored': {
+			type: 'boolean',
+			description:
+				'acknowledge separately preserved or deferred data; does not restore native history'
 		}
 	},
 	run({ args }) {
@@ -153,8 +167,9 @@ export default defineCommand({
 			printImportPlan(plan, args.json === true);
 			if (!args.json) {
 				console.log(
-					'Import complete. Imported task definitions are staged outside the active task directory.'
+					'Portable files copied and checksums verified. This is not a complete migration: native history and other unselected data need separate acceptance. Imported tasks remain inactive.'
 				);
+				console.log(`Private receipt: ${state.homeDir}/state/import-receipts/${plan.digest}.json`);
 				console.log('Review task contents before adoption, then run `openpalm setup`.');
 			}
 		} finally {

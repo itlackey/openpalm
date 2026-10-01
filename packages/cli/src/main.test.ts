@@ -10,6 +10,7 @@ describe('CLI help', () => {
 			'setup',
 			'provider',
 			'backup',
+			'history',
 			'connect',
 			'import',
 			'task',
@@ -34,6 +35,8 @@ describe('CLI help', () => {
 		expect(helpText('credential')).toContain('set-policy');
 		expect(helpText('provider')).toContain('login');
 		expect(helpText('import')).toContain('--dry-run');
+		expect(helpText('import')).toContain('--acknowledge-unrestored');
+		expect(helpText('history')).toContain('--directory-map');
 		expect(helpText('task')).toContain('create <id>');
 		for (const command of ['remote', 'setup', 'config']) {
 			expect(helpText(command)).toContain('Codex and Claude Code native remote access is experimental');

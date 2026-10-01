@@ -16,6 +16,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { parseOAuthConfig, parseOAuthIdentityMap } from './oauth-store.js';
 import { parsePortalCredentialMap } from './portal-credential-store.js';
 import { readStackConfig } from './stack-config.js';
+import { inspectUnrestoredData, type PreservationItem } from './preservation.js';
 import { managedComposeFile, stackConfigFile, writeFileAtomic } from './foundation.js';
 import {
 	assertSafePortablePath,
@@ -38,6 +39,7 @@ export type ImportOptions = {
 	includeUserEnv?: boolean;
 	includePortalMaps?: boolean;
 	includeOAuth?: boolean;
+	acknowledgeUnrestored?: boolean;
 };
 
 export type ImportAction =
@@ -64,6 +66,8 @@ export type ImportPlan = {
 	destinationHome: string;
 	entries: ImportEntry[];
 	warnings: string[];
+	preservation: PreservationItem[];
+	reviewRequired: boolean;
 	totalBytes: number;
 	conflicts: number;
 	copyCount: number;
@@ -106,7 +110,9 @@ function readRegularSource(
 	}
 }
 
-function verifyBackupManifest(sourceHome: string): Set<string> | null {
+function verifyBackupManifest(
+	sourceHome: string
+): { files: Set<string>; preservation: PreservationItem[] } | null {
 	const path = join(sourceHome, 'openpalm-backup.json');
 	if (!existsSync(path)) return null;
 	let value: unknown;
@@ -162,7 +168,35 @@ function verifyBackupManifest(sourceHome: string): Set<string> | null {
 	if (!Number.isSafeInteger(root.totalBytes) || root.totalBytes !== totalBytes) {
 		throw new Error('Backup manifest total size does not match its files');
 	}
-	return verified;
+	const preservation: PreservationItem[] = [];
+	if (root.preservation !== undefined) {
+		if (!Array.isArray(root.preservation) || root.preservation.length > 100_000) {
+			throw new Error('Backup preservation inventory is invalid');
+		}
+		for (const raw of root.preservation) {
+			const item = asRecord(raw);
+			if (
+				!item ||
+				typeof item.category !== 'string' ||
+				item.category.length > 256 ||
+				typeof item.note !== 'string' ||
+				item.note.length > 4096 ||
+				!['selected', 'review-required', 'excluded'].includes(String(item.disposition)) ||
+				!Array.isArray(item.paths) ||
+				item.paths.length > MAX_FILES ||
+				item.paths.some((path) => typeof path !== 'string' || path.length > 4096)
+			) {
+				throw new Error('Backup preservation inventory contains an invalid entry');
+			}
+			preservation.push({
+				category: item.category,
+				disposition: item.disposition as PreservationItem['disposition'],
+				paths: item.paths as string[],
+				note: item.note
+			});
+		}
+	}
+	return { files: verified, preservation };
 }
 
 function filesBelow(
@@ -580,7 +614,7 @@ export function planImport(options: ImportOptions): ImportPlan {
 	for (const item of candidates) {
 		assertSafePortablePath(sourceHome, item.relativeSource);
 		assertSafePortablePath(destinationHome, item.relativeDestination, true);
-		if (verifiedBackupFiles && !verifiedBackupFiles.has(item.relativeSource)) {
+		if (verifiedBackupFiles && !verifiedBackupFiles.files.has(item.relativeSource)) {
 			throw new Error(`Backup file is not recorded in its manifest: ${item.relativeSource}`);
 		}
 		const stat = lstatSync(item.source);
@@ -609,12 +643,26 @@ export function planImport(options: ImportOptions): ImportPlan {
 		});
 	}
 
+	const preservation = [...new Set(entries.map((entry) => entry.category))].map(
+		(category): PreservationItem => ({
+			category,
+			disposition: 'selected',
+			paths: [],
+			note: `${entries.filter((entry) => entry.category === category).length} file(s), ${entries.filter((entry) => entry.category === category).reduce((bytes, entry) => bytes + entry.bytes, 0)} bytes inspected${category === 'task' ? '; staged inactive, not scheduled' : ''}. Conflicts must be resolved before apply.`
+		})
+	);
+	preservation.push(
+		...inspectUnrestoredData(sourceHome, warnings),
+		...(verifiedBackupFiles?.preservation.filter((item) => item.disposition !== 'selected') ?? [])
+	);
 	const result: Omit<ImportPlan, 'digest'> = {
 		version: 1,
 		sourceHome,
 		destinationHome,
 		entries,
 		warnings,
+		preservation: [...new Map(preservation.map((item) => [JSON.stringify(item), item])).values()],
+		reviewRequired: preservation.some((item) => item.disposition === 'review-required'),
 		totalBytes,
 		conflicts: entries.filter((entry) => entry.action === 'conflict').length,
 		copyCount: entries.filter((entry) => !['conflict', 'skip-identical'].includes(entry.action))
@@ -636,6 +684,11 @@ export function applyImport(options: ImportOptions, expectedDigest?: string): Im
 			`Import has ${plan.conflicts} destination conflict(s). Resolve them and run --dry-run again.`
 		);
 	}
+	if (plan.reviewRequired && options.acknowledgeUnrestored !== true) {
+		throw new Error(
+			'Some source data will not be restored. Review the preservation inventory and make a private recovery backup first, then explicitly use --acknowledge-unrestored to copy only portable files. This does not complete history recovery.'
+		);
+	}
 	for (const entry of plan.entries) {
 		if (entry.action === 'skip-identical') continue;
 		assertSafePortablePath(plan.sourceHome, entry.relativeSource);
@@ -654,6 +707,19 @@ export function applyImport(options: ImportOptions, expectedDigest?: string): Im
 		const mode = entry.category !== 'secret' && (sourceFile.mode & 0o111) !== 0 ? 0o700 : 0o600;
 		ensureSafeDestinationParent(plan.destinationHome, entry.destination);
 		writeFileAtomic(entry.destination, sourceFile.bytes, mode);
+		if (
+			createHash('sha256').update(readRegularSource(entry.destination).bytes).digest('hex') !==
+			entry.sha256
+		) {
+			throw new Error(`Imported file verification failed: ${entry.relativeDestination}`);
+		}
 	}
+	const receipt = join(plan.destinationHome, 'state', 'import-receipts', `${plan.digest}.json`);
+	ensureSafeDestinationParent(plan.destinationHome, receipt);
+	writeFileAtomic(
+		receipt,
+		`${JSON.stringify({ ...plan, scope: 'portable-files', appliedAt: new Date().toISOString(), acknowledgeUnrestored: options.acknowledgeUnrestored === true }, null, 2)}\n`,
+		0o600
+	);
 	return plan;
 }

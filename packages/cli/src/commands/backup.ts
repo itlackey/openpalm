@@ -27,6 +27,8 @@ export default defineCommand({
 		else {
 			console.log(`Portable backup created at ${args.to}`);
 			console.log(`${manifest.files.length} file(s), ${manifest.totalBytes} byte(s).`);
+			console.log('Scope: portable files only. NOT a full runtime or rollback backup.');
+			for (const category of manifest.excludedCategories) console.log(`Not included: ${category}`);
 			for (const warning of manifest.warnings) console.warn(`warning: ${warning}`);
 			console.log('Restore into a fresh install with `openpalm import --from <backup>` options.');
 		}
