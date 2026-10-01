@@ -4,6 +4,10 @@ OpenPalm 0.14 has one product promise: install a private personal agent with
 persistent knowledge and recurring work, then access it through native
 OpenCode or optional guarded MCP.
 
+The selected new brand is **f/hold** (**fHold** in plain text, `fhold` for
+technical names). The runtime rename is pending; current installation and
+operation guides intentionally keep working OpenPalm commands and paths.
+
 ## User guides
 
 | Document | Purpose |
@@ -32,13 +36,13 @@ OpenCode or optional guarded MCP.
 | [Testing workflow](technical/testing-workflow.md) | Active local and CI checks |
 | [Release workflow](operations/release.md) | Images, CLI, optional artifacts, and release gate |
 
-## Future release proposals
+## Planned changes and research
 
 | Document | Purpose |
 |---|---|
 | [SSH instance management](technical/ssh-management-proposal.md) | Implementation outline for consideration in 0.15; not an implemented feature |
-| [Rebranding implementation](technical/rebranding-implementation-guide.md) | File-by-file proposal, stable identifiers, publishing and transition verification; no rename approved |
-| [Product name market review](research/product-name-market-review-2026-10-01.md) | Evidence-backed comparison of 34 naming candidates, including home/shelter and underground-agent directions; not legal clearance |
+| [f/hold rebranding implementation](technical/rebranding-implementation-guide.md) | Selected spelling variants, concrete rename targets, stable identifiers, publishing and transition verification; runtime rename pending |
+| [Product name market review and selection](research/product-name-market-review-2026-10-01.md) | f/hold selection record and the earlier 34-candidate comparison; not legal or namespace clearance |
 
 Older release documentation is retained in Git history, not in the maintained
 documentation tree. The [core principles](technical/core-principles.md) are
