@@ -22,7 +22,7 @@
 	--danger-soft: #342020;
 	--warning: #eac16a;
 	--warning-soft: #302819;
-	--focus: #79c0ff;
+	--focus: #7cdb8b;
 	--shadow: 0 16px 48px #0008;
 	background: var(--canvas);
 	color: var(--ink);
@@ -56,19 +56,20 @@ summary {
 	font: inherit;
 }
 
-:where(button, input, select, summary, [tabindex]:not([tabindex="-1"])):focus,
 :where(button, input, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
-	outline: 3px solid var(--focus);
-	outline-offset: 3px;
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
 }
 
 #view-title:focus,
 .client-panel:focus,
 #error-state:focus,
 #install-section:focus {
-	outline: 3px solid var(--focus);
-	outline-offset: 4px;
-	border-radius: 6px;
+	outline: none;
+}
+
+:where(button, input, select, summary):focus:not(:focus-visible) {
+	outline: none;
 }
 
 button {

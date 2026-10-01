@@ -1,6 +1,6 @@
-FROM node:24.18.0-bookworm-slim AS node-runtime
+FROM node:24.21.0-bookworm-slim AS node-runtime
 
-FROM oven/bun:1.3.14 AS tools
+FROM oven/bun:1.4.2 AS tools
 ARG TARGETARCH
 WORKDIR /repo
 COPY package.json bun.lock ./
@@ -38,19 +38,28 @@ RUN bun install --frozen-lockfile --production --linker hoisted --filter @openpa
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac
 
-# Claude's plugin is distributed as source, not an npm package. Bake only its
-# runtime directory and license from the immutable upstream release commit.
-ADD --checksum=sha256:e4b38b9f3d51bc2dd73db5af4d32d2b5c8e3aadff5ed46c3742f3cb13f9b34bb \
-    https://codeload.github.com/itlackey/akm-plugins/tar.gz/50c69a5255feb7d3932c4951405f2e87d49f8e73 /tmp/akm-claude.tar.gz
-RUN mkdir /akm-claude \
-    && plugin_root=akm-plugins-50c69a5255feb7d3932c4951405f2e87d49f8e73/claude \
-    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-claude --strip-components=2 \
-      "$plugin_root/.claude-plugin" "$plugin_root/commands" "$plugin_root/hooks" \
+# Both native harnesses install the same immutable upstream marketplace.
+ADD --checksum=sha256:de389f4b000993fbfceb1df2666553793576723fd003321038afbdf965bc8667 \
+    https://codeload.github.com/itlackey/akm-plugins/tar.gz/5e4bbd8c8520f70c869ca1d15428b843c9dd93c7 /tmp/akm-claude.tar.gz
+RUN mkdir -p /akm-marketplace/claude \
+    && plugin_root=akm-plugins-5e4bbd8c8520f70c869ca1d15428b843c9dd93c7/claude \
+    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-marketplace/claude --strip-components=2 \
+      "$plugin_root/.claude-plugin" "$plugin_root/.codex-plugin" "$plugin_root/commands" "$plugin_root/hooks" \
       "$plugin_root/shared" "$plugin_root/skills" "$plugin_root/package.json" "$plugin_root/README.md" \
-    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-claude --strip-components=1 \
-      akm-plugins-50c69a5255feb7d3932c4951405f2e87d49f8e73/LICENSE
+    && tar -xzf /tmp/akm-claude.tar.gz -C /akm-marketplace --strip-components=1 \
+      akm-plugins-5e4bbd8c8520f70c869ca1d15428b843c9dd93c7/.agents/plugins/marketplace.json \
+      akm-plugins-5e4bbd8c8520f70c869ca1d15428b843c9dd93c7/.claude-plugin/marketplace.json \
+      akm-plugins-5e4bbd8c8520f70c869ca1d15428b843c9dd93c7/LICENSE
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+ENV PATH="/repo/node_modules/.bin:${PATH}"
+RUN mkdir -p /native-defaults/codex \
+    && CLAUDE_CONFIG_DIR=/native-defaults/claude claude plugin marketplace add /akm-marketplace \
+    && CLAUDE_CONFIG_DIR=/native-defaults/claude claude plugin install akm@akm-plugins \
+    && CODEX_HOME=/native-defaults/codex codex plugin marketplace add /akm-marketplace \
+    && CODEX_HOME=/native-defaults/codex codex plugin add akm@akm-plugins \
+    && chmod a+r /native-defaults/codex/config.toml
 
-FROM oven/bun:1.3.14-slim
+FROM oven/bun:1.4.2-slim
 
 ARG TARGETARCH
 ARG SUPERCRONIC_VERSION=v0.2.49
@@ -80,7 +89,9 @@ COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 COPY containers/assistant/openpalm-remote.mjs /usr/local/bin/openpalm-remote
 COPY containers/assistant/openpalm-remote-setup.mjs /usr/local/bin/openpalm-remote-setup
-COPY --from=tools /akm-claude /opt/openpalm/plugins/akm
+COPY --from=tools /akm-marketplace /akm-marketplace
+COPY --from=tools /native-defaults /native-defaults
+COPY containers/assistant/codex.config.toml /etc/codex/config.toml
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
@@ -111,9 +122,8 @@ ENV HOME=/home/opencode \
     OPENPALM_AUTOMATIC_MEMORY=1 \
     DISABLE_AUTOUPDATER=1 \
     BUN_OPTIONS=--no-env-file \
-    CLAUDE_CODE_PLUGIN_DIRS=/opt/openpalm/plugins/akm \
     TZ=UTC \
-    PATH="/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/usr/local/bun-node-fallback-bin:/usr/local/bin:/usr/bin:/bin"
+    PATH="/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 WORKDIR /work
 EXPOSE 4096

@@ -110,6 +110,29 @@ requests, `main`, and `release/*`.
 The workflow never publishes the private Guardian, Portal, Lib, Skeleton, or
 Admin packages to npm.
 
+## Alpha.4 candidate verification record
+
+The 2026-10-01 local Linux x64 candidate passed the full package/security suite,
+type checks, lint, frozen install, dependency audit (no advisories), CLI/MCPB/Admin
+builds, all-profile Compose validation, and startup smokes for all three images.
+Assistant smokes exercised real OpenCode, Claude Code, and Codex session/prompt
+hooks with AKM 0.9.20 and plugin 0.9.20202610010250. Each recalled the same
+isolated knowledge asset. No vendor accounts or model responses were used for
+that lane; Codex trust was granted only in a disposable fixture after confirming
+the production defaults were untrusted. Restart checks preserved user settings
+and refreshed untouched native plugin registrations. Missing vendor logins
+still failed independently without degrading Assistant/scheduler health.
+
+The real Electron 44.5.1 setup walkthrough passed twice: without a provider it
+truthfully retained incomplete setup, and with approved OpenCode Go credentials
+it completed actual readiness and a live MCP response after restart. Both
+verified startup recovery, policy-filtered MCP, credential/portal mapping,
+preference persistence, native-setup consent/sandbox controls, layout reflow,
+and keyboard focus. The design reviewer approved all ten border-fix screenshots;
+the provider-backed run retained eleven screenshots including the ready state.
+These are local candidate checks, not yet proof of published artifacts or
+authenticated Claude/Codex remote sessions.
+
 ## Alpha.3 published-artifact verification record
 
 The 2026-09-30 Linux x64 upgrade used the checksum-verified CLI from the public

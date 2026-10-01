@@ -32,6 +32,22 @@ prepare_filesystem() {
     /home/opencode/.local/state/opencode \
     /opt/akm/cache /opt/akm/data/state /stash/tasks /stash/inbox /stash/disabled-tasks /work
 
+  # Native installers ran during the image build. Seed their generated caches,
+  # never account files, trust decisions, or existing operator configuration.
+  mkdir -p /home/opencode/.codex/plugins/cache /home/opencode/.claude/plugins
+  cp -R -n /native-defaults/codex/plugins/cache/. /home/opencode/.codex/plugins/cache/
+  cp -R -n /native-defaults/claude/plugins/cache/. /home/opencode/.claude/plugins/cache/
+  for file in claude/settings.json claude/plugins/installed_plugins.json claude/plugins/known_marketplaces.json codex/config.toml; do
+    local source="/native-defaults/$file" target="/home/opencode/.$file" previous="/home/opencode/.openpalm-native-defaults/$file"
+    # Refresh only untouched generated defaults. Native user settings, installed
+    # plugins, authentication and hook trust always take precedence.
+    if [ ! -e "$target" ] || { [ -f "$previous" ] && cmp -s "$target" "$previous"; }; then
+      cp "$source" "$target"
+      mkdir -p "$(dirname "$previous")"
+      cp "$source" "$previous"
+    fi
+  done
+
   for required in \
     opencode.jsonc \
     AGENTS.md \

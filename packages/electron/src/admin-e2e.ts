@@ -103,6 +103,9 @@ async function capture(window: BrowserWindow, directory: string, name: string): 
 }
 
 async function assertRenderedFloor(window: BrowserWindow, label: string): Promise<void> {
+	// Exercise real keyboard modality; focus-visible should not decorate mouse clicks.
+	window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+	window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
 	const result = (await window.webContents.executeJavaScript(`(() => {
 		const visible = (element) => {
 			const modal = document.querySelector('dialog[open]');
@@ -433,6 +436,7 @@ async function run(): Promise<Record<string, unknown>> {
 			"document.querySelector('[data-view=overview]').click()"
 		);
 		const overviewScreenshot = await capture(window, outputDir, '04b-overview.png');
+		assert(await window.webContents.executeJavaScript("document.querySelector('#view-title').focus(); getComputedStyle(document.querySelector('#view-title')).outlineStyle === 'none'"), 'Programmatically focused headings have a decorative outline.');
 		await window.webContents.executeJavaScript(
 			"document.querySelector('[data-view=connections]').click()"
 		);

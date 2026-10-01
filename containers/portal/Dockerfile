@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.14-slim
+FROM oven/bun:1.4.2-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

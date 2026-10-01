@@ -6,6 +6,8 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+## [0.14.0-alpha.4] - 2026-10-01
+
 ### Added
 
 - Guided `openpalm remote enable claude|codex` and Admin setup: native browser
@@ -15,6 +17,10 @@ and remain available in Git history.
   no sandbox bypass, added capabilities, or host security changes.
 - Optional `openpalm setup --claude-remote --codex-remote` onboarding and
   `openpalm remote disable claude|codex` without deleting vendor account state.
+- Mandatory image smoke tests run the real OpenCode, Claude Code, and Codex
+  harnesses against the real AKM CLI and verify session hooks and knowledge
+  recall without vendor credentials or model calls. Codex hook trust is tested
+  in an isolated fixture; production hooks require explicit user approval.
 
 ### Changed
 
@@ -27,6 +33,16 @@ and remain available in Git history.
   native consent preserved. Startup status never claims a verified connection.
 - Existing AI accounts are selected first; redundant sign-in choices are hidden.
   Access identities use a flatter list with per-identity management actions.
+- Mouse/programmatic focus no longer adds blue borders to controls or headings;
+  keyboard focus remains visible with the brand's green accent.
+- Bun 1.4.2 throughout containers/CI, Node LTS 24.21.0 in Assistant, OpenCode
+  1.18.34, Codex 0.159.3, and updated locked dependencies, including Electron
+  44.5.1 and TypeScript 7.0.2. Real Node takes precedence over Bun's Node shim.
+- All three AKM harnesses use CLI 0.9.20 and plugin 0.9.20202610010250.
+  Claude/Codex use native marketplace installers during image build, not an
+  inline loader or startup installation. Generated defaults are seeded into
+  persistent homes and refreshed only while untouched; user configuration,
+  account state, and hook-trust decisions are preserved.
 
 ## [0.14.0-alpha.3] - 2026-09-30
 

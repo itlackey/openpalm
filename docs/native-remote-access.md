@@ -92,17 +92,25 @@ consent error if startup failed. Open the link in claude.ai/code or use Claude's
 mobile app. Claude Code uses outbound HTTPS and does not need an inbound listener.
 See [Anthropic's requirements and troubleshooting](https://code.claude.com/docs/en/remote-control).
 
-The image includes Claude's AKM plugin: five discovery/feedback/remember commands,
-the AKM skill, and lifecycle hooks. Claude's native loader uses
-`CLAUDE_CODE_PLUGIN_DIRS=/opt/openpalm/plugins/akm`, inherited by the remote worker
-and its child sessions. There is no extra install step or marketplace download,
-and container updates replace the pinned plugin without rewriting your Claude
-settings. Run `claude plugin list` or `claude plugin details akm` inside Assistant
-to inspect it. It appears as `akm@inline`; you can disable that identity through
-Claude's own `enabledPlugins` settings. Workspace trust and tool approvals still
-apply. AKM uses the existing `/stash` knowledge bundle; automatic learning and
-session extraction remain off (`AKM_AUTO_LEARNING=0`, `AKM_AUTO_MEMORY=0`).
-See [Claude's native plugin loading reference](https://code.claude.com/docs/en/plugins/loading).
+The image includes AKM for all three harnesses: OpenCode, Claude Code, and Codex.
+Claude/Codex use their standard native marketplace installers during image
+build against the same checksum-verified release. No startup install, inline
+loader, or marketplace download is needed. Native generated defaults are seeded
+into the persistent home and refreshed only while untouched; your edited
+settings, accounts, additional plugins, and trust decisions are preserved.
+
+Run `claude plugin list`, `claude plugin details akm`, or
+`codex plugin list --json` inside Assistant to inspect `akm@akm-plugins`.
+Claude provides the five discovery/feedback/remember commands and AKM skill;
+Codex uses the AKM skill and CLI forms. Codex's lifecycle hooks require your
+native `/hooks` review and approval before automatic recall starts—OpenPalm
+does not pre-trust them. Native workspace trust and tool approvals still apply.
+All harnesses use `/stash` knowledge and aligned AKM versions. Automatic learning
+and session extraction remain off in the native remote workers
+(`AKM_AUTO_LEARNING=0`, `AKM_AUTO_MEMORY=0`). Image tests verify real session hooks
+and knowledge recall in each harness, separately from vendor sign-in.
+See [Claude's standard plugin installation](https://code.claude.com/docs/en/discover-plugins)
+and [Codex plugins](https://developers.openai.com/plugins/build/plugins).
 
 ## Toggles, recovery, and trust
 

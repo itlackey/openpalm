@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.14 AS dependencies
+FROM oven/bun:1.4.2 AS dependencies
 
 WORKDIR /repo
 COPY package.json bun.lock ./
@@ -18,7 +18,7 @@ RUN bun install --frozen-lockfile --production --linker hoisted \
               node_modules/opencode-linux-x64-baseline-musl \
               node_modules/opencode-linux-arm64-musl
 
-FROM oven/bun:1.3.14-slim
+FROM oven/bun:1.4.2-slim
 
 ENV HOME=/opt/openpalm/guardian \
     PORT=8080 \

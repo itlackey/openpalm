@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.14.0-alpha.3",
+  "version": "0.14.0-alpha.4",
   "private": true,
   "license": "MPL-2.0",
   "workspaces": [
@@ -36,7 +36,7 @@
     "format": "biome format --write package.json .github/release-manifest.json packages scripts/*.mjs scripts/*.ts containers/assistant/*.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14"
+    "@biomejs/biome": "^2.5.15"
   },
   "overrides": {
     "@discordjs/rest": "2.6.3",

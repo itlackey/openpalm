@@ -41,7 +41,6 @@ describe('optional native remote workers', () => {
 			remoteEnvironment({
 				HOME: '/persist',
 				AKM_BUNDLE_DIR: '/stash',
-				CLAUDE_CODE_PLUGIN_DIRS: '/opt/openpalm/plugins/akm',
 				AKM_AUTO_MEMORY: '0',
 				AKM_AUTO_LEARNING: '0',
 				BUN_OPTIONS: '--no-env-file',
@@ -58,7 +57,6 @@ describe('optional native remote workers', () => {
 		).toEqual({
 			HOME: '/persist',
 			AKM_BUNDLE_DIR: '/stash',
-			CLAUDE_CODE_PLUGIN_DIRS: '/opt/openpalm/plugins/akm',
 			AKM_AUTO_MEMORY: '0',
 			AKM_AUTO_LEARNING: '0',
 			BUN_OPTIONS: '--no-env-file',

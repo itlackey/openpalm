@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/electron",
-  "version": "0.14.0-alpha.3",
+  "version": "0.14.0-alpha.4",
   "private": true,
   "type": "module",
   "description": "Optional static desktop administration tool for OpenPalm stacks",
@@ -22,9 +22,9 @@
   },
   "devDependencies": {
     "@openpalm/lib": "workspace:*",
-    "electron": "43.7.6",
+    "electron": "44.5.1",
     "electron-builder": "^26.15.3",
-    "typescript": "^6.0.3",
-    "@types/node": "^26.1.2"
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.3"
   }
 }

@@ -51,20 +51,41 @@ the root lockfile:
 - `packages/guardian/package.json` — Guardian application dependency;
 - `packages/portal/package.json` — unified adapter dependencies.
 
-AKM CLI is pinned to `0.9.20`; both platform plugins use release
-`0.9.20202609302253`. OpenCode's declared CLI dependency matches, so no AKM
+AKM CLI is pinned to `0.9.20`; all three harness integrations use plugin release
+`0.9.20202610010250`. OpenCode's declared CLI dependency matches, so no AKM
 dependency override is needed.
 
-Claude's plugin is source-distributed. The Assistant Dockerfile downloads its
-immutable release commit with a SHA-256 check, then copies only the Claude
-directory and upstream license into the image. `CLAUDE_CODE_PLUGIN_DIRS` points
-Claude's native loader at that read-only directory in terminal and remote-worker
-environments. It works with fresh or existing persistent homes without changing
-user settings or installing a marketplace at startup. Image smoke checks validate
-the manifest, native loading, and version alignment with OpenCode.
+Claude/Codex plugins are source-distributed from the same upstream directory.
+The Assistant Dockerfile downloads an immutable release commit with a SHA-256
+check and retains only native manifests, hooks, skills, commands, and license.
+It runs the standard installers against that local marketplace:
+
+```bash
+claude plugin marketplace add /akm-marketplace
+claude plugin install akm@akm-plugins
+codex plugin marketplace add /akm-marketplace
+codex plugin add akm@akm-plugins
+```
+
+Startup copies the installed caches and seeds generated native settings into
+the persistent home. Untouched generated settings refresh on image upgrades;
+user-edited configuration, additional installed plugins, accounts, and native
+trust decisions are never overwritten. Codex also has native system defaults;
+user configuration takes precedence. Operators who customize the native plugin
+registry can use the corresponding native install/update command rather than
+having OpenPalm merge a vendor-specific configuration format.
+
+Codex hooks are installed but not pre-trusted: review/approve them through native
+`/hooks` before expecting automatic recall in personal sessions. No approval or
+sandbox bypass is added. Image smoke checks exercise all three real harnesses
+with the real AKM CLI, confirming session hooks and successful fixture recall.
 `BUN_OPTIONS=--no-env-file` prevents workspace dotenv loading in upstream hooks;
 automatic learning and session extraction remain disabled by the existing AKM
 environment defaults.
+
+Containers and CI pin Bun `1.4.2`; Assistant uses real Node LTS `24.21.0`
+ahead of Bun's Node compatibility shim. Update pins deliberately and rerun
+image tests rather than introducing mutable `latest` tags or startup updates.
 
 Entrypoints never run a package manager. Runtime package overrides are not supported.
 

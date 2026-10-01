@@ -53,6 +53,29 @@ It needs a desktop session and locally built images matching the checkout's
 version, so it is not part of the portable unit-test gate. See the
 [Admin setup verification runbook](../operations/admin-setup-verification.md).
 
+## Provider-free AKM harness gate
+
+Every Assistant image smoke test runs `scripts/smoke-akm-harnesses.mjs` inside
+the image. It exercises real OpenCode, Claude Code, and Codex processes against
+the actual AKM CLI and an isolated knowledge bundle. Each must emit session and
+prompt-hook events and recall the known fixture asset with the pinned plugin
+version. Merely finding a manifest or executable is insufficient.
+
+Claude/Codex use build-installed native marketplace caches/settings, without
+an inline plugin loader. No vendor authentication is supplied: Claude hooks run
+before its sign-in gate, while OpenCode/Codex use a refused loopback model URL.
+Codex must initially report untrusted hooks; only the disposable test home
+receives native hook-trust state so execution can be tested. The image smoke
+also verifies native user settings survive restart and untouched generated
+plugin registrations refresh. CI runs this on AMD64 and ARM64 images.
+
+```bash
+scripts/smoke-image.sh openpalm/assistant:0.14.0-alpha.4 assistant
+```
+
+This proves plugin loading and AKM recall, not vendor account connectivity or
+model-generated tool use. Real-provider acceptance remains separate below.
+
 ## Real-provider runtime acceptance
 
 `scripts/live-acceptance.ts` is an opt-in entrypoint for the runner under

@@ -9,6 +9,7 @@ Only a small script surface remains active.
 | `bump-release.mjs` | Stamp the complete product release |
 | `setup.sh`, `setup.ps1` | Release bootstrap installers |
 | `smoke-image.sh` | Assert image startup and runtime security boundaries |
+| `smoke-akm-harnesses.mjs` | Image-internal real-harness AKM hook and recall checks, without vendor credentials |
 | `smoke-admin-artifact.mjs` | Extract/install and launch a fresh native Admin package on its build runner |
 | `test-isolate-op-home.ts` | Force every Bun test into a throwaway `OP_HOME` |
 | `validate-release-assets.mjs` | Verify the complete checksummed release set |

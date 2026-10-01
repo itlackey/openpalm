@@ -1,0 +1,7 @@
+# Native system defaults. User configuration and hook-trust decisions take precedence.
+[marketplaces.akm-plugins]
+source_type = "local"
+source = "/akm-marketplace"
+
+[plugins."akm@akm-plugins"]
+enabled = true
