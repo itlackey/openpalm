@@ -131,9 +131,36 @@ part of the release or repository.
 
 These checks do not claim authenticated vendor remote-session acceptance. That
 feature remains experimental and default-off, with the documented Codex
-host-sandbox limitation. Publication must still pass GitHub's complete dry-run
-and live release gates for the exact beta candidate; prior-alpha artifact
-verification is not proof of beta publication.
+host-sandbox limitation.
+
+### Beta.1 published-artifact verification
+
+On 2026-10-01, the exact candidate
+`bc58bddc9d176ccd79ec1aa1f034cf702f8d753c` passed GitHub's complete
+[dry run](https://github.com/itlackey/openpalm/actions/runs/36877653074)
+and [live publication](https://github.com/itlackey/openpalm/actions/runs/36880456607).
+The public [0.14.0-beta.1 release](https://github.com/itlackey/openpalm/releases/tag/0.14.0-beta.1)
+contains all 13 expected assets. The live workflow downloaded and validated the
+complete uploaded asset set before publication. Independent Linux x64 CLI and
+MCPB downloads matched their published SHA-256 checksums; the native CLI reported
+the beta version and retained both experimental remote-access warnings.
+
+All three public image tags were pulled and matched the candidate's revision
+label. Their manifests include Linux AMD64 and ARM64; the release workflow
+published SBOM/provenance and signed their immutable digests. The published
+Assistant passed real OpenCode, Claude Code, and Codex AKM recall smokes, including
+native Codex approval persistence, changed-definition review, stale-approval
+rejection, and opt-out persistence. No vendor account or production instance was
+used for these disposable-fixture tests.
+
+The npm bootstrap was published through GitHub OIDC. Independent public registry
+checks confirmed `openpalm@beta` resolves to `0.14.0-beta.1`; `latest` remains
+`0.13.6`. The initial registry metadata briefly returned the previous beta tag
+and a missing-version response while publication propagated; both resolved
+without a republish or local registry write.
+
+This remains a testing prerelease with the fresh-install/allowlisted-import
+boundary for 0.13 homes. Splinter was not upgraded as part of cutting this beta.
 
 ## Alpha.4 candidate verification record
 
