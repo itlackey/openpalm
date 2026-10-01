@@ -6,6 +6,12 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+## [0.14.0-beta.2] - 2026-10-01
+
+Testing prerelease with simplified Admin navigation and safer migration recovery.
+The 0.13 fresh-install/import boundary remains; Codex and Claude Code remote
+access remain experimental and default-off.
+
 ### Added
 
 - Admin welcome screen with one-click previous/default instance access, recent
@@ -17,6 +23,22 @@ and remain available in Git history.
   is not included.
 - Regression coverage ensures Admin never automatically resizes its window.
   Only explicit test-harness or user/agent window actions change its size.
+- Offline `openpalm history` export/import for native OpenCode conversations,
+  using consistent WAL-inclusive snapshots, explicit workspace mappings, collision
+  checks, stripped old authority, and private retry journals. Source homes and
+  existing target sessions remain preserved; recovery artifacts stay outside
+  searchable knowledge.
+
+### Changed
+
+- Admin now uses five task-based views: Overview, Agent settings, Connections,
+  People & access, and System. Related settings are grouped, redundant suggestions
+  and instructions are removed, and optional configuration uses expandable detail.
+- Migration previews and portable backups explicitly distinguish portable files
+  from native history, runtime artifacts, and external data. Omitted data requires
+  review before restore; portable copying is never described as full recovery.
+- Updated migration guidance covers separate history recovery, external mounts,
+  linked workspaces, and verification before retiring an older installation.
 
 ### Fixed
 
@@ -24,6 +46,11 @@ and remain available in Git history.
   credential policies and JSON health checks, and offers copyable `/mcp` and
   `/health` URLs. The trusted OpenCode address opens the browser through the
   existing desktop browser opener instead of appearing as inert text.
+- Provider verification is visible before optional account configuration, native
+  keyboard navigation is tested, and consent-dialog actions no longer obscure
+  approval text at 200% zoom. The three-reviewer panel approved the refined layouts;
+  real Electron/Docker regression checks capture actual viewport and accessibility
+  evidence without claiming provider or vendor sign-in from management fixtures.
 
 ## [0.14.0-beta.1] - 2026-10-01
 

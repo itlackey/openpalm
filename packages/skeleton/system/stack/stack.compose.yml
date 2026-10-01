@@ -12,7 +12,7 @@ x-logging: &logging
 
 services:
   assistant:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.14.0-beta.1}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-0.14.0-beta.2}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -79,7 +79,7 @@ services:
 
   guardian:
     profiles: [gateway, discord, slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.14.0-beta.1}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-0.14.0-beta.2}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -142,7 +142,7 @@ services:
 
   discord:
     profiles: [discord]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.1}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.2}
     init: true
     restart: unless-stopped
     logging: *logging
@@ -179,7 +179,7 @@ services:
 
   slack:
     profiles: [slack]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.1}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-0.14.0-beta.2}
     init: true
     restart: unless-stopped
     logging: *logging
