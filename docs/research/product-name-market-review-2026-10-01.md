@@ -5,7 +5,7 @@ product is a single-install home for a personal AI agent with persistent
 knowledge, recurring work, and familiar client access. It is not another
 chatbot or an enterprise orchestration platform.
 
-**Recommendation:** there is no cleared winner among these 26 candidates.
+**Recommendation:** there is no cleared winner among these 34 candidates.
 **Fasthold** is the most promising new candidate for further investigation:
 this bounded scan did not establish a salient exact-name AI/software product,
 but spelling and comprehension still need testing. **Refuge** and **fwdslsh
@@ -13,7 +13,10 @@ Hold** are secondary research candidates, not approved names. Outpost, Peel
 and Bunker already have relevant software uses. Homestead, Keep and Hearth
 are excellent metaphors with especially close collisions; Safehold is already
 an MCP product. Prefer an approachable durable-home identity over a name
-that makes protection sound absolute.
+that makes protection sound absolute. The gorilla/guerrilla direction adds a
+useful independent-tech personality, but Gorilla, Silverback and several
+underground-home names already overlap relevant software. Underbrush is a
+new exploratory option, with a weaker direct product metaphor than Fasthold.
 
 The [rebranding implementation guide](../technical/rebranding-implementation-guide.md)
 separately covers code, configuration, documentation, distribution and
@@ -116,6 +119,39 @@ research results.
 | Lodge | A welcoming place to stay and work; less defensive than Bunker | Exact [Lodge](https://joinlodge.com/) is an operational data/workflow platform whose agents build and run automations | Not a leading candidate: related agent/workflow software, though not the same personal-agent hosting proposition |
 | Stead | Excellent home/steadfastness/delegated-work association; easy to say | Exact [Stead](https://stead.house/) offers personal Claude Code workspaces, memory, recurring routines and a command-centre app; the installer is `npm create stead` | Avoid: unusually close personal-agent, persistent-knowledge and recurring-work proposition |
 
+## Gorilla and underground agent positioning
+
+The supplied [WordHippo gorilla list](https://www.wordhippo.com/what-is/another-word-for/gorilla.html)
+introduces an animal/strength direction. The user's “gorilla tech, underground
+agents” idea also suggests *guerrilla*: independent, resourceful technology
+outside a large vendor's control. These are separate words and associations,
+not interchangeable spellings or a claim about the intended brand.
+
+Our positioning judgment: keep the independence and character, but describe
+the product plainly as a home for a personal AI agent. A strong animal identity
+can work without a childish mascot; an underground visual language can work
+without implying covert access, evasion or disabled safeguards. This theme
+does not require changing the product's security or consent boundaries.
+
+| Name | Product fit judgment | Verified market evidence | Recommendation |
+|---|---|---|---|
+| Gorilla | Strong, memorable and visually distinctive; reads as an agent/mascot more than its home | Exact [Gorilla](https://gorilla.cs.berkeley.edu/) is Berkeley's LLM tool-use project, with a function-calling benchmark and execution runtime. [Gorilla Technology](https://www.gorilla-technology.com/) markets AI solutions. A separate [Gorilla Tech](https://www.gorillatech.ai/) fintech brand is indexed, but its page could not be fetched and the indexed content is older | Avoid Gorilla/Gorilla Tech as the product name: relevant AI uses are established by accessible sources even without relying on the older fintech listing |
+| Guerrilla | Captures independence and a small-team challenger spirit; spelling and military associations add friction | Exact [Guerrilla](https://www.guerrilla-games.com/) is an existing game-development studio. Compound [Guerrilla Growth AI](https://guerrillagrowth.ai/) markets AI-led growth automation. No exact-name personal-agent host was established in this scan | Better as a brand attitude than the bare product name. These are adjacent software/AI uses, not evidence of an identical host or a legal prohibition |
+| Silverback | Strong protective animal identity with more character than a generic fortress | [Silverback AI Chatbot](https://silverbackchatbot.com/) offers agent and workflow automation. Exact [Silverback](https://docs.apeworx.io/silverback/stable/userguides/quickstart.html) is also a bot framework with a `silverback` CLI and hosted platform | Avoid: existing AI-agent branding plus bot/runtime and executable overlap |
+| Understory | Excellent quieter alternative: a living layer beneath the canopy, with an independent ecosystem feel | Exact [Understory Labs](https://www.understory.dev/) produces software tools; separate [Understory](https://www.understory.ai/about) uses machine learning for environmental measurement | Semantic favorite only: existing software and ML brands. No direct personal-agent host was established; do not describe all these businesses as direct competitors |
+| Warren | A network of underground homes; fits multiple agents/instances particularly well | Exact [Warren](https://github.com/jayminwest/warren) runs coding-agent workloads on user-controlled infrastructure, managing isolation, lifecycle and recovery | Avoid: direct agent-hosting and infrastructure overlap |
+| Hideout | Plain, private home with an underground feel; may imply concealment more than useful work | Exact [Hideout](https://github.com/vibe-agi/hideout) runs AI agents in a local VM with controlled host access and a `hideout` command | Avoid: direct local agent-runtime and executable collision |
+| Undercroft | Strong protected underground-home association; less approachable and harder to spell | Exact [Undercroft](https://sealcroft.com/undercroft/) is local-first AI memory with MCP, hooks and persistent agent diaries | Avoid: direct persistent-knowledge and MCP overlap |
+| Underbrush | Organic shelter/independence association; distinctive, but can suggest tangled clutter rather than a lean home | [Oxford](https://www.oxfordlearnersdictionaries.com/us/definition/english/underbrush) defines the vegetation sense. Searches pairing the exact name with AI, software, agents, CLI and MCP did not establish a salient exact-name personal-agent software product | Exploratory alternative for this theme, not cleared or a new overall winner. Test clarity, spelling and whether people hear “clutter” rather than a place to work |
+
+**Direction to carry forward:** independent technology that works for its
+owner, with a plain product descriptor. “Underground agents” is a possible
+campaign concept, not a promise of anonymity or unseen activity. Understory
+is our strongest semantic fit in this group but not a clean namespace;
+Underbrush deserves a bounded follow-up if the organic/underground identity
+appeals. Keep the product name, mascot and campaign language as separate
+decisions rather than requiring one word to do all three jobs.
+
 ## Ainga language check
 
 [Collins](https://www.collinsdictionary.com/dictionary/english/ainga) lists
@@ -155,7 +191,9 @@ From these candidates:
    Their collisions are closer than their attractive meanings make apparent.
 6. Consider additional distinctive compounds or coined names rather than
    forcing a generic fortress word to win. No alternative invented here has
-   been screened or cleared.
+   been cleared. **Underbrush** is an additional screened-but-uncleared
+   research candidate for the underground/organic theme; it does not replace
+   the home-focused shortlist without user-comprehension testing.
 
 ## Checks before committing to a name
 
