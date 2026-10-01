@@ -38,7 +38,7 @@ OpenCode or optional guarded MCP.
 |---|---|
 | [SSH instance management](technical/ssh-management-proposal.md) | Implementation outline for consideration in 0.15; not an implemented feature |
 | [Rebranding implementation](technical/rebranding-implementation-guide.md) | File-by-file proposal, stable identifiers, publishing and transition verification; no rename approved |
-| [Product name market review](research/product-name-market-review-2026-10-01.md) | Evidence-backed comparison of 26 naming candidates, including home/shelter alternatives; not legal clearance |
+| [Product name market review](research/product-name-market-review-2026-10-01.md) | Evidence-backed comparison of 34 naming candidates, including home/shelter and underground-agent directions; not legal clearance |
 
 Older release documentation is retained in Git history, not in the maintained
 documentation tree. The [core principles](technical/core-principles.md) are
