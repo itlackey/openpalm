@@ -152,6 +152,37 @@ default five-second test deadline. Its test deadline now matches the existing
 30-second Compose subprocess budget, without removing assertions. Twenty
 consecutive repetitions passed using the exact image/CI Bun 1.4.2 runtime.
 
+### Alpha.4 published-artifact and Splinter verification
+
+The final GitHub dry run and live publication passed for commit
+`2f664287493025c1eb802a853039bbfdf85f39c6`. GitHub built the release, signed
+all three multi-architecture images, verified the public assets/checksums, and
+published the npm bootstrap. Both development remotes contain the changes.
+
+Splinter updated from alpha.3 using the public checksum-verified Linux x64 CLI
+and published images with matching revision labels. A verified cold backup
+was retained before replacing its CLI or recreating containers. Assistant,
+Guardian, and Discord were healthy afterward. Stack intent and all 17 protected
+configuration/credential/provider-secret files remained unchanged; OpenCode
+retained its explicit LAN bind at `192.168.0.201:3810`. Real no-tool provider
+readiness passed before and after the update. Live Guardian MCP rejected
+anonymous access with 401 and returned all eleven owner-policy tools.
+
+All three published images passed local startup/security smoke. The published
+Assistant also passed real session/prompt-hook recall in OpenCode, Claude Code,
+and Codex, using AKM 0.9.20 and plugin 0.9.20202610010250. The upgraded instance
+reported Bun 1.4.2, real Node 24.21.0, enabled native Claude/Codex registrations,
+and the effective `workspace-write` sandbox default.
+
+One host-verification assertion initially expected the update to persist the new
+sandbox field in existing stack intent. The updater correctly preserved intent
+and derived the default; correcting that assertion completed verification
+without changing product code or operator configuration. Neither native vendor
+account is signed in, so authenticated Claude/Codex remote-client connectivity
+and Codex sandboxed tool execution remain unverified on this host. Codex hooks
+remain subject to normal native approval; disposable test trust is not copied
+into Splinter.
+
 ## Alpha.3 published-artifact verification record
 
 The 2026-09-30 Linux x64 upgrade used the checksum-verified CLI from the public
