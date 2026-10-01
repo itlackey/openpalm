@@ -23,6 +23,8 @@ async function until(check: () => boolean): Promise<void> {
 describe('optional native remote workers', () => {
 	it('retains native approvals, one Claude session, and no Assistant/portal credentials in child env', () => {
 		expect(remoteCommand('codex')).toContain('sandbox_mode="workspace-write"');
+		expect(remoteCommand('codex', 'read-only')).toContain('sandbox_mode="read-only"');
+		expect(() => remoteCommand('codex', 'danger-full-access')).toThrow();
 		expect(remoteCommand('claude')).toEqual([
 			'claude',
 			'remote-control',

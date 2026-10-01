@@ -8,6 +8,9 @@ openpalm setup
 openpalm provider list
 openpalm provider login anthropic
 openpalm provider test
+openpalm remote enable claude
+openpalm remote enable codex --sandbox workspace-write
+openpalm remote disable claude
 openpalm connect opencode
 openpalm connect claude --credential owner
 openpalm backup --to /path/to/empty-backup

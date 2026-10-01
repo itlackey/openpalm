@@ -28,6 +28,16 @@ afterEach(() => {
 });
 
 describe('StackConfig', () => {
+	it('validates native Codex sandbox intent and refuses bypass modes', () => {
+		const config = defaultStackConfig();
+		config.assistant.codexSandbox = 'read-only';
+		expect(parseStackConfig(config).ok).toBe(true);
+		expect(stackConfigEnv(config).OP_CODEX_SANDBOX).toBe('read-only');
+		for (const value of ['danger-full-access', '', null, 1])
+			expect(
+				parseStackConfig({ ...config, assistant: { ...config.assistant, codexSandbox: value } }).ok
+			).toBe(false);
+	});
 	it('requires explicit boolean remote intent and defaults missing fields off', () => {
 		const config = defaultStackConfig();
 		for (const field of ['codexRemote', 'claudeRemote']) {
@@ -56,6 +66,7 @@ describe('StackConfig', () => {
 				timezone: hostTimezone(),
 				automaticMemory: true,
 				codexRemote: false,
+				codexSandbox: 'workspace-write',
 				claudeRemote: false
 			},
 			gateway: { enabled: false, bindAddress: '127.0.0.1', port: 3830 },

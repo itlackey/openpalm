@@ -38,6 +38,7 @@ export type StackConfig = {
 		timezone: string;
 		automaticMemory: boolean;
 		codexRemote: boolean;
+		codexSandbox: 'workspace-write' | 'read-only';
 		claudeRemote: boolean;
 	};
 	gateway: {
@@ -97,6 +98,7 @@ export function defaultStackConfig(): StackConfig {
 			timezone: hostTimezone(),
 			automaticMemory: true,
 			codexRemote: false,
+			codexSandbox: 'workspace-write',
 			claudeRemote: false
 		},
 		gateway: {
@@ -297,6 +299,7 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 			'timezone',
 			'automaticMemory',
 			'codexRemote',
+			'codexSandbox',
 			'claudeRemote'
 		]) ||
 		!hasOnlyKeys(gateway, ['enabled', 'bindAddress', 'port']) ||
@@ -319,6 +322,10 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 	const automaticMemory = assistant.automaticMemory ?? true;
 	const codexRemote = assistant.codexRemote === undefined ? false : assistant.codexRemote;
 	const claudeRemote = assistant.claudeRemote === undefined ? false : assistant.claudeRemote;
+	const codexSandbox =
+		assistant.codexSandbox === undefined ? 'workspace-write' : assistant.codexSandbox;
+	if (codexSandbox !== 'workspace-write' && codexSandbox !== 'read-only')
+		return { ok: false, error: 'assistant.codexSandbox must be workspace-write or read-only' };
 	if (typeof codexRemote !== 'boolean' || typeof claudeRemote !== 'boolean')
 		return {
 			ok: false,
@@ -364,6 +371,7 @@ export function parseStackConfig(value: unknown): StackConfigReadResult {
 			timezone,
 			automaticMemory,
 			codexRemote,
+			codexSandbox,
 			claudeRemote
 		},
 		gateway: {
@@ -429,6 +437,7 @@ export function stackConfigEnv(config: StackConfig): Record<string, string> {
 		OP_TIMEZONE: config.assistant.timezone,
 		OP_AUTOMATIC_MEMORY: config.assistant.automaticMemory ? '1' : '0',
 		OP_CODEX_REMOTE: config.assistant.codexRemote ? '1' : '0',
+		OP_CODEX_SANDBOX: config.assistant.codexSandbox,
 		OP_CLAUDE_REMOTE: config.assistant.claudeRemote ? '1' : '0',
 		OP_GUARDIAN_BIND_ADDRESS: config.gateway.bindAddress,
 		OP_GUARDIAN_PORT: String(config.gateway.port),

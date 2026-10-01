@@ -105,6 +105,8 @@ Secret values are omitted unless `--show-key` is explicitly requested.
 Optional [Codex and Claude Code remote coding sessions](docs/native-remote-access.md)
 have independent, default-off startup switches. They use native vendor sign-in
 and trusted workspace access, not Guardian policies or OpenCode sessions.
+The next release adds guided `openpalm remote enable claude|codex` and Admin
+sign-in/trust setup; see the guide for version requirements and sandbox checks.
 
 ## Knowledge and recurring work
 

@@ -3,6 +3,11 @@
 Available in `0.14.0-alpha.3` and later. Updating source alone does not update
 a running installation's CLI or image; install the release CLI and run `update`.
 
+The guided `remote enable` command and Admin sign-in dialog described below
+are unreleased changes after alpha.3. They require both the new CLI/Admin and
+an Assistant image containing `openpalm-remote-setup`; the published alpha.3
+still uses the manual `remote setup` flow documented under advanced controls.
+
 These options start **separate native coding agents** in the Assistant's
 workspace. They do not turn Codex or Claude Code into clients of OpenCode, expose
 its conversation history, or apply Guardian credential policies. Use OpenCode
@@ -18,15 +23,25 @@ bounded under the container's `/tmp/openpalm-runtime/remote`; restart replaces i
 ## Codex (experimental)
 
 ```sh
-openpalm remote setup codex
-openpalm config assistant --codex-remote on
+openpalm remote enable codex
+# Optional: limit native tools to read-only access
+openpalm remote enable codex --sandbox read-only
 openpalm remote status codex
 openpalm remote pair codex
 ```
 
-Setup uses Codex's device sign-in in an interactive terminal. Startup runs native
+Guided enable pauses the selected worker, checks its native sandbox with a
+harmless local command, and then uses Codex device sign-in. It opens the native
+sign-in URL in the host browser; enter the one-time code there. Use
+`--no-browser` over SSH and open the printed link on your own computer. If device
+login is unavailable, enable it in your ChatGPT account/workspace settings.
+Successful setup automatically saves sandbox intent and enables startup.
+It then requests a fresh private pairing code from the background service.
+Startup runs native
 `codex remote-control` in the foreground with `on-request` approvals and
-`workspace-write` sandboxing. Pair requests a fresh short-lived code from the
+`workspace-write` (default) or explicitly selected `read-only` sandboxing.
+Both require native sandbox support; neither is a namespace-error workaround.
+Pair requests a fresh short-lived code from the
 running native service. Treat that code as private.
 
 Codex labels this command experimental. A pairing code is **not** a guarantee
@@ -52,16 +67,22 @@ and [OpenAI's sandbox requirements](https://learn.chatgpt.com/docs/sandboxing).
 ## Claude Code Remote Control
 
 ```sh
-openpalm remote setup claude
-openpalm config assistant --claude-remote on
+openpalm remote enable claude
 openpalm remote status claude
 openpalm remote pair claude
 ```
 
-The first command opens Claude Code inside `/work`. Accept workspace trust
-yourself, use `/login` with an eligible Claude subscription, then `/remote-control`
-and approve its one-time consent. Use `/exit` when finished. OpenPalm cannot
-perform these approvals for you. Remote Control needs subscription sign-in, not
+Guided enable pauses the selected worker and opens native subscription sign-in
+in your host browser. Complete sign-in and, if requested, paste the native code
+back into the CLI or Admin dialog. It then starts native Remote Control inside
+`/work`: read the workspace-trust and one-time Remote Control consent prompts
+and answer `y` to accept or `n` to decline. OpenPalm never answers them for you
+or rewrites native trust settings. Once the native connection URL is produced,
+the setup worker stops and normal background startup is enabled automatically.
+The guide waits for and opens the **background worker's** connection URL, not
+the temporary setup server's URL. A startup/pairing failure rolls startup back
+off; a connection link still does not prove your remote client or tools work.
+Remote Control needs subscription sign-in, not
 an Anthropic API key or an OpenCode provider login.
 
 Startup runs native `claude remote-control` in server mode, with one concurrent
@@ -85,9 +106,49 @@ See [Claude's native plugin loading reference](https://code.claude.com/docs/en/p
 
 ## Toggles, recovery, and trust
 
-The optional Admin utility exposes both switches under agent preferences. Native
-terminal setup is still required. CLI switches save stack intent and recreate
-Assistant automatically; add `--no-apply` to defer until the next restart.
+In Admin, choose **Set up Claude remote** or **Set up Codex remote** under
+agent preferences or Connections. Confirm trusted workspace access, choose
+Codex's sandbox mode if applicable, and select **Begin guided setup**. The
+browser handles account login; the private dialog displays native prompts and
+accepts your answers. Cancellation or a failed prerequisite leaves startup off.
+No terminal is required for the guided Admin flow. CLI enable requires a
+terminal for prompt answers; `--trust` explicitly confirms OpenPalm's trust
+warning but does not accept any vendor prompt.
+After setup or restart, use Admin's **Open remote session** for Claude or
+**Show pairing code** for Codex to refresh private connection details.
+
+During initial CLI onboarding, optionally use:
+
+```sh
+openpalm setup --claude-remote
+openpalm setup --codex-remote
+```
+
+Provider readiness runs first; these separate native accounts are never inferred
+from the provider login. Only one guided setup or lifecycle operation runs at a
+time. A 15-minute deadline and closing Admin cancel unfinished native setup.
+
+Disable startup without deleting native account state:
+
+```sh
+openpalm remote disable claude
+openpalm remote disable codex
+```
+
+### Advanced/manual controls (also available in alpha.3)
+
+If you prefer the native terminal directly:
+
+```sh
+openpalm remote setup codex
+openpalm config assistant --codex-remote on
+openpalm remote setup claude
+# Accept trust, /login, /remote-control consent, then /exit
+openpalm config assistant --claude-remote on
+```
+
+Manual switches save intent and recreate Assistant; add `--no-apply` to defer.
+They do not run guided prerequisite checks or sign in for you.
 
 ```sh
 openpalm config assistant --codex-remote off --claude-remote off
@@ -114,7 +175,10 @@ public issues without removing pairing links and account details.
 ## Acceptance checklist
 
 1. Fresh install: both remote switches are false; neither remote worker starts.
-2. Complete each vendor's interactive setup without copying host authentication.
+2. Use guided enable in CLI and Admin. Verify only the selected worker pauses,
+   a native sign-in link opens in the host browser (with a printed fallback),
+   and trust/consent are explicit human answers. Do not copy host authentication.
+   Cancel once and verify startup stays off with no lingering setup process.
 3. Enable one switch. Verify OpenCode and scheduler remain healthy; the other
    vendor remains stopped. Inspect local status, then pair a supported client.
 4. From that client, create a session, inspect a workspace file, request a harmless
@@ -132,12 +196,21 @@ public issues without removing pairing links and account details.
 
 Automated tests cover config intent, CLI argument validation, private bounded
 output, environment separation, retry behavior, and child-process shutdown.
-Image smoke tests exercise the baked vendor CLIs. Subscription consent and
+Image smoke tests exercise the baked vendor CLIs. Native prompt fixtures test
+the PTY bridge, human answers and refusal, native-account reuse, sandbox failure,
+cancellation, split-output URL redaction, and activation
+gating. Admin E2E checks dialog navigation, focus, and safe choices. A live
+credential-free container probe verified Claude's browser sign-in URL and
+cancellation, and Codex's unsupported-sandbox failure before sign-in on the
+tested host. Subscription consent and
 client pairing still require a human/account-supported acceptance run; package
 versions and local process health alone are not an end-to-end connection test.
 
 Maintainers can run missing-sign-in image acceptance without any real account:
 
 ```sh
-OPENPALM_SMOKE_REMOTE=1 ./scripts/smoke-image.sh openpalm/assistant:remote-dev assistant
+docker build -f containers/assistant/Dockerfile \
+  --build-arg PLATFORM_VERSION=0.14.0-alpha.3 \
+  -t openpalm/assistant:guided-remote-dev .
+OPENPALM_SMOKE_REMOTE=1 ./scripts/smoke-image.sh openpalm/assistant:guided-remote-dev assistant
 ```

@@ -7,6 +7,7 @@ import { loadClientKey } from '../admin/connections.js';
 import { bindConfigurationEvents } from '../admin/configuration.js';
 import { endpoint, isHealthy, promptVisible } from '../admin/model.js';
 import { bindPreferencesEvents, renderPreferences } from '../admin/preferences.js';
+import { bindRemoteEvents } from '../admin/remote.js';
 import { resetOAuthAttempt } from '../admin/providers.js';
 import { renderPhase } from '../admin/runtime.js';
 import { createAdminState, state } from '../admin/state.js';
@@ -38,6 +39,13 @@ class Control {
 	attributes = new Map<string, string>();
 	listeners = new Map<string, (event: unknown) => unknown>();
 	focused = false;
+	open = false;
+	showModal() {
+		this.open = true;
+	}
+	close() {
+		this.open = false;
+	}
 
 	setAttribute(name: string, value: string) {
 		this.attributes.set(name, value);
@@ -110,6 +118,41 @@ afterEach(() => {
 });
 
 describe('Admin static security boundary', () => {
+	it('requires explicit remote trust, reports setup failure, and clears native answers before IPC', async () => {
+		const button = new Control();
+		button.dataset.remoteEnable = 'claude';
+		selector('[data-remote-enable], [data-remote-connect]', button);
+		let calls = 0;
+		let answer: unknown;
+		state.api = {
+			remote: async (request: { action: string; input?: string }) => {
+				calls++;
+				if (request.action === 'input') {
+					answer = request.input;
+					expect(control('remote-answer').value).toBe('');
+					return {};
+				}
+				throw new Error('Native setup prerequisite failed.');
+			}
+		};
+		bindRemoteEvents();
+		button.listeners.get('click')?.({});
+		expect(control('remote-dialog').open).toBe(true);
+		expect(control('remote-trust').checked).toBe(false);
+		expect(control('remote-sandbox-field').hidden).toBe(true);
+		expect(control('remote-prompts').hidden).toBe(true);
+		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });
+		expect(calls).toBe(0);
+		control('remote-trust').checked = true;
+		await control('remote-form').listeners.get('submit')?.({ preventDefault() {} });
+		expect(control('remote-stage').textContent).toBe('Native setup prerequisite failed.');
+		expect(state.operationInFlight).toBe(false);
+		control('remote-answer').value = 'private-native-code';
+		await control('remote-send').listeners.get('click')?.({});
+		expect(answer).toBe('private-native-code');
+		await control('remote-cancel').listeners.get('click')?.({});
+		expect(control('remote-dialog').open).toBe(false);
+	});
 	it('loads local modules under a closed CSP with no renderer network access', () => {
 		const csp = html.match(/content="([^"]+)"/)?.[1] ?? '';
 		expect(csp).toContain("default-src 'self'");

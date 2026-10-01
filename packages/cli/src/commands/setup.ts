@@ -12,10 +12,13 @@ import {
 import { defineAction } from '../lib/action.js';
 import { runRestartAction, runStartAction } from './lifecycle.js';
 import { runNativeProviderLogin } from './provider.js';
+import { enableRemote } from './remote.js';
 
 export async function completeSetup(options: {
 	provider?: string;
 	method?: string;
+	claudeRemote?: boolean;
+	codexRemote?: boolean;
 }): Promise<void> {
 	const state = createOpenPalmState();
 	requireInstall(state.homeDir);
@@ -52,6 +55,8 @@ export async function completeSetup(options: {
 	console.log(
 		`Verified a real Assistant response${readiness.provider ? ` from ${readiness.provider}` : ''}${readiness.model ? `/${readiness.model}` : ''}.`
 	);
+	if (options.claudeRemote) await enableRemote('claude');
+	if (options.codexRemote) await enableRemote('codex');
 }
 
 export default defineCommand({
@@ -61,12 +66,22 @@ export default defineCommand({
 	},
 	args: {
 		provider: { type: 'string', description: 'Provider id or name' },
-		method: { type: 'string', description: 'OpenCode login method label' }
+		method: { type: 'string', description: 'OpenCode login method label' },
+		'claude-remote': {
+			type: 'boolean',
+			description: 'Guide Claude Remote Control sign-in after provider setup'
+		},
+		'codex-remote': {
+			type: 'boolean',
+			description: 'Guide Codex remote sign-in after provider setup'
+		}
 	},
 	run: defineAction(async ({ args }) => {
 		await completeSetup({
 			provider: args.provider ? String(args.provider) : undefined,
-			method: args.method ? String(args.method) : undefined
+			method: args.method ? String(args.method) : undefined,
+			claudeRemote: args['claude-remote'] === true,
+			codexRemote: args['codex-remote'] === true
 		});
 	})
 });

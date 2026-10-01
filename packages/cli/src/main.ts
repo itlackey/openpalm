@@ -95,14 +95,15 @@ const subCommands = {
 
 const COMMAND_USAGE: Readonly<Record<string, string>> = {
 	install: 'openpalm install [--no-start] [--config <stack.json>]',
-	setup: 'openpalm setup [--provider <id>] [--method <label>]',
+	setup: 'openpalm setup [--provider <id>] [--method <label>] [--claude-remote] [--codex-remote]',
 	provider:
 		'openpalm provider list | login [provider] [--method <label>] | key <provider> --key-file <path|-> | logout <provider> | test',
 	backup:
 		'openpalm backup --to <empty-directory> [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	connect:
 		'openpalm connect <opencode|mcp|claude|remote> [--credential <username>] [--show-key] [--json]',
-	remote: 'openpalm remote setup <codex|claude> | pair <codex|claude> | status <codex|claude> | logs <codex|claude>',
+	remote:
+		'openpalm remote enable <codex|claude> [--trust] [--sandbox <workspace-write|read-only>] [--no-browser] | disable <codex|claude> | setup <codex|claude> | pair <codex|claude> | status <codex|claude> | logs <codex|claude>',
 	import:
 		'openpalm import --from <old-home> [--dry-run|--apply] [--include-provider-auth] [--include-user-env] [--include-portal-maps] [--include-oauth]',
 	task: 'openpalm task list | create <id> --schedule <cron> --prompt <text> | show <id> | pause <id> | resume <id> | run <id> | history [id] | remove <id> | adopt <file>',
@@ -167,7 +168,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 		console.log(helpText(argv[1]));
 		return;
 	}
-	if (argv[1] === '--help' || argv[1] === '-h') {
+	if (argv.slice(1).some((arg) => arg === '--help' || arg === '-h')) {
 		console.log(helpText(argv[0]));
 		return;
 	}

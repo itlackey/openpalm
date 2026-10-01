@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
-import { helpText } from './main.js';
+import { helpText, main } from './main.js';
 
 describe('CLI help', () => {
 	it('lists the complete command surface', () => {
@@ -35,5 +35,16 @@ describe('CLI help', () => {
 		expect(helpText('provider')).toContain('login');
 		expect(helpText('import')).toContain('--dry-run');
 		expect(helpText('task')).toContain('create <id>');
+	});
+	it('shows nested remote help without running setup or requiring a tool', async () => {
+		const output = spyOn(console, 'log').mockImplementation(() => {});
+		try {
+			await main(['remote', 'enable', '--help']);
+			await main(['remote', 'enable', 'claude', '--help']);
+			expect(output).toHaveBeenCalledTimes(2);
+			expect(output.mock.calls[0]?.[0]).toContain('remote enable');
+		} finally {
+			output.mockRestore();
+		}
 	});
 });

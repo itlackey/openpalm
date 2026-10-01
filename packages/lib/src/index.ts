@@ -159,6 +159,17 @@ export {
 	runComposeStreaming
 } from './control-plane/docker.js';
 export { auditCompose } from './control-plane/secret-audit.js';
+export {
+	beginRemoteEnable,
+	disableRemote,
+	remoteBrowserUrls,
+	remoteConnection,
+	remoteTool,
+	type RemoteTool,
+	type CodexSandbox,
+	type RemoteProgress,
+	type RemoteEnableSession
+} from './control-plane/remote.js';
 export { acquireStackLock, releaseStackLock, type StackLock } from './control-plane/lock.js';
 export {
 	activateComposeCommand,

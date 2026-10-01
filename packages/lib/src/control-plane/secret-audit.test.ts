@@ -25,6 +25,7 @@ const assistantEnvironment = {
 	AKM_REDACT_PII: '1',
 	OPENPALM_AUTOMATIC_MEMORY: '1',
 	OPENPALM_CODEX_REMOTE: '0',
+	OPENPALM_CODEX_SANDBOX: 'workspace-write',
 	OPENPALM_CLAUDE_REMOTE: '0',
 	TZ: defaultStackConfig().assistant.timezone,
 	HOME: '/home/opencode',

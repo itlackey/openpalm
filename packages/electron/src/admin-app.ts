@@ -5,6 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
 	activateComposeCommand,
+	beginRemoteEnable,
+	disableRemote,
+	remoteTool,
+	remoteBrowserUrls,
+	remoteConnection,
 	beginProviderOAuth,
 	buildComposeOptions,
 	classifyInstall,
@@ -33,7 +38,7 @@ import {
 	testAssistantReadiness,
 	writePortalSecret
 } from '@openpalm/lib';
-import type { AssistantReadiness } from '@openpalm/lib';
+import type { AssistantReadiness, RemoteEnableSession } from '@openpalm/lib';
 
 import electronPackage from '../package.json' with { type: 'json' };
 
@@ -57,6 +62,8 @@ const adminDirectory = fileURLToPath(new URL('../admin', import.meta.url));
 const adminIndexPath = join(adminDirectory, 'index.html');
 const adminIndexUrl = pathToFileURL(adminIndexPath).href;
 const claudeExtensionUrl = `https://github.com/itlackey/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
+let activeRemote: { homeDir: string; session: RemoteEnableSession } | undefined;
+let remoteStarting = false;
 
 if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
 	process.env.OPENPALM_SKELETON_DIR = app.isPackaged
@@ -197,6 +204,72 @@ async function completeAdminReadiness(
 }
 
 export function registerAdminIpc(): void {
+	ipcMain.handle(ADMIN_CHANNELS.remote, async (event, value: unknown) => {
+		requireAdminSender(event);
+		if (!value || typeof value !== 'object') throw new Error('Invalid native remote request.');
+		const input = value as Record<string, unknown>;
+		const tool = remoteTool(input.tool);
+		const current = state();
+		if (input.action === 'connection') {
+			const output = await remoteConnection(current, tool);
+			for (const url of remoteBrowserUrls(output))
+				void shell.openExternal(url).catch(() => undefined);
+			return { tool, stage: 'connection', output, running: false, enabled: true };
+		}
+		if (input.action === 'enable') {
+			if (remoteStarting || activeRemote?.session.snapshot().running)
+				throw new Error('Finish or cancel the current remote setup first.');
+			if (
+				input.sandbox !== undefined &&
+				input.sandbox !== 'workspace-write' &&
+				input.sandbox !== 'read-only'
+			)
+				throw new Error('Invalid Codex sandbox mode.');
+			remoteStarting = true;
+			const opened = new Set<string>();
+			try {
+				const session = await beginRemoteEnable(current, tool, {
+					trusted: input.trusted === true,
+					sandbox: input.sandbox as 'workspace-write' | 'read-only' | undefined,
+					update(progress) {
+						for (const url of remoteBrowserUrls(progress.output)) {
+							if (opened.has(url)) continue;
+							opened.add(url);
+							void shell.openExternal(url).catch(() => undefined);
+						}
+					}
+				});
+				activeRemote = { homeDir: current.homeDir, session };
+				return session.snapshot();
+			} finally {
+				remoteStarting = false;
+			}
+		}
+		if (input.action === 'disable') {
+			await disableRemote(current, tool);
+			return { tool, stage: 'disabled', output: '', running: false, enabled: false };
+		}
+		if (
+			!activeRemote ||
+			activeRemote.homeDir !== current.homeDir ||
+			activeRemote.session.snapshot().tool !== tool
+		)
+			throw new Error('Start remote setup for this installation first.');
+		if (input.action === 'input') {
+			if (typeof input.input !== 'string') throw new Error('A native prompt answer is required.');
+			activeRemote.session.input(input.input);
+		} else if (input.action === 'cancel') {
+			activeRemote.session.cancel();
+			return activeRemote.session.done;
+		} else if (input.action !== 'progress') throw new Error('Unknown remote setup action.');
+		return activeRemote.session.snapshot();
+	});
+	app.on('before-quit', (event) => {
+		if (!activeRemote?.session.snapshot().running) return;
+		event.preventDefault();
+		activeRemote.session.cancel();
+		void activeRemote.session.done.finally(() => app.quit());
+	});
 	ipcMain.handle(ADMIN_CHANNELS.snapshot, (event) => {
 		requireAdminSender(event);
 		return adminSnapshot();
@@ -429,6 +502,7 @@ export function createAdminWindow(options: { show?: boolean } = {}): BrowserWind
 			sandbox: true
 		}
 	});
+	window.on('closed', () => activeRemote?.session.cancel());
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		try {
 			void shell.openExternal(externalAdminUrl(url)).catch(() => undefined);

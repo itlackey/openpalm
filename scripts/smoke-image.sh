@@ -66,7 +66,9 @@ assistant)
 	wait_for_health
 	docker exec "$container" curl -sf -u 'opencode:assistant-smoke-password-0000000000000000' http://127.0.0.1:4096/config >/dev/null
 	docker exec "$container" sh -c \
-		'command -v akm >/dev/null && command -v opencode >/dev/null && command -v supercronic >/dev/null && codex --version && claude --version && test -x /usr/local/bin/openpalm-remote && test -x /usr/local/bin/openpalm-task && test -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js'
+		'command -v akm >/dev/null && command -v opencode >/dev/null && command -v supercronic >/dev/null && codex --version && claude --version && test -x /usr/local/bin/openpalm-remote && test -x /usr/local/bin/openpalm-remote-setup && test -x /usr/local/bin/openpalm-task && test -r /opt/openpalm/tools/node_modules/akm-opencode/dist/index.js'
+	docker exec "$container" bun -e \
+		'const { setupCommands } = await import("/usr/local/bin/openpalm-remote-setup"); if (typeof Bun.Terminal !== "function" || setupCommands("codex", "read-only")[0][0] !== "sandbox") throw Error("Guided native setup is unavailable");'
 	docker exec "$container" sh -c 'claude plugin validate "$CLAUDE_CODE_PLUGIN_DIRS" --strict'
 	docker exec "$container" claude plugin list --json | docker exec -i "$container" bun -e \
 		'const plugins = await Bun.stdin.json(); const version = (await Bun.file("/opt/openpalm/tools/package.json").json()).dependencies["akm-opencode"]; if (!plugins.some(p => p.id === "akm@inline" && p.enabled && p.version === version)) throw Error("Claude AKM plugin not loaded");'
@@ -89,7 +91,7 @@ assistant)
 		done
 		docker exec "$container" openpalm-healthcheck
 		logs=$(docker logs "$container" 2>&1)
-		if [[ "$logs" =~ (claude\.ai/code|pairingCode|manualPairingCode) ]]; then
+		if [[ "$logs" =~ (claude\.(ai|com)/code|pairingCode|manualPairingCode) ]]; then
 			echo 'Native pairing output reached Docker logs' >&2; exit 1
 		fi
 	else

@@ -44,6 +44,15 @@ Their own account sign-in and consent stay native; OpenPalm never copies host
 logins or accepts workspace trust on the user's behalf. Codex remote control is
 experimental and client/account availability is an upstream constraint.
 
+CLI and Admin share a guided native onboarding flow. It temporarily pauses the
+selected remote worker, opens only allowlisted vendor sign-in/pairing URLs,
+relays the user's explicit native prompt answers, and enables startup after
+native setup succeeds. Cancellation, timeout, and prerequisite failure leave
+that worker off without erasing account state. Codex sandbox intent is exactly
+`workspace-write` or `read-only`, retains `on-request` approvals, and must pass a
+real local sandbox probe before sign-in. The guide never changes host sysctls,
+container privileges, or vendor settings to suppress trust/consent prompts.
+
 The optional surfaces are:
 
 - **Guardian**, an authenticated MCP security boundary for less-trusted or

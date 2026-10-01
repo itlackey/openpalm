@@ -5,7 +5,11 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'n
 import { join } from 'node:path';
 
 export const remoteDirectory = '/tmp/openpalm-runtime/remote';
-export function remoteCommand(tool) {
+export function remoteCommand(
+	tool,
+	sandbox = process.env.OPENPALM_CODEX_SANDBOX ?? 'workspace-write'
+) {
+	if (!['workspace-write', 'read-only'].includes(sandbox)) throw new Error('Invalid Codex sandbox');
 	if (tool === 'codex')
 		return [
 			'codex',
@@ -13,7 +17,7 @@ export function remoteCommand(tool) {
 			'-c',
 			'approval_policy="on-request"',
 			'-c',
-			'sandbox_mode="workspace-write"'
+			`sandbox_mode="${sandbox}"`
 		];
 	if (tool === 'claude')
 		return [

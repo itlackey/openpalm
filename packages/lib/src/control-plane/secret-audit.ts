@@ -172,6 +172,7 @@ const DYNAMIC_ENVIRONMENT: Readonly<Record<string, ReadonlySet<string>>> = {
 		'TZ',
 		'OPENPALM_AUTOMATIC_MEMORY',
 		'OPENPALM_CODEX_REMOTE',
+		'OPENPALM_CODEX_SANDBOX',
 		'OPENPALM_CLAUDE_REMOTE'
 	]),
 	guardian: new Set([
@@ -371,6 +372,8 @@ function auditCoreEnvironment(
 		}
 	}
 	if (name === 'assistant') {
+		if (!['workspace-write', 'read-only'].includes(String(environment.OPENPALM_CODEX_SANDBOX)))
+			issues.push('service assistant must use a supported Codex sandbox');
 		for (const key of ['OPENPALM_CODEX_REMOTE', 'OPENPALM_CLAUDE_REMOTE']) {
 			if (!['0', '1'].includes(String(environment[key])))
 				issues.push(`service assistant ${key} must be 0 or 1`);
@@ -606,6 +609,8 @@ export function auditCompose(
 		}
 		if (name === 'assistant') {
 			if (stackConfig.ok) {
+				if (environment.OPENPALM_CODEX_SANDBOX !== stackConfig.config.assistant.codexSandbox)
+					issues.push('assistant Codex sandbox must match StackConfig intent');
 				for (const [key, enabled] of [
 					['OPENPALM_CODEX_REMOTE', stackConfig.config.assistant.codexRemote],
 					['OPENPALM_CLAUDE_REMOTE', stackConfig.config.assistant.claudeRemote]

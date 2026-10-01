@@ -205,11 +205,13 @@
                 <p id="timezone-help" class="help-text">Starts with this computer’s timezone. Use a timezone such as America/Chicago or Europe/London. After downtime, tasks resume at their next scheduled time; missed runs are not replayed.</p>
                 <fieldset class="form-stack">
                   <legend>Optional remote coding sessions</legend>
-                  <p class="help-text">Separate Codex and Claude Code sessions in your workspace—not remote views of OpenCode. These are trusted native connections that bypass Guardian policies. No new public port is opened. Complete sign-in and consent in a terminal before enabling startup.</p>
+                  <p class="help-text">Separate native coding agents—not remote views of OpenCode. Guided setup opens sign-in in your browser, shows native trust and consent prompts here, and checks prerequisites before enabling startup. These trusted connections bypass Guardian. No new public port is opened.</p>
                   <label class="check-row"><input id="codex-remote" type="checkbox" /> Start Codex remote control with Assistant (experimental)</label>
-                  <p class="help-text">First run <code>openpalm remote setup codex</code>. After saving, run <code>openpalm remote pair codex</code>. Supported clients and account availability depend on OpenAI’s rollout.</p>
+                  <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="codex">Set up Codex remote</button><button class="text-button" type="button" data-remote-connect="codex">Show pairing code</button></div>
+                  <p class="help-text">Experimental. Guided setup checks sandbox support and uses ChatGPT device sign-in. Supported clients depend on OpenAI’s rollout.</p>
                   <label class="check-row"><input id="claude-remote" type="checkbox" /> Start Claude Code Remote Control with Assistant</label>
-                  <p class="help-text">First run <code>openpalm remote setup claude</code> with an eligible Claude subscription. Accept workspace trust and Remote Control consent yourself, then return here and save. Use <code>openpalm remote pair claude</code> to see its connection link.</p>
+                  <div class="button-row compact"><button class="secondary" type="button" data-remote-enable="claude">Set up Claude remote</button><button class="text-button" type="button" data-remote-connect="claude">Open remote session</button></div>
+                  <p class="help-text">Requires an eligible Claude subscription. Accept the native workspace-trust and Remote Control consent prompts yourself. Successful setup enables startup automatically.</p>
                 </fieldset>
                 <button class="secondary" type="submit">Save agent preferences</button>
               </form>
@@ -328,6 +330,7 @@
 	            <section id="client-setup" class="panel" aria-labelledby="client-setup-heading">
 	              <div class="section-heading"><div><p class="eyebrow">GUIDED CONNECTION</p><h2 id="client-setup-heading">Connect an app</h2></div></div>
 	              <p class="section-intro">Choose a client to see every value and action it needs. Secrets appear only when you ask to reveal or copy them.</p>
+	              <details class="form-stack"><summary>Optional native Codex and Claude Code remote sessions</summary><p class="help-text">These are separate coding agents with trusted workspace access, not Guardian MCP clients.</p><div class="button-row"><button class="secondary" type="button" data-remote-enable="claude">Set up Claude remote</button><button class="secondary" type="button" data-remote-enable="codex">Set up Codex remote</button></div></details>
 	              <fieldset class="segmented-control">
 	                <legend class="visually-hidden">Client setup</legend>
 	                <button class="secondary" type="button" data-client-setup="opencode">OpenCode</button>
@@ -549,6 +552,22 @@
         </main>
       </div>
     </div>
+
+    <dialog id="remote-dialog" aria-labelledby="remote-heading">
+      <form id="remote-form" class="form-stack">
+        <h2 id="remote-heading">Set up native remote access</h2>
+        <p>Sign-in opens in your browser. Follow the native prompts below; approve only choices you understand. OpenPalm keeps tool approvals and container isolation intact.</p>
+        <label id="remote-trust-field" class="check-row"><input id="remote-trust" type="checkbox" required /> I trust this native agent with my workspace and knowledge. It bypasses Guardian policies.</label>
+        <label id="remote-sandbox-field" class="field" for="remote-sandbox"><span>Codex tool access</span><select id="remote-sandbox"><option value="workspace-write">Sandboxed workspace edits (recommended)</option><option value="read-only">Sandboxed read-only access</option></select></label>
+        <p id="remote-stage" role="status" aria-live="polite">Ready to begin.</p>
+        <div id="remote-prompts" class="form-stack" hidden>
+        <textarea id="remote-output" class="technical-output log-output" readonly spellcheck="false" aria-label="Private native sign-in and consent output"></textarea>
+        <p class="help-text">Private output may contain sign-in or pairing codes. If your browser does not open, use the native link shown above. For a trust or consent prompt, enter <code>y</code> to accept or <code>n</code> to decline.</p>
+        <label class="field" for="remote-answer"><span>Native prompt answer or sign-in code</span><input id="remote-answer" type="password" autocomplete="off" maxlength="2048" /></label>
+        </div>
+        <div class="button-row"><button id="remote-begin" type="submit">Begin guided setup</button><button id="remote-send" class="secondary" type="button" disabled>Send answer</button><button id="remote-cancel" class="secondary" type="button">Cancel</button></div>
+      </form>
+    </dialog>
 
     <div id="notice" class="notice" role="status" aria-live="polite" hidden>
       <span id="notice-icon" class="notice-icon" aria-hidden="true">●</span>

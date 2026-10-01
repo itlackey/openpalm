@@ -149,6 +149,9 @@ explicit reveal flag is supplied.
 For separate native Codex or Claude Code remote coding sessions, see
 [optional native remote access](native-remote-access.md). These default-off
 connections bypass Guardian and require the respective vendor's native sign-in.
+The unreleased guided `openpalm remote enable claude|codex` flow combines stack
+configuration, browser sign-in, explicit native trust/consent, and prerequisite
+checks. Admin offers the same flow under agent preferences and Connections.
 
 Policies are:
 

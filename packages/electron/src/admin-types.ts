@@ -7,6 +7,7 @@ import type {
 	ProviderSummary,
 	StackConfig
 } from '@openpalm/lib';
+import type { RemoteProgress, RemoteTool, CodexSandbox } from '@openpalm/lib';
 
 export type AdminSnapshot = {
 	phase: 'not_installed' | 'setup_incomplete' | 'ready';
@@ -31,6 +32,13 @@ export type AdminSnapshot = {
 export type StackAction = 'start' | 'restart' | 'stop';
 
 export type AdminApi = {
+	remote(value: {
+		action: 'enable' | 'progress' | 'input' | 'cancel' | 'disable' | 'connection';
+		tool: RemoteTool;
+		trusted?: boolean;
+		sandbox?: CodexSandbox;
+		input?: string;
+	}): Promise<RemoteProgress>;
 	snapshot(): Promise<AdminSnapshot>;
 	selectedHome(): Promise<string>;
 	install(config: StackConfig): Promise<AdminSnapshot>;
@@ -89,6 +97,7 @@ export type AdminApi = {
 };
 
 export const ADMIN_CHANNELS = {
+	remote: 'admin:remote',
 	snapshot: 'admin:snapshot',
 	selectedHome: 'admin:selected-home',
 	install: 'admin:install',

@@ -4,6 +4,18 @@ OpenPalm follows [Semantic Versioning](https://semver.org/). This changelog
 starts at the 0.14 product boundary; older releases describe a different stack
 and remain available in Git history.
 
+## [Unreleased]
+
+### Added
+
+- Guided `openpalm remote enable claude|codex` and Admin setup: native browser
+  sign-in links, human trust/consent answers, prerequisite checks, and automatic
+  startup configuration. Cancellation and failure leave remote startup off.
+- Codex read-only or workspace-write sandbox choices, checked before sign-in;
+  no sandbox bypass, added capabilities, or host security changes.
+- Optional `openpalm setup --claude-remote --codex-remote` onboarding and
+  `openpalm remote disable claude|codex` without deleting vendor account state.
+
 ## [0.14.0-alpha.3] - 2026-09-30
 
 ### Added

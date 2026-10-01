@@ -79,13 +79,15 @@ COPY containers/assistant/healthcheck.sh /usr/local/bin/openpalm-healthcheck
 COPY containers/assistant/opencode-run.sh /usr/local/bin/openpalm-opencode-run
 COPY containers/assistant/openpalm-task.mjs /usr/local/bin/openpalm-task
 COPY containers/assistant/openpalm-remote.mjs /usr/local/bin/openpalm-remote
+COPY containers/assistant/openpalm-remote-setup.mjs /usr/local/bin/openpalm-remote-setup
 COPY --from=tools /akm-claude /opt/openpalm/plugins/akm
 
 ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 RUN test -n "$PLATFORM_VERSION" \
-    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-remote /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
+    && chmod 0755 /usr/local/bin/openpalm-assistant /usr/local/bin/openpalm-task /usr/local/bin/openpalm-remote /usr/local/bin/openpalm-remote-setup /usr/local/bin/openpalm-healthcheck /usr/local/bin/openpalm-opencode-run \
+    && ln -s openpalm-remote /usr/local/bin/openpalm-remote.mjs \
     && mkdir -p /home/opencode /etc/opencode /opt/akm/cache /opt/akm/data/state /stash /work \
     && chown -R bun:bun /home/opencode /etc/opencode /opt/akm /stash /work \
     && chmod -R a+rwX /home/opencode /etc/opencode /opt/akm /stash /work

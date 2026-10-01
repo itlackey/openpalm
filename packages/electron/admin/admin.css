@@ -1546,3 +1546,31 @@ body[data-busy="true"] #main-content {
 [hidden] {
 	display: none;
 }
+/* Native setup uses existing form components, without an embedded terminal dependency. */
+#remote-dialog {
+	width: min(760px, calc(100vw - 48px));
+	max-height: calc(100vh - 48px);
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 16px;
+	padding: 24px;
+	background: var(--surface);
+	color: var(--ink);
+}
+#remote-dialog::backdrop {
+	background: rgb(0 0 0 / 55%);
+}
+#remote-form p,
+#remote-form h2 {
+	margin: 0;
+}
+#remote-output {
+	min-height: 120px;
+	height: min(200px, 25vh);
+}
+#remote-form > .button-row {
+	position: sticky;
+	bottom: -24px;
+	padding: 16px 0;
+	background: var(--surface);
+}

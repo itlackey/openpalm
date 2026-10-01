@@ -102,6 +102,8 @@ async function capture(window: BrowserWindow, directory: string, name: string): 
 async function assertRenderedFloor(window: BrowserWindow, label: string): Promise<void> {
 	const result = (await window.webContents.executeJavaScript(`(() => {
 		const visible = (element) => {
+			const modal = document.querySelector('dialog[open]');
+			if (modal && !modal.contains(element)) return false;
 			if (element.tagName !== 'SUMMARY' && element.closest('details:not([open])')) return false;
 			const style = getComputedStyle(element);
 			const rect = element.getBoundingClientRect();
@@ -383,6 +385,25 @@ async function run(): Promise<Record<string, unknown>> {
 			);
 			progress('entered ready management UI through an explicit test-only fixture');
 		}
+
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('[data-remote-enable=codex]').click();
+			if (!document.querySelector('#remote-dialog').open) throw new Error('Remote setup dialog did not open.');
+			if (document.querySelector('#remote-trust').checked) throw new Error('Native trust was preaccepted.');
+			if (document.querySelector('#remote-sandbox-field').hidden) throw new Error('Codex sandbox choice is missing.');
+			if ([...document.querySelector('#remote-sandbox').options].some(option => /danger|bypass/i.test(option.value))) throw new Error('Sandbox bypass is offered.');
+		})()`);
+		await assertRenderedFloor(window, 'native remote setup dialog');
+		const nativeRemoteScreenshot = await capture(window, outputDir, '04-native-remote-setup.png');
+		await window.webContents.executeJavaScript(`(() => {
+			document.querySelector('#remote-cancel').click();
+			document.querySelector('[data-remote-enable=claude]').click();
+			if (!document.querySelector('#remote-sandbox-field').hidden) throw new Error('Codex-only sandbox option appears for Claude.');
+			document.querySelector('#remote-cancel').click();
+		})()`);
+		progress(
+			'native remote setup opens from Admin with explicit trust and safe sandbox choices; no subscription login was performed'
+		);
 
 		await window.webContents.executeJavaScript(`(() => {
 			document.querySelector('#agent-timezone').value = 'Europe/London';
@@ -693,6 +714,12 @@ async function run(): Promise<Record<string, unknown>> {
 			visibleSetupJourneyComplete: Boolean(provider && providerKey),
 			managementUiFixtureUsed: !provider,
 			startupRecoveryVerified: true,
+			nativeRemoteSetup: {
+				dialogVerified: true,
+				explicitTrust: true,
+				sandboxChoices: ['workspace-write', 'read-only'],
+				subscriptionLoginVerified: false
+			},
 			agentPreferencesVerified: {
 				timezone: 'Europe/London',
 				memoryOptOutPersisted: true,
@@ -713,6 +740,7 @@ async function run(): Promise<Record<string, unknown>> {
 				assistantScreenshot,
 				recoveryScreenshot,
 				reflowScreenshot,
+				nativeRemoteScreenshot,
 				...(readyScreenshot ? [readyScreenshot] : []),
 				guardianScreenshot
 			],
