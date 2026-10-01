@@ -24,8 +24,9 @@ AI.”** Fold, Manyfold, bare Hold and `f.hold` are not alternate spellings.
 
 ## Fork baseline and repository creation
 
-At this review, the fetched `refactor/lean-stack` tip is
-`56a946bd7025b2407f18dc0ee500e0fe541c86f1`. It includes Admin refinement
+The latest source tip observed while publishing this guide is
+`a6300cd83857961812b84116f3921b2887052761`. It includes the intervening
+beta.2 preparation and Admin refinement
 commit `94c6d9c700f4854af8fd27b7df5b86a9fe3312d7`
 (“Simplify Admin task layout and verify rendered usability”), as well as the
 earlier setup/Admin and data-preservation work. Use that lineage, not a
