@@ -67,7 +67,9 @@ before its sign-in gate, while OpenCode/Codex use a refused loopback model URL.
 Codex must initially report untrusted hooks; only the disposable test home
 receives native hook-trust state so execution can be tested. The image smoke
 also verifies native user settings survive restart and untouched generated
-plugin registrations refresh. CI runs this on AMD64 and ARM64 images.
+plugin registrations refresh. CI runs this on native AMD64 and ARM64 hosts,
+with a runner-architecture assertion. QEMU is used for multi-architecture
+publication builds only, not to judge interactive harness runtime behavior.
 
 ```bash
 scripts/smoke-image.sh openpalm/assistant:0.14.0-alpha.4 assistant

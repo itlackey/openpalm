@@ -78,26 +78,45 @@ describe('release workflows', () => {
 		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'gates.yml'), 'utf8')) as {
 			jobs: {
 				images: {
+					'runs-on': string;
 					strategy: {
 						matrix: {
 							platform: string[];
 							image: string[];
-							include: Array<{ image: string; file: string }>;
+							include: Array<{ image?: string; file?: string; platform?: string; runner?: string }>;
 						};
 					};
-					steps: Array<{ uses?: string; with?: Record<string, unknown>; run?: string }>;
+					steps: Array<{
+						name?: string;
+						uses?: string;
+						with?: Record<string, unknown>;
+						run?: string;
+					}>;
 				};
 			};
 		};
 		const images = workflow.jobs.images;
 		expect(images.strategy.matrix.platform).toEqual(['linux/amd64', 'linux/arm64']);
 		expect(images.strategy.matrix.image).toEqual(['assistant', 'guardian', 'portal']);
-		expect(images.strategy.matrix.include.map((entry) => entry.image).sort()).toEqual([
-			'assistant',
-			'guardian',
-			'portal'
-		]);
-		expect(images.steps.some((step) => step.uses === 'docker/setup-qemu-action@v3')).toBe(true);
+		expect(
+			images.strategy.matrix.include
+				.map((entry) => entry.image)
+				.filter(Boolean)
+				.sort()
+		).toEqual(['assistant', 'guardian', 'portal']);
+		expect(images['runs-on']).toBe('${{ matrix.runner }}');
+		expect(images.strategy.matrix.include).toContainEqual({
+			platform: 'linux/arm64',
+			runner: 'ubuntu-24.04-arm'
+		});
+		expect(images.strategy.matrix.include).toContainEqual({
+			platform: 'linux/amd64',
+			runner: 'ubuntu-latest'
+		});
+		expect(images.steps.some((step) => step.uses === 'docker/setup-qemu-action@v3')).toBe(false);
+		expect(
+			images.steps.some((step) => step.name === 'Assert native architecture for runtime tests')
+		).toBe(true);
 		const build = images.steps.find((step) => step.uses === 'docker/build-push-action@v6');
 		expect(build?.with?.platforms).toBe('${{ matrix.platform }}');
 		expect(

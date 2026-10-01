@@ -133,6 +133,19 @@ the provider-backed run retained eleven screenshots including the ready state.
 These are local candidate checks, not yet proof of published artifacts or
 authenticated Claude/Codex remote sessions.
 
+Real-provider acceptance also passed automatic knowledge capture, an actual
+recurring timer execution, pause/resume, update/restart recall, resumable MCP
+jobs, cross-identity rejection, explicit permission approval, workspace
+containment, and credential rotation. Five direct model requests were used;
+background capture and the real scheduler were exercised separately. The
+disposable stack was stopped and its private home/report retained afterward.
+
+The initial GitHub dry run passed all quality/security gates and the native
+AMD64 harness checks, but OpenCode recall timed out under ARM64 QEMU emulation.
+No failed candidate was published. Runtime image gates now use standard native
+AMD64/ARM64 GitHub runners and assert the runner architecture, rather than
+weakening hook deadlines or adding emulation-specific plugin behavior.
+
 ## Alpha.3 published-artifact verification record
 
 The 2026-09-30 Linux x64 upgrade used the checksum-verified CLI from the public

@@ -4,9 +4,12 @@
 import assert from 'node:assert/strict';
 import {
 	appendFileSync,
+	closeSync,
 	cpSync,
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	openSync,
 	readFileSync,
 	writeFileSync
 } from 'node:fs';
@@ -75,7 +78,7 @@ function fixture(harness) {
 	return { dir, env, run, cwd: join(dir, 'project') };
 }
 
-async function waitFor(probe, label) {
+async function waitFor(probe, label, diagnostics = []) {
 	const deadline = Date.now() + 60_000;
 	while (Date.now() < deadline) {
 		try {
@@ -86,7 +89,18 @@ async function waitFor(probe, label) {
 		}
 		await Bun.sleep(100);
 	}
-	throw new Error(`Timed out: ${label}; fixtures retained at ${root}`);
+	const detail = diagnostics
+		.filter(existsSync)
+		.map((file) => `${file}:\n${readFileSync(file, 'utf8').slice(-8_192)}`)
+		.join('\n');
+	throw new Error(`Timed out: ${label}; fixtures retained at ${root}\n${detail}`);
+}
+
+function launch(f, argv) {
+	const log = join(f.dir, 'harness.log');
+	const output = openSync(log, 'w', 0o600);
+	const proc = Bun.spawn(argv, { cwd: f.cwd, env: f.env, stdout: output, stderr: output });
+	return { proc, log, close: () => closeSync(output) };
 }
 
 function events(file) {
@@ -134,28 +148,27 @@ function recalled(file, harness) {
 			}
 		}
 	});
-	const proc = Bun.spawn(
-		[
-			'opencode',
-			'run',
-			'--model',
-			'openai/gpt-5-nano',
-			'--agent',
-			'build',
-			'--format',
-			'json',
-			prompt
-		],
-		{ cwd: f.cwd, env: f.env, stdout: 'ignore', stderr: 'ignore' }
-	);
+	const { proc, log, close } = launch(f, [
+		'opencode',
+		'run',
+		'--model',
+		'openai/gpt-5-nano',
+		'--agent',
+		'build',
+		'--format',
+		'json',
+		prompt
+	]);
 	try {
 		await waitFor(
 			() => recalled(join(f.dir, 'state/akm-opencode/events.jsonl'), 'opencode'),
-			'OpenCode recall'
+			'OpenCode recall',
+			[log, join(f.dir, 'state/akm-opencode/events.jsonl')]
 		);
 	} finally {
 		proc.kill();
 		await proc.exited;
+		close();
 	}
 }
 
@@ -175,21 +188,18 @@ function recalled(file, harness) {
 		)
 	);
 	const debug = join(f.dir, 'debug.log');
-	const proc = Bun.spawn(['claude', '-p', prompt, '--debug-file', debug], {
-		cwd: f.cwd,
-		env: f.env,
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
+	const { proc, log, close } = launch(f, ['claude', '-p', prompt, '--debug-file', debug]);
 	try {
 		await waitFor(
 			() => recalled(join(f.dir, 'state/akm-claude/events.jsonl'), 'claude-code'),
-			'Claude recall'
+			'Claude recall',
+			[log, join(f.dir, 'state/akm-claude/events.jsonl')]
 		);
 		assert.match(readFileSync(debug, 'utf8'), /Hook SessionStart:startup \(SessionStart\) success/);
 	} finally {
 		proc.kill();
 		await proc.exited;
+		close();
 	}
 }
 
@@ -274,18 +284,25 @@ function recalled(file, harness) {
 			config,
 			`\n[hooks.state.${JSON.stringify(hook.key)}]\ntrusted_hash=${JSON.stringify(hook.currentHash)}\n`
 		);
-	const proc = Bun.spawn(
-		['codex', 'exec', '--skip-git-repo-check', '--json', '--sandbox', 'workspace-write', prompt],
-		{ cwd: f.cwd, env: f.env, stdout: 'ignore', stderr: 'ignore' }
-	);
+	const { proc, log, close } = launch(f, [
+		'codex',
+		'exec',
+		'--skip-git-repo-check',
+		'--json',
+		'--sandbox',
+		'workspace-write',
+		prompt
+	]);
 	try {
 		await waitFor(
 			() => recalled(join(f.env.CODEX_HOME, 'plugins/data/akm-akm-plugins/events.jsonl'), 'codex'),
-			'Codex recall'
+			'Codex recall',
+			[log, join(f.env.CODEX_HOME, 'plugins/data/akm-akm-plugins/events.jsonl')]
 		);
 	} finally {
 		proc.kill();
 		await proc.exited;
+		close();
 	}
 }
 
