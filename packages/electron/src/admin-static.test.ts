@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { clearClientKey, renderCredentials } from '../admin/access.js';
 import { importInput, importSignature, invalidateImportPreview } from '../admin/backup.js';
@@ -21,6 +21,12 @@ import { resetOAuthAttempt, renderProviders } from '../admin/providers.js';
 import { renderPhase, renderServices } from '../admin/runtime.js';
 import { render, refresh } from '../admin/snapshot.js';
 import { createAdminState, state } from '../admin/state.js';
+import {
+	initializeAdmin,
+	renderWelcome,
+	bindInstanceEvents,
+	showInstances
+} from '../admin/instances.js';
 import {
 	captureDirtyForms,
 	operation,
@@ -131,6 +137,76 @@ afterEach(() => {
 });
 
 describe('Admin static security boundary', () => {
+	it('never programmatically resizes production windows; size changes exist only in the E2E harness', () => {
+		const sourceDirectory = join(import.meta.dir);
+		const productionSources = readdirSync(sourceDirectory)
+			.filter(
+				(name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && name !== 'admin-e2e.ts'
+			)
+			.map((name) => join(sourceDirectory, name));
+		const rendererSources = readdirSync(admin)
+			.filter((name) => name.endsWith('.js'))
+			.map((name) => join(admin, name));
+		for (const path of [...productionSources, ...rendererSources]) {
+			expect(readFileSync(path, 'utf8')).not.toMatch(
+				/\.\s*(?:setSize|setContentSize|setBounds|resizeTo|resizeBy|maximize|unmaximize|setFullScreen)\s*\(/
+			);
+		}
+		const main = readFileSync(join(sourceDirectory, 'admin-app.ts'), 'utf8');
+		expect(main).toContain('width: 1120');
+		expect(main).toContain('height: 780');
+		expect(main).not.toContain('resizable: false');
+	});
+	it('shows previous, default and recent instances without fetching a stack snapshot', async () => {
+		state.api = {
+			welcome: async () => ({
+				defaultInstance: { kind: 'local', homeDir: '/default' },
+				recentInstances: [
+					{ kind: 'local', homeDir: '/previous' },
+					{ kind: 'local', homeDir: '/other' }
+				]
+			}),
+			snapshot: async () => {
+				throw new Error('must not fetch before selection');
+			}
+		};
+		await initializeAdmin();
+		expect(control('instance-welcome').hidden).toBe(false);
+		expect(control('app-shell').hidden).toBe(true);
+		expect(control('primary-instance-path').textContent).toBe('/previous');
+		expect(control('open-recent-instance').textContent).toBe('Open previous instance');
+		expect(control('default-instance-option').hidden).toBe(false);
+		expect(control('recent-instances').children.length).toBe(1);
+		expect(control('skip-link').getAttribute('href')).toBe('#instance-welcome');
+	});
+
+	it('offers default setup on first launch and cancelling the folder picker does nothing', async () => {
+		renderWelcome({ defaultInstance: { kind: 'local', homeDir: '/default' }, recentInstances: [] });
+		expect(control('open-recent-instance').textContent).toBe('Open default instance');
+		expect(control('default-instance-option').hidden).toBe(true);
+		let opened = false;
+		state.api = {
+			chooseDirectory: async () => undefined,
+			openInstance: async () => {
+				opened = true;
+			}
+		};
+		bindInstanceEvents();
+		await control('choose-instance').listeners.get('click')?.({});
+		expect(opened).toBe(false);
+	});
+
+	it('does not switch with unsaved changes unless the user confirms', async () => {
+		state.dirtyForms.add('connections-form');
+		let closed = false;
+		state.api = {
+			closeInstance: async () => {
+				closed = true;
+			}
+		};
+		await showInstances();
+		expect(closed).toBe(false);
+	});
 	it('requires Docker readiness before installing and refreshes quietly without clearing errors', async () => {
 		const snapshot = {
 			phase: 'not_installed',
@@ -447,7 +523,7 @@ describe('Admin renderer behavior', () => {
 		expect(state.operationInFlight).toBe(true);
 		expect(enabled.disabled).toBe(true);
 		expect(document.body.dataset.busy).toBe('true');
-		expect(control('main-content').getAttribute('aria-busy')).toBe('true');
+		expect(control('instance-welcome').getAttribute('aria-busy')).toBe('true');
 		let duplicateCalled = false;
 		expect(
 			await operation('Duplicate', () => {

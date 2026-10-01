@@ -11,7 +11,9 @@ specific operating system needs human inspection.
 
 The walkthrough must prove that:
 
-1. Admin opens on a genuinely empty `OP_HOME`;
+1. Admin opens on welcome without seeding `OP_HOME`, supports one-click
+   default/previous selection, remembers recent folders, and rejects invalid
+   folders unchanged;
 2. the default setup path hides ports and prevents duplicate installation;
 3. Assistant starts healthy and OpenCode returns a filtered provider catalog;
 4. an interrupted first start exposes working port correction and retry controls;
@@ -27,7 +29,9 @@ The walkthrough must prove that:
 11. a `read` credential sees read tools but not full-only tools;
 12. visible controls meet the minimum rendered-size and focus checks without
     document-level horizontal overflow; and
-13. the isolated stack is stopped and removed after the test.
+13. switching between two valid test homes clears transient keys, targets
+    credential changes only at the selected home, and leaves the other stack running;
+14. the isolated stack is stopped and removed after the test.
 
 The walkthrough also changes the recurring-work timezone and automatic-memory
 preference through the visible UI, applies them with a restart, and verifies
@@ -194,11 +198,26 @@ Use this process for release-candidate inspection or a provider OAuth flow.
    bun run --cwd packages/electron start
    ```
 
-3. Confirm that the welcome screen describes the personal agent without
-   showing ports, paths, Guardian, credentials, or Compose terminology. Open
+3. Confirm **Welcome to OpenPalm** offers the previous/default instance and
+   **Open another folder…**, with paths so the target is unambiguous. Cancel
+   the picker and confirm nothing changes. Select a legacy or unrelated
+   nonempty test folder and confirm the error leaves its contents untouched.
+   Open the fresh test home in one click. Its setup screen describes the agent
+   without exposing Guardian, credentials, or Compose terminology. Open
    **Advanced network settings** only when this isolated test needs different
    ports, then click **Install OpenPalm**. Confirm that the action immediately
    shows progress and cannot be submitted twice.
+
+   Before installing, choose **Choose another instance**, then reopen the
+   previous test folder in one click. Restart Admin and confirm it still opens
+   welcome, remembers the previous folder, and requires no shell change to
+   `OP_HOME`. Keep all choices limited to disposable test directories.
+
+   Note the window dimensions after manually sizing it. Navigation, refresh,
+   setup transitions and instance switching must leave them unchanged. The
+   automated walkthrough explicitly resizes its disposable window for narrow
+   layout checks; those calls exist only in `admin-e2e.ts`, never in production.
+   Its window title identifies it as **OpenPalm Admin — automated UI test**.
 
 4. Confirm Admin advances to **Connect your AI**, Assistant shows **Running
    normally**, and provider discovery begins automatically. **Refresh accounts**
@@ -308,6 +327,25 @@ For a release sign-off, record:
 - provider/model used for real readiness, without its credential;
 - the E2E `report.json` and screenshots; and
 - any deviation from the expected `401`, `200`, or tool-policy results.
+
+### Verified instance welcome and stable window size: 2026-10-01
+
+The real Electron/Docker walkthrough passed with two disposable 0.14 homes:
+one-click default/previous selection, persisted recents, folder-picker
+cancellation, invalid-folder preservation, and switching back to the running
+original stack. A credential created in the second home did not alter the
+first; revealed keys cleared and a stale provider sign-in completion was
+rejected. Window dimensions remained unchanged through switching. Explicit
+test-only resizing verified the welcome and recent-instance layouts at 640px;
+production-source tests prohibit automatic window resizing.
+
+The regression suite passed 326 tests with one environment-dependent skip.
+Type checks, lint, CLI/Admin builds, and all-profile Compose validation passed.
+No provider secret or vendor login was used. Setup correctly rejected the free
+provider request; management used an explicit test fixture, not live readiness.
+Test containers were removed, and the existing Splinter stack remained healthy.
+Report and screenshots remain at
+`/tmp/openpalm-admin-e2e-artifacts-0c3UQg/` on the verification host.
 
 ### Verified provider-backed run: 2026-09-30
 

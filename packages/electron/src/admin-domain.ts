@@ -28,10 +28,13 @@ import {
 	writeCredentialKey,
 	writePortalCredentialMap,
 	writeStackConfig,
+	updateEnvFile,
+	stackEnvFile,
 	type GuardianPolicy,
 	type PortalName,
 	type StackConfig
 } from '@openpalm/lib';
+import { createHash } from 'node:crypto';
 
 export function isAdminPageUrl(
 	value: unknown,
@@ -94,8 +97,11 @@ export function adminPortalTokens(
 	};
 }
 
-export async function installFromAdmin(config: unknown = defaultStackConfig()): Promise<string> {
-	const state = createOpenPalmState();
+export async function installFromAdmin(
+	config: unknown = defaultStackConfig(),
+	homeDir?: string
+): Promise<string> {
+	const state = createOpenPalmState(homeDir);
 	if (classifyInstall(state.homeDir) !== 'not_installed') {
 		throw new Error('OpenPalm is already installed or the selected home is not empty.');
 	}
@@ -104,6 +110,14 @@ export async function installFromAdmin(config: unknown = defaultStackConfig()): 
 	ensureHomeDirs(state.homeDir);
 	await applyHomeSeed(state.homeDir);
 	writeStackConfig(state.homeDir, parsed.config);
+	if (
+		homeDir &&
+		(state.homeDir !== createOpenPalmState().homeDir || !process.env.OP_PROJECT_NAME?.trim())
+	) {
+		// Different folders must not control the same default Compose project.
+		const suffix = createHash('sha256').update(state.homeDir).digest('hex').slice(0, 12);
+		updateEnvFile(stackEnvFile(state.homeDir), { OP_PROJECT_NAME: `openpalm-${suffix}` });
+	}
 	ensureRuntime(state);
 	return state.homeDir;
 }
@@ -244,7 +258,7 @@ export function importFromAdmin(
 	if (!previewDigest || !/^[a-f0-9]{64}$/.test(previewDigest)) {
 		throw new Error('Preview this restore before applying it.');
 	}
-	const state = createOpenPalmState();
+	const state = createOpenPalmState(homeDir);
 	if (state.homeDir !== homeDir) throw new Error('Admin import destination changed unexpectedly.');
 	const lock = acquireStackLock(state.dataDir);
 	if (!lock) throw new Error('Another OpenPalm lifecycle operation is in progress.');

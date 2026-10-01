@@ -52,10 +52,23 @@ OpenPalm does not install a browser chat application or model server.
 
 ### Optional graphical setup
 
-The separate OpenPalm Admin application presents the same fresh-install path
-as three guided stages: install locally, connect an AI provider, and choose a
+The separate OpenPalm Admin application starts at **Welcome to OpenPalm**.
+Open the previous or default instance in one click, pick another recent folder,
+or choose **Open another folder…**. The default is `~/.openpalm`, or the explicit
+`OP_HOME` supplied at launch. An empty folder opens fresh setup; a valid 0.14
+folder opens its existing setup or management view. Older or unrelated
+nonempty folders are refused without changing their contents.
+
+Fresh setup then presents three guided stages: install locally, connect an AI provider, and choose a
 client. The ordinary path uses safe loopback defaults. Ports and bind addresses
 remain in an advanced disclosure.
+
+New homes installed through Admin receive a unique folder-derived Compose
+project name. An explicit launch-time `OP_PROJECT_NAME` is honored only when
+installing the launch-time default home, never inherited by another folder. Existing
+project names and network settings remain unchanged. When installing another
+instance, choose unused ports under **Advanced network settings** if the
+defaults are already occupied.
 
 Admin can store and verify API keys and automatically detects an existing
 OpenCode sign-in. When a provider requires interactive browser/OAuth sign-in,

@@ -42,6 +42,7 @@ import { reviewCodexRecall, changeCodexRecall } from '@openpalm/lib';
 import type { AssistantReadiness, RemoteEnableSession, CodexRecallReview } from '@openpalm/lib';
 
 import electronPackage from '../package.json' with { type: 'json' };
+import { AdminInstances } from './admin-instances.js';
 
 import { ADMIN_CHANNELS, type AdminSnapshot, type StackAction } from './admin-types.js';
 import {
@@ -65,6 +66,28 @@ const adminIndexUrl = pathToFileURL(adminIndexPath).href;
 const claudeExtensionUrl = `https://github.com/itlackey/openpalm/releases/download/${electronPackage.version}/openpalm-claude-desktop-${electronPackage.version}.mcpb`;
 let activeRemote: { homeDir: string; session: RemoteEnableSession } | undefined;
 let remoteStarting = false;
+let instances: AdminInstances;
+let pendingOAuth: { homeDir: string; provider: string; method: number } | undefined;
+
+function managedState() {
+	return createOpenPalmState(instances.current().homeDir);
+}
+
+function handleAdmin(
+	channel: string,
+	handler: (event: IpcMainInvokeEvent, value?: unknown) => unknown
+): void {
+	ipcMain.handle(channel, (event, value: unknown) => {
+		requireAdminSender(event);
+		return instances.run(() => handler(event, value));
+	});
+}
+
+function requireSwitchable(): void {
+	instances.assertIdle();
+	if (remoteStarting || activeRemote?.session.snapshot().running)
+		throw new Error('Finish or cancel native remote setup before switching instances.');
+}
 
 if (!process.env.OPENPALM_SKELETON_DIR && !process.env.OPENPALM_REPO_ROOT) {
 	process.env.OPENPALM_SKELETON_DIR = app.isPackaged
@@ -81,7 +104,7 @@ function requireAdminSender(event: IpcMainInvokeEvent): void {
 }
 
 function state() {
-	const value = createOpenPalmState();
+	const value = managedState();
 	requireInstall(value.homeDir);
 	ensureRuntime(value);
 	return value;
@@ -127,7 +150,7 @@ function oauthInput(value: unknown): {
 }
 
 export async function adminSnapshot(): Promise<AdminSnapshot> {
-	const candidate = createOpenPalmState();
+	const candidate = managedState();
 	const installState = classifyInstall(candidate.homeDir);
 	if (installState === 'not_installed') {
 		return {
@@ -217,8 +240,26 @@ async function completeAdminReadiness(
 }
 
 export function registerAdminIpc(): void {
-	ipcMain.handle(ADMIN_CHANNELS.codexRecall, async (event, value: unknown) => {
+	instances = new AdminInstances(app.getPath('userData'));
+	ipcMain.handle(ADMIN_CHANNELS.welcome, (event) => {
 		requireAdminSender(event);
+		return instances.welcome();
+	});
+	ipcMain.handle(ADMIN_CHANNELS.openInstance, (event, target: unknown) => {
+		requireAdminSender(event);
+		requireSwitchable();
+		instances.open(target);
+		activeRemote = undefined;
+		pendingOAuth = undefined;
+	});
+	ipcMain.handle(ADMIN_CHANNELS.closeInstance, (event) => {
+		requireAdminSender(event);
+		requireSwitchable();
+		instances.close();
+		activeRemote = undefined;
+		pendingOAuth = undefined;
+	});
+	handleAdmin(ADMIN_CHANNELS.codexRecall, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object' || Array.isArray(value))
 			throw new Error('Invalid recall request.');
 		const input = value as Record<string, unknown>;
@@ -231,8 +272,7 @@ export function registerAdminIpc(): void {
 			throw new Error('Finish or cancel remote setup first.');
 		return changeCodexRecall(current, input.action, input.digest, input.confirmed === true);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.remote, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.remote, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid native remote request.');
 		const input = value as Record<string, unknown>;
 		const tool = remoteTool(input.tool);
@@ -297,52 +337,46 @@ export function registerAdminIpc(): void {
 		activeRemote.session.cancel();
 		void activeRemote.session.done.finally(() => app.quit());
 	});
-	ipcMain.handle(ADMIN_CHANNELS.snapshot, (event) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.snapshot, (_event) => {
 		return adminSnapshot();
 	});
 	ipcMain.handle(ADMIN_CHANNELS.selectedHome, (event) => {
 		requireAdminSender(event);
-		return createOpenPalmState().homeDir;
+		const welcome = instances.welcome();
+		return welcome.selectedInstance?.homeDir ?? welcome.defaultInstance.homeDir;
 	});
-	ipcMain.handle(ADMIN_CHANNELS.install, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.install, async (_event, value: unknown) => {
 		const parsed = parseStackConfig(value);
 		if (!parsed.ok) throw new Error(parsed.error);
 		const docker = await ensureDockerReady();
 		if (!docker.ok) throw new Error(docker.message);
-		await installFromAdmin(parsed.config);
+		await installFromAdmin(parsed.config, instances.current().homeDir);
 		return runAdminAction('start');
 	});
-	ipcMain.handle(ADMIN_CHANNELS.saveConfig, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.saveConfig, async (_event, value: unknown) => {
 		const parsed = parseStackConfig(value);
 		if (!parsed.ok) throw new Error(parsed.error);
 		const current = state();
 		saveAdminConfig(current.homeDir, parsed.config);
 		return adminSnapshot();
 	});
-	ipcMain.handle(ADMIN_CHANNELS.action, (event, action: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.action, (_event, action: unknown) => {
 		if (action !== 'start' && action !== 'restart' && action !== 'stop') {
 			throw new Error('Invalid stack action');
 		}
 		return runAdminAction(action);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.logs, async (event) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.logs, async (_event) => {
 		const current = state();
 		const result = await composeLogs(buildComposeOptions(current), 250);
 		if (!result.ok) throw new Error(result.stderr || 'Could not read Docker logs');
 		return result.stdout.slice(-200_000);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.providers, (event) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.providers, (_event) => {
 		const current = state();
 		return listProviders(current.homeDir);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.providerKey, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.providerKey, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid provider settings');
 		const input = value as { provider?: unknown; key?: unknown };
 		if (typeof input.provider !== 'string' || typeof input.key !== 'string') {
@@ -356,8 +390,7 @@ export function registerAdminIpc(): void {
 		await completeAdminReadiness(current.homeDir, readiness);
 		return readiness;
 	});
-	ipcMain.handle(ADMIN_CHANNELS.providerOAuthStart, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.providerOAuthStart, async (_event, value: unknown) => {
 		const input = oauthInput(value);
 		const current = state();
 		const authorization = await beginProviderOAuth(
@@ -366,26 +399,33 @@ export function registerAdminIpc(): void {
 			input.method,
 			input.inputs
 		);
+		pendingOAuth = { homeDir: current.homeDir, provider: input.provider, method: input.method };
 		await shell.openExternal(externalAdminUrl(authorization.url));
 		return authorization;
 	});
-	ipcMain.handle(ADMIN_CHANNELS.providerOAuthFinish, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.providerOAuthFinish, async (_event, value: unknown) => {
 		const input = oauthInput(value);
 		const rawCode = (value as { code?: unknown }).code;
 		if (rawCode !== undefined && typeof rawCode !== 'string') {
 			throw new Error('Invalid provider authorization code.');
 		}
 		const current = state();
+		if (
+			!pendingOAuth ||
+			pendingOAuth.homeDir !== current.homeDir ||
+			pendingOAuth.provider !== input.provider ||
+			pendingOAuth.method !== input.method
+		)
+			throw new Error('Start provider sign-in for this instance first.');
 		await completeProviderOAuth(current.homeDir, input.provider, input.method, rawCode);
+		pendingOAuth = undefined;
 		const readiness = await testAssistantReadiness(current.homeDir, {
 			provider: input.provider
 		});
 		await completeAdminReadiness(current.homeDir, readiness);
 		return readiness;
 	});
-	ipcMain.handle(ADMIN_CHANNELS.readiness, (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.readiness, (_event, value: unknown) => {
 		if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value))) {
 			throw new Error('Invalid provider readiness request.');
 		}
@@ -401,8 +441,7 @@ export function registerAdminIpc(): void {
 			return readiness;
 		});
 	});
-	ipcMain.handle(ADMIN_CHANNELS.assistantPassword, (event) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.assistantPassword, (_event) => {
 		const current = state();
 		const details = connectionDetails(current.homeDir, 'opencode', {
 			showAssistantPassword: true
@@ -410,15 +449,13 @@ export function registerAdminIpc(): void {
 		if (!details.password) throw new Error('OpenCode password is unavailable.');
 		return { password: details.password };
 	});
-	ipcMain.handle(ADMIN_CHANNELS.copyText, (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.copyText, (_event, value: unknown) => {
 		if (typeof value !== 'string' || value.length < 1 || value.length > 10_000) {
 			throw new Error('Invalid clipboard value.');
 		}
 		clipboard.writeText(value);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.openExternal, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.openExternal, async (_event, value: unknown) => {
 		await shell.openExternal(externalAdminUrl(value));
 	});
 	ipcMain.handle(ADMIN_CHANNELS.chooseDirectory, async (event, value: unknown) => {
@@ -427,14 +464,23 @@ export function registerAdminIpc(): void {
 			throw new Error('Invalid directory selection request.');
 		}
 		const purpose = (value as { purpose?: unknown }).purpose;
-		if (purpose !== 'backup' && purpose !== 'restore') {
-			throw new Error('Directory purpose must be backup or restore.');
+		if (purpose !== 'backup' && purpose !== 'restore' && purpose !== 'instance') {
+			throw new Error('Directory purpose must be instance, backup or restore.');
 		}
 		const options: OpenDialogOptions = {
 			title:
-				purpose === 'backup' ? 'Choose an empty backup directory' : 'Choose an OpenPalm backup',
-			buttonLabel: purpose === 'backup' ? 'Use for backup' : 'Use this backup',
-			properties: purpose === 'backup' ? ['openDirectory', 'createDirectory'] : ['openDirectory']
+				purpose === 'instance'
+					? 'Open an OpenPalm folder'
+					: purpose === 'backup'
+						? 'Choose an empty backup directory'
+						: 'Choose an OpenPalm backup',
+			buttonLabel:
+				purpose === 'instance'
+					? 'Open instance'
+					: purpose === 'backup'
+						? 'Use for backup'
+						: 'Use this backup',
+			properties: purpose === 'restore' ? ['openDirectory'] : ['openDirectory', 'createDirectory']
 		};
 		const owner = BrowserWindow.fromWebContents(event.sender);
 		const result = owner
@@ -442,8 +488,7 @@ export function registerAdminIpc(): void {
 			: await dialog.showOpenDialog(options);
 		return result.canceled ? undefined : result.filePaths[0];
 	});
-	ipcMain.handle(ADMIN_CHANNELS.credential, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.credential, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid credential operation');
 		const input = value as { action?: unknown; username?: unknown; policy?: unknown };
 		const current = state();
@@ -457,8 +502,7 @@ export function registerAdminIpc(): void {
 		else throw new Error('Invalid credential operation');
 		return adminSnapshot();
 	});
-	ipcMain.handle(ADMIN_CHANNELS.credentialKey, (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.credentialKey, (_event, value: unknown) => {
 		if (!isCredentialUsername(value)) throw new Error('Invalid credential username.');
 		const current = state();
 		const config = readStackConfig(current.homeDir);
@@ -468,15 +512,13 @@ export function registerAdminIpc(): void {
 		}
 		return { username: value, key: readCredentialKey(current.homeDir, value) };
 	});
-	ipcMain.handle(ADMIN_CHANNELS.mapPortalUser, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.mapPortalUser, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid portal mapping');
 		const current = state();
 		mapAdminPortalUser(current.homeDir, value as never);
 		return adminSnapshot();
 	});
-	ipcMain.handle(ADMIN_CHANNELS.portalToken, async (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.portalToken, async (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid portal token operation');
 		const input = value as { portal?: unknown; botToken?: unknown; appToken?: unknown };
 		if (!isPortalName(input.portal)) throw new Error('Portal must be discord or slack.');
@@ -500,14 +542,12 @@ export function registerAdminIpc(): void {
 			? runAdminAction('restart')
 			: adminSnapshot();
 	});
-	ipcMain.handle(ADMIN_CHANNELS.backup, (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.backup, (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid backup request');
 		const current = state();
 		return backupFromAdmin(current.homeDir, value as never);
 	});
-	ipcMain.handle(ADMIN_CHANNELS.importData, (event, value: unknown) => {
-		requireAdminSender(event);
+	handleAdmin(ADMIN_CHANNELS.importData, (_event, value: unknown) => {
 		if (!value || typeof value !== 'object') throw new Error('Invalid import request');
 		const current = state();
 		return importFromAdmin(current.homeDir, value as never);
@@ -515,6 +555,7 @@ export function registerAdminIpc(): void {
 }
 
 export function createAdminWindow(options: { show?: boolean } = {}): BrowserWindow {
+	// Initial size only. Setup, navigation and instance reloads never resize it.
 	const window = new BrowserWindow({
 		width: 1120,
 		height: 780,

@@ -6,6 +6,18 @@ and remain available in Git history.
 
 ## [Unreleased]
 
+### Added
+
+- Admin welcome screen with one-click previous/default instance access, recent
+  folders, and native directory selection. Switching reloads Admin without
+  stopping stacks or carrying keys, forms, sign-in steps, or restore previews
+  between instances. Local operations use the selected home explicitly, and
+  new Admin installs receive distinct Compose project names. Target selection
+  stays separate from operation dispatch for future SSH support; SSH itself
+  is not included.
+- Regression coverage ensures Admin never automatically resizes its window.
+  Only explicit test-harness or user/agent window actions change its size.
+
 ### Fixed
 
 - Admin labels Guardian network settings as MCP API endpoints, explains

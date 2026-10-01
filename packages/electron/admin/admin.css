@@ -64,8 +64,54 @@ summary {
 #view-title:focus,
 .client-panel:focus,
 #error-state:focus,
+#instance-welcome:focus,
 #install-section:focus {
 	outline: none;
+}
+
+.instance-path {
+	color: var(--ink-soft);
+	font-family: ui-monospace, monospace;
+	font-size: 0.8125rem;
+	overflow-wrap: anywhere;
+}
+
+.instance-primary {
+	padding: 16px;
+	margin: 24px 0 16px;
+	background: var(--surface-muted);
+	border: 1px solid var(--border-soft);
+	border-radius: 6px;
+}
+
+.instance-primary p {
+	margin: 0 0 12px;
+}
+.instance-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 14px 0;
+	border-bottom: 1px solid var(--border-soft);
+}
+.instance-row > :first-child {
+	min-width: 0;
+}
+:where(.instance-row) button {
+	flex-shrink: 0;
+}
+.instance-recents h2 {
+	margin: 24px 0 4px;
+	font-size: 1rem;
+}
+.instance-picker {
+	width: 100%;
+	margin-top: 20px;
+}
+.selected-instance {
+	display: block;
+	margin-bottom: 8px;
 }
 
 :where(a[href], button, input, select, summary):focus:not(:focus-visible) {

@@ -35,7 +35,18 @@ export type AdminSnapshot = {
 
 export type StackAction = 'start' | 'restart' | 'stop';
 
+export type AdminInstance = { kind: 'local'; homeDir: string };
+export type AdminWelcome = {
+	defaultInstance: AdminInstance;
+	recentInstances: AdminInstance[];
+	selectedInstance?: AdminInstance;
+	preferenceError?: string;
+};
+
 export type AdminApi = {
+	welcome(): Promise<AdminWelcome>;
+	openInstance(target: AdminInstance): Promise<void>;
+	closeInstance(): Promise<void>;
 	codexRecall(value: {
 		action: 'review' | 'approve' | 'disable';
 		digest?: string;
@@ -70,7 +81,9 @@ export type AdminApi = {
 	assistantPassword(): Promise<{ password: string }>;
 	copyText(value: string): Promise<void>;
 	openExternal(value: string): Promise<void>;
-	chooseDirectory(value: { purpose: 'backup' | 'restore' }): Promise<string | undefined>;
+	chooseDirectory(value: {
+		purpose: 'backup' | 'restore' | 'instance';
+	}): Promise<string | undefined>;
 	credential(value: {
 		action: 'create' | 'rotate' | 'remove';
 		username: string;
@@ -106,6 +119,9 @@ export type AdminApi = {
 };
 
 export const ADMIN_CHANNELS = {
+	welcome: 'admin:welcome',
+	openInstance: 'admin:open-instance',
+	closeInstance: 'admin:close-instance',
 	codexRecall: 'admin:codex-recall',
 	remote: 'admin:remote',
 	snapshot: 'admin:snapshot',

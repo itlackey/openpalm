@@ -118,6 +118,22 @@ The CLI is the primary host orchestrator. Admin is an optional local wrapper
 over the same `@openpalm/lib` functions and has no server or background
 process.
 
+Admin's welcome screen persists only recent typed local targets
+(`{ kind: "local", homeDir }`) in its own per-user preferences. `AdminInstances`
+owns selection and in-flight-operation tracking; the preload bridge remains
+the operation boundary. Local dispatch constructs `OpenPalmState` from the
+selected target explicitly, including install and import, without changing
+process environment. A full renderer reload resets forms, secrets, sign-in
+steps and previews when switching. No stack lifecycle command runs merely
+because a folder was chosen.
+
+Future SSH support should extend the target type and dispatch operations to the
+remote CLI through host SSH, preserving native host-key verification and local
+SSH configuration. It should not mount remote homes locally, ship an SSH
+daemon, copy keys into instance preferences, or add a remote Admin service.
+This is an extension point, not an implemented transport or generic backend
+framework.
+
 `state/stack.json` contains only:
 
 - Assistant bind, port, timezone, automatic memory, and native remote startup intent;

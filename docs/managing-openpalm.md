@@ -5,6 +5,32 @@ lifecycle commands. File-level configuration is an advanced interface.
 
 ## Lifecycle
 
+### Select an instance in Admin
+
+Admin always launches to a welcome screen. **Open previous instance** (or
+**Open default instance** on the first launch) opens that folder in one click.
+The default choice remains available when it differs from the previous one.
+**Recent instances** remembers up to 20 canonical folder paths, newest first;
+**Open another folder…** uses the system folder picker.
+
+Use **Switch instance** in the sidebar to return to the welcome screen. Setup
+and error screens also offer **Choose another instance**. Switching confirms
+discarding unsaved settings or provider sign-in steps and reloads Admin to
+clear revealed keys and restore previews. Finish the current operation or
+finish/cancel native remote setup first. Running stacks are not stopped.
+Opening an instance shows its state; use the explicit start/stop controls to
+change its lifecycle.
+
+Folder paths are stored in `instances.json` in Electron's per-user Admin
+application-data directory, not under any managed `OP_HOME`. That preference
+contains no keys or account credentials. Invalid preferences do not prevent
+opening the default or another folder. A moved/missing recent folder must be
+selected at its new location; Admin does not recreate it automatically.
+
+Remote instance management over SSH is not implemented yet.
+
+### Select an instance in CLI
+
 Commands act on `OP_HOME` (default `~/.openpalm`), not whichever instance was
 most recently installed. For a nondefault home, keep that selection explicit:
 

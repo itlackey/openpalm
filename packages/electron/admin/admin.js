@@ -7,7 +7,7 @@ import { bindBackupEvents } from './backup.js';
 import { bindConfigurationEvents } from './configuration.js';
 import { bindPreferencesEvents } from './preferences.js';
 import { bindRemoteEvents } from './remote.js';
-import { refresh } from './snapshot.js';
+import { bindInstanceEvents, initializeAdmin } from './instances.js';
 import { state } from './state.js';
 
 state.api = window.openpalmAdmin;
@@ -20,4 +20,5 @@ bindBackupEvents();
 bindConfigurationEvents();
 bindPreferencesEvents();
 bindRemoteEvents();
-void refresh(false);
+bindInstanceEvents();
+void initializeAdmin();

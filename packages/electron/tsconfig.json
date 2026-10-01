@@ -17,7 +17,8 @@
 		"src/admin-e2e.ts",
 		"src/admin-preload.ts",
 		"src/admin-types.ts",
-		"src/admin-domain.ts"
+		"src/admin-domain.ts",
+		"src/admin-instances.ts"
 	],
 	"exclude": ["node_modules", "dist", "test"]
 }

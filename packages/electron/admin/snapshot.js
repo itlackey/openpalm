@@ -32,6 +32,8 @@ export function render(snapshot, options = {}) {
 	state.renderingSnapshot = true;
 	byId('install-assistant-port').value = String(snapshot.config.assistant.port);
 	byId('install-gateway-port').value = String(snapshot.config.gateway.port);
+	setText('install-home', snapshot.homeDir);
+	setText('selected-instance-path', snapshot.homeDir);
 	byId('recovery-assistant-port').value = String(snapshot.config.assistant.port);
 	byId('recovery-gateway-port').value = String(snapshot.config.gateway.port);
 	renderPhase(snapshot.phase);
@@ -113,6 +115,7 @@ export function render(snapshot, options = {}) {
 }
 
 export async function showFatalError(error) {
+	byId('instance-welcome').hidden = true;
 	byId('loading-state').hidden = true;
 	byId('install-section').hidden = true;
 	byId('app-shell').hidden = true;

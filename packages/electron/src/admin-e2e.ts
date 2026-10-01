@@ -1,8 +1,15 @@
-import { app, shell, type BrowserWindow } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { app, dialog, shell, type BrowserWindow } from 'electron';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { markInstalled, testAssistantReadiness } from '@openpalm/lib';
+import {
+	defaultStackConfig,
+	markInstalled,
+	testAssistantReadiness,
+	updateEnvFile,
+	stackEnvFile
+} from '@openpalm/lib';
+import { installFromAdmin } from './admin-domain.js';
 
 import { adminSnapshot, createAdminWindow, registerAdminIpc, runAdminAction } from './admin-app.js';
 
@@ -70,11 +77,15 @@ async function waitForRenderer(
 ): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
+		if (window.webContents.isLoading()) {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			continue;
+		}
 		const state = (await window.webContents.executeJavaScript(`(() => {
 			const notice = document.querySelector('#notice');
 			return {
 				ready: Boolean(${expression}),
-				error: notice?.classList.contains('error') ? notice.textContent || 'Unknown Admin error' : ''
+				error: notice && !notice.hidden && notice.classList.contains('error') ? notice.textContent || 'Unknown Admin error' : ''
 			};
 		})()`)) as RendererWaitState;
 		if (state.error && !allowError) throw new Error(`Admin renderer reported: ${state.error}`);
@@ -233,9 +244,92 @@ async function run(): Promise<Record<string, unknown>> {
 	progress('opening the real Admin renderer');
 	registerAdminIpc();
 	const window = createAdminWindow({ show: true });
+	window.setTitle('OpenPalm Admin — automated UI test');
+	window.on('page-title-updated', (event) => event.preventDefault());
 	let succeeded = false;
 	try {
 		await waitForLoad(window);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.phase === 'welcome'",
+			'the instance welcome screen'
+		);
+		assert(
+			!existsSync(join(homeDir, 'state')),
+			'Welcome seeded the default home before selection.'
+		);
+		await assertRenderedFloor(window, 'instance welcome');
+		const welcomeScreenshot = await capture(window, outputDir, '00-instance-welcome.png');
+		window.setContentSize(640, 540);
+		await assertRenderedFloor(window, 'narrow instance welcome');
+		const narrowWelcomeScreenshot = await capture(
+			window,
+			outputDir,
+			'00b-instance-welcome-narrow.png'
+		);
+		window.setContentSize(1120, 780);
+		const originalPicker = dialog.showOpenDialog;
+		const otherHome = join(outputDir, 'other-empty-instance');
+		const incompatibleHome = join(outputDir, 'legacy-instance');
+		mkdirSync(otherHome);
+		mkdirSync(incompatibleHome);
+		writeFileSync(join(incompatibleHome, 'user-data'), 'preserve this');
+		try {
+			dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#choose-instance').click()"
+			);
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			assert(
+				await window.webContents.executeJavaScript("document.body.dataset.phase === 'welcome'"),
+				'Cancelled folder selection left welcome.'
+			);
+			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [incompatibleHome] });
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#choose-instance').click()"
+			);
+			await waitForRenderer(
+				window,
+				"document.body.dataset.busy === 'false' && document.querySelector('#notice-message').textContent.includes('not an OpenPalm 0.14')",
+				'incompatible folder rejection',
+				10_000,
+				true
+			);
+			assert(!existsSync(join(incompatibleHome, 'state')), 'Invalid folder was modified.');
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#dismiss-notice').click()"
+			);
+			await waitForRenderer(
+				window,
+				"document.querySelector('#notice').hidden",
+				'the dismissed folder error',
+				10_000
+			);
+			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [otherHome] });
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#choose-instance').click()"
+			);
+			await waitForRenderer(
+				window,
+				`document.body.dataset.phase === 'not_installed' && document.querySelector('#install-home').textContent === ${JSON.stringify(otherHome)}`,
+				'the selected empty folder'
+			);
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#install-section [data-instance-switch]').click()"
+			);
+			await waitForRenderer(
+				window,
+				"document.body.dataset.phase === 'welcome' && document.querySelector('#open-recent-instance').textContent === 'Open previous instance'",
+				'recent-instance welcome'
+			);
+			const preferences = readFileSync(join(app.getPath('userData'), 'instances.json'), 'utf8');
+			assert(preferences.includes(otherHome), 'Recent instance was not persisted.');
+			await window.webContents.executeJavaScript(
+				"document.querySelector('#open-default-instance').click()"
+			);
+		} finally {
+			dialog.showOpenDialog = originalPicker;
+		}
 		await waitForRenderer(
 			window,
 			"document.querySelector('#install-section')?.hidden === false && document.querySelector('#install')?.disabled === false",
@@ -894,6 +988,95 @@ async function run(): Promise<Record<string, unknown>> {
 			finalSnapshot.portalMappings.discord?.users['123456789012345678'] === 'e2e-reader',
 			'Discord credential mapping was not persisted.'
 		);
+		// A second valid, stopped fixture proves that every operation uses the
+		// selected folder, even though process.env.OP_HOME still names the first.
+		await installFromAdmin(defaultStackConfig(), otherHome);
+		updateEnvFile(stackEnvFile(otherHome), {
+			OP_PROJECT_NAME: `${process.env.OP_PROJECT_NAME}-other`
+		});
+		markInstalled(otherHome);
+		const originalConfig = readFileSync(join(homeDir, 'state', 'stack.json'), 'utf8');
+		const managedWindowSize = window.getSize();
+		await window.webContents.executeJavaScript(`(() => {
+			window.confirm = () => true;
+			document.querySelector('#provider-key').value = 'transient-key-must-not-survive';
+			document.querySelector('#credential-key').value = 'transient-credential-must-not-survive';
+			document.querySelector('.sidebar [data-instance-switch]').click();
+		})()`);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.phase === 'welcome'",
+			'instance switching from management'
+		);
+		assert(
+			window.getSize().join('x') === managedWindowSize.join('x'),
+			'Returning to welcome resized Admin.'
+		);
+		const recentScreenshot = await capture(window, outputDir, '06-recent-instances.png');
+		window.setContentSize(640, 540);
+		await assertRenderedFloor(window, 'narrow recent-instance list');
+		window.setSize(managedWindowSize[0], managedWindowSize[1]);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#recent-instances button').click()"
+		);
+		await waitForRenderer(
+			window,
+			`document.body.dataset.phase === 'ready' && document.querySelector('#home').textContent === ${JSON.stringify(otherHome)}`,
+			'the second valid instance'
+		);
+		assert(
+			window.getSize().join('x') === managedWindowSize.join('x'),
+			'Opening another instance resized Admin.'
+		);
+		assert(
+			await window.webContents.executeJavaScript(`(() => {
+			return !document.querySelector('#provider-key').value && !document.querySelector('#credential-key').value;
+		})()`),
+			'Transient keys survived the instance switch.'
+		);
+		await window.webContents.executeJavaScript(
+			"window.openpalmAdmin.credential({ action: 'create', username: 'other-instance-only', policy: 'read' })"
+		);
+		assert(
+			readFileSync(join(homeDir, 'state', 'stack.json'), 'utf8') === originalConfig,
+			'A second-instance operation changed the first instance.'
+		);
+		assert(
+			readFileSync(join(otherHome, 'state', 'stack.json'), 'utf8').includes('other-instance-only'),
+			'The credential was not written to the selected instance.'
+		);
+		assert(
+			await window.webContents.executeJavaScript(
+				"window.openpalmAdmin.providerOAuthFinish({provider:'openai',method:0}).then(() => false, () => true)"
+			),
+			'A stale sign-in step was accepted after switching.'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('.sidebar [data-instance-switch]').click()"
+		);
+		await waitForRenderer(
+			window,
+			"document.body.dataset.phase === 'welcome'",
+			'returning to the instance list'
+		);
+		await window.webContents.executeJavaScript(
+			"document.querySelector('#open-default-instance').click()"
+		);
+		await waitForRenderer(
+			window,
+			`document.body.dataset.phase === 'ready' && document.querySelector('#home').textContent === ${JSON.stringify(homeDir)}`,
+			'returning to the original instance'
+		);
+		assert(
+			(await adminSnapshot()).services.every((service) => service.state === 'running'),
+			'Switching stopped the original stack.'
+		);
+		assert(process.env.OP_HOME === homeDir, 'Instance selection mutated the global OP_HOME.');
+		assert(
+			window.getSize().join('x') === managedWindowSize.join('x'),
+			'Returning to the original instance resized Admin.'
+		);
+		progress('two-instance isolation, renderer key reset and stale sign-in rejection verified');
 		succeeded = true;
 		return {
 			ok: true,
@@ -908,6 +1091,17 @@ async function run(): Promise<Record<string, unknown>> {
 			visibleSetupJourneyComplete: Boolean(provider && providerKey),
 			managementUiFixtureUsed: !provider,
 			startupRecoveryVerified: true,
+			instanceWelcomeVerified: {
+				defaultOneClick: true,
+				folderSelectionAndCancellation: true,
+				invalidFolderPreserved: true,
+				recentFoldersPersisted: true,
+				switchReloadsRenderer: true,
+				twoInstanceIsolation: true,
+				transientKeysCleared: true,
+				staleSignInRejected: true,
+				windowSizeStable: true
+			},
 			nativeRemoteSetup: {
 				dialogVerified: true,
 				explicitTrust: true,
@@ -944,6 +1138,9 @@ async function run(): Promise<Record<string, unknown>> {
 				toolCount: tools.length
 			},
 			screenshots: [
+				welcomeScreenshot,
+				narrowWelcomeScreenshot,
+				recentScreenshot,
 				initialScreenshot,
 				assistantScreenshot,
 				recoveryScreenshot,

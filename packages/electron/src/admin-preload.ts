@@ -4,6 +4,9 @@ import { ADMIN_CHANNELS, type AdminApi, type StackAction } from './admin-types.j
 import type { StackConfig } from '@openpalm/lib';
 
 const api: AdminApi = {
+	welcome: () => ipcRenderer.invoke(ADMIN_CHANNELS.welcome),
+	openInstance: (target) => ipcRenderer.invoke(ADMIN_CHANNELS.openInstance, target),
+	closeInstance: () => ipcRenderer.invoke(ADMIN_CHANNELS.closeInstance),
 	codexRecall: (value) => ipcRenderer.invoke(ADMIN_CHANNELS.codexRecall, value),
 	remote: (value) => ipcRenderer.invoke(ADMIN_CHANNELS.remote, value),
 	snapshot: () => ipcRenderer.invoke(ADMIN_CHANNELS.snapshot),

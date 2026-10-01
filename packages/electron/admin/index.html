@@ -18,6 +18,32 @@
       <p>Opening OpenPalm…</p>
 	    </div>
 
+    <main id="instance-welcome" class="welcome-shell" tabindex="-1" hidden>
+      <section class="welcome-card instance-card" aria-labelledby="instance-welcome-title">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">/</span>
+          <div class="brand-copy"><strong>OpenPalm</strong><span class="brand-subtitle">Personal agent management</span></div>
+        </div>
+        <h1 id="instance-welcome-title">Welcome to OpenPalm</h1>
+        <p class="welcome-copy">Choose the instance you want to manage. Each folder holds its own agent, knowledge, and settings.</p>
+        <div class="instance-primary">
+          <p id="primary-instance-path" class="instance-path">Loading…</p>
+          <button id="open-recent-instance" class="primary large" type="button">Open default instance</button>
+        </div>
+        <div id="default-instance-option" class="instance-row" hidden>
+          <div><strong>Default instance</strong><p id="default-instance-path" class="instance-path">Loading…</p></div>
+          <button id="open-default-instance" class="secondary" type="button">Open default</button>
+        </div>
+        <section id="recent-instances-section" class="instance-recents" aria-labelledby="recent-instances-title" hidden>
+          <h2 id="recent-instances-title">Recent instances</h2>
+          <div id="recent-instances"></div>
+        </section>
+        <button id="choose-instance" class="secondary instance-picker" type="button">Open another folder…</button>
+        <p class="help-text">Select an existing OpenPalm 0.14 folder, or an empty folder to set up a new instance. Opening a folder does not start or stop containers.</p>
+        <p id="instance-preference-warning" class="help-text danger-text" role="status" hidden></p>
+      </section>
+    </main>
+
 	    <main id="error-state" class="centered-state error-state" tabindex="-1" hidden>
 	      <section class="error-card" aria-labelledby="error-title">
 	        <p class="eyebrow">OPENPALM NEEDS ATTENTION</p>
@@ -25,6 +51,7 @@
 	        <p id="error-message">OpenPalm could not read the selected installation.</p>
 	        <dl class="detail-list compact"><div><dt>Selected home</dt><dd id="error-home">Checking…</dd></div></dl>
 	        <button id="retry-snapshot" class="primary" type="button">Try again</button>
+            <button class="secondary" type="button" data-instance-switch>Choose another instance</button>
 	      </section>
 	    </main>
 
@@ -39,6 +66,8 @@
           Create your personal AI agent on this computer. Connect an AI account,
           then choose an app to use it. Your knowledge and recurring tasks stay here.
         </p>
+        <p class="help-text">Install folder: <span id="install-home" class="instance-path">Loading…</span></p>
+        <button class="text-button" type="button" data-instance-switch>Choose another instance</button>
         <p id="install-prerequisite" class="prerequisite" role="status">Checking this computer…</p>
         <p id="install-status" class="help-text" role="status" aria-live="polite" hidden></p>
 
@@ -105,6 +134,8 @@
         </nav>
 
         <div class="sidebar-footer">
+          <span id="selected-instance-path" class="instance-path selected-instance">Loading…</span>
+          <button class="text-button" type="button" data-instance-switch>Switch instance</button>
           <span id="stack-status" class="status-badge neutral"><span class="status-dot" aria-hidden="true"></span>Checking status</span>
           <button id="refresh" class="text-button" type="button">Refresh status</button>
         </div>

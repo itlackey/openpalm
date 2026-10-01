@@ -56,8 +56,9 @@ export function notice(value, tone = 'success', options = {}) {
 export function setBusy(value) {
 	state.operationInFlight = value;
 	document.body.dataset.busy = String(value);
-	const busyRegion =
-		state.currentSnapshot?.phase === 'not_installed'
+	const busyRegion = !state.currentSnapshot
+		? byId('instance-welcome')
+		: state.currentSnapshot?.phase === 'not_installed'
 			? byId('install-section')
 			: byId('main-content');
 	busyRegion?.setAttribute('aria-busy', String(value));

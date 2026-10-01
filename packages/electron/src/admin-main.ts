@@ -53,20 +53,23 @@ async function verifyPackagedStartup(window: BrowserWindow): Promise<void> {
 					if (typeof window.openpalmAdmin?.snapshot !== 'function') {
 						throw new Error('Packaged Admin preload bridge is missing.');
 					}
-					const snapshot = await window.openpalmAdmin.snapshot();
-					if (snapshot.phase !== 'not_installed') throw new Error('Smoke home is not fresh.');
+					const welcome = await window.openpalmAdmin.welcome();
+					if (welcome.selectedInstance || welcome.recentInstances.length) throw new Error('Smoke profile is not fresh.');
 					await new Promise((resolve, reject) => {
 						const started = Date.now();
 						const check = () => {
-							if (document.body.dataset.phase === 'not_installed' &&
-								!document.querySelector('#install-section')?.hidden &&
-								document.querySelector('#app-shell')?.hidden &&
-								document.querySelector('#install-form')) return resolve();
-							if (Date.now() - started > 10000) return reject(new Error('Packaged Admin did not render fresh setup.'));
+							if (document.body.dataset.phase === 'welcome' &&
+								!document.querySelector('#instance-welcome')?.hidden &&
+									document.querySelector('#app-shell')?.hidden &&
+									document.querySelector('#open-recent-instance')) return resolve();
+							if (Date.now() - started > 10000) return reject(new Error('Packaged Admin did not render its welcome screen.'));
 							setTimeout(check, 50);
 						};
 						check();
 					});
+					await window.openpalmAdmin.openInstance(welcome.defaultInstance);
+					const snapshot = await window.openpalmAdmin.snapshot();
+					if (snapshot.phase !== 'not_installed') throw new Error('Smoke home is not fresh.');
 				})()`);
 			})(),
 			new Promise<never>((_resolve, reject) => {

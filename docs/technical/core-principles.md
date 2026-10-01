@@ -96,8 +96,24 @@ settings, access credentials, portal scope, and portable recovery. Ordinary
 portal setup must not require editing Compose YAML or writing secrets with shell
 redirection.
 
-Admin presents explicit `not installed`, `setup incomplete`, and `ready`
-phases. It starts fail-closed in a loading state, hides infrastructure choices
+Admin launches to a welcome screen with one-click previous/default selection,
+recent instances, and a native folder picker. Recent local targets are a small
+Admin preference, not a discovered fleet or a second stack registry. Opening
+validates an existing 0.14 home or an empty setup folder without seeding it;
+legacy and unrelated nonempty folders are rejected unchanged. `OP_HOME` defines
+the default choice, not a forced auto-open. Selecting a folder does not start
+or stop containers.
+
+One instance is managed at a time. Switching reloads the renderer, confirms
+discarding unsaved forms/sign-in steps, clears transient keys and previews,
+and waits for in-flight operations or native remote setup to finish. Control
+operations receive the selected home explicitly, never by changing global
+`OP_HOME`. Target selection and operation dispatch stay separate so future
+SSH management can reuse the UI; there is no SSH backend or remote credential
+store in this release.
+
+After selection, Admin presents explicit `not installed`, `setup incomplete`, and `ready`
+phases. It starts in a loading state, hides infrastructure choices
 behind advanced disclosures, prevents duplicate operations, and never presents
 a failed provider-readiness result as success. Its post-setup navigation is
 organized around user tasks rather than runtime components. A failed first
@@ -111,6 +127,11 @@ readiness before enabling its primary action. Setup progress and recovery
 messages agree with actual service health; refresh does not obscure forms or
 dismiss persistent errors. Narrow windows and zoom retain a compact setup
 header rather than stacking decorative progress cards.
+
+Admin chooses its initial window size once. Setup, refresh, navigation, and
+instance switching never resize or maximize the window. Only explicit
+user/agent window actions change it; responsive-layout tests resize their own
+disposable test window, not the production application.
 
 Connections is the single place to configure native remote coding agents,
 clearly distinguished from Guardian-protected clients. Codex defaults to

@@ -23,8 +23,8 @@ export type OpenPalmState = {
 	stackDir: string;
 };
 
-export function resolveOpenPalmHome(): string {
-	const requested = process.env.OP_HOME?.trim();
+export function resolveOpenPalmHome(requestedHome?: string): string {
+	const requested = requestedHome?.trim() || process.env.OP_HOME?.trim();
 	const path = resolve(requested || join(homedir() || tmpdir(), '.openpalm'));
 	let existing = path;
 	const missing: string[] = [];
@@ -37,8 +37,8 @@ export function resolveOpenPalmHome(): string {
 	return resolve(realpathSync(existing), ...missing);
 }
 
-export function createOpenPalmState(): OpenPalmState {
-	const homeDir = resolveOpenPalmHome();
+export function createOpenPalmState(requestedHome?: string): OpenPalmState {
+	const homeDir = resolveOpenPalmHome(requestedHome);
 	return {
 		homeDir,
 		configDir: join(homeDir, 'config'),

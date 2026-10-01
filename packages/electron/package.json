@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "bundle": "bun build src/admin-main.ts --bundle --target=node --outfile dist/admin-main.js --external electron && bun build src/admin-preload.ts --bundle --target=node --format=cjs --outfile dist/admin-preload.cjs --external electron",
     "bundle:e2e": "bun run bundle && bun build src/admin-e2e.ts --bundle --target=node --outfile dist/admin-e2e.js --external electron",
-    "test": "bun test src/admin-domain.test.ts src/admin-static.test.ts",
+    "test": "bun test src/admin-domain.test.ts src/admin-static.test.ts src/admin-instances.test.ts",
     "test:e2e": "bun run scripts/admin-e2e.mjs",
     "build:mac": "bun run bundle && electron-builder --config electron-builder.yml --mac",
     "build:linux": "bun run bundle && electron-builder --config electron-builder.yml --linux",

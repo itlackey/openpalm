@@ -8,7 +8,9 @@ export {
 	resolveOpenPalmHome,
 	stackConfigFile,
 	stackEnvFile,
-	stateSecretFile
+	stateSecretFile,
+	updateEnvFile,
+	writeFileAtomic
 } from './control-plane/foundation.js';
 export {
 	credentialDir,

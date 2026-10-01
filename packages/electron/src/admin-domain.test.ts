@@ -24,6 +24,7 @@ const roots: string[] = [];
 const originalHome = process.env.OP_HOME;
 const originalRepo = process.env.OPENPALM_REPO_ROOT;
 const originalSkeleton = process.env.OPENPALM_SKELETON_DIR;
+const originalProject = process.env.OP_PROJECT_NAME;
 
 afterEach(() => {
 	if (originalHome === undefined) delete process.env.OP_HOME;
@@ -32,6 +33,8 @@ afterEach(() => {
 	else process.env.OPENPALM_REPO_ROOT = originalRepo;
 	if (originalSkeleton === undefined) delete process.env.OPENPALM_SKELETON_DIR;
 	else process.env.OPENPALM_SKELETON_DIR = originalSkeleton;
+	if (originalProject === undefined) delete process.env.OP_PROJECT_NAME;
+	else process.env.OP_PROJECT_NAME = originalProject;
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -48,6 +51,27 @@ async function install(
 }
 
 describe('Admin domain', () => {
+	it('installs explicitly selected homes with distinct stable Compose projects without changing OP_HOME', async () => {
+		const { root, home } = await install();
+		const other = join(root, 'other-home');
+		const third = join(root, 'third-home');
+		delete process.env.OP_PROJECT_NAME;
+		await installFromAdmin(defaultStackConfig(), other);
+		await installFromAdmin(defaultStackConfig(), third);
+		expect(process.env.OP_HOME).toBe(home);
+		const first = readFileSync(join(other, 'state', 'stack.env'), 'utf8');
+		const second = readFileSync(join(third, 'state', 'stack.env'), 'utf8');
+		expect(first.match(/OP_PROJECT_NAME=(.*)/)?.[1]).toMatch(/^openpalm-[a-f0-9]{12}$/);
+		expect(first.match(/OP_PROJECT_NAME=(.*)/)?.[1]).not.toBe(
+			second.match(/OP_PROJECT_NAME=(.*)/)?.[1]
+		);
+		process.env.OP_PROJECT_NAME = 'launch-default-project';
+		const fourth = join(root, 'fourth-home');
+		await installFromAdmin(defaultStackConfig(), fourth);
+		expect(readFileSync(join(fourth, 'state', 'stack.env'), 'utf8')).not.toContain(
+			'launch-default-project'
+		);
+	});
 	it('authenticates the exact local Admin page with platform-aware file paths', () => {
 		const windows = 'file:///C:/Users/Runner/OpenPalm%20Admin/resources/app.asar/admin/index.html';
 		expect(
@@ -251,6 +275,7 @@ describe('Admin domain', () => {
 
 	it('reconciles delegated portal bundles after applying an Admin import', async () => {
 		const { root, home } = await install();
+		process.env.OP_HOME = join(root, 'unrelated-default');
 		const source = join(root, 'old-home');
 		mkdirSync(join(source, 'config', 'portal', 'discord'), { recursive: true });
 		writeFileSync(

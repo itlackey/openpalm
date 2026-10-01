@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { all, byId, notice, operation, setBadge, setSkipTarget, setText, showView } from './ui.js';
 
 export function renderPhase(phase) {
+	byId('instance-welcome').hidden = true;
 	byId('loading-state').hidden = true;
 	byId('error-state').hidden = true;
 	byId('install-section').hidden = phase !== 'not_installed';
