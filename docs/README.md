@@ -5,8 +5,10 @@ persistent knowledge and recurring work, then access it through native
 OpenCode or optional guarded MCP.
 
 The selected new brand is **f/hold** (**fHold** in plain text, `fhold` for
-technical names). The runtime rename is pending; current installation and
-operation guides intentionally keep working OpenPalm commands and paths.
+technical names), in a fresh-history **fwdslsh/fhold** hard fork, Gitea first,
+starting at `0.1.0-alpha.1`. That product is not implemented yet. These
+installation and operation guides still describe OpenPalm; migration tools
+and historical guidance remain on its 0.14 branch, not in the new product.
 
 ## User guides
 
@@ -41,7 +43,7 @@ operation guides intentionally keep working OpenPalm commands and paths.
 | Document | Purpose |
 |---|---|
 | [SSH instance management](technical/ssh-management-proposal.md) | Implementation outline for consideration in 0.15; not an implemented feature |
-| [f/hold rebranding implementation](technical/rebranding-implementation-guide.md) | Selected spelling variants, concrete rename targets, stable identifiers, publishing and transition verification; runtime rename pending |
+| [f/hold hard fork implementation](technical/rebranding-implementation-guide.md) | Approved repository/history/release decisions, lean baseline, new identities, historical exclusions and source-side migration boundary |
 | [Product name market review and selection](research/product-name-market-review-2026-10-01.md) | f/hold selection record and the earlier 34-candidate comparison; not legal or namespace clearance |
 
 Older release documentation is retained in Git history, not in the maintained
