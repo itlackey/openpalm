@@ -17,6 +17,11 @@ install -> sign in to an AI provider -> verify -> use the agent -> schedule work
 documentation describes only this product path; earlier material is available
 only through Git history.
 
+The selected next brand is **f/hold**, with **fHold** in ordinary text and
+`fhold` for new technical names, under fwdslsh. The runtime rename has not
+shipped: current commands, downloads and existing instance paths remain
+OpenPalm. See the [rebranding implementation guide](docs/technical/rebranding-implementation-guide.md).
+
 ## What is included
 
 | Component | Default | Purpose |
