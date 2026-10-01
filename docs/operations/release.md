@@ -146,6 +146,12 @@ No failed candidate was published. Runtime image gates now use standard native
 AMD64/ARM64 GitHub runners and assert the runner architecture, rather than
 weakening hook deadlines or adding emulation-specific plugin behavior.
 
+The native-runner dry run passed completely. The first live dispatch then
+stopped before publication when the CLI update integration test exceeded Bun's
+default five-second test deadline. Its test deadline now matches the existing
+30-second Compose subprocess budget, without removing assertions. Twenty
+consecutive repetitions passed using the exact image/CI Bun 1.4.2 runtime.
+
 ## Alpha.3 published-artifact verification record
 
 The 2026-09-30 Linux x64 upgrade used the checksum-verified CLI from the public

@@ -154,7 +154,10 @@ if (args.includes('config') && args.includes('--format')) console.log(${JSON.str
 		expect(readFileSync(knowledgeFile, 'utf8')).toBe('user knowledge survives');
 		expect(readFileSync(configFile, 'utf8')).toBe('user persona survives');
 		expect(readFileSync(credentialFile)).toEqual(credential);
-	});
+		// This test resolves the real Compose configuration before using fake Docker.
+		// Its subprocess budget is 30s; the default 5s test budget can cut it off on
+		// a cold/contended runner before the assertions are reached.
+	}, 30_000);
 
 	it('reports Docker failures and reads status through an argument-safe fake Docker binary', async () => {
 		const root = fixture();
