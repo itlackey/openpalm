@@ -223,6 +223,10 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 				`type=bind,src=${source}/data/assistant/.local/share,dst=/native-data`,
 				'--mount',
 				`type=bind,src=${seed},dst=/seed.json,readonly`,
+				'--mount',
+				`type=bind,src=${source}/workspace,dst=/work`,
+				'--workdir',
+				directory,
 				'--entrypoint',
 				'opencode',
 				image,
@@ -232,6 +236,18 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 			]);
 		}
 		const database = join(source, 'data/assistant/.local/share/opencode/opencode.db');
+		const sourceDb = new DatabaseSync(database, { readOnly: true });
+		assert.deepEqual(
+			sourceDb
+				.prepare('SELECT id, directory FROM session ORDER BY id')
+				.all()
+				.map((row) => ({ ...row })),
+			[
+				{ id: 'ses_migration1', directory: '/work/project' },
+				{ id: 'ses_migration2', directory: '/work/empty-context' }
+			]
+		);
+		sourceDb.close();
 		const before = hash(database);
 		const args = [
 			script,
@@ -296,6 +312,16 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		assert.equal(db.prepare('SELECT count(*) AS n FROM session').get().n, 2);
 		assert.equal(db.prepare('SELECT count(*) AS n FROM message').get().n, 2);
 		assert.equal(db.prepare('SELECT count(*) AS n FROM part').get().n, 2);
+		assert.deepEqual(
+			db
+				.prepare('SELECT id, directory FROM session ORDER BY id')
+				.all()
+				.map((row) => ({ ...row })),
+			[
+				{ id: 'ses_migration1', directory: '/work/project' },
+				{ id: 'ses_migration2', directory: '/work/empty-context' }
+			]
+		);
 		assert.equal(db.prepare('SELECT permission FROM session LIMIT 1').get().permission, null);
 		const part = JSON.parse(
 			db.prepare('SELECT data FROM part WHERE id=?').get('prt_migration2').data
