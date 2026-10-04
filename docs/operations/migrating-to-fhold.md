@@ -191,3 +191,12 @@ default network subnets and host ports. Do not patch the image, fake state or
 add test-only runtime configuration to bypass a failed prerequisite. Without
 the three explicit variables this live qualification is skipped, not claimed
 as a passing integration test.
+
+The full test passed on Linux x64 with OpenPalm `0.14.0-beta.1`, the packaged
+fhold `0.1.2610040221-alpha.2` CLI and matching images, and Node.js 24.18.0.
+Both images used native OpenCode 1.18.34. It verified project-specific discovery
+and transcript counts before and after restart, standard plugin refresh,
+fresh keys, preserved policies and mappings, disabled imported schedules,
+authentication denials, and interrupted history without replay. This synthetic
+qualification does not substitute for the real provider, account and portal
+acceptance checks above.
