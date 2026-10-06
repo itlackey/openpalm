@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -54,6 +54,7 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		target = join(root, 'new'),
 		backup = join(root, 'backup');
 	const name = `fhold-migration-e2e-${process.pid}`;
+	const externalNative = join(root, 'external-native-home');
 	const old = (args) => run(oldCli, args, { OP_HOME: source });
 	const next = (args) => run(cli, args, { FH_HOME: target });
 	const port = await availablePort();
@@ -249,6 +250,10 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		);
 		sourceDb.close();
 		const before = hash(database);
+		// All original public-CLI configuration is complete while the fixture is
+		// ordinary lean input. Model an older installation's external cold data.
+		renameSync(join(source, 'data/assistant'), externalNative);
+		symlinkSync(externalNative, join(source, 'data/assistant'));
 		const args = [
 			script,
 			'--from',
@@ -261,6 +266,8 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 			cli,
 			'--source-image',
 			image,
+			'--runtime',
+			join(externalNative, '.local/share/opencode'),
 			'--backup',
 			backup,
 			'--include-provider-auth',
@@ -274,8 +281,11 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		assert.equal(preview.mode, 'preview');
 		assert.equal(existsSync(target), false);
 		assert.equal(existsSync(backup), false);
+		assert.ok(preview.externalArchives.some((entry) => entry.source === externalNative));
 		run(process.execPath, [...args, '--apply']);
 		targetInstalled = true;
+		assert.ok(existsSync(join(backup, 'external-0.tar')));
+		assert.equal(JSON.parse(readFileSync(join(backup, 'external-0.json'), 'utf8')).physical, externalNative);
 		assert.equal(hash(database), before);
 		assert.equal(
 			readFileSync(join(target, 'workspace/project/work.txt'), 'utf8'),
@@ -392,7 +402,7 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 			'utf8'
 		).trim();
 		const headers = {
-			Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`
+			Authorization: `Basic ${Buffer.from(`user:${password}`).toString('base64')}`
 		};
 		const apiDeadline = Date.now() + 90_000;
 		let sessions;
@@ -455,6 +465,10 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		console.log(`Packaged CLI migration qualified: ${root}`);
 	} finally {
 		if (targetInstalled) next(['stop']);
+		if (existsSync(externalNative)) {
+			unlinkSync(join(source, 'data/assistant'));
+			renameSync(externalNative, join(source, 'data/assistant'));
+		}
 		if (sourceInstalled) old(['stop']);
 		console.log(`Migration fixtures retained at ${root}`);
 	}

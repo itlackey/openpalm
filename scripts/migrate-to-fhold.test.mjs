@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	renameSync,
 	symlinkSync,
 	writeFileSync
 } from 'node:fs';
@@ -75,16 +76,19 @@ function fixture() {
 	chmodSync(cli, 0o700);
 	const calls = [];
 	const run = (command, args, env) => {
-		calls.push({ command, args, env });
+		const rawArgs = args;
+		const selectedHome = args[0] === '--name' ? args[1] : env?.FH_HOME;
+		if (args[0] === '--name') args = args.slice(2);
+		calls.push({ command, args, env, rawArgs, selectedHome });
 		if (command === cli && args[0] === '--version') return '0.1.2610040208-alpha.2';
 		if (command === cli && args[0] === 'help') return 'history restore --archive-interrupted';
 		if (command === 'docker' && args[0] === 'image') return `sha256:${'a'.repeat(64)}`;
 		if (command === 'docker' && args[0] === 'ps') return '';
 		if (command === cli && args[0] === 'install') {
-			mkdirSync(env.FH_HOME, { recursive: true });
-			mkdirSync(join(env.FH_HOME, 'state'));
+			mkdirSync(selectedHome, { recursive: true });
+			mkdirSync(join(selectedHome, 'state'));
 			writeFileSync(
-				join(env.FH_HOME, 'state/stack.json'),
+				join(selectedHome, 'state/stack.json'),
 				readFileSync(args[args.indexOf('--config') + 1])
 			);
 		}
@@ -196,7 +200,7 @@ test('refuses occupied/nested homes, linked user files, unknown credentials and 
 	assert.throws(() => planMigration(g.options, g.run), /Unknown mapped/);
 	const h = fixture();
 	h.write('state/stack.json', JSON.stringify({ ...h.config, product: 'fhold' }));
-	assert.throws(() => planMigration(h.options, h.run), /lean OpenPalm/);
+	assert.throws(() => planMigration(h.options, h.run), /OpenPalm home with validated lean intent/);
 });
 
 test('apply is ordinary packaged CLI install/history/configuration, fresh keys, no automatic start or direct state writes', () => {
@@ -208,7 +212,7 @@ test('apply is ordinary packaged CLI install/history/configuration, fresh keys, 
 		calls.some(
 			(c) =>
 				c.args[0] === 'install' &&
-				c.args.includes('--name') &&
+				c.rawArgs[0] === '--name' && c.selectedHome === plan.target &&
 				c.args.includes('--config') &&
 				c.args.includes('--no-start')
 		)
@@ -237,6 +241,89 @@ test('apply is ordinary packaged CLI install/history/configuration, fresh keys, 
 		'fhold'
 	);
 	assert.equal(readFileSync(join(f.source, 'workspace/project/file.txt'), 'utf8'), 'authored work');
+});
+
+test('legacy 0.13 needs reviewed intent/runtime and linked native state stays out of target authority', () => {
+	const f = fixture();
+	const reviewed = join(f.root, 'reviewed-source-config.json');
+	renameSync(join(f.source, 'state/stack.json'), reviewed);
+	renameSync(join(f.source, 'system/stack/stack.compose.yml'), join(f.source, 'system/stack/core.compose.yml'));
+	const native = join(f.root, 'external-native-home');
+	renameSync(join(f.source, 'data/assistant'), native);
+	symlinkSync(native, join(f.source, 'data/assistant'));
+	assert.throws(() => planMigration(f.options, f.run), /explicit reviewed/);
+	const options = {...f.options, 'source-config': reviewed,
+		runtime: join(native, '.local/share/opencode'), 'include-native-accounts': true};
+	assert.throws(() => planMigration(options, f.run), /stopped, not removed/);
+	const run = (command, args, env) => {
+		if (command === 'docker' && args[0] === 'ps') return 'legacy-assistant';
+		if (command === 'docker' && args[0] === 'inspect') return JSON.stringify([{
+			Id: 'legacy-assistant', Name: '/old-assistant', State: {Running: false}, Image: `sha256:${'a'.repeat(64)}`,
+			Config: {Labels: {'com.docker.compose.project.working_dir': join(f.source, 'system/stack')}},
+			Mounts: [{Type: 'bind', Source: native, Destination: '/home/opencode'}]
+		}]);
+		return f.run(command, args, env);
+	};
+	const plan = planMigration(options, run);
+	assert.equal(plan.legacy, true);
+	assert.equal(plan.config.deployment.imageNamespace, 'fwdslsh');
+	assert.match(plan.targetImage, /^fwdslsh\/fhold-assistant:/);
+	assert.equal(plan.containers.length, 1);
+	assert.deepEqual(plan.externalMounts.map((mount) => mount.physical), [native]);
+	assert.ok(plan.files.some((file) => file.root === native && file.to === 'data/assistant/.claude.json'));
+	assert.throws(() => planMigration({...options, runtime: f.root}, run), /selected source Assistant/);
+});
+
+test('lean source shutdown may remove containers but resolved native data still gets its own archive', () => {
+	const f = fixture();
+	const native = join(f.root, 'external-native-home');
+	renameSync(join(f.source, 'data/assistant'), native);
+	symlinkSync(native, join(f.source, 'data/assistant'));
+	const plan = planMigration({...f.options, runtime: join(native, '.local/share/opencode')}, f.run);
+	assert.equal(plan.containers.length, 0);
+	assert.deepEqual(plan.externalMounts.map((mount) => mount.physical), [native]);
+});
+
+test('disabled configured portal retains private token setup without enabling the bot', () => {
+	const f = fixture();
+	f.write('state/secrets/slack_bot_token', 'synthetic-bot-token');
+	f.write('state/secrets/slack_app_token', 'synthetic-app-token');
+	const plan = planMigration(f.options, f.run);
+	applyMigration(plan, f.run);
+	const calls = f.calls.filter((c) => c.command === f.options.fhold);
+	assert.ok(calls.some((c) => c.args[0] === 'portal' && c.args[1] === 'token' && c.args[2] === 'slack'
+		&& c.args.includes('--bot-token-file') && c.args.includes('--app-token-file') && c.args.includes('--no-apply')));
+	assert.ok(!calls.some((c) => c.args.join(' ').startsWith('portal enable slack')));
+});
+
+test('directory map is explicit and refuses path escapes before writing', () => {
+	const f = fixture();
+	const map = join(f.root, 'directories.json');
+	writeFileSync(map, JSON.stringify({'/stash': '/work'}));
+	assert.deepEqual(planMigration({...f.options, 'directory-map': map}, f.run).suppliedDirectories, {'/stash': '/work'});
+	writeFileSync(map, JSON.stringify({'/stash': '/work/../secret'}));
+	assert.throws(() => planMigration({...f.options, 'directory-map': map}, f.run), /Unsafe history directory map/);
+});
+
+test('inventories named volumes without traversing Docker private paths and resolves explicit external bind sources', () => {
+	const f = fixture();
+	const outside = join(f.root, 'external');
+	mkdirSync(outside);
+	const run = (command, args, env) => {
+		if (command === 'docker' && args[0] === 'ps') return 'source-id';
+		if (command === 'docker' && args[0] === 'inspect') return JSON.stringify([{
+			Id:'source-id', Name:'/old-assistant', State:{Running:false}, Image:`sha256:${'a'.repeat(64)}`,
+			Config:{Labels:{'com.docker.compose.project.working_dir':join(f.source, 'system/stack')}},
+			Mounts:[{Type:'bind',Source:join(f.source,'data/assistant'),Destination:'/home/opencode'},
+				{Type:'bind',Source:outside,Destination:'/external'},
+				{Type:'volume',Source:'/not-readable/docker/data',Name:'old-persistent',Destination:'/opt/persistent'}]
+		}]);
+		return f.run(command,args,env);
+	};
+	const plan = planMigration(f.options, run);
+	assert.equal(plan.externalMounts.length, 2);
+	assert.equal(plan.externalMounts[0].physical, outside);
+	assert.equal(plan.externalMounts[1].name, 'old-persistent');
 });
 
 test('detects changed source after preview and keeps original/private evidence instead of overwriting blindly', () => {

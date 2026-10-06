@@ -6,10 +6,13 @@ import {
 	appendFileSync,
 	chmodSync,
 	copyFileSync,
+	closeSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
+	openSync,
 	readFileSync,
+	readSync,
 	readdirSync,
 	realpathSync,
 	writeFileSync
@@ -18,7 +21,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-const HELP = `One-time OpenPalm 0.14 → fhold migration (Linux, Node 22+)
+const HELP = `One-time OpenPalm → fhold migration (Linux, Node 22+)
 
 node scripts/migrate-to-fhold.mjs --from /old/home --to /new/home --name april \\
   --fhold /path/to/released/fhold-cli --source-image openpalm/assistant:<version> \\
@@ -30,12 +33,16 @@ Preview is the default. Stop the source through its own CLI before --apply.
   --include-user-env          Copy knowledge/env/user.env
   --include-native-accounts   Copy container-owned Claude/Codex accounts and history
   --native-path <relative>    Additional path below the source Assistant home; repeatable
+  --source-config <file>      Reviewed lean intent for a legacy 0.13 source
+  --runtime <directory>       Explicit resolved OpenCode data directory for linked runtime
+  --directory-map <file>      Reviewed old-directory → /work mapping
   --archive-interrupted      Preserve unfinished tool calls as interrupted history
   --help                      Show this help
 
 The destination and backup directory must not exist. Existing homes are never
 overwritten. Source services are never started, stopped or changed by this script.
-OpenPalm 0.13 users must first use OpenPalm's documented fresh-install/import flow.
+OpenPalm 0.13 requires --source-config and --runtime; legacy settings are never inferred.
+Physical external bind sources and named volumes are privately archived, not activated.
 `;
 
 function object(value, label) {
@@ -93,7 +100,15 @@ function json(path) {
 }
 
 function digest(path) {
-	return createHash('sha256').update(readFileSync(path)).digest('hex');
+	const hash = createHash('sha256');
+	const fd = openSync(path, 'r');
+	const buffer = Buffer.alloc(1024 * 1024);
+	try {
+		let count;
+		while ((count = readSync(fd, buffer, 0, buffer.length, null)) > 0)
+			hash.update(buffer.subarray(0, count));
+		return hash.digest('hex');
+	} finally { closeSync(fd); }
 }
 
 export function runCommand(command, args, env = {}, diagnostics) {
@@ -137,7 +152,7 @@ function sourceContainers(home, run) {
 			name: c.Name.replace(/^\//, ''),
 			running: c.State.Running,
 			image: c.Image,
-			mounts: c.Mounts.map((m) => ({ type: m.Type, source: m.Source, destination: m.Destination }))
+			mounts: c.Mounts.map((m) => ({ type: m.Type, source: m.Source, name: m.Name, destination: m.Destination }))
 		}));
 }
 
@@ -149,7 +164,7 @@ function installConfig(source, name, version) {
 		version: 1,
 		deployment: {
 			projectName: name,
-			imageNamespace: 'fhold',
+			imageNamespace: 'fwdslsh',
 			images: { assistant: version, guardian: version, portal: version }
 		},
 		assistant: {
@@ -210,14 +225,15 @@ export function planMigration(options, run = runCommand) {
 		throw new Error(
 			'Source, destination and private backup must be separate, non-nested directories.'
 		);
-	const sourceConfig = json(safePath(source, 'state/stack.json'));
-	if (
-		sourceConfig.version !== 1 ||
-		sourceConfig.product ||
-		!existsSync(safePath(source, 'system/stack/stack.compose.yml'))
-	) {
+	const configPath = safePath(source, 'state/stack.json', true);
+	const legacy = !existsSync(configPath) && existsSync(safePath(source, 'system/stack/core.compose.yml', true));
+	if (legacy && (!options['source-config'] || !options.runtime))
+		throw new Error('OpenPalm 0.13 requires an explicit reviewed --source-config and resolved --runtime.');
+	const sourceConfig = json(legacy ? canonical(options['source-config']) : configPath);
+	if (sourceConfig.version !== 1 || sourceConfig.product ||
+		(!legacy && !existsSync(safePath(source, 'system/stack/stack.compose.yml')))) {
 		throw new Error(
-			'Select a lean OpenPalm 0.14 home; do not point this tool at 0.13 or an unrelated product.'
+			'Select an OpenPalm home with validated lean intent; older homes require --source-config and --runtime.'
 		);
 	}
 	const cli = canonical(options.fhold);
@@ -236,36 +252,64 @@ export function planMigration(options, run = runCommand) {
 	if (typeof sourceImage !== 'string' || sourceImage.startsWith('-') || /\s/.test(sourceImage))
 		throw new Error('Select the exact trusted source Assistant image.');
 	const sourceImageId = run('docker', ['image', 'inspect', '--format', '{{.Id}}', sourceImage]);
-	const targetImage = `fhold/assistant:${version}`;
+	const targetImage = `fwdslsh/fhold-assistant:${version}`;
 	const targetImageId = run('docker', ['image', 'inspect', '--format', '{{.Id}}', targetImage]);
 	for (const service of ['guardian', 'portal'])
-		run('docker', ['image', 'inspect', '--format', '{{.Id}}', `fhold/${service}:${version}`]);
+		run('docker', ['image', 'inspect', '--format', '{{.Id}}', `fwdslsh/fhold-${service}:${version}`]);
 	const containers = sourceContainers(source, run);
 	const assistant = containers.find((c) =>
 		c.mounts.some((m) => m.destination === '/home/opencode')
 	);
+	if (legacy && !assistant)
+		throw new Error('Keep the legacy source Assistant container stopped, not removed, so external mount and named-volume inventory can be preserved.');
 	if (assistant && assistant.image !== sourceImageId)
 		throw new Error('--source-image does not match the source Assistant.');
-	const externalMounts = containers.flatMap((c) =>
+	const externalMounts = [...new Map(containers.flatMap((c) =>
 		c.mounts.filter(
 			(m) => m.type === 'volume' || (m.source && !inside(source, canonical(m.source)))
 		)
-	);
-	if (externalMounts.length)
-		throw new Error(
-			'Source has named volumes/external mounts. Preserve and review those explicitly before using this utility.'
-		);
+	).map((m) => {
+		if (m.type === 'volume') {
+			if (typeof m.name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(m.name))
+				throw new Error('Source named volume has no safe Docker volume identity.');
+			return [`volume:${m.name}`, { ...m }];
+		}
+		if (m.type !== 'bind') throw new Error('Review unsupported external mount type.');
+		const physical = canonical(m.source);
+		return [`bind:${physical}`, { ...m, physical, directory: lstatSync(physical).isDirectory() }];
+	})).values()];
+	const nativeHome = assistant
+		? canonical(assistant.mounts.find((m) => m.destination === '/home/opencode').source)
+		: canonical(join(source, 'data/assistant'));
+	const runtime = options.runtime ? canonical(options.runtime) : undefined;
+	if (runtime && runtime !== join(nativeHome, '.local/share/opencode'))
+		throw new Error('--runtime must name the selected source Assistant\'s resolved OpenCode data directory.');
+	// A normal source shutdown can remove its containers. The selected native
+	// home's canonical target still needs a cold archive when it is external;
+	// never assume that archiving the home also follows its data symlink.
+	if (!inside(source, nativeHome) && !externalMounts.some((m) => m.physical === nativeHome))
+		externalMounts.push({ type: 'bind', source: nativeHome, physical: nativeHome,
+			destination: '/home/opencode', directory: true });
+	const suppliedDirectories = options['directory-map'] ? json(canonical(options['directory-map'])) : null;
+	if (suppliedDirectories)
+		for (const [from, to] of Object.entries(suppliedDirectories)) {
+			if (!from.startsWith('/') || hasControls(from) || typeof to !== 'string' ||
+				(to !== '/work' && !to.startsWith('/work/')) || hasControls(to) || to.includes('\\') ||
+				to.split('/').some((part, index) => index > 0 && (!part || part === '.' || part === '..')))
+				throw new Error('Unsafe history directory map; every target must be /work or a contained subdirectory.');
+		}
 	const config = installConfig(sourceConfig, options.name, version);
 	const files = [],
 		omitted = [],
 		directories = [];
-	function file(rel, dest = rel) {
-		const path = safePath(source, rel);
+	function file(rel, dest = rel, root = source) {
+		const path = safePath(root, rel);
 		const stat = lstatSync(path);
 		if (!stat.isFile()) throw new Error(`Not a regular file: ${rel}`);
 		if (stat.size > 256 * 1024 * 1024)
 			throw new Error(`Large file needs separate reviewed transfer: ${rel}`);
 		files.push({
+			root,
 			from: rel,
 			to: dest,
 			bytes: stat.size,
@@ -273,13 +317,13 @@ export function planMigration(options, run = runCommand) {
 			mode: stat.mode & 0o111 ? 0o700 : 0o600
 		});
 	}
-	function tree(rel, dest = rel, native = false) {
-		const path = safePath(source, rel, true);
+	function tree(rel, dest = rel, native = false, root = source) {
+		const path = safePath(root, rel, true);
 		if (!existsSync(path)) return;
 		const stat = lstatSync(path);
 		if (stat.isSymbolicLink()) throw new Error(`Review linked data separately: ${rel}`);
 		if (stat.isFile()) {
-			file(rel, dest);
+			file(rel, dest, root);
 			return;
 		}
 		if (!stat.isDirectory()) {
@@ -296,7 +340,7 @@ export function planMigration(options, run = runCommand) {
 				omitted.push(join(rel, name));
 				continue;
 			}
-			tree(join(rel, name), join(dest, name), native);
+			tree(join(rel, name), join(dest, name), native, root);
 		}
 	}
 	for (const name of readdirSync(safePath(source, 'knowledge'))) {
@@ -316,6 +360,9 @@ export function planMigration(options, run = runCommand) {
 		tree(`knowledge/${name}`);
 	}
 	tree('workspace');
+	for (const name of ['persona.md', 'user-profile.md'])
+		if (existsSync(safePath(source, `config/assistant/${name}`, true)))
+			file(`config/assistant/${name}`);
 	for (const root of ['tasks', 'imported-tasks', 'disabled-tasks']) {
 		const path = safePath(source, `knowledge/${root}`, true);
 		if (!existsSync(path)) continue;
@@ -388,15 +435,17 @@ export function planMigration(options, run = runCommand) {
 		file('knowledge/env/user.env');
 	if (options['include-native-accounts']) {
 		for (const rel of ['.claude', '.claude.json', '.codex'])
-			tree(`data/assistant/${rel}`, `data/assistant/${rel}`, true);
+			tree(rel, `data/assistant/${rel}`, true, nativeHome);
 	}
 	for (const rel of options['native-path'] ?? []) {
-		safePath(source, `data/assistant/${rel}`);
-		if (['.local', '.config', '.cache', '.bun', '.npm'].includes(rel.split('/')[0]))
+		safePath(nativeHome, rel);
+		if (['.cache', '.bun', '.npm'].includes(rel.split('/')[0]) || rel === '.config' ||
+			(rel.startsWith('.config/') && !['.config/gh', '.config/configstore'].includes(rel)) ||
+			(rel.split('/')[0] === '.local' && !['.local/share/opencode/tool-output', '.local/share/opencode/snapshot'].includes(rel)))
 			throw new Error(
 				'Do not copy generated OpenCode/tool runtime trees; use native history recovery.'
 			);
-		tree(`data/assistant/${rel}`, `data/assistant/${rel}`, true);
+		tree(rel, `data/assistant/${rel}`, true, nativeHome);
 	}
 	const unique = new Map();
 	for (const entry of files) {
@@ -453,6 +502,10 @@ export function planMigration(options, run = runCommand) {
 		sourceConfig,
 		maps,
 		containers,
+		externalMounts,
+		legacy,
+		runtime,
+		suppliedDirectories,
 		files: [...unique.values()],
 		directories,
 		omitted,
@@ -494,17 +547,34 @@ export function applyMigration(plan, run = runCommand) {
 		'--directory',
 		plan.source
 	]);
+	// Docker resolves volume identities without giving the host utility access to
+	// Docker's private storage directory. Archive only the inventoried source;
+	// never follow every home symlink or mount an unrelated parent tree.
+	for (const [index, mount] of plan.externalMounts.entries()) {
+		const filename = `external-${index}.tar`;
+		const args = ['run', '--rm', '--pull', 'never', '--network', 'none', '--read-only',
+			'--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+			'--user', `${process.getuid()}:${process.getgid()}`, '--tmpfs', '/tmp:rw,mode=1777',
+			'--mount', mount.type === 'volume'
+				? `type=volume,src=${mount.name},dst=/source,readonly`
+				: `type=bind,src=${mount.physical},dst=/source,readonly`,
+			'--mount', `type=bind,src=${plan.backup},dst=/backup`, '--entrypoint', 'tar', plan.sourceImageId];
+		const selection = mount.type === 'volume' || mount.directory
+			? ['--directory', '/source', '.'] : ['--directory', '/', 'source'];
+		run('docker', [...args, '--create', '--sparse', '--file', `/backup/${filename}`, ...selection]);
+		run('docker', [...args, '--compare', '--file', `/backup/${filename}`, ...selection]);
+		chmodSync(join(plan.backup, filename), 0o600);
+		write(`external-${index}.json`, { ...mount, archive: filename, sha256: digest(join(plan.backup, filename)) });
+	}
 	write('install-config.json', plan.config);
-	const env = { FH_HOME: plan.target };
-	const cli = (args) => run(plan.cli, args, env);
+	const cli = (args) => run(plan.cli, ['--name', plan.target, ...args]);
 	const history = join(plan.backup, 'native-history');
-	cli(['history', 'export', '--from', plan.source, '--image', plan.sourceImageId, '--to', history]);
+	cli(['history', 'export', '--from', plan.source, '--image', plan.sourceImageId, '--to', history,
+		...(plan.runtime ? ['--runtime', plan.runtime] : [])]);
 	// --config is public operator input. Only the packaged installer writes
 	// state/stack.json, system assets, secrets or installation provenance.
 	cli([
 		'install',
-		'--name',
-		plan.config.deployment.projectName,
 		'--config',
 		join(plan.backup, 'install-config.json'),
 		'--no-start'
@@ -512,7 +582,7 @@ export function applyMigration(plan, run = runCommand) {
 	for (const directory of plan.directories)
 		mkdirSync(safePath(plan.target, directory, true), { recursive: true, mode: 0o700 });
 	for (const entry of plan.files) {
-		const source = safePath(plan.source, entry.from);
+		const source = safePath(entry.root, entry.from);
 		if (digest(source) !== entry.sha256)
 			throw new Error(
 				`Source changed after review: ${entry.from}. Keep both homes and the private backup.`
@@ -547,29 +617,33 @@ export function applyMigration(plan, run = runCommand) {
 		cli(access);
 		for (const [user, username] of Object.entries(plan.maps[portal].users))
 			cli(['credential', 'map', portal, user, username]);
-		if (settings.enabled) {
-			const token = safePath(plan.source, `state/secrets/${portal}_bot_token`);
+		const token = safePath(plan.source, `state/secrets/${portal}_bot_token`, true);
+		const appToken = portal === 'slack' ? safePath(plan.source, 'state/secrets/slack_app_token', true) : undefined;
+		const configured = existsSync(token) && lstatSync(token).isFile() && lstatSync(token).size > 0 &&
+			(!appToken || (existsSync(appToken) && lstatSync(appToken).isFile() && lstatSync(appToken).size > 0));
+		if (settings.enabled || configured) {
 			const args = ['portal', 'token', portal, '--bot-token-file', token, '--no-apply'];
 			if (portal === 'slack')
-				args.push('--app-token-file', safePath(plan.source, 'state/secrets/slack_app_token'));
+				args.push('--app-token-file', appToken);
 			cli(args);
-			cli(['portal', 'enable', portal, '--no-apply']);
 		}
+		if (settings.enabled) cli(['portal', 'enable', portal, '--no-apply']);
 	}
 	if (plan.sourceConfig.gateway.enabled) cli(['guardian', 'enable', '--no-apply']);
 	const archive = json(join(history, 'history.json'));
 	const directories = Object.fromEntries(
 		archive.sessions.map((session) => {
 			const dir = session.directory;
-			if (dir !== '/work' && !dir.startsWith('/work/'))
+			const target = plan.suppliedDirectories ? plan.suppliedDirectories[dir] : dir;
+			if (typeof target !== 'string' || (target !== '/work' && !target.startsWith('/work/')))
 				throw new Error(
 					'History includes an external project directory; supply a reviewed native-history mapping manually.'
 				);
-			if (dir !== '/work' && !existsSync(safePath(plan.target, `workspace/${dir.slice(6)}`)))
+			if (target !== '/work' && !existsSync(safePath(plan.target, `workspace/${target.slice(6)}`)))
 				throw new Error(
 					'History project files are missing. Review the private archive before starting.'
 				);
-			return [dir, dir];
+			return [dir, target];
 		})
 	);
 	write('directories.json', directories);
@@ -620,6 +694,9 @@ export function main(argv = process.argv.slice(2)) {
 			'include-user-env': { type: 'boolean' },
 			'include-native-accounts': { type: 'boolean' },
 			'native-path': { type: 'string', multiple: true },
+			'source-config': { type: 'string' },
+			runtime: { type: 'string' },
+			'directory-map': { type: 'string' },
 			'archive-interrupted': { type: 'boolean' }
 		}
 	});
@@ -645,6 +722,7 @@ export function main(argv = process.argv.slice(2)) {
 				nativeAccounts: plan.nativeAccounts,
 				tasksRemainInactive: true,
 				freshAccessKeys: true,
+				externalArchives: plan.externalMounts.map((m) => m.type === 'volume' ? { volume: m.name } : { source: m.physical }),
 				omitted: plan.omitted
 			},
 			null,

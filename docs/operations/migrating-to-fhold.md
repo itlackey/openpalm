@@ -5,18 +5,19 @@ not part of fhold's installer, image, runtime or permanent compatibility surface
 It uses public commands from a packaged fhold CLI, not private library imports,
 rewritten backup identities, direct database replacement or special test repairs.
 
-Supported input is a lean OpenPalm 0.14 home owned by the same user. Older users
-must first follow [the 0.14 migration guide](migration-to-0.14.md), including
-native-history preservation. Do not assume portable import preserved history,
-external directories, named volumes or voice data.
+Supported input is a lean OpenPalm 0.14 home owned by the same user, or a
+reviewed 0.13 home with explicit new intent and a resolved native data directory.
+This is a source-side transition, not an in-place update. Do not assume portable
+import preserved history, external directories, named volumes or voice data.
 
 ## Before starting
 
 1. Obtain the matching fhold CLI and Assistant/Guardian/Portal images. For
    interrupted history, use alpha.2 or later with `--archive-interrupted` support.
 2. Inventory the actual home, service mounts, users/policies, native logins,
-   plugins, task definitions and client addresses. Review linked/external files
-   separately; the utility refuses their automatic activation.
+   plugins, task definitions and client addresses. The utility privately archives
+   exact physical external bind sources and named volumes from that source's
+   Compose containers. It does not automatically activate those mounts.
 3. Choose a new home, instance name and private backup directory, all separate.
    They must not exist. Do not use the default home of an unrelated instance.
 4. Keep the original CLI, images, homes, containers and any external data.
@@ -57,6 +58,13 @@ Opt-ins are independent:
 - Repeated `--native-path .example-addon` selects additional paths relative to
   the source Assistant home for user-installed tools. No vendor-specific addon
   belongs in fhold. Review those paths and their sensitivity first.
+- `--runtime /resolved/assistant/.local/share/opencode` is required for linked
+  Assistant homes and must match the selected Assistant's physical native data.
+  Never blindly follow every symlink in the old installation.
+- `--directory-map /private/directories.json` provides exact native history
+  mappings when an old session ran outside `/work`. Every target must be `/work`
+  or an existing contained workspace directory. Map deliberately, preserve the
+  corresponding authored files and document changed project contexts.
 - `--archive-interrupted`: after review, retain unfinished calls as terminal
   interrupted errors through fhold's native history command. Originals and raw
   exports stay unchanged; the calls are not executed. Default recovery blocks them.
@@ -66,20 +74,59 @@ selected. Generated dependency trees are omitted. Source task definitions go to
 `knowledge/imported-tasks/`, not the active scheduler. Empty project directories
 are preserved so historical contexts remain discoverable.
 
+## Explicit 0.13 intent
+
+Older homes do not have the lean `state/stack.json`. Supply `--source-config`
+with a privately reviewed version-1 **OpenPalm lean intent** object containing
+`assistant`, `gateway`, `credentials` and `portals`, using the existing lean
+schema. Do not give it a `product` field. The tool converts that reviewed input
+to fhold's current public install configuration; only the packaged CLI creates
+the installation and authoritative state.
+
+Review the actual source's addresses, timezone, memory choice, enabled bots and
+allowlists, and the desired chat/read/full policies. A legacy default unrestricted
+agent is not automatically a new chat-only bot, nor is an empty old allowlist
+permission to expose a default-deny new bot to everyone. Preserve explicit scope
+and choose the appropriate existing policy. Old service/image/env/Compose intent
+is never inferred into the new runtime. Native workers remain off on first boot.
+
+The resolved `--runtime` is also mandatory for this path. Original source homes,
+their linked physical data and named volumes remain intact. This transition does
+not activate the retired UI, SSH service, shared host bundles or other addons.
+Retained user-owned files can be selected with `--native-path`; generated engine
+caches/DBs must not be copied over the new engine. Reviewed `.config/gh` and
+`.config/configstore` are supported personal application state, not whole `.config`
+trees. Native historical tool outputs/snapshots can be preserved separately with
+the exact `.local/share/opencode/tool-output` and `snapshot` paths when present;
+their usability and old absolute references require separate acceptance.
+Keep the source Assistant container present and stopped: this older-home path
+refuses to proceed after it is removed, because its external volume inventory
+would otherwise be incomplete.
+
 ## Cold transfer
 
-Stop only the selected source using its existing CLI and explicit `OP_HOME`.
-Do not run a broad Docker cleanup, stop another home or use a legacy project's
-`down` command if it still owns an unrelated service such as voice.
+Stop only the inventoried source services. For homes with external mounts or
+named volumes, use `docker stop <exact-inventoried-container-IDs>` so their mount
+inventory remains available for the cold archive. A source CLI that runs Compose
+`down` removes that inventory; do not use it until physical sources and volumes
+have separately been inventoried and archived. A resolved native-home symlink is
+still archived when the source containers are absent, but that is not proof that
+other external sources were captured. Never run a broad cleanup, stop another
+home or remove a legacy project's unrelated service such as voice.
 
 Run the **same reviewed command** with `--apply`. It refuses a still-running
 source before writing anything. It then:
 
 1. Creates a mode-0700 private cold whole-home archive and compares it to source.
-   This is the rollback copy, including files not activated in fhold.
+   Each distinct external bind source and named volume gets its own cold tar,
+   content comparison, SHA256 and source identity. These one-off source-image
+   workers are non-root, offline, read-only and have no additional capabilities.
+   Named volumes use Docker's volume identity, not privileged host traversal.
+   An unreadable source or mismatch blocks transfer; do not call an incomplete
+   archive a complete backup. This captures files not activated in fhold.
 2. Exports conversations through `fhold history export`, using the original
    image offline and read-only. Raw exports remain private outside agent mounts.
-3. Creates the named instance with the real `fhold install --name ... --config
+3. Creates the named instance with the real `fhold --name /exact/new/home install --config
    ... --no-start` command. `install-config.json` is ordinary reviewed operator
    input; only the installer creates target state, managed files and provenance.
    Existing exact bind/port/timezone/memory/sandbox choices are preserved. Old
@@ -87,7 +134,9 @@ source before writing anything. It then:
    support automatic available-port selection.
 4. Copies and hash-verifies selected files. Recreates named policies and portal
    allowlists/user mappings through the fhold CLI. New keys, password and handle
-   authority are generated. Exact enabled-portal tokens use secret-file commands.
+   authority are generated. Enabled or fully configured disabled portal tokens
+   use secret-file commands; disabled portals remain disabled. Partial/incomplete
+   disabled token pairs remain in the private whole-home archive for review.
 5. Maps existing `/work` contexts without inventing external mounts. Runs native
    history preview, then apply with explicit same-owner continuation. fhold
    performs whole-batch native round-trip and preservation verification.
