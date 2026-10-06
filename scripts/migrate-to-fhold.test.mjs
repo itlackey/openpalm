@@ -2,9 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	chmodSync,
+	closeSync,
 	existsSync,
+	ftruncateSync,
 	mkdirSync,
 	mkdtempSync,
+	openSync,
 	readFileSync,
 	renameSync,
 	symlinkSync,
@@ -139,6 +142,21 @@ test('preview is read-only; copies authored files, stages tasks, preserves empty
 	assert.ok(plan.files.some((f) => f.to === 'workspace/project/file.txt'));
 	assert.ok(!plan.files.some((f) => /node_modules|secrets|env|opencode.db|\.codex/.test(f.to)));
 	assert.ok(!f.calls.some((c) => c.args.includes('install') || c.args.includes('stop')));
+});
+
+test('large authored regular files are hashed in the ordinary preview instead of excluded', () => {
+	const f = fixture();
+	const rel = 'workspace/project/authored-large.pack';
+	f.write(rel, '');
+	const fd = openSync(join(f.source, rel), 'r+');
+	try { ftruncateSync(fd, 257 * 1024 * 1024); }
+	finally { closeSync(fd); }
+	const plan = planMigration(f.options, f.run);
+	const entry = plan.files.find((file) => file.to === rel);
+	assert.equal(entry.bytes, 257 * 1024 * 1024);
+	assert.match(entry.sha256, /^[a-f0-9]{64}$/);
+	assert.equal(existsSync(plan.target), false);
+	assert.equal(existsSync(plan.backup), false);
 });
 
 test('explicit opt-ins preserve native cold SQLite WAL, omit coordination and never copy OpenCode DB', () => {
@@ -294,6 +312,18 @@ test('disabled configured portal retains private token setup without enabling th
 	assert.ok(calls.some((c) => c.args[0] === 'portal' && c.args[1] === 'token' && c.args[2] === 'slack'
 		&& c.args.includes('--bot-token-file') && c.args.includes('--app-token-file') && c.args.includes('--no-apply')));
 	assert.ok(!calls.some((c) => c.args.join(' ').startsWith('portal enable slack')));
+});
+
+test('disabled blank portal placeholders are not configured credentials', () => {
+	const f = fixture();
+	f.write('state/secrets/discord_bot_token', '\n');
+	f.write('state/secrets/slack_bot_token', ' \n');
+	f.write('state/secrets/slack_app_token', '\t\n');
+	const plan = planMigration(f.options, f.run);
+	applyMigration(plan, f.run);
+	const calls = f.calls.filter((c) => c.command === f.options.fhold);
+	assert.ok(!calls.some((c) => c.args[0] === 'portal' && c.args[1] === 'token'));
+	assert.ok(!calls.some((c) => c.args[0] === 'portal' && c.args[1] === 'enable'));
 });
 
 test('directory map is explicit and refuses path escapes before writing', () => {

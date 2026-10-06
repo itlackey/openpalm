@@ -73,6 +73,10 @@ Authored knowledge and workspace files, including workspace Git state, are
 selected. Generated dependency trees are omitted. Source task definitions go to
 `knowledge/imported-tasks/`, not the active scheduler. Empty project directories
 are preserved so historical contexts remain discoverable.
+Large authored regular files and Git packs use the same bounded-memory hashing
+and native filesystem copy; they are not excluded by an arbitrary size limit.
+Preview reports total selected bytes. Check adequate free local target disk and
+private archive storage before beginning the cold transfer.
 
 ## Explicit 0.13 intent
 
@@ -137,6 +141,8 @@ source before writing anything. It then:
    authority are generated. Enabled or fully configured disabled portal tokens
    use secret-file commands; disabled portals remain disabled. Partial/incomplete
    disabled token pairs remain in the private whole-home archive for review.
+   Blank/whitespace-only placeholders from older installers are not treated as
+   configured disabled credentials; their original files remain in that archive.
 5. Maps existing `/work` contexts without inventing external mounts. Runs native
    history preview, then apply with explicit same-owner continuation. fhold
    performs whole-batch native round-trip and preservation verification.
@@ -184,10 +190,10 @@ review changed hooks. Do not reinstall a deliberately disabled plugin as part
 of migration. No account login or hook approval is implied by these commands.
 
 ```bash
-FH_HOME=/absolute/path/to/new-fhold-home /absolute/path/to/fhold-cli setup
-FH_HOME=/absolute/path/to/new-fhold-home /absolute/path/to/fhold-cli doctor --readiness
-FH_HOME=/absolute/path/to/new-fhold-home /absolute/path/to/fhold-cli connect opencode
-FH_HOME=/absolute/path/to/new-fhold-home /absolute/path/to/fhold-cli connect mcp --credential owner
+/absolute/path/to/fhold-cli --name /absolute/path/to/new-fhold-home setup
+/absolute/path/to/fhold-cli --name /absolute/path/to/new-fhold-home doctor --readiness
+/absolute/path/to/fhold-cli --name /absolute/path/to/new-fhold-home connect opencode
+/absolute/path/to/fhold-cli --name /absolute/path/to/new-fhold-home connect mcp --credential owner
 ```
 
 Use Admin or `fhold remote enable claude` / `fhold remote enable codex` for native
@@ -241,8 +247,9 @@ add test-only runtime configuration to bypass a failed prerequisite. Without
 the three explicit variables this live qualification is skipped, not claimed
 as a passing integration test.
 
-The full test passed on Linux x64 with OpenPalm `0.14.0-beta.1`, the packaged
-fhold `0.1.2610040221-alpha.2` CLI and matching images, and Node.js 24.18.0.
+The full test passed on October 6 on Linux x64 with OpenPalm `0.14.0-beta.1`, the
+publicly released fhold `0.1.2610060849-beta.1` CLI and matching Docker Hub images,
+and Node.js 24.18.0.
 Both images used native OpenCode 1.18.34. It verified project-specific discovery
 and transcript counts before and after restart, standard plugin refresh,
 fresh keys, preserved policies and mappings, disabled imported schedules,

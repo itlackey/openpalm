@@ -27,7 +27,8 @@ node scripts/migrate-to-fhold.mjs --from /old/home --to /new/home --name april \
   --fhold /path/to/released/fhold-cli --source-image openpalm/assistant:<version> \\
   --backup /new/private/migration-directory [options]
 
-Preview is the default. Stop the source through its own CLI before --apply.
+Preview is the default. Stop only the inventoried source services before --apply.
+Retain their containers for external-mount/volume inventory; see the migration guide.
   --apply                     Make the cold backup, install and transfer; do not start
   --include-provider-auth     Copy native provider auth and referenced secret files
   --include-user-env          Copy knowledge/env/user.env
@@ -306,8 +307,8 @@ export function planMigration(options, run = runCommand) {
 		const path = safePath(root, rel);
 		const stat = lstatSync(path);
 		if (!stat.isFile()) throw new Error(`Not a regular file: ${rel}`);
-		if (stat.size > 256 * 1024 * 1024)
-			throw new Error(`Large file needs separate reviewed transfer: ${rel}`);
+		// Hash in bounded chunks and copy with the native filesystem primitive.
+		// Authored Git packs and other regular files need not fit in memory.
 		files.push({
 			root,
 			from: rel,
@@ -619,8 +620,11 @@ export function applyMigration(plan, run = runCommand) {
 			cli(['credential', 'map', portal, user, username]);
 		const token = safePath(plan.source, `state/secrets/${portal}_bot_token`, true);
 		const appToken = portal === 'slack' ? safePath(plan.source, 'state/secrets/slack_app_token', true) : undefined;
-		const configured = existsSync(token) && lstatSync(token).isFile() && lstatSync(token).size > 0 &&
-			(!appToken || (existsSync(appToken) && lstatSync(appToken).isFile() && lstatSync(appToken).size > 0));
+		// Older installers seed empty secret files with a newline. That is not a
+		// configured disabled bot; keep its raw file in the private archive only.
+		const nonemptyToken = (path) => existsSync(path) && lstatSync(path).isFile() &&
+			lstatSync(path).size > 0 && readFileSync(path, 'utf8').trim().length > 0;
+		const configured = nonemptyToken(token) && (!appToken || nonemptyToken(appToken));
 		if (settings.enabled || configured) {
 			const args = ['portal', 'token', portal, '--bot-token-file', token, '--no-apply'];
 			if (portal === 'slack')
