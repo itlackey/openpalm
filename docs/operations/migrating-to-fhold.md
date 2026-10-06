@@ -20,6 +20,13 @@ import preserved history, external directories, named volumes or voice data.
    Compose containers. It does not automatically activate those mounts.
 3. Choose a new home, instance name and private backup directory, all separate.
    They must not exist. Do not use the default home of an unrelated instance.
+   The name must also be free across all running **and stopped** Docker projects,
+   including older rollback stacks. Preview and apply both check this without
+   changing existing containers. A name such as `fhold-<old-name>` keeps the
+   generations distinct. Do not edit an already installed instance's identity
+   or delete old containers to bypass an ownership refusal. If an older utility
+   installed a colliding name, retain that stopped target and choose another
+   new home/name/backup for a normal fresh retry.
 4. Keep the original CLI, images, homes, containers and any external data.
    The script never deletes them, changes the source or stops unrelated services.
 

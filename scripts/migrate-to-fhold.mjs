@@ -158,6 +158,12 @@ function sourceContainers(home, run) {
 		}));
 }
 
+function assertNewProjectName(name, run) {
+	const existing = run('docker', ['ps', '-aq', '--filter', `label=com.docker.compose.project=${name}`]);
+	if (existing.trim())
+		throw new Error(`Instance name "${name}" is already owned by an existing running or stopped stack. Choose a unique new name; existing containers remain unchanged.`);
+}
+
 function installConfig(source, name, version) {
 	const a = object(source.assistant, 'source assistant settings');
 	const g = object(source.gateway, 'source gateway settings');
@@ -208,6 +214,7 @@ export function planMigration(options, run = runCommand) {
 	}
 	if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(options.name))
 		throw new Error('Choose a lowercase DNS-safe instance name.');
+	assertNewProjectName(options.name, run);
 	const source = canonical(options.from),
 		target = canonical(options.to),
 		backup = canonical(options.backup);
@@ -521,6 +528,7 @@ export function applyMigration(plan, run = runCommand) {
 		throw new Error('Destination/backup appeared since review. No existing data was overwritten.');
 	if (sourceContainers(plan.source, run).some((c) => c.running))
 		throw new Error('Stop the source instance using its own CLI, then retry. Nothing was written.');
+	assertNewProjectName(plan.config.deployment.projectName, run);
 	process.umask(0o077);
 	mkdirSync(plan.backup, { recursive: true, mode: 0o700 });
 	if (run === runCommand)

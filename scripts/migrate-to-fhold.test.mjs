@@ -280,7 +280,8 @@ test('legacy 0.13 needs reviewed intent/runtime and linked native state stays ou
 		runtime: join(native, '.local/share/opencode'), 'include-native-accounts': true};
 	assert.throws(() => planMigration(options, f.run), /stopped, not removed/);
 	const run = (command, args, env) => {
-		if (command === 'docker' && args[0] === 'ps') return 'legacy-assistant';
+		if (command === 'docker' && args[0] === 'ps')
+			return args.some(arg => arg.startsWith('label=com.docker.compose.project=')) ? '' : 'legacy-assistant';
 		if (command === 'docker' && args[0] === 'inspect') return JSON.stringify([{
 			Id: 'legacy-assistant', Name: '/old-assistant', State: {Running: false}, Image: `sha256:${'a'.repeat(64)}`,
 			Config: {Labels: {'com.docker.compose.project.working_dir': join(f.source, 'system/stack')}},
@@ -346,7 +347,8 @@ test('inventories named volumes without traversing Docker private paths and reso
 	const outside = join(f.root, 'external');
 	mkdirSync(outside);
 	const run = (command, args, env) => {
-		if (command === 'docker' && args[0] === 'ps') return 'source-id';
+		if (command === 'docker' && args[0] === 'ps')
+			return args.some(arg => arg.startsWith('label=com.docker.compose.project=')) ? '' : 'source-id';
 		if (command === 'docker' && args[0] === 'inspect') return JSON.stringify([{
 			Id:'source-id', Name:'/old-assistant', State:{Running:false}, Image:`sha256:${'a'.repeat(64)}`,
 			Config:{Labels:{'com.docker.compose.project.working_dir':join(f.source, 'system/stack')}},
@@ -369,6 +371,29 @@ test('detects changed source after preview and keeps original/private evidence i
 	assert.throws(() => applyMigration(plan, f.run), /Source changed/);
 	assert.equal(existsSync(join(plan.backup, 'migration-plan.json')), true);
 	assert.equal(existsSync(join(plan.backup, 'migration-complete.json')), false);
+});
+
+test('preview refuses a name owned by a retained stopped project before creating anything', () => {
+	const f = fixture();
+	const run = (command, args, env) => {
+		if (command === 'docker' && args[0] === 'ps' && args.includes('label=com.docker.compose.project=april')) return 'older-stopped-container';
+		return f.run(command, args, env);
+	};
+	assert.throws(() => planMigration(f.options, run), /running or stopped stack/);
+	assert.equal(existsSync(f.options.to), false);
+	assert.equal(existsSync(f.options.backup), false);
+});
+
+test('apply rechecks a project name claimed after preview without copying or changing either home', () => {
+	const f = fixture(); const plan = planMigration(f.options, f.run);
+	const run = (command, args, env) => {
+		if (command === 'docker' && args[0] === 'ps' && args.includes('label=com.docker.compose.project=april')) return 'new-owner';
+		return f.run(command, args, env);
+	};
+	assert.throws(() => applyMigration(plan, run), /unique new name/);
+	assert.equal(existsSync(plan.target), false);
+	assert.equal(existsSync(plan.backup), false);
+	assert.equal(readFileSync(join(f.source, 'workspace/project/file.txt'), 'utf8'), 'authored work');
 });
 
 test('refuses applying against a running source before creating any backup or destination', () => {
