@@ -193,7 +193,15 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 			[2, '/work/empty-context', true]
 		]) {
 			const seed = join(root, `seed-${n}.json`);
-			writeFileSync(seed, JSON.stringify(transcript(n, directory, interrupted)));
+			const fixture = transcript(n, directory, interrupted);
+			if (n === 2) fixture.messages[0].parts.push({
+				id: 'prt_migration3', sessionID: 'ses_migration2', messageID: 'msg_migration2',
+				type: 'tool', callID: 'call_old_error', tool: 'bash', state: {
+					status: 'error', input: { command: 'synthetic historical command' },
+					error: 'Synthetic historical failure', metadata: {}, time: { start: time, end: time }
+				}
+			});
+			writeFileSync(seed, JSON.stringify(fixture));
 			run('docker', [
 				'run',
 				'--rm',
@@ -237,7 +245,11 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 			]);
 		}
 		const database = join(source, 'data/assistant/.local/share/opencode/opencode.db');
-		const sourceDb = new DatabaseSync(database, { readOnly: true });
+		const sourceDb = new DatabaseSync(database);
+		// Fixture creation only: reproduce an old engine's empty parser artifact
+		// before migration. Never repair a test result or alter production data.
+		assert.equal(sourceDb.prepare("UPDATE part SET data=json_set(data, '$.state.raw', '', '$.state.title', 'Synthetic historical title') WHERE id=?")
+			.run('prt_migration3').changes, 1);
 		assert.deepEqual(
 			sourceDb
 				.prepare('SELECT id, directory FROM session ORDER BY id')
@@ -321,7 +333,7 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		});
 		assert.equal(db.prepare('SELECT count(*) AS n FROM session').get().n, 2);
 		assert.equal(db.prepare('SELECT count(*) AS n FROM message').get().n, 2);
-		assert.equal(db.prepare('SELECT count(*) AS n FROM part').get().n, 2);
+		assert.equal(db.prepare('SELECT count(*) AS n FROM part').get().n, 3);
 		assert.deepEqual(
 			db
 				.prepare('SELECT id, directory FROM session ORDER BY id')
@@ -338,6 +350,13 @@ test('packaged CLI migration preserves native history, accounts, files and polic
 		);
 		assert.equal(part.state.status, 'error');
 		assert.match(part.state.error, /interrupted/);
+		const oldError = JSON.parse(db.prepare('SELECT data FROM part WHERE id=?').get('prt_migration3').data);
+		assert.equal(oldError.state.error, 'Synthetic historical failure');
+		assert.equal(oldError.state.metadata.archivedTitle, 'Synthetic historical title');
+		assert.equal(Object.hasOwn(oldError.state, 'raw'), false);
+		const preparation = JSON.parse(readFileSync(join(backup, 'prepared-native-history/normalization.json'), 'utf8'));
+		assert.equal(preparation.normalizations.length, 2);
+		assert.equal(preparation.normalizations[0].part, 'prt_migration3');
 		db.close();
 		assert.equal(existsSync(join(target, 'workspace/MUST-NOT-EXECUTE')), false);
 		const raw = JSON.parse(

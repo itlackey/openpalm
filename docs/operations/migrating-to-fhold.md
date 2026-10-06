@@ -130,6 +130,16 @@ source before writing anything. It then:
    archive a complete backup. This captures files not activated in fhold.
 2. Exports conversations through `fhold history export`, using the original
    image offline and read-only. Raw exports remain private outside agent mounts.
+   A separate prepared archive is made only for two known old serialization
+   artifacts: an exactly empty `state.raw` terminal parser buffer is omitted,
+   and a former running-state title on a failed call is preserved verbatim as
+   `state.metadata.archivedTitle`. Neither belongs in OpenCode's current
+   completed/error state at its old location. A private receipt identifies
+   every normalization; input, output, errors, attachments, message/part IDs
+   and all other values remain untouched. Nonempty/unknown parser data,
+   non-string titles and metadata conflicts require manual review. Neither
+   original exports nor any database is edited, and fhold still performs
+   strict native verification against the prepared supported representation.
 3. Creates the named instance with the real `fhold --name /exact/new/home install --config
    ... --no-start` command. `install-config.json` is ordinary reviewed operator
    input; only the installer creates target state, managed files and provenance.
@@ -154,6 +164,26 @@ the failed native/CLI step manually, or choose another new home/backup. Private
 `commands.jsonl` records native/CLI diagnostics; treat it as credential-bearing
 and never publish it. History
 has its own safe retry journal; use identical mapping/archival options.
+
+If a preflight from an older copy of this utility stopped on one of those
+serialization artifacts, the standalone preparation command is:
+
+```bash
+node scripts/prepare-native-history.mjs \
+  --from /private/migration-directory/native-history \
+  --to /private/migration-directory/prepared-native-history
+fhold --name /exact/new/home history restore \
+  --from /private/migration-directory/prepared-native-history \
+  --directory-map /private/migration-directory/directories.json
+```
+
+After that preview passes, repeat the same restore command with
+`--apply --same-instance` (and the same explicitly reviewed
+`--archive-interrupted` choice if needed). Do not repeat the whole migration
+apply over the existing target. The source archive stays unchanged and every
+restored transcript must still pass native whole-content verification.
+
+Schema reference: [OpenCode's native tool-state types](https://github.com/anomalyco/opencode/blob/v1.18.34/packages/schema/src/v1/session.ts).
 
 ## Native plugins and first startup
 

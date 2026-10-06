@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
 	chmodSync,
 	closeSync,
@@ -98,13 +99,18 @@ function fixture() {
 		if (command === cli && args[0] === 'history' && args[1] === 'export') {
 			const dest = args[args.indexOf('--to') + 1];
 			mkdirSync(dest);
+			const native = JSON.stringify({ info: { id: 'ses_fixture', directory: '/work/empty-project' },
+				messages: [{ info: { id: 'msg_fixture', sessionID: 'ses_fixture' },
+					parts: [{ id: 'prt_fixture', type: 'text', text: 'synthetic' }] }] });
+			writeFileSync(join(dest, 'ses_fixture.json'), native);
 			writeFileSync(
 				join(dest, 'history.json'),
 				JSON.stringify({
 					product: 'fhold',
 					scope: 'native-history',
 					version: 1,
-					sessions: [{ id: 'ses_fixture', directory: '/work/empty-project', messages: 1, parts: 1 }]
+					sessions: [{ id: 'ses_fixture', directory: '/work/empty-project', messages: 1, parts: 1,
+						sha256: createHash('sha256').update(native).digest('hex') }]
 				})
 			);
 		}

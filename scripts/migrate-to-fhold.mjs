@@ -20,6 +20,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { prepareNativeHistory } from './prepare-native-history.mjs';
 
 const HELP = `One-time OpenPalm → fhold migration (Linux, Node 22+)
 
@@ -572,6 +573,7 @@ export function applyMigration(plan, run = runCommand) {
 	const history = join(plan.backup, 'native-history');
 	cli(['history', 'export', '--from', plan.source, '--image', plan.sourceImageId, '--to', history,
 		...(plan.runtime ? ['--runtime', plan.runtime] : [])]);
+	const preparedHistory = prepareNativeHistory(history, join(plan.backup, 'prepared-native-history'));
 	// --config is public operator input. Only the packaged installer writes
 	// state/stack.json, system assets, secrets or installation provenance.
 	cli([
@@ -655,7 +657,7 @@ export function applyMigration(plan, run = runCommand) {
 		'history',
 		'restore',
 		'--from',
-		history,
+		preparedHistory.archive,
 		'--directory-map',
 		join(plan.backup, 'directories.json')
 	];
@@ -677,6 +679,7 @@ export function applyMigration(plan, run = runCommand) {
 			codex: plan.sourceConfig.assistant.codexRemote
 		},
 		nativePluginReviewRequired: plan.nativeAccounts,
+		historyPreparation: preparedHistory,
 		omitted: plan.omitted
 	});
 	return { target: plan.target, backup: plan.backup, files: plan.files.length };
